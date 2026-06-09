@@ -1,0 +1,228 @@
+/* Agent Portal Dedicated Styles (Vodafone Theme) */
+
+:root {
+  --agent-primary: #e60000;
+  --agent-bg: #f4f4f4;
+  --agent-card-bg: #ffffff;
+  --agent-text: #333333;
+  --agent-text-muted: #666666;
+  --agent-border: #e0e0e0;
+  --agent-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+html, body {
+  background-color: var(--agent-bg);
+  margin: 0;
+  padding: 0;
+  font-family: 'Vodafone', 'Vodafone Rg', 'Inter', sans-serif;
+  color: var(--agent-text);
+}
+
+.agent-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--agent-bg);
+}
+
+.agent-header {
+  background: var(--agent-card-bg);
+  padding: 16px 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.agent-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--agent-text);
+  margin: 0;
+}
+
+.agent-title span {
+  color: var(--agent-primary);
+}
+
+.agent-user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-avatar {
+  width: 40px;
+  height: 40px;
+  background: var(--agent-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.agent-main {
+  padding: 20px;
+  flex: 1;
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.agent-controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.agent-input, .agent-select {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--agent-border);
+  background: var(--agent-card-bg);
+  color: var(--agent-text);
+  font-size: 1rem;
+  flex: 1;
+  min-width: 200px;
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.agent-input:focus, .agent-select:focus {
+  border-color: var(--agent-primary);
+}
+
+/* Card Layout */
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.agent-card {
+  background: var(--agent-card-bg);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--agent-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 4px solid var(--agent-primary);
+  transition: transform 0.2s;
+}
+
+.agent-card:hover {
+  transform: translateY(-2px);
+}
+
+.agent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.agent-id {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--agent-text-muted);
+}
+
+.agent-number {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--agent-text);
+  margin-top: 4px;
+}
+
+.agent-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.agent-info-label {
+  color: var(--agent-text-muted);
+  font-weight: 600;
+}
+
+.agent-info-value {
+  font-weight: 700;
+}
+
+/* Badges */
+.badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.badge-pending { background: #fff3cd; color: #856404; }
+.badge-review { background: #cce5ff; color: #004085; }
+.badge-verified { background: #d4edda; color: #155724; }
+.badge-rejected { background: #f8d7da; color: #721c24; }
+.badge-suspended { background: #e2e3e5; color: #383d41; }
+
+.agent-action-btn {
+  background: var(--agent-card-bg);
+  border: 2px solid var(--agent-primary);
+  color: var(--agent-primary);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.agent-action-btn:hover {
+  background: var(--agent-primary);
+  color: white;
+}
+
+.agent-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid var(--agent-border);
+}
+
+.agent-pagination button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--agent-card-bg);
+  border: 1px solid var(--agent-border);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.agent-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .agent-title { font-size: 1.25rem; }
+  .agent-header { padding: 12px 16px; }
+  .agent-main { padding: 16px; }
+  .agent-grid { grid-template-columns: 1fr; }
+}

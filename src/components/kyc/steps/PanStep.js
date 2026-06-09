@@ -1,0 +1,209 @@
+"use client";
+import { useState, useEffect } from "react";
+import { useKYC } from "@/context/KYCContext";
+import { verifyPanDirect, initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import Logo from "../Logo";
+import DateInput from "../DateInput";
+
+const formatPanValue = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") {
+    const match = value.toUpperCase().match(/[A-Z]{5}[0-9]{4}[A-Z]/);
+    return match ? match[0] : value.toUpperCase();
+  }
+  if (typeof value !== "object") return String(value).toUpperCase();
+
+  const preferredKeys = ["pan", "pan_no", "pan_number", "panNo", "id_no", "id_number", "number", "document_number"];
+  for (const key of preferredKeys) {
+    const formatted = formatPanValue(value[key]);
+    if (formatted && formatted !== "[OBJECT OBJECT]") return formatted;
+  }
+
+  for (const nested of Object.values(value)) {
+    const formatted = formatPanValue(nested);
+    if (formatted && formatted !== "[OBJECT OBJECT]") return formatted;
+  }
+
+  return "";
+};
+
+export default function PanStep() {
+  const { personalDetails, identityDetails, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId } = useKYC();
+  const [pan, setPan] = useState(formatPanValue(identityDetails.pan));
+  const [fullName, setFullName] = useState(personalDetails.fullName || "");
+  const [dob, setDob] = useState(personalDetails.dob || "");
+  const [loading, setLoading] = useState(false);
+  const [digioLoading, setDigioLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const normalizedPan = formatPanValue(identityDetails.pan);
+    if (normalizedPan && normalizedPan !== pan) {
+      setPan(normalizedPan);
+    }
+  }, [identityDetails.pan]);
+
+  const handleVerify = async () => {
+    // Validation
+    const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+    if (!panRegex.test(pan.toUpperCase())) {
+      addToast("Please enter a valid PAN number", "error");
+      return;
+    }
+    if (!fullName || fullName.length < 3) {
+      addToast("Please enter your full name as per PAN", "error");
+      return;
+    }
+    if (!dob) {
+      addToast("Please enter your Date of Birth", "error");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await verifyPanDirect(pan.toUpperCase(), fullName, dob);
+      
+      if (result.success) {
+        if (result.applicationId) setApplicationId(result.applicationId);
+        
+        const extractedFatherName = result.data?.father_name || result.data?.parent_name || result.data?.fathers_name || result.data?.fatherName || result.data?.relative_name || "";
+        
+        addToast("PAN verified successfully!", "success");
+        nextStep({
+          identityDetails: { ...identityDetails, pan: pan.toUpperCase() },
+          personalDetails: { 
+            ...personalDetails, 
+            dob, 
+            fullName, 
+            ...(extractedFatherName ? { fatherName: extractedFatherName } : {}) 
+          },
+          panVerified: true
+        });
+      } else {
+        addToast(result.message || "PAN verification failed", "error");
+        setLoading(false);
+      }
+    } catch (err) {
+      setLoading(false);
+      addToast(err?.message || "PAN verification service is unavailable", "error");
+    }
+  };
+
+  if (!mounted) return null;
+
+  return (
+    <div className="container-sm" style={{ paddingTop: "2vh", paddingBottom: "4vh", maxWidth: "480px" }}>
+      <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
+        <h1 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-0.5px", color: "var(--text-primary)" }}>PAN Verification</h1>
+        <p className="text-body" style={{ color: "var(--text-secondary)", marginTop: "12px", fontWeight: 600 }}>Enter your details exactly as they appear on your PAN card.</p>
+      </div>
+
+      <div className="card animate-slide-up" style={{ 
+        padding: "32px", 
+        borderRadius: "32px", 
+        border: "1px solid var(--border-color)", 
+        background: "var(--bg-card)",
+        boxShadow: "none"
+      }}>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+            PAN Number <span style={{ color: "var(--wise-danger)" }}>*</span>
+          </label>
+          <input 
+            type="text" 
+            className="input-field" 
+            placeholder="ABCDE1234F" 
+            style={{ 
+              height: "56px", 
+              borderRadius: "16px", 
+              border: "1.5px solid var(--border-color)",
+              fontSize: "1.1rem", 
+              fontWeight: 700, 
+              textTransform: "uppercase",
+              background: "var(--input-bg)",
+              color: "var(--text-primary)",
+              padding: "0 20px"
+            }}
+            value={pan} 
+            onChange={e => setPan(e.target.value.toUpperCase())}
+            maxLength={10}
+          />
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+            Full Name (As per PAN) <span style={{ color: "var(--wise-danger)" }}>*</span>
+          </label>
+          <input 
+            type="text" 
+            className="input-field" 
+            placeholder="FULL NAME" 
+            style={{ 
+              height: "56px", 
+              borderRadius: "16px", 
+              border: "1.5px solid var(--border-color)",
+              fontSize: "1.1rem", 
+              fontWeight: 700,
+              background: "var(--input-bg)",
+              color: "var(--text-primary)",
+              padding: "0 20px"
+            }}
+            value={fullName} 
+            onChange={e => setFullName(e.target.value.toUpperCase())}
+          />
+        </div>
+
+        <div style={{ marginBottom: 32 }}>
+          <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+            Date of Birth <span style={{ color: "var(--wise-danger)" }}>*</span>
+          </label>
+          <DateInput 
+            className="input-field" 
+            style={{ 
+              height: "56px", 
+              borderRadius: "16px", 
+              border: "1.5px solid var(--border-color)",
+              fontSize: "1.1rem", 
+              fontWeight: 700,
+              background: "var(--input-bg)",
+              color: "var(--text-primary)",
+              padding: "0 20px"
+            }}
+            value={dob} 
+            onChange={e => setDob(e.target.value)}
+          />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <button 
+            type="button" 
+            className="btn-primary" 
+            disabled={loading || digioLoading || pan.length < 10 || !dob || !fullName} 
+            onClick={handleVerify}
+            style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
+          >
+            {digioLoading ? "Connecting..." : loading ? "Verifying..." : "Verify & Continue"}
+          </button>
+          
+          <button 
+            type="button" 
+            className="btn-secondary" 
+            onClick={prevStep} 
+            style={{ height: "56px", borderRadius: "16px", fontWeight: 700, background: "var(--bg-card)", border: "1.5px solid var(--border-color)", color: "var(--text-primary)" }}
+          >
+            Back
+          </button>
+        </div>
+        
+        <p className="text-caption text-center" style={{ marginTop: 24, fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>
+          By continuing, you authorize us to verify your PAN details with official records.
+        </p>
+      </div>
+    </div>
+  );
+}

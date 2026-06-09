@@ -1,0 +1,307 @@
+/* Admin Dashboard Shared Styles */
+
+:root {
+  --wise-green: #9fe870;
+  --wise-dark-green: #163300;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --text-primary: #000000;
+  --text-secondary: #333333;
+  --text-muted: #6b7280;
+  --border-color: #e5e7eb;
+  --border-hover: #d1d5db;
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --card-shadow-hover: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+html, body {
+  background-color: #f8f9fa !important; /* Matches var(--bg-secondary) */
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+/* Section headers */
+.admin-section-title {
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.admin-section-subtitle {
+  font-size: 1rem;
+  color: var(--text-muted);
+  margin-bottom: 40px;
+}
+
+/* Metric cards */
+.metric-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px;
+  cursor: default;
+  box-shadow: var(--card-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Admin Table */
+.admin-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 700px;
+}
+.admin-table th {
+  padding: 8px 12px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: left;
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border-color);
+}
+.admin-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.8rem;
+  vertical-align: middle;
+}
+.admin-table tr:last-child td { border-bottom: none; }
+
+/* Status Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.badge-verified { background: #dcfce7; color: #15803d; }
+.badge-pending { background: #fef9c3; color: #a16207; }
+.badge-rejected { background: #fee2e2; color: #b91c1c; }
+.badge-review { background: #dbeafe; color: #1d4ed8; }
+.badge-suspended { background: #f3f4f6; color: #4b5563; }
+
+/* Dashboard Cards */
+.card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  box-shadow: var(--card-shadow);
+  transform: none !important;
+  transition: none !important;
+}
+
+/* Inspection Layout Styles */
+.inspection-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.inspection-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--border-color);
+  margin-bottom: 8px;
+  transform: none !important;
+  transition: none !important;
+}
+
+/* Input styles */
+.admin-input, .admin-select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  outline: none;
+  transform: none !important;
+  transition: none !important;
+}
+
+.admin-input:focus, .admin-select:focus {
+  border-color: var(--wise-green);
+  background: var(--bg-primary);
+}
+
+.admin-btn {
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transform: none !important;
+  transition: none !important;
+}
+
+.admin-btn-primary {
+  background: var(--wise-green);
+  color: var(--wise-dark-green);
+}
+
+.admin-btn-secondary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+/* No animations to ensure absolute stability */
+.admin-animate { opacity: 1; }
+
+/* Skeleton/Loading State */
+.admin-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  font-weight: 900;
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* Uniform document preview cards (Documents & Biometrics) */
+.documents-biometrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+@media (max-width: 1200px) {
+  .documents-biometrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .documents-biometrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.document-preview-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+  max-height: 300px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--bg-primary);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.document-preview-card .inspection-label {
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+
+.document-preview-frame {
+  margin-top: 10px;
+  flex: 1;
+  height: 200px;
+  min-height: 200px;
+  max-height: 200px;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.document-preview-frame--scroll {
+  overflow: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+  background: #fff;
+}
+
+.document-preview-frame img,
+.document-preview-frame canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.document-preview-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.document-preview-footer {
+  margin-top: 8px;
+  min-height: 16px;
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.eaadhaar-preview--compact {
+  font-size: 0.58rem;
+  line-height: 1.25;
+}
+
+.eaadhaar-preview--compact .eaadhaar-preview__title {
+  font-size: 0.78rem;
+}
+
+.eaadhaar-preview--compact .eaadhaar-preview__subtitle {
+  font-size: 0.52rem;
+}
+
+.eaadhaar-preview--compact .eaadhaar-preview__label-col {
+  grid-template-columns: 96px 1fr;
+}
+
+.eaadhaar-preview--compact .eaadhaar-preview__photo-col {
+  width: 72px;
+  min-width: 72px;
+}
+
+.kyc-evidence-card {
+  min-height: 300px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.kyc-evidence-card__body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
