@@ -6,5 +6,25 @@ export const metadata = {
 };
 
 export default function AdminLayout({ children }) {
-  return children;
+  return (
+    <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              try {
+                var theme = localStorage.getItem('adminTheme');
+                if (theme === 'dark') {
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                } else {
+                  document.documentElement.setAttribute('data-theme', 'light');
+                }
+              } catch (e) {}
+            })();
+          `,
+        }}
+      />
+      {children}
+    </>
+  );
 }

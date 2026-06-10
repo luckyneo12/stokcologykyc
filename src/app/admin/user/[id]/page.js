@@ -2,6 +2,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
+import EStampDocument from "../../components/EStampDocument";
 
 const KYC_STATUS = {
   verified: "badge-verified",
@@ -47,6 +48,9 @@ export default function UserDetailPage() {
   const router = useRouter();
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editingStamp, setEditingStamp] = useState(false);
+  const [stampInput, setStampInput] = useState("");
+  const [showStampModal, setShowStampModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,6 +69,36 @@ export default function UserDetailPage() {
     fetchData();
   }, [id]);
 
+  const handleUpdateStamp = async () => {
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/api/admin/users/${id}/estamp`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ eStamp: stampInput })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDetails(prev => ({ ...prev, eStamp: data.eStamp }));
+        setEditingStamp(false);
+      } else {
+        alert(data.error || "Failed to update E-Stamp");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error updating E-Stamp");
+    }
+  };
+
+  useEffect(() => {
+    const isDark = localStorage.getItem("adminTheme") === "dark";
+    if (isDark) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+  }, []);
+
   const latest = details?.kycApplications?.[0] || null;
   const assets = useMemo(() => detectAssets(latest), [latest]);
   const selfie = resolveAssetUrl(latest?.selfie || latest?.selfieDetails?.path || assets.find((a) => a.label.toLowerCase().includes("selfie"))?.src || "");
@@ -77,13 +111,46 @@ export default function UserDetailPage() {
       <button onClick={() => router.push("/admin")} style={{ marginBottom: 10, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-muted)", fontWeight: 700 }}>? Back to User List</button>
       <h1 className="admin-section-title">Detailed View</h1>
 
-      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 16, padding: 14, display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 1.5fr auto", gap: 10, alignItems: "center" }}>
+      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 16, padding: 14, display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1.2fr 1.5fr auto", gap: 10, alignItems: "center" }}>
         <div><div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Customer Email/Phone</div><div style={{ fontWeight: 800 }}>{details.phone}</div><div style={{ fontSize: "1rem", fontWeight: 800 }}>{latest.personalDetails?.fullName || "N/A"}</div></div>
         <div><div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Updated At</div><div style={{ fontWeight: 700 }}>{new Date(latest.updatedAt).toLocaleString()}</div></div>
         <div><div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>KYC Request ID</div><div style={{ fontWeight: 700 }}>{latest.applicationId}</div></div>
         <div><div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Workflow Name</div><div style={{ fontWeight: 700 }}>{latest.identityMethod || "DIGILOCKER_CONDITIONAL_JOURNEY"}</div></div>
+        
+        <div>
+          <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Digital E-Stamp</div>
+          {editingStamp ? (
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              <input value={stampInput} onChange={(e) => setStampInput(e.target.value)} style={{ width: 90, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }} placeholder="000001" />
+              <button onClick={handleUpdateStamp} style={{ padding: "4px 8px", background: "var(--wise-green)", color: "white", border: "none", borderRadius: 4, cursor: "pointer", fontSize: "0.8rem" }}>Save</button>
+              <button onClick={() => setEditingStamp(false)} style={{ padding: "4px 8px", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-muted)", borderRadius: 4, cursor: "pointer", fontSize: "0.8rem" }}>Cancel</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+              <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--wise-green)", letterSpacing: "1px" }}>{details.eStamp || "Not Assigned"}</div>
+              <button onClick={() => { setStampInput(details.eStamp || ""); setEditingStamp(true); }} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", textDecoration: "underline", fontSize: "0.8rem" }}>Edit</button>
+              {details.eStamp && (
+                <button onClick={() => setShowStampModal(true)} style={{ marginLeft: 6, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", padding: "2px 8px", borderRadius: 4, color: "var(--text-primary)", cursor: "pointer", fontSize: "0.75rem", fontWeight: 600 }}>View Doc</button>
+              )}
+            </div>
+          )}
+        </div>
+
         <div><span className={`badge ${KYC_STATUS[latest.status] || "badge-review"}`}>{(latest.status || "none").replace("_", " ")}</span></div>
       </div>
+
+      {showStampModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "40px 20px" }}>
+          <div style={{ position: "relative", width: "100%", maxWidth: "840px" }}>
+            <button onClick={() => setShowStampModal(false)} style={{ position: "absolute", right: -40, top: 0, background: "none", border: "none", color: "white", fontSize: "2rem", cursor: "pointer" }}>&times;</button>
+            <EStampDocument 
+              eStamp={details.eStamp} 
+              approvedDate={latest.updatedAt} 
+              fullName={latest.personalDetails?.fullName} 
+            />
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr 300px", gap: 12, marginTop: 12 }}>
         <div style={{ display: "grid", gap: 12 }}>

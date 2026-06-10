@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { id: "analytics", label: "Analytics", icon: "chart" },
   { id: "roles", label: "Roles & Access", icon: "lock" },
   { id: "audit", label: "Audit Logs", icon: "list" },
+  { id: "estamps", label: "E-Stamps", icon: "doc" },
   { id: "system", label: "System Settings", icon: "cog" },
 ];
 
@@ -52,6 +53,25 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
         .sidebar-item.active:hover {
           background: rgba(159,232,112,0.2) !important;
         }
+        
+        /* Dark theme specific overrides for active & hover sidebar items */
+        [data-theme="dark"] .sidebar-item.active {
+          background: var(--wise-green) !important;
+          color: var(--wise-dark-green) !important;
+        }
+        [data-theme="dark"] .sidebar-item.active:hover {
+          background: var(--wise-green) !important;
+          color: var(--wise-dark-green) !important;
+          opacity: 0.9;
+        }
+        [data-theme="dark"] .sidebar-item:hover {
+          background: rgba(159,232,112,0.12) !important;
+          color: var(--wise-green) !important;
+        }
+        .sidebar-toggle-btn:hover {
+          background: var(--border-color) !important;
+          border-color: var(--border-hover) !important;
+        }
       `}} />
       <aside style={{
         width: collapsed ? 72 : 240,
@@ -73,7 +93,24 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
             <Logo width={100} height={30} />
           </div>
         )}
-        <button onClick={onToggle} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+        <button 
+          onClick={onToggle} 
+          className="sidebar-toggle-btn"
+          style={{ 
+            width: 32, 
+            height: 32, 
+            borderRadius: 8, 
+            border: "1px solid var(--border-color)", 
+            background: "var(--bg-secondary)", 
+            color: "var(--text-primary)",
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center", 
+            cursor: "pointer", 
+            flexShrink: 0,
+            transition: "all 0.2s ease"
+          }}
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             {collapsed ? <polyline points="9 18 15 12 9 6"/> : <polyline points="15 18 9 12 15 6"/>}
           </svg>
@@ -116,7 +153,7 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
                 zIndex: 1,
               }}
             >
-              <span style={{ flexShrink: 0, color: isActive ? "var(--wise-green)" : "currentColor" }}>{ICONS[item.icon]}</span>
+              <span style={{ flexShrink: 0, color: "currentColor" }}>{ICONS[item.icon]}</span>
               {!collapsed && <span style={{ whiteSpace: "nowrap" }}>{item.label}</span>}
               {!collapsed && item.badge && (
                 <span style={{ marginLeft: "auto", background: "var(--wise-green)", color: "var(--wise-dark-green)", fontSize: "0.65rem", fontWeight: 900, padding: "2px 7px", borderRadius: 999 }}>

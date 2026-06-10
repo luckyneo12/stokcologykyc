@@ -42,6 +42,8 @@ export default function AgentDashboard() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [agentUser, setAgentUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
   useEffect(() => {
     const userStr = localStorage.getItem("agent_user");
@@ -53,6 +55,35 @@ export default function AgentDashboard() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const verifyToken = async () => {
+      const token = localStorage.getItem("agent_token");
+      if (!token) {
+        window.location.href = "/agent/login";
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/agent/applications?limit=1`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.status === 401) {
+          localStorage.removeItem("agent_token");
+          localStorage.removeItem("agent_user");
+          window.location.href = "/agent/login";
+        } else {
+          setIsAuthenticated(true);
+        }
+      } catch (e) {
+        console.error("Token verification failed", e);
+        setIsAuthenticated(true);
+      } finally {
+        setLoadingAuth(false);
+      }
+    };
+    verifyToken();
+  }, []);
+
 
   const fetchApplications = async (isSilent = false) => {
     if (typeof window === "undefined") return;
@@ -86,6 +117,7 @@ export default function AgentDashboard() {
             id: app.applicationId,
             dbId: app.id,
             number: app.user?.phone || "N/A",
+            eStamp: app.user?.eStamp || "N/A",
             stepNum: app.currentStep || 0,
             stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
             type: "Full KYC",
@@ -109,6 +141,8 @@ export default function AgentDashboard() {
   }, [filter, search]);
 
   useEffect(() => {
+    if (loadingAuth || !isAuthenticated) return;
+
     fetchApplications();
     
     const socket = io(API_BASE_URL, { withCredentials: true });
@@ -116,7 +150,13 @@ export default function AgentDashboard() {
     socket.on("applications_updated", () => fetchApplications(true));
     
     return () => socket.disconnect();
-  }, [filter, search, page]);
+  }, [filter, search, page, loadingAuth, isAuthenticated]);
+
+  if (loadingAuth || !isAuthenticated) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-secondary)" }}>
+      <div className="loader"></div>
+    </div>
+  );
 
   return (
     <div className="admin-animate">
@@ -134,11 +174,11 @@ export default function AgentDashboard() {
       </div>
 
       {/* Table */}
-      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 20, overflow: "hidden" }}>
+      <div className="admin-table-container">
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table">
             <thead><tr>
-              {["KYC ID", "Number", "Step", "Status", "Risk", "Face Match", "Assigned", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
+              {["KYC ID", "Number", "Step", "Status", "Risk", "Face Match", "E-Stamp", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
               {kycs.length === 0 ? (
@@ -160,8 +200,8 @@ export default function AgentDashboard() {
                     <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/100</span>
                   </td>
                   <td style={{ fontWeight: 700, fontSize: "0.85rem" }}>{k.faceMatch}%</td>
-                  <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
-                    {agentUser?.email || "Agent"}
+                  <td style={{ fontSize: "0.82rem", color: "var(--wise-green)", fontWeight: 800 }}>
+                    {k.eStamp}
                   </td>
                   <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.submittedAt}</td>
                   <td>

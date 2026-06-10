@@ -389,6 +389,15 @@ export default function ApplicationDetail() {
     }
   }, [id]);
 
+  useEffect(() => {
+    const isDark = localStorage.getItem("adminTheme") === "dark";
+    if (isDark) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+  }, []);
+
   const updateStatus = async (status, extra = {}) => {
     if (typeof window === "undefined") return;
     try {
@@ -526,8 +535,8 @@ export default function ApplicationDetail() {
     const info = getStepStatus(stepName);
     if (info?.status === "approved") {
       return {
-        background: "#f6fcf8",
-        border: "1px solid #bbf7d0",
+        background: "var(--accent-green-bg)",
+        border: "1px solid rgba(34, 197, 94, 0.25)",
         position: "relative",
         transition: "all 0.3s ease",
         boxShadow: "0 8px 30px rgba(34, 197, 94, 0.08)"
@@ -535,8 +544,8 @@ export default function ApplicationDetail() {
     }
     if (info?.status === "rejected") {
       return {
-        background: "#fff5f5",
-        border: "1px solid #fecaca",
+        background: "var(--accent-red-bg)",
+        border: "1px solid rgba(239, 68, 68, 0.25)",
         position: "relative",
         transition: "all 0.3s ease",
         boxShadow: "0 8px 30px rgba(239, 68, 68, 0.08)"
@@ -853,7 +862,7 @@ export default function ApplicationDetail() {
               const hasPanUpload = app.panUpload?.filePreview;
 
               return (
-                <section className="card" style={{ padding: 16, borderLeft: "4px solid var(--wise-green)", background: "linear-gradient(to right, #f8fff9, white)" }}>
+                <section className="card" style={{ padding: 16, borderLeft: "4px solid var(--wise-green)", background: "linear-gradient(to right, var(--accent-green-bg), var(--bg-card))" }}>
                   <h3 style={{ fontSize: "0.95rem", fontWeight: 900, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="3"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     Primary KYC Evidence
@@ -955,7 +964,7 @@ export default function ApplicationDetail() {
                     )}
 
                     {app.identityDetails?.aadhaar && (
-                      <div className="document-preview-card" style={{ border: "1px solid #cce2ff", background: "white", boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
+                      <div className="document-preview-card">
                         <span className="inspection-label" style={{ color: "#0052cc" }}>DigiLocker e-Aadhaar</span>
                         <div className="document-preview-frame document-preview-frame--scroll">
                           {aadhaarPdfSrc ? (
@@ -1260,7 +1269,7 @@ export default function ApplicationDetail() {
                 {geoLocation && (
                   <div className="document-preview-card" style={getSectionStyle("regulatory")}>
                     <span className="inspection-label">Geo Location (Digio)</span>
-                    <div className="document-preview-frame" style={{ display: "flex", flexDirection: "column", padding: "16px", background: "white", justifyContent: "center" }}>
+                    <div className="document-preview-frame" style={{ display: "flex", flexDirection: "column", padding: "16px", justifyContent: "center" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e03131" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                         <div>

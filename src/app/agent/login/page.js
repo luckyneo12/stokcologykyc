@@ -83,7 +83,7 @@ export default function AgentLogin() {
               style={{
                 width: "100%", padding: "14px", borderRadius: "12px",
                 border: "1px solid var(--border-color)", background: "var(--bg-secondary)",
-                outline: "none", fontSize: "0.95rem"
+                color: "var(--text-primary)", outline: "none", fontSize: "0.95rem"
               }}
             />
           </div>
@@ -99,7 +99,7 @@ export default function AgentLogin() {
               style={{
                 width: "100%", padding: "14px", borderRadius: "12px",
                 border: "1px solid var(--border-color)", background: "var(--bg-secondary)",
-                outline: "none", fontSize: "0.95rem"
+                color: "var(--text-primary)", outline: "none", fontSize: "0.95rem"
               }}
             />
           </div>

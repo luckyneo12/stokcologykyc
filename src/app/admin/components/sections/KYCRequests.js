@@ -31,12 +31,14 @@ const STATUS_MAP = {
   on_hold: "badge-suspended" 
 };
 
-export default function KYCRequests() {
+export default function KYCRequests({ searchQuery, onSearchChange }) {
   const router = useRouter();
   const [kycs, setKycs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState("");
+  const search = searchQuery !== undefined ? searchQuery : localSearch;
+  const setSearch = onSearchChange !== undefined ? onSearchChange : setLocalSearch;
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -134,15 +136,23 @@ export default function KYCRequests() {
   }, [filter, search]);
 
   useEffect(() => {
-    fetchApplications();
-    fetchEmployees();
+    const t = setTimeout(() => {
+      fetchApplications();
+    }, 200);
     
     const socket = io(API_BASE_URL, { withCredentials: true });
     socket.on("connect", () => socket.emit("join_staff"));
     socket.on("applications_updated", () => fetchApplications(true));
     
-    return () => socket.disconnect();
+    return () => {
+      clearTimeout(t);
+      socket.disconnect();
+    };
   }, [filter, search, page]);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
 
   useEffect(() => {
     const handleEsc = (e) => {
@@ -226,7 +236,7 @@ export default function KYCRequests() {
       </div>
 
       {/* Table */}
-      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 20, overflow: "hidden" }}>
+      <div className="admin-table-container">
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table">
             <thead><tr>

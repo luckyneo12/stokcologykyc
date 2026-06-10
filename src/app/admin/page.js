@@ -1,10 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/utils/apiConfig";
 import "./admin.css";
 import AdminSidebar from "./components/AdminSidebar";
 import DashboardOverview from "./components/sections/DashboardOverview";
 import KYCRequests from "./components/sections/KYCRequests";
 import UserManagement from "./components/sections/UserManagement";
+import EStamps from "./components/sections/EStamps";
 import { 
   RiskFraud, 
   RulesConfig, 
@@ -53,17 +55,38 @@ export default function AdminPage() {
   const [activeSection, setActiveSection] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("adminToken");
-    if (!token) {
-      window.location.href = "/admin/login";
-    } else {
-      setIsAuthenticated(true);
-    }
+    const verifyToken = async () => {
+      const token = localStorage.getItem("adminToken");
+      if (!token) {
+        window.location.href = "/admin/login";
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/dashboard-data`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.status === 401) {
+          localStorage.removeItem("adminToken");
+          localStorage.removeItem("adminUser");
+          window.location.href = "/admin/login";
+        } else {
+          setIsAuthenticated(true);
+        }
+      } catch (e) {
+        console.error("Token verification failed", e);
+        setIsAuthenticated(true);
+      } finally {
+        setLoadingAuth(false);
+      }
+    };
+    verifyToken();
   }, []);
 
-  if (!isAuthenticated) return (
+  if (loadingAuth || !isAuthenticated) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-secondary)" }}>
       <div className="loader"></div>
     </div>
@@ -72,8 +95,9 @@ export default function AdminPage() {
   const renderSection = () => {
     switch (activeSection) {
       case "overview": return <DashboardOverview onNavigate={setActiveSection} />;
-      case "kyc": return <KYCRequests />;
-      case "users": return <UserManagement />;
+      case "kyc": return <KYCRequests searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
+      case "users": return <UserManagement searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
+      case "estamps": return <EStamps searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case "risk": return <RiskFraud />;
       case "rules": return <RulesConfig />;
       case "notifications": return <Notifications />;
@@ -104,7 +128,10 @@ export default function AdminPage() {
       {/* Sidebar Navigation */}
       <AdminSidebar 
         active={activeSection} 
-        onNavigate={setActiveSection} 
+        onNavigate={(sec) => {
+          setActiveSection(sec);
+          setSearchQuery(""); // Clear search query when changing sections
+        }} 
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
@@ -112,11 +139,7 @@ export default function AdminPage() {
       {/* Main Content Area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflowY: "auto" }}>
         {/* Top Header */}
-        <header style={{ 
-          height: 72, background: "var(--bg-primary)", borderBottom: "1px solid var(--border-color)", 
-          display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 32px",
-          position: "sticky", top: 0, zIndex: 100
-        }}>
+        <header className="admin-header">
           <div style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "0.9rem" }}>
             Admin / <span style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>{activeSection.replace("_", " ")}</span>
           </div>
@@ -124,17 +147,41 @@ export default function AdminPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
             {/* Search Placeholder */}
             <div style={{ position: "relative" }}>
-              <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <svg style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", zIndex: 10 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input 
-                type="text" placeholder="Global search... (Press Enter)" 
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    alert("Global search is coming soon! For now, please use the specific search filters within each section.");
-                    e.target.value = '';
+                type="text" 
+                placeholder="Global search..." 
+                value={searchQuery}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchQuery(val);
+                  // Auto-navigate to 'kyc' if the user is in overview or a non-searchable section and starts searching
+                  if (val && activeSection !== "kyc" && activeSection !== "users") {
+                    setActiveSection("kyc");
                   }
                 }}
-                style={{ padding: "8px 16px 8px 36px", borderRadius: 10, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", width: 220, fontSize: "0.85rem", outline: "none" }} 
+                className="global-search-input"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery("")}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: 0,
+                    display: "flex",
+                    alignItems: "center"
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              )}
             </div>
             
             <AdminThemeToggle />
