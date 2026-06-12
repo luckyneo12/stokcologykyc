@@ -4,10 +4,11 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Logo from "../Logo";
 
 export default function EsignPreviewStep() {
-  const { identityDetails, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails } = useKYC();
+  const { identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents } = useKYC();
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [docLog, setDocLog] = useState("");
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   
@@ -153,6 +154,135 @@ export default function EsignPreviewStep() {
         }
       }
 
+      // 4. Append all uploaded documents as new pages
+      const allDocs = [];
+
+      const panUrl = getFullUrl(panUpload?.filePreview || identityDetails?.panPath || ocrData?.pan_path);
+      if (panUrl) allDocs.push({ name: "PAN Card", url: panUrl });
+
+      const aadhaarFrontUrl = getFullUrl(documents?.frontPreview || documents?.front || ocrData?.aadhaar_front_path || identityDetails?.aadhaarFront);
+      if (aadhaarFrontUrl) {
+        allDocs.push({ name: "Aadhaar Front", url: aadhaarFrontUrl });
+      } else if (identityMethod === "digilocker" || (ocrData?.aadhaar && !ocrData?.aadhaar_front_path)) {
+        // We will manually draw a text summary for Digilocker if no image exists
+      }
+      
+      const aadhaarBackUrl = getFullUrl(documents?.backPreview || documents?.back || ocrData?.aadhaar_back_path || identityDetails?.aadhaarBack);
+      if (aadhaarBackUrl) allDocs.push({ name: "Aadhaar Back", url: aadhaarBackUrl });
+
+      const finUrl = getFullUrl(financialProof?.filePreview);
+      if (finUrl) allDocs.push({ name: "Financial Proof", url: finUrl });
+
+      const bankProofUrl = getFullUrl(bankDetails?.proofPath);
+      if (bankProofUrl) allDocs.push({ name: "Bank Proof", url: bankProofUrl });
+
+      if (nomineeDetails?.opted === "Yes" || nomineeDetails?.opted === true) {
+        (nomineeDetails?.nominees || []).forEach((nom, idx) => {
+          if (nom.proofPath) allDocs.push({ name: `Nominee ${idx + 1} Proof`, url: getFullUrl(nom.proofPath) });
+          if (nom.guardianProofPath) allDocs.push({ name: `Nominee ${idx + 1} Guardian Proof`, url: getFullUrl(nom.guardianProofPath) });
+        });
+      }
+
+      const errorDocs = [];
+
+      const convertToPngBytes = async (url) => {
+        return new Promise((resolve, reject) => {
+          const img = new window.Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL("image/png");
+            fetch(dataUrl).then(res => res.arrayBuffer()).then(resolve).catch(reject);
+          };
+          img.onerror = reject;
+          img.src = url;
+        });
+      };
+
+      for (const docItem of allDocs) {
+        try {
+          const bytes = await fetchImage(docItem.url);
+          if (bytes) {
+            let isPdf = false;
+            if (docItem.url.startsWith("data:application/pdf") || docItem.url.toLowerCase().endsWith(".pdf")) {
+              isPdf = true;
+            } else {
+              const view = new Uint8Array(bytes);
+              if (view.length > 4 && view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46) {
+                isPdf = true;
+              }
+            }
+
+            if (isPdf) {
+              const attachDoc = await PDFDocument.load(bytes);
+              const copied = await pdfDoc.copyPages(attachDoc, attachDoc.getPageIndices());
+              copied.forEach(p => pdfDoc.addPage(p));
+            } else {
+              let img;
+              try {
+                const isPng = docItem.url.startsWith("data:image/png") || docItem.url.toLowerCase().endsWith(".png");
+                img = isPng ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+              } catch (embedErr) {
+                console.warn(`Failed first embed attempt for ${docItem.name}, converting to PNG fallback...`, embedErr);
+                const pngBytes = await convertToPngBytes(docItem.url);
+                img = await pdfDoc.embedPng(pngBytes);
+              }
+              
+              const a4Width = 595.28;
+              const a4Height = 841.89;
+              
+              const imgDims = img.scale(1);
+              const drawScale = Math.min((a4Width - 40) / imgDims.width, (a4Height - 40) / imgDims.height, 1);
+              const drawWidth = imgDims.width * drawScale;
+              const drawHeight = imgDims.height * drawScale;
+
+              const docPage = pdfDoc.addPage([a4Width, a4Height]);
+              docPage.drawImage(img, {
+                x: (a4Width - drawWidth) / 2,
+                y: (a4Height - drawHeight) / 2,
+                width: drawWidth,
+                height: drawHeight
+              });
+              
+              docPage.drawText(`Document: ${docItem.name}`, {
+                x: 20, y: a4Height - 20, size: 10, font: boldFont, color: rgb(0, 0, 0)
+              });
+            }
+          }
+        } catch (docErr) {
+          console.warn(`Failed to append ${docItem.name}:`, docErr);
+          errorDocs.push(`${docItem.name}: ${docErr.message || "Unknown error"}`);
+        }
+      }
+
+      // 5. Append Digilocker Aadhaar Summary if no Aadhaar image exists
+      if (!aadhaarFrontUrl && (identityMethod === "digilocker" || ocrData?.aadhaar)) {
+        try {
+          const aadhaarData = ocrData?.aadhaar || {};
+          const personalData = personalDetails || {};
+          const a4Width = 595.28;
+          const a4Height = 841.89;
+          const docPage = pdfDoc.addPage([a4Width, a4Height]);
+          
+          docPage.drawText("DigiLocker Aadhaar Verification Summary", { x: 50, y: a4Height - 50, size: 16, font: boldFont, color: rgb(0,0,0) });
+          docPage.drawText(`Name: ${aadhaarData.name || personalData.fullName || "N/A"}`, { x: 50, y: a4Height - 90, size: 12, font: font, color: rgb(0,0,0) });
+          docPage.drawText(`DOB: ${aadhaarData.dob || personalData.dob || "N/A"}`, { x: 50, y: a4Height - 110, size: 12, font: font, color: rgb(0,0,0) });
+          docPage.drawText(`Gender: ${aadhaarData.gender || personalData.gender || "N/A"}`, { x: 50, y: a4Height - 130, size: 12, font: font, color: rgb(0,0,0) });
+          if (address && address.current) {
+            docPage.drawText(`Address: ${address.current.line1}, ${address.current.city}, ${address.current.state} ${address.current.pincode}`, { x: 50, y: a4Height - 150, size: 10, font: font, color: rgb(0,0,0) });
+          }
+          docPage.drawText("Verified Securely via NSDL / DigiLocker APIs. No Physical Image Available.", { x: 50, y: a4Height - 190, size: 10, font: font, color: rgb(0.5,0.5,0.5) });
+        } catch (err) {
+          console.warn("Failed to generate Digilocker summary page", err);
+        }
+      }
+
+      setDocLog(`Found ${allDocs.length} docs. Appended successfully. ${errorDocs.length > 0 ? "ERRORS: " + errorDocs.join(" | ") : ""}`);
+
       const pdfData = await pdfDoc.save();
       const blob = new Blob([pdfData], { type: "application/pdf" });
       setPdfUrl(URL.createObjectURL(blob));
@@ -169,6 +299,7 @@ export default function EsignPreviewStep() {
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
         <h1 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-0.5px", color: "var(--text-primary)" }}>Full Application Review</h1>
         <p className="text-body" style={{ color: "var(--text-secondary)", marginTop: "12px", fontWeight: 600 }}>Please review your generated application form before e-signing.</p>
+        {docLog && <p style={{ color: "red", fontWeight: "bold", marginTop: "10px" }}>DEBUG: {docLog}</p>}
       </div>
 
       <div className="pdf-container animate-slide-up" style={{ 

@@ -282,7 +282,7 @@ const REVIEW_STEPS = [
       ["Aadhaar reference", app.identityDetails?.aadhaar || app.identityDetails?.uid],
     ],
     evidence: (app) => [
-      firstMedia(app.nsdlResponse?.signedPdf || app.esignDetails?.signedPdf || app.generatedPdfBase64, "Signed PDF"),
+      firstMedia(app.nsdlResponse?.signedPdf || app.esignDetails?.signedPdf || (app.documents || []).find(d => String(d?.type).toUpperCase() === "ESIGN")?.path || app.generatedPdfBase64, "Signed PDF"),
       findDocument(app, ["aadhaar", "digilocker"], "Aadhaar Evidence", ["pan"]),
     ].filter(Boolean),
   },

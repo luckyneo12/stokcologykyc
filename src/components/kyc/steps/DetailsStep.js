@@ -200,6 +200,8 @@ export default function DetailsStep() {
 
   useEffect(() => {
     if (personalDetails && Object.keys(personalDetails).length > 0) {
+      if (initializedForm.current) return;
+
       let normalizedGender = personalDetails.gender || "";
       if (normalizedGender === "M") normalizedGender = "Male";
       else if (normalizedGender === "F") normalizedGender = "Female";
@@ -209,26 +211,13 @@ export default function DetailsStep() {
       if (!autoPrefix && normalizedGender === "Male") autoPrefix = "Mr.";
       else if (!autoPrefix && normalizedGender === "Female") autoPrefix = "Mrs.";
 
-      setForm(prev => {
-        // Only update form if the incoming data is actually different 
-        // to prevent overwriting user's active typing
-        const isDifferent = JSON.stringify(prev) !== JSON.stringify({
-          ...prev,
-          ...personalDetails,
-          gender: normalizedGender,
-          prefix: autoPrefix
-        });
-        
-        if (isDifferent) {
-          return {
-            ...prev,
-            ...personalDetails,
-            gender: normalizedGender,
-            prefix: autoPrefix
-          };
-        }
-        return prev;
-      });
+      setForm(prev => ({
+        ...prev,
+        ...personalDetails,
+        gender: normalizedGender,
+        prefix: autoPrefix
+      }));
+      
       initializedForm.current = true;
     }
   }, [personalDetails]);

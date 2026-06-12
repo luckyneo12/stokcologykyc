@@ -748,9 +748,14 @@ export default function NomineeStep() {
                   ) : (
                     <div 
                       className="input-field" 
+                      onClick={(e) => {
+                        const input = e.currentTarget.querySelector('input');
+                        if (input) input.focus();
+                      }}
                       style={{ 
                         display: "flex", alignItems: "center", padding: "0 12px", 
-                        borderColor: errors[`${idx}-proofNumber`] ? "var(--wise-danger)" : "var(--border-color)"
+                        borderColor: errors[`${idx}-proofNumber`] ? "var(--wise-danger)" : "var(--border-color)",
+                        cursor: "text"
                       }}
                     >
                       <span style={{ color: "var(--text-secondary)", marginRight: "8px", letterSpacing: "2px", fontWeight: 700, fontSize: "0.85rem", opacity: 0.7, whiteSpace: "nowrap" }}>XXXX XXXX</span>
@@ -934,9 +939,14 @@ export default function NomineeStep() {
                     ) : (
                       <div 
                         className="input-field" 
+                        onClick={(e) => {
+                          const input = e.currentTarget.querySelector('input');
+                          if (input) input.focus();
+                        }}
                         style={{ 
                           display: "flex", alignItems: "center", padding: "0 12px", 
-                          borderColor: errors[`${idx}-guardianProofNumber`] ? "var(--wise-danger)" : "var(--border-color)"
+                          borderColor: errors[`${idx}-guardianProofNumber`] ? "var(--wise-danger)" : "var(--border-color)",
+                          cursor: "text"
                         }}
                       >
                         <span style={{ color: "var(--text-secondary)", marginRight: "8px", letterSpacing: "2px", fontWeight: 700, fontSize: "0.85rem", opacity: 0.7, whiteSpace: "nowrap" }}>XXXX XXXX</span>

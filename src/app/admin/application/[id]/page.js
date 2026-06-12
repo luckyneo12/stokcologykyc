@@ -590,7 +590,7 @@ export default function ApplicationDetail() {
     if (app?.panUpload?.filePreview) steps.push('pan_upload');
     if (app?.signature?.filePreview) steps.push('signature');
     if (app?.financialProof?.filePreview) steps.push('financial_proof');
-    if (app?.personalDetails?.politicallyExposed === "Yes" && (app?.personalDetails?.pepProofPreview || app?.personalDetails?.pepProof)) {
+    if ((String(app?.personalDetails?.politicallyExposed).toLowerCase() === "yes" || app?.personalDetails?.pepProofPreview || app?.personalDetails?.pepProof) && (app?.personalDetails?.pepProofPreview || app?.personalDetails?.pepProof)) {
       steps.push('pep_proof');
     }
 
@@ -635,7 +635,10 @@ export default function ApplicationDetail() {
   const getDocumentByKeywords = (keywords) => getDocumentsByKeywords(keywords)[0];
 
   const isImageDocumentPath = (docPath = "") => /\.(png|jpe?g|webp)$/i.test(String(docPath).toLowerCase());
-  const isPdfDocumentPath = (docPath = "") => String(docPath).toLowerCase().includes(".pdf");
+  const isPdfDocumentPath = (docPath = "") => {
+    const pathStr = String(docPath).toLowerCase();
+    return pathStr.includes(".pdf") || pathStr.startsWith("data:application/pdf") || pathStr.includes("application/pdf");
+  };
 
   const allStoredDocuments = Array.isArray(app?.documents) ? app.documents : [];
 
@@ -680,6 +683,7 @@ export default function ApplicationDetail() {
     || allStoredDocuments.find(isPanDocument);
   const aadhaarPhotoSrc = aadhaarPhotoDocument?.path ? resolveAssetUrl(aadhaarPhotoDocument.path) : null;
   const aadhaarPdfSrc = aadhaarPdfDocument?.path ? resolveAssetUrl(aadhaarPdfDocument.path) : null;
+  const esignDocument = allStoredDocuments.find((doc) => String(doc?.type).toUpperCase() === "ESIGN");
   const panNumber = formatPanValue(app.identityDetails?.pan);
   const selfiePreview = app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie;
 
@@ -737,7 +741,10 @@ export default function ApplicationDetail() {
       }}>
       <AdminSidebar 
         active="kyc" 
-        onNavigate={(s) => router.push("/admin")} 
+        onNavigate={(s) => {
+          localStorage.setItem("adminActiveSection", s);
+          router.push("/admin");
+        }} 
         collapsed={collapsedSidebar}
         onToggle={() => setCollapsedSidebar(!collapsedSidebar)}
       />
@@ -1391,33 +1398,45 @@ export default function ApplicationDetail() {
                   </div>
                 )}
 
-                {/* PAN Card Upload */}
-                <div className="document-preview-card" style={getSectionStyle("pan_upload")}>
+                {/* Manual PAN Upload / Fallback */}
+                {(!panDocument?.path || app.panUpload?.filePreview) && (
+                  <div className="document-preview-card" style={getSectionStyle("pan_upload")}>
 {renderSectionBadge("pan_upload")}
-                  <span className="inspection-label">{app.panUpload?.filePreview ? "PAN Upload" : "PAN (DigiLocker)"}</span>
-                  <div className="document-preview-frame document-preview-frame--scroll">
-                    {app.panUpload?.filePreview ? (
-                      <img src={app.panUpload.filePreview} alt="PAN Upload" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
-                    ) : panDocument?.path ? (
-                      isPdfDocumentPath(panDocument.path) ? (
+                    <span className="inspection-label">PAN Upload</span>
+                    <div className="document-preview-frame document-preview-frame--scroll">
+                      {app.panUpload?.filePreview ? (
+                        <img src={app.panUpload.filePreview} alt="PAN Upload" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+                      ) : panNumber && !panDocument?.path ? (
+                        <div style={{ display: "flex", width: "100%", height: "100%", background: "#fdf8e2", padding: 12, flexDirection: "column", justifyContent: "center", fontSize: "0.75rem" }}>
+                          <div style={{ fontSize: "0.55rem", fontWeight: 800, background: "#fff2b3", padding: "4px 8px", borderRadius: 4, color: "#8a6d00", marginBottom: 8, alignSelf: "flex-start" }}>VERIFIED</div>
+                          <div style={{ fontWeight: 700, color: "var(--text-muted)", marginBottom: 2 }}>PAN</div>
+                          <div style={{ fontSize: "1rem", fontWeight: 900, fontFamily: "monospace" }}>{panNumber}</div>
+                        </div>
+                      ) : (
+                        <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>No PAN upload</div>
+                      )}
+                    </div>
+                    {app.panUpload?.filePreview && (
+                      <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)", cursor: "pointer" }} onClick={() => openInNewTab(resolveAssetUrl(app.panUpload.filePreview))}>OPEN PAN ↗</div>
+                    )}
+                  </div>
+                )}
+
+                {/* DigiLocker Extracted PAN */}
+                {panDocument?.path && (
+                  <div className="document-preview-card" style={!app.panUpload?.filePreview ? getSectionStyle("pan_upload") : {}}>
+                    {!app.panUpload?.filePreview && renderSectionBadge("pan_upload")}
+                    <span className="inspection-label">DigiLocker PAN</span>
+                    <div className="document-preview-frame document-preview-frame--scroll">
+                      {isPdfDocumentPath(panDocument.path) ? (
                         <PdfThumbnail src={resolveAssetUrl(panDocument.path)} label="PAN from DigiLocker" />
                       ) : (
                         <img src={resolveAssetUrl(panDocument.path)} alt="PAN from DigiLocker" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
-                      )
-                    ) : panNumber ? (
-                      <div style={{ display: "flex", width: "100%", height: "100%", background: "#fdf8e2", padding: 12, flexDirection: "column", justifyContent: "center", fontSize: "0.75rem" }}>
-                        <div style={{ fontSize: "0.55rem", fontWeight: 800, background: "#fff2b3", padding: "4px 8px", borderRadius: 4, color: "#8a6d00", marginBottom: 8, alignSelf: "flex-start" }}>VERIFIED</div>
-                        <div style={{ fontWeight: 700, color: "var(--text-muted)", marginBottom: 2 }}>PAN</div>
-                        <div style={{ fontSize: "1rem", fontWeight: 900, fontFamily: "monospace" }}>{panNumber}</div>
-                      </div>
-                    ) : (
-                      <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>No PAN document</div>
-                    )}
+                      )}
+                    </div>
+                    <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)", cursor: "pointer" }} onClick={() => openInNewTab(resolveAssetUrl(panDocument.path))}>OPEN PDF ↗</div>
                   </div>
-                  {(app.panUpload?.filePreview || panDocument?.path) && (
-                    <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)", cursor: "pointer" }} onClick={() => openInNewTab(resolveAssetUrl(app.panUpload?.filePreview || panDocument?.path))}>OPEN PAN ↗</div>
-                  )}
-                </div>
+                )}
 
                 {/* Signature Upload */}
                 <div className="document-preview-card" style={getSectionStyle("signature")}>
@@ -1456,17 +1475,14 @@ export default function ApplicationDetail() {
                 </div>
 
                 {/* PEP Proof Preview */}
-                {app.personalDetails?.politicallyExposed === "Yes" && (
+                {(String(app.personalDetails?.politicallyExposed).toLowerCase() === "yes" || app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof) && (
                   <div className="document-preview-card" onClick={() => (app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof) && openInNewTab(resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof))} style={{ cursor: "pointer", ...getSectionStyle("pep_proof") }}>
 {renderSectionBadge("pep_proof")}
                     <span className="inspection-label" style={{ color: "var(--wise-green)" }}>PEP Proof</span>
-                    <div className="document-preview-frame">
+                    <div className="document-preview-frame document-preview-frame--scroll">
                       {app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof ? (
-                        (app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof).includes('pdf') || (app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof).startsWith('data:application/pdf') ? (
-                          <div style={{ textAlign: "center" }}>
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#e03131" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            <div style={{ marginTop: 8, fontWeight: 700, fontSize: "0.75rem" }}>PEP Proof (PDF)</div>
-                          </div>
+                        isPdfDocumentPath(app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof) ? (
+                          <PdfThumbnail src={resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof)} label="PEP Proof" />
                         ) : (
                           <img src={resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof)} alt="PEP Proof" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
                         )
@@ -1477,6 +1493,21 @@ export default function ApplicationDetail() {
                     {(app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof) && (
                       <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)" }}>VIEW FULL ↗</div>
                     )}
+                  </div>
+                )}
+
+                {/* Signed Application (eSign) */}
+                {esignDocument?.path && (
+                  <div className="document-preview-card" style={{ border: "1px solid var(--wise-green)" }}>
+                    <span className="inspection-label" style={{ color: "var(--wise-green)" }}>eSigned Application</span>
+                    <div className="document-preview-frame document-preview-frame--scroll">
+                      {isPdfDocumentPath(esignDocument.path) ? (
+                        <PdfThumbnail src={resolveAssetUrl(esignDocument.path)} label="eSigned PDF" />
+                      ) : (
+                        <img src={resolveAssetUrl(esignDocument.path)} alt="eSigned Document" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+                      )}
+                    </div>
+                    <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)", cursor: "pointer" }} onClick={() => openInNewTab(resolveAssetUrl(esignDocument.path))}>OPEN PDF ↗</div>
                   </div>
                 )}
               </div>

@@ -16,5 +16,20 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost
 export function resolveAssetUrl(path) {
   if (!path) return "";
   if (path.startsWith("http") || path.startsWith("data:")) return path;
-  return `${API_BASE_URL}${path}`;
+  
+  // Handle old Cloudinary paths saved as local paths without extensions
+  if (path.includes("kyc_uploads/")) {
+    const filename = path.split("/").pop();
+    const hasExtension = filename.includes(".");
+    const ext = hasExtension ? "" : ".jpg";
+    return `https://res.cloudinary.com/dogfk2nyq/image/upload/v1/kyc_uploads/${filename}${ext}`;
+  }
+
+  // Replace windows backslashes with forward slashes
+  let normalizedPath = path.replace(/\\/g, "/");
+  // Ensure it starts with a slash
+  if (!normalizedPath.startsWith("/")) {
+    normalizedPath = "/" + normalizedPath;
+  }
+  return `${API_BASE_URL}${normalizedPath}`;
 }

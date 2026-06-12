@@ -53,6 +53,12 @@ function AdminThemeToggle() {
 
 export default function AdminPage() {
   const [activeSection, setActiveSection] = useState("overview");
+
+  // Load from localStorage on mount to avoid hydration mismatch
+  useEffect(() => {
+    const saved = localStorage.getItem("adminActiveSection");
+    if (saved) setActiveSection(saved);
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
@@ -130,6 +136,7 @@ export default function AdminPage() {
         active={activeSection} 
         onNavigate={(sec) => {
           setActiveSection(sec);
+          localStorage.setItem("adminActiveSection", sec);
           setSearchQuery(""); // Clear search query when changing sections
         }} 
         collapsed={sidebarCollapsed}
@@ -158,6 +165,7 @@ export default function AdminPage() {
                   // Auto-navigate to 'kyc' if the user is in overview or a non-searchable section and starts searching
                   if (val && activeSection !== "kyc" && activeSection !== "users") {
                     setActiveSection("kyc");
+                    localStorage.setItem("adminActiveSection", "kyc");
                   }
                 }}
                 className="global-search-input"

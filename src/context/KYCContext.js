@@ -97,7 +97,7 @@ const STEP_RELEVANT_KEYS = {
     "status", "submittedAt", "nsdlResponse", "consent", 
     "personalDetails", "identityMethod", "identityDetails", "ocrData", 
     "address", "bankDetails", "segments", "bsda", 
-    "nomineeDetails", "nomineeAllocation", "panUpload", "signature", "financialProof", "selfieDetails"
+    "nomineeDetails", "nomineeAllocation", "panUpload", "signature", "financialProof", "selfieDetails", "generatedPdfBase64"
   ],
 };
 
@@ -281,8 +281,11 @@ export function KYCProvider({ children }) {
               const serverIsNewerAdminChange = app.reviewedAt && 
                 (!lastSyncedReviewedAt.current || new Date(app.reviewedAt).getTime() > new Date(lastSyncedReviewedAt.current).getTime());
 
-              if (app.currentStep > prev.currentStep || statusChanged || serverIsNewerAdminChange) {
-                const reason = app.currentStep > prev.currentStep ? "Server is ahead" : 
+              const isAlreadyCompleted = app.currentStep >= 14;
+              const shouldForward = (app.currentStep > prev.currentStep) && !isAlreadyCompleted;
+
+              if (shouldForward || statusChanged || serverIsNewerAdminChange) {
+                const reason = shouldForward ? "Server is ahead" : 
                                statusChanged ? "Status changed" : 
                                "Admin moved step/status";
                 
@@ -458,6 +461,8 @@ export function KYCProvider({ children }) {
     addIfRelevant("nomineeAllocation");
     addIfRelevant("consent");
     addIfRelevant("submittedAt");
+    addIfRelevant("generatedPdfBase64");
+    addIfRelevant("esignPreview");
     
     if (relevantKeys.includes("nomineeDetails")) {
       payload.nomineeDetails = snapshot.nomineeDetails?.opted === "No" 

@@ -66,7 +66,7 @@ export default function PanStep() {
     setLoading(true);
 
     try {
-      const result = await verifyPanDirect(pan.toUpperCase(), fullName, dob);
+      const result = await verifyPanDirect(pan.toUpperCase(), fullName.toUpperCase(), dob);
       
       if (result.success) {
         if (result.applicationId) setApplicationId(result.applicationId);
@@ -79,7 +79,7 @@ export default function PanStep() {
           personalDetails: { 
             ...personalDetails, 
             dob, 
-            fullName, 
+            fullName: fullName.toUpperCase(), 
             ...(extractedFatherName ? { fatherName: extractedFatherName } : {}) 
           },
           panVerified: true
@@ -130,7 +130,7 @@ export default function PanStep() {
               padding: "0 20px"
             }}
             value={pan} 
-            onChange={e => setPan(e.target.value.toUpperCase())}
+            onChange={e => setPan(e.target.value)}
             maxLength={10}
           />
         </div>
@@ -149,12 +149,13 @@ export default function PanStep() {
               border: "1.5px solid var(--border-color)",
               fontSize: "1.1rem", 
               fontWeight: 700,
+              textTransform: "uppercase",
               background: "var(--input-bg)",
               color: "var(--text-primary)",
               padding: "0 20px"
             }}
             value={fullName} 
-            onChange={e => setFullName(e.target.value.toUpperCase())}
+            onChange={e => setFullName(e.target.value)}
           />
         </div>
 
