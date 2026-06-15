@@ -262,29 +262,42 @@ async function generateKycPdf(applicationData) {
     const allPages = pdfDoc.getPages();
     const applicantName = parsedPersonalDetails?.fullName || 'Applicant';
     
+    // Get current date and time in IST (Indian Standard Time) format
+    const currentDate = new Date();
+    const dateOptions = { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+    const dateString = currentDate.toLocaleString('en-IN', dateOptions);
+
     for (const p of allPages) {
       const { width, height } = p.getSize();
       
       // Green Tick SVG
       p.drawSvgPath('M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z', {
         x: width - 190,
-        y: 42,
+        y: 45,
         scale: 0.8,
         color: rgb(0.1, 0.6, 0.1),
       });
 
       p.drawText(`Digitally signed by ${applicantName}`, {
         x: width - 165,
-        y: 36,
+        y: 43,
         size: 9,
         font: boldFont,
         color: rgb(0.2, 0.2, 0.2),
       });
+
+      p.drawText(`Date: ${dateString}`, {
+        x: width - 165,
+        y: 33,
+        size: 8,
+        font: font,
+        color: rgb(0.3, 0.3, 0.3),
+      });
       
       p.drawText('Aadhaar eSign via Digio API', {
         x: width - 165,
-        y: 24,
-        size: 8,
+        y: 23,
+        size: 7,
         font: font,
         color: rgb(0.4, 0.4, 0.4),
       });
