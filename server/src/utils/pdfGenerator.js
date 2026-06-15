@@ -38,9 +38,28 @@ async function generateKycPdf(applicationData) {
     const parsedPanUpload = safeJsonParse(applicationData.panUpload) || {};
     
     // 1. Load the official PDF (55 pages)
-    const officialPdfPath = path.join(__dirname, '../../../public/official_form.pdf');
+    let officialPdfPath = path.join(__dirname, '../../../public/official_form.pdf');
+    
+    // Add fallback paths to make path resolution more resilient on live servers
     if (!fs.existsSync(officialPdfPath)) {
-      throw new Error("Official form PDF not found at: " + officialPdfPath);
+      const fallbacks = [
+        path.join(__dirname, '../../../public_html/official_form.pdf'), // cPanel frontend root
+        path.join(__dirname, '../../public/official_form.pdf'),         // Inside server folder (if public was copied there)
+        path.join(__dirname, '../../official_form.pdf'),                // Inside server folder root
+        path.join(process.cwd(), 'public/official_form.pdf'),           // Next.js fallback
+        path.join(process.cwd(), 'official_form.pdf')                   // CWD root fallback
+      ];
+
+      for (const fallback of fallbacks) {
+        if (fs.existsSync(fallback)) {
+          officialPdfPath = fallback;
+          break;
+        }
+      }
+    }
+
+    if (!fs.existsSync(officialPdfPath)) {
+      throw new Error("Official form PDF not found at any known locations. Last checked: " + officialPdfPath);
     }
     
     const officialPdfBytes = fs.readFileSync(officialPdfPath);
