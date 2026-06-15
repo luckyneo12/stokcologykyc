@@ -4,7 +4,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Logo from "../Logo";
 
 export default function EsignPreviewStep() {
-  const { identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents } = useKYC();
+  const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents } = useKYC();
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,7 +13,7 @@ export default function EsignPreviewStep() {
   
   const getFullUrl = (path) => {
     if (!path) return null;
-    if (path.startsWith("http") || path.startsWith("data:")) return path;
+    if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("blob:")) return path;
     return `${API_URL}${path}`;
   };
 
@@ -75,7 +75,7 @@ export default function EsignPreviewStep() {
       
       drawSection("CONTACT & PROFESSIONAL");
       drawRow("Email Address", personalDetails?.email || "Not Provided");
-      drawRow("Mobile Number", "Verified via OTP");
+      drawRow("Mobile Number", personalDetails?.phone || user?.phone || "Verified via OTP");
       drawRow("Occupation", personalDetails?.occupation);
       drawRow("Annual Income", personalDetails?.annualIncome || personalDetails?.incomeRange);
 
