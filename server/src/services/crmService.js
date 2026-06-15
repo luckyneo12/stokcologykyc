@@ -63,7 +63,8 @@ class CrmService {
           r.name = 'HEAD' OR 
           r.name LIKE '%Sales%' OR 
           r.name = 'RMS' OR 
-          r.name = 'staff'
+          r.name = 'staff' OR
+          r.name = 'AP'
         )
         LIMIT 1
       `;

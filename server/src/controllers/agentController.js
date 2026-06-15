@@ -63,6 +63,58 @@ const getAssignedApplications = async (req, res, next) => {
   }
 };
 
+// Fetch users referred by the AP
+const getApReferrals = async (req, res, next) => {
+  try {
+    const apId = Number(req.user.id);
+    const apCode = `AP${apId}`; // Matches AP logic
+    const { page = 1, limit = 15 } = req.query;
+    
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const take = Math.min(Math.max(parseInt(limit, 10) || 15, 1), 200);
+    const skip = (pageNum - 1) * take;
+
+    const where = { apCode: apCode };
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+        select: {
+          id: true,
+          phone: true,
+          email: true,
+          createdAt: true,
+          kycApplications: {
+            orderBy: { updatedAt: 'desc' },
+            take: 1,
+            select: {
+              currentStep: true,
+              status: true,
+              updatedAt: true,
+              assignedCrmAgentId: true
+            }
+          }
+        }
+      }),
+      prisma.user.count({ where })
+    ]);
+
+    res.json({ 
+      success: true, 
+      referrals: users,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / take),
+      apCode
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const reviewStepSchema = z.object({
   stepName: z.string(),
   status: z.enum(["approved", "rejected"]),
@@ -209,5 +261,6 @@ const reviewStep = async (req, res, next) => {
 
 module.exports = {
   getAssignedApplications,
-  reviewStep
+  reviewStep,
+  getApReferrals
 };

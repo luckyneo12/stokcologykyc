@@ -29,6 +29,12 @@ export default function KYCJourney() {
 
   useEffect(() => {
     setMounted(true);
+    // Capture AP Code from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const apcode = urlParams.get('apcode');
+    if (apcode) {
+      sessionStorage.setItem('apCode', apcode);
+    }
   }, []);
 
   // Synchronize URL with currentStep

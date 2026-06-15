@@ -275,8 +275,6 @@ export default function EsignPreviewStep() {
         }
       }
 
-      }
-
       const pdfData = await pdfDoc.save();
       const blob = new Blob([pdfData], { type: "application/pdf" });
       setPdfUrl(URL.createObjectURL(blob));

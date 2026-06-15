@@ -55,7 +55,8 @@ export default function PhoneStep() {
     }
     try {
       setLoading(true);
-      await sendOtp(phoneNumber);
+      const apCode = sessionStorage.getItem('apCode') || undefined;
+      await sendOtp(phoneNumber, apCode);
       setIsOtpMode(true);
       setTimer(30);
       addToast("Verification code sent!", "success");
@@ -127,8 +128,9 @@ export default function PhoneStep() {
     try {
       setLoading(true);
       const otpValue = otp.join("");
+      const apCode = sessionStorage.getItem('apCode') || undefined;
       
-      const authResult = await verifyOtp(phoneNumber, otpValue);
+      const authResult = await verifyOtp(phoneNumber, otpValue, apCode);
       sessionStorage.setItem("kycToken", authResult.token);
       sessionStorage.setItem("kycUser", JSON.stringify(authResult.user));
 

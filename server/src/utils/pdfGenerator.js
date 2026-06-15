@@ -258,45 +258,35 @@ async function generateKycPdf(applicationData) {
       await appendDocument(doc.path, doc.title);
     }
 
-    // 6. Draw Digio Green Tick Watermark on ALL Pages
+    // 6. Draw Digital Signature Stamp on ALL Pages
     const allPages = pdfDoc.getPages();
+    const applicantName = parsedPersonalDetails?.fullName || 'Applicant';
+    
     for (const p of allPages) {
       const { width, height } = p.getSize();
-      
-      // Draw watermark box at the bottom right
-      p.drawRectangle({
-        x: width - 200,
-        y: 15,
-        width: 180,
-        height: 45,
-        borderColor: rgb(0.1, 0.7, 0.1),
-        borderWidth: 2,
-        color: rgb(0.95, 1.0, 0.95),
-        opacity: 0.8,
-        borderOpacity: 0.8
-      });
       
       // Green Tick SVG
       p.drawSvgPath('M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z', {
         x: width - 190,
-        y: 45,
+        y: 42,
         scale: 0.8,
-        color: rgb(0.1, 0.7, 0.1),
-      });
-
-      p.drawText('VERIFIED DIGITAL SIGNATURE', {
-        x: width - 165,
-        y: 40,
-        size: 9,
-        font: boldFont,
         color: rgb(0.1, 0.6, 0.1),
       });
+
+      p.drawText(`Digitally signed by ${applicantName}`, {
+        x: width - 165,
+        y: 36,
+        size: 9,
+        font: boldFont,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      
       p.drawText('Aadhaar eSign via Digio API', {
         x: width - 165,
-        y: 26,
+        y: 24,
         size: 8,
         font: font,
-        color: rgb(0.3, 0.6, 0.3),
+        color: rgb(0.4, 0.4, 0.4),
       });
     }
 

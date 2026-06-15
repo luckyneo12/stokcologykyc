@@ -17,11 +17,11 @@ const authHeaders = () => {
   };
 };
 
-export const sendOtp = async (phone) => {
+export const sendOtp = async (phone, apCode) => {
   const response = await fetch(`${API_BASE_URL}/api/auth/send-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({ phone, apCode }),
   });
   const result = await response.json();
   if (!response.ok || !result.success) {
@@ -30,11 +30,11 @@ export const sendOtp = async (phone) => {
   return result;
 };
 
-export const verifyOtp = async (phone, otp) => {
+export const verifyOtp = async (phone, otp, apCode) => {
   const response = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone, otp }),
+    body: JSON.stringify({ phone, otp, apCode }),
   });
   const result = await response.json();
   if (!response.ok || !result.success || !result.token) {

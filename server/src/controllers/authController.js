@@ -12,12 +12,14 @@ const otpStore = new Map();
 const sendOtpSchema = z.object({
   phone: z.string().regex(/^[6-9]\d{9}$/, "Invalid phone number").optional(),
   email: z.string().email("Invalid email").optional(),
+  apCode: z.string().optional(),
 }).refine(data => data.phone || data.email, "Phone or Email is required");
 
 const verifyOtpSchema = z.object({
   phone: z.string().regex(/^[6-9]\d{9}$/, "Invalid phone number").optional(),
   email: z.string().email("Invalid email").optional(),
   otp: z.string().length(6, "OTP must be 6 digits"),
+  apCode: z.string().optional(),
 }).refine(data => data.phone || data.email, "Phone or Email is required");
 
 const sendOtp = async (req, res, next) => {
@@ -68,7 +70,7 @@ const sendOtp = async (req, res, next) => {
 
 const verifyOtp = async (req, res, next) => {
   try {
-    const { phone, email, otp } = verifyOtpSchema.parse(req.body);
+    const { phone, email, otp, apCode } = verifyOtpSchema.parse(req.body);
     const key = email || phone;
     const stored = otpStore.get(key);
 
@@ -95,10 +97,18 @@ const verifyOtp = async (req, res, next) => {
         user = await prisma.user.create({
           data: { 
             phone, 
-            role: "user" 
+            role: "user",
+            apCode: apCode || null
           }
         });
-        console.log(`[Auth] Created local KYC user: ${phone}`);
+        console.log(`[Auth] Created local KYC user: ${phone} (AP: ${apCode || 'None'})`);
+      } else if (apCode && !user.apCode) {
+        // If user already exists but has no apCode, we can optionally update it here
+        // If we want to map them to the AP on login.
+        user = await prisma.user.update({
+          where: { phone },
+          data: { apCode }
+        });
       }
 
       const token = jwt.sign(
@@ -209,8 +219,10 @@ const kycTeamLogin = async (req, res, next) => {
       console.warn("Could not parse kyc_portal_stages for user:", email);
     }
 
+    const userRole = crmCheck.user.role_name === "AP" ? "AP" : "kyc_team";
+
     const token = jwt.sign(
-      { id: crmCheck.user.id, email: crmCheck.user.email, role: "kyc_team", kyc_stages: kycStages },
+      { id: crmCheck.user.id, email: crmCheck.user.email, role: userRole, kyc_stages: kycStages },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
@@ -218,7 +230,7 @@ const kycTeamLogin = async (req, res, next) => {
     res.json({
       success: true,
       token,
-      user: { id: crmCheck.user.id, email: crmCheck.user.email, role: "kyc_team", kyc_stages: kycStages }
+      user: { id: crmCheck.user.id, email: crmCheck.user.email, role: userRole, kyc_stages: kycStages }
     });
   } catch (error) {
     next(error);
