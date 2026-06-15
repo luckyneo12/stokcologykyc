@@ -135,8 +135,8 @@ async function generateKycPdf(applicationData) {
 
     // Address Details
     drawSection('Contact & Address Details');
-    drawField('Email', applicationData.email || parsedPersonalDetails?.email || 'Not Provided');
-    drawField('Phone', applicationData.phone || parsedPersonalDetails?.phone || 'Not Provided');
+    drawField('Email', applicationData.email || parsedPersonalDetails?.email || applicationData.user?.email || 'Not Provided');
+    drawField('Phone', applicationData.phone || parsedPersonalDetails?.phone || applicationData.user?.phone || 'Not Provided');
     
     // Robust Address Wrapping
     const fullAddress = `${parsedAddress?.line1 || ''}, ${parsedAddress?.line2 || ''}, ${parsedAddress?.city || ''}, ${parsedAddress?.state || ''} - ${parsedAddress?.pincode || ''}`;

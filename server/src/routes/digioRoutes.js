@@ -97,6 +97,7 @@ async function getOrCreateDraftApplication({ userId, applicationId }) {
   if (applicationId) {
     const existing = await prisma.kycApplication.findUnique({
       where: { applicationId },
+      include: { user: true }
     });
     if (!existing || existing.userId !== userId) return null;
     return existing;
@@ -108,6 +109,7 @@ async function getOrCreateDraftApplication({ userId, applicationId }) {
       status: { in: ["pending", "under_review", "on_hold"] },
     },
     orderBy: { createdAt: "desc" },
+    include: { user: true }
   });
 
   if (existing) return existing;
