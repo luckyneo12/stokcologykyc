@@ -8,7 +8,6 @@ export default function EsignPreviewStep() {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [docLog, setDocLog] = useState("");
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   
@@ -38,13 +37,8 @@ export default function EsignPreviewStep() {
       if (!response.ok) throw new Error("Official form PDF not found");
       const existingPdfBytes = await response.arrayBuffer();
 
-      // 2. Load into pdf-lib
-      const officialPdf = await PDFDocument.load(existingPdfBytes);
-      const pdfDoc = await PDFDocument.create();
-      
-      // Copy all 55 pages
-      const copiedPages = await pdfDoc.copyPages(officialPdf, officialPdf.getPageIndices());
-      copiedPages.forEach(p => pdfDoc.addPage(p));
+      // 2. Load into pdf-lib directly to save processing time
+      const pdfDoc = await PDFDocument.load(existingPdfBytes);
 
       // 3. Add 56th Page (Annexure)
       const page = pdfDoc.addPage([595.28, 841.89]);
@@ -281,7 +275,7 @@ export default function EsignPreviewStep() {
         }
       }
 
-      setDocLog(`Found ${allDocs.length} docs. Appended successfully. ${errorDocs.length > 0 ? "ERRORS: " + errorDocs.join(" | ") : ""}`);
+      }
 
       const pdfData = await pdfDoc.save();
       const blob = new Blob([pdfData], { type: "application/pdf" });
@@ -299,7 +293,6 @@ export default function EsignPreviewStep() {
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
         <h1 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-0.5px", color: "var(--text-primary)" }}>Full Application Review</h1>
         <p className="text-body" style={{ color: "var(--text-secondary)", marginTop: "12px", fontWeight: 600 }}>Please review your generated application form before e-signing.</p>
-        {docLog && <p style={{ color: "red", fontWeight: "bold", marginTop: "10px" }}>DEBUG: {docLog}</p>}
       </div>
 
       <div className="pdf-container animate-slide-up" style={{ 
