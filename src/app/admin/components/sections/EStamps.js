@@ -372,11 +372,11 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                 <div style={{ fontSize: "1.1rem", fontWeight: 500, color: "var(--text-primary)", marginBottom: 8 }}>
                   Click to select multiple E-Stamp images
                 </div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Supports PNG, JPEG. OCR will automatically extract details.</div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Supports PNG, JPEG, and PDF. Multipage PDFs will be split automatically. OCR extracts details.</div>
                 <input 
                   type="file" 
                   multiple 
-                  accept="image/png, image/jpeg, image/jpg" 
+                  accept="image/png, image/jpeg, image/jpg, application/pdf" 
                   ref={fileInputRef} 
                   style={{ display: "none" }} 
                   onChange={handleFileSelect}

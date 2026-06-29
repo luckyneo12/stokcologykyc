@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
 import { useKYC } from "@/context/KYCContext";
 import Logo from "../Logo";
 
@@ -30,6 +31,51 @@ export default function AadhaarEsignStep() {
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState("intro"); // intro, processing, done, failed
 
+  
+  const handleDigioSuccess = async (requestId) => {
+    setLoading(true);
+    setPhase("processing");
+    try {
+      await fetchDigioRequestResponse(requestId, "ESIGN");
+      
+      const activeApplicationId = kycApplicationId;
+      if (activeApplicationId) {
+        const payload = getBackendPayload({ 
+          personalDetails, identityDetails, address, bankDetails, consent, segments, bsda, nomineeDetails, nomineeAllocation, ocrData,
+          selfie: { matchScore: ocrData?.matchScore || 0, preview: null },
+          currentStep: 14 
+        }, "aadhaarEsign");
+        await submitKyc({ applicationId: activeApplicationId, data: payload });
+      }
+      
+      updateState({ status: "under_review", submittedAt: new Date().toISOString() });
+      setPhase("done");
+      addToast("Document eSigned successfully!", "success");
+      nextStep();
+    } catch (error) {
+      console.error("Post-eSign error:", error);
+      setPhase("failed");
+      setLoading(false);
+      addToast("Signature verified, but failed to update application. Our team will review this manually.", "warning");
+    }
+  };
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
+    const status = searchParams.get("message") || searchParams.get("status");
+    
+    if (documentId && status && !loading) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (status === "Sign completed" || status.toLowerCase() === "success") {
+        handleDigioSuccess(documentId);
+      } else {
+        setPhase("failed");
+        addToast(`eSign failed: ${status}`, "error");
+      }
+    }
+  }, []);
+
   const startESign = async () => {
     // ... cleaned up for brevity in thought, but applying full logic in replacement ...
     let rawIdentifier = personalDetails?.phone || personalDetails?.email || "user@example.com";
@@ -52,41 +98,20 @@ export default function AadhaarEsignStep() {
           setPhase("failed");
           return;
         }
-        
-        setLoading(true);
-        try {
-          await fetchDigioRequestResponse(response.digio_doc_id || response.id, "ESIGN");
-          
-          const activeApplicationId = kycApplicationId;
-          if (activeApplicationId) {
-            const payload = getBackendPayload({ 
-              personalDetails, identityDetails, address, bankDetails, consent, segments, bsda, nomineeDetails, nomineeAllocation, ocrData,
-              selfie: { matchScore: ocrData?.matchScore || 0, preview: null },
-              currentStep: 14 // Completion step
-            }, "aadhaarEsign");
-            await submitKyc({ applicationId: activeApplicationId, data: payload });
-          }
-          
-          updateState({ status: "under_review", submittedAt: new Date().toISOString() });
-          setPhase("done");
-          addToast("Document eSigned successfully!", "success");
-          // Immediate transition to ensure "Thank you" screen appears as soon as window closes
-          nextStep();
-        } catch (error) {
-          console.error("Post-eSign error:", error);
-          setPhase("failed");
-          setLoading(false);
-          addToast("Signature verified, but failed to update application. Our team will review this manually.", "warning");
-        }
+        handleDigioSuccess(response.digio_doc_id || response.id);
       }
     });
+
 
     if (!digio) {
       addToast("Digio SDK not loaded. Please refresh the page.", "error");
       return;
     }
 
-    digio.init();
+    
+    if (!digio.is_redirection_approach) {
+      digio.init();
+    }
     setLoading(true);
     setPhase("processing");
     
@@ -96,7 +121,11 @@ export default function AadhaarEsignStep() {
         fullName: personalDetails?.fullName || "KYC Applicant"
       });
       if (requestApplicationId) setApplicationId(requestApplicationId);
-      digio.submit(requestId, customerIdentifier, accessToken);
+      if (accessToken) {
+        digio.submit(requestId, customerIdentifier, accessToken);
+      } else {
+        digio.submit(requestId, customerIdentifier);
+      }
     } catch (error) {
       console.error("eSign Request Error:", error);
       digio.cancel();

@@ -32,9 +32,94 @@ export default function DigilockerStep() {
   const [mounted, setMounted] = useState(false);
   const currentRequestId = useRef(null);
 
+  
+  const handleDigioSuccess = async (requestId) => {
+    try {
+      setLoading(true);
+      const result = await fetchDigioRequestResponse(requestId, "DIGILOCKER");
+      if (result && result.success) {
+        if (result.updates) {
+          const panName = (personalDetails?.fullName || "").trim().toLowerCase();
+          const panDob = personalDetails?.dob || ""; // Expected YYYY-MM-DD
+          
+          const aadhaarName = (result.updates.personalDetails?.fullName || "").trim().toLowerCase();
+          const aadhaarDobRaw = result.updates.personalDetails?.dob || ""; 
+          
+          const normalizeDate = (dateStr) => {
+            if (!dateStr) return "";
+            const cleanDate = dateStr.split("T")[0].replace(/\//g, "-"); 
+            const parts = cleanDate.split("-");
+            if (parts.length !== 3) return cleanDate;
+            if (parts[0].length === 2 && parts[2].length === 4) {
+              return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            return cleanDate;
+          };
+
+          const aadhaarDob = normalizeDate(aadhaarDobRaw);
+          const normalizedPanDob = normalizeDate(panDob);
+
+          const isNameMatch = !aadhaarName || !panName || (aadhaarName === panName);
+          const isDobMatch = !aadhaarDob || !normalizedPanDob || (aadhaarDob === normalizedPanDob);
+
+          console.log("[KYC Validation] Comparison:", {
+            pan: { name: panName, dob: normalizedPanDob, raw: personalDetails?.dob },
+            aadhaar: { name: aadhaarName, dob: aadhaarDob, raw: aadhaarDobRaw },
+            matches: { name: isNameMatch, dob: isDobMatch }
+          });
+
+          if (!isNameMatch || !isDobMatch) {
+            const reason = !isNameMatch ? "Name mismatch" : "DOB mismatch";
+            addToast(`Aadhaar details (${reason}) do not match with PAN. Please re-verify.`, "error");
+            goToStep(4);
+            setLoading(false);
+            return;
+          }
+
+          nextStep({
+            identityDetails: { 
+              ...identityDetails, 
+              ...result.updates.identityDetails,
+              pan: formatPanValue(result.updates.identityDetails?.pan) || formatPanValue(identityDetails?.pan),
+            },
+            personalDetails: { 
+              ...personalDetails, 
+              ...result.updates.personalDetails,
+              email: personalDetails?.email || result.updates.personalDetails?.email || "",
+            },
+            address: { ...address, ...result.updates.address },
+            aadhaarVerified: !!result.updates.identityDetails?.aadhaar,
+            selfie: { ...result.updates.selfieDetails },
+            faceMatchScore: result.updates.selfieDetails?.matchScore || null
+          });
+        } else {
+          addToast("DigiLocker data synced successfully", "success");
+          nextStep();
+        }
+      } else {
+        addToast("Failed to sync DigiLocker data", "error");
+        setLoading(false);
+      }
+    } catch (err) {
+      addToast("Error fetching DigiLocker results", "error");
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
+    
+    // Check for Digio Redirect URL return
+    const searchParams = new URLSearchParams(window.location.search);
+    const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
+    const status = searchParams.get("message") || searchParams.get("status");
+    
+    if (documentId && status && !loading) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      handleDigioSuccess(documentId);
+    }
   }, []);
+
 
   const startFlow = async () => {
     if (loading) return;
@@ -52,93 +137,13 @@ export default function DigilockerStep() {
             setLoading(false);
             setError(response.message);
           } else {
-            try {
-              setLoading(true);
-              // We need the requestId here, so we'll store it in a ref or local closure
-              const result = await fetchDigioRequestResponse(currentRequestId.current, "DIGILOCKER");
-              if (result && result.success) {
-                if (result.updates) {
-                  const panName = (personalDetails?.fullName || "").trim().toLowerCase();
-                  const panDob = personalDetails?.dob || ""; // Expected YYYY-MM-DD
-                  
-                  const aadhaarName = (result.updates.personalDetails?.fullName || "").trim().toLowerCase();
-                  const aadhaarDobRaw = result.updates.personalDetails?.dob || ""; 
-                  
-                  // Comprehensive DOB Normalization to YYYY-MM-DD
-                  const normalizeDate = (dateStr) => {
-                    if (!dateStr) return "";
-                    // Remove any T00:00:00 suffix if present
-                    const cleanDate = dateStr.split("T")[0].replace(/\//g, "-"); 
-                    const parts = cleanDate.split("-");
-                    
-                    if (parts.length !== 3) return cleanDate;
-                    
-                    // Case: DD-MM-YYYY
-                    if (parts[0].length === 2 && parts[2].length === 4) {
-                      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-                    }
-                    // Case: YYYY-MM-DD (already correct)
-                    return cleanDate;
-                  };
-
-                  const aadhaarDob = normalizeDate(aadhaarDobRaw);
-                  const normalizedPanDob = normalizeDate(panDob);
-
-                  // Strict Name Match: Must be exactly the same after normalization
-                  const isNameMatch = !aadhaarName || !panName || (aadhaarName === panName);
-                  
-                  const isDobMatch = !aadhaarDob || !normalizedPanDob || (aadhaarDob === normalizedPanDob);
-
-                  console.log("[KYC Validation] Comparison:", {
-                    pan: { name: panName, dob: normalizedPanDob, raw: personalDetails?.dob },
-                    aadhaar: { name: aadhaarName, dob: aadhaarDob, raw: aadhaarDobRaw },
-                    matches: { name: isNameMatch, dob: isDobMatch }
-                  });
-
-                  if (!isNameMatch || !isDobMatch) {
-                    const reason = !isNameMatch ? "Name mismatch" : "DOB mismatch";
-                    addToast(`Aadhaar details (${reason}) do not match with PAN. Please re-verify.`, "error");
-                    goToStep(4);
-                    setLoading(false);
-                    return;
-                  }
-
-                  nextStep({
-                    identityDetails: { 
-                      ...identityDetails, 
-                      ...result.updates.identityDetails,
-                      // Preserve PAN from previous step — DigiLocker doesn't return it
-                      pan: formatPanValue(result.updates.identityDetails?.pan) || formatPanValue(identityDetails?.pan),
-                    },
-                    personalDetails: { 
-                      ...personalDetails, 
-                      ...result.updates.personalDetails,
-                      // Preserve email from email verification step — DigiLocker doesn't return it
-                      email: personalDetails?.email || result.updates.personalDetails?.email || "",
-                    },
-                    address: { ...address, ...result.updates.address },
-                    aadhaarVerified: !!result.updates.identityDetails?.aadhaar,
-                    selfie: { ...result.updates.selfieDetails },
-                    faceMatchScore: result.updates.selfieDetails?.matchScore || null
-                  });
-                } else {
-                  addToast("DigiLocker data synced successfully", "success");
-                  nextStep();
-                }
-              } else {
-                addToast("Failed to sync DigiLocker data", "error");
-                setLoading(false);
-              }
-            } catch (err) {
-              addToast("Error fetching DigiLocker results", "error");
-              setLoading(false);
-            }
+            handleDigioSuccess(currentRequestId.current || response.digio_doc_id);
           }
         }
       });
 
-      if (digioInstance) {
-        digioInstance.init(); // Opens the window/tab immediately
+      if (digioInstance && !digioInstance.is_redirection_approach) {
+        digioInstance.init(); // Opens the window/tab immediately if not using full redirect
       }
 
       // 2. NOW create the request on the background
@@ -146,14 +151,18 @@ export default function DigilockerStep() {
         documentTypes: ["AADHAAR", "PAN"],
       });
       
-      const { requestId, customerIdentifier, applicationId } = requestData;
+      const { requestId, customerIdentifier, applicationId, accessToken } = requestData;
       currentRequestId.current = requestId; // Store for the callback
       
       if (applicationId) setApplicationId(applicationId);
 
       if (digioInstance && requestId) {
-        // 3. Submit to the ALREADY OPENED window
-        digioInstance.submit(requestId, customerIdentifier);
+        // 3. Submit to the ALREADY OPENED window or redirect
+        if (accessToken) {
+          digioInstance.submit(requestId, customerIdentifier, accessToken);
+        } else {
+          digioInstance.submit(requestId, customerIdentifier);
+        }
       } else {
         setLoading(false);
         setError("Unable to initialize DigiLocker flow");

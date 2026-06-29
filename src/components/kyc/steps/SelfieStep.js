@@ -9,12 +9,46 @@ export default function SelfieStep() {
   const [phase, setPhase] = useState("intro"); // intro | processing | done
   const [matchScore, setMatchScore] = useState(null);
 
+  const handleDigioSuccess = async (requestId) => {
+    try {
+      const result = await fetchDigioRequestResponse(requestId, "SELFIE");
+      if (result?.success) {
+        setMatchScore(result.score || result.faceMatchScore || 0);
+      }
+      addToast("Selfie verification completed", "success");
+      setPhase("done");
+      nextStep();
+    } catch (error) {
+      addToast("Error fetching verification results", "error");
+      setPhase("intro");
+    }
+  };
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
+    const status = searchParams.get("message") || searchParams.get("status");
+    
+    if (documentId && status) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setPhase("processing");
+      if (status.toLowerCase().includes("success") || status === "Sign completed") {
+        handleDigioSuccess(documentId);
+      } else {
+        setPhase("intro");
+        addToast(`Selfie verification failed: ${status}`, "error");
+      }
+    }
+  }, []);
+
   const startVerification = async () => {
     setPhase("processing");
 
     try {
-      const { requestId, customerIdentifier, applicationId } = await createDigioRequest("SELFIE", {});
+      const requestData = await createDigioRequest("SELFIE", {});
+      const { requestId, customerIdentifier, applicationId } = requestData;
       if (applicationId) setApplicationId(applicationId);
+
 
       const digio = initializeDigio({
         callback: async (response) => {
@@ -23,15 +57,7 @@ export default function SelfieStep() {
             setPhase("intro");
             return;
           }
-
-          const result = await fetchDigioRequestResponse(requestId, "SELFIE");
-          if (result?.success) {
-            setMatchScore(result.score || result.faceMatchScore || 0);
-          }
-
-          addToast("Selfie verification completed", "success");
-          setPhase("done");
-          nextStep();
+          handleDigioSuccess(response.digio_doc_id || response.id);
         },
       });
 
@@ -41,7 +67,11 @@ export default function SelfieStep() {
         return;
       }
 
-      digio.submit(requestId, customerIdentifier);
+      if (requestData.accessToken) {
+        digio.submit(requestId, customerIdentifier, requestData.accessToken);
+      } else {
+        digio.submit(requestId, customerIdentifier);
+      }
     } catch (error) {
       addToast(error?.message || "Error connecting to selfie verification service", "error");
       setPhase("intro");

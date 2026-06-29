@@ -1,5 +1,9 @@
 const prisma = require("../config/db");
 const Tesseract = require('tesseract.js');
+const cloudinary = require('cloudinary').v2;
+const { PDFDocument } = require('pdf-lib');
+const fs = require('fs');
+const { Readable } = require('stream');
 
 exports.uploadEStamp = async (req, res) => {
   try {
@@ -145,37 +149,104 @@ exports.bulkUploadEStamps = async (req, res) => {
     const results = [];
 
     for (const file of req.files) {
-      const fileUrl = file.path; // Cloudinary URL
-      let certificateNo = "";
-      let serialNo = "";
+      let fileUrl = file.path; // Local path from localUpload
+      const isPdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
+      let pagesToProcess = [];
 
-      try {
-        // Run OCR on the uploaded image
-        const { data: { text } } = await Tesseract.recognize(fileUrl, 'eng');
-        
-        // Extract Certificate No (usually IN-something)
-        const certMatch = text.match(/IN-[A-Z0-9]+/i);
-        if (certMatch) {
-          certificateNo = certMatch[0].toUpperCase();
+      if (isPdf) {
+        try {
+          const pdfBytes = fs.readFileSync(file.path);
+          const pdfDoc = await PDFDocument.load(pdfBytes);
+          const numPages = pdfDoc.getPageCount();
+          
+          for (let i = 0; i < numPages; i++) {
+            try {
+              const singlePageDoc = await PDFDocument.create();
+              const [copiedPage] = await singlePageDoc.copyPages(pdfDoc, [i]);
+              singlePageDoc.addPage(copiedPage);
+              const singlePageBytes = await singlePageDoc.save();
+              
+              // Upload to Cloudinary via buffer, converting PDF page to JPG for display/OCR
+              const uploadResult = await new Promise((resolve, reject) => {
+                  const stream = cloudinary.uploader.upload_stream({
+                      folder: "kyc_uploads",
+                      format: "jpg", 
+                      resource_type: "image"
+                  }, (error, result) => {
+                      if (error) reject(error);
+                      else resolve(result);
+                  });
+                  
+                  const buffer = Buffer.from(singlePageBytes);
+                  Readable.from(buffer).pipe(stream);
+              });
+              
+              pagesToProcess.push({ url: uploadResult.secure_url, pageIndex: i + 1 });
+            } catch (pageErr) {
+              console.error(`Failed to process local PDF page ${i + 1}:`, pageErr);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to process local PDF:", err);
         }
-
-        // Try to extract serial no (assuming it's a 6 digit number somewhere, this is a basic heuristic)
-        // Red color extraction isn't natively supported by basic tesseract without image preprocessing
-        const serialMatch = text.match(/\b\d{6,8}\b/g);
-        if (serialMatch && serialMatch.length > 0) {
-          // just pick the first likely one if found, admin can correct it
-          serialNo = serialMatch[0];
+      } else {
+        // Direct image upload
+        try {
+          const uploadResult = await cloudinary.uploader.upload(file.path, {
+            folder: "kyc_uploads",
+            resource_type: "auto"
+          });
+          pagesToProcess.push({ url: uploadResult.secure_url, pageIndex: 1 });
+        } catch (err) {
+          console.error("Failed to upload local image to Cloudinary:", err);
         }
-      } catch (ocrError) {
-        console.error("OCR Failed for image:", fileUrl, ocrError);
       }
 
-      results.push({
-        fileUrl,
-        certificateNo: certificateNo || "",
-        serialNo: serialNo || "",
-        status: "pending_verification"
-      });
+      for (const page of pagesToProcess) {
+        try {
+          // Run OCR on the uploaded image
+          const { data: { text } } = await Tesseract.recognize(page.url, 'eng');
+          
+          const certMatches = text.match(/IN-[A-Z0-9]+/gi) || [];
+          const serialMatches = text.match(/\b\d{6,8}\b/g) || [];
+          
+          const maxStamps = Math.max(certMatches.length, serialMatches.length, 1);
+          
+          for (let j = 0; j < maxStamps; j++) {
+            let certificateNo = certMatches[j] ? certMatches[j].toUpperCase() : "";
+            let serialNo = serialMatches[j] ? serialMatches[j] : "";
+            
+            // If it's a single stamp per page but regex missed one, keep it blank for user to fill
+            // If we found nothing at all, still push one blank entry for the page so the user can manually enter
+            if (maxStamps === 1 && certMatches.length === 0 && serialMatches.length === 0) {
+              certificateNo = "";
+              serialNo = "";
+            }
+
+            results.push({
+              fileUrl: page.url,
+              certificateNo: certificateNo,
+              serialNo: serialNo,
+              status: "pending_verification"
+            });
+          }
+        } catch (ocrError) {
+          console.error("OCR Failed for image:", page.url, ocrError);
+          results.push({
+            fileUrl: page.url,
+            certificateNo: "",
+            serialNo: "",
+            status: "pending_verification"
+          });
+        }
+      }
+      
+      // Clean up local file after processing
+      try {
+        fs.unlinkSync(file.path);
+      } catch (e) {
+        console.error("Failed to delete local temporary file:", e);
+      }
     }
 
     res.json({ success: true, extractedData: results });

@@ -37,7 +37,7 @@ class EsignService {
         {
           identifier: customerIdentifier,
           name: parsedPersonalDetails.fullName || "KYC User",
-          reason: "KYC Application Signing by STOCKOLOGY SECURITIES PRIVATE LIMITED",
+          reason: "KYC Application Signing",
           sign_type: "aadhaar"
         }
       ],

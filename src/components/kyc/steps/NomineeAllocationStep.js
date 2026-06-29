@@ -22,13 +22,18 @@ export default function NomineeAllocationStep() {
     if (existing.length === nominees.length && totalExisting === 100) {
       return existing;
     }
+
+    if (nominees.length === 1) {
+      return [100];
+    }
+    
     return Array(nominees.length).fill("");
   });
 
   // Re-calculate if nominees count changes
   useEffect(() => {
     if (percentages.length !== nominees.length) {
-      setPercentages(Array(nominees.length).fill(""));
+      setPercentages(nominees.length === 1 ? [100] : Array(nominees.length).fill(""));
     }
   }, [nominees.length]);
 

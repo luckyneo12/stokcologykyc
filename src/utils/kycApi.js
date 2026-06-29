@@ -109,12 +109,16 @@ export const saveKycStep = async ({ applicationId, step, stepIndex, data }) => {
   }
 };
 
-export const uploadDocument = async (file) => {
+export const uploadDocument = async (file, options = {}) => {
   if (!file) throw new Error("No file provided");
   const formData = new FormData();
   formData.append("document", file);
 
-  const response = await fetch(`${API_BASE_URL}/api/kyc/upload-document`, {
+  const endpoint = options.useLocal 
+    ? `${API_BASE_URL}/api/kyc/upload-local`
+    : `${API_BASE_URL}/api/kyc/upload-document`;
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${getToken()}`,

@@ -34,6 +34,8 @@ export const initializeDigio = (options) => {
     callback,
     logoUrl = "",
     theme = { primaryColor: "#9fe870", secondaryColor: "#1a1a1a" },
+    is_redirection_approach = false,
+    redirect_url = "",
   } = options;
 
   if (typeof window !== "undefined" && window.Digio) {
@@ -45,6 +47,11 @@ export const initializeDigio = (options) => {
         theme,
         is_iframe: false,
       };
+
+      if (is_redirection_approach && redirect_url) {
+        digioOptions.is_redirection_approach = true;
+        digioOptions.redirect_url = redirect_url;
+      }
 
       return new window.Digio(digioOptions);
     } catch (error) {

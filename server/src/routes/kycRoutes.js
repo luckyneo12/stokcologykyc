@@ -14,6 +14,7 @@ const {
 } = require("../controllers/kycController");
 const { auth } = require("../middlewares/auth");
 const upload = require("../middlewares/upload");
+const localUpload = require("../middlewares/localUpload");
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ router.put("/save/signature", auth, saveStep);
 router.put("/save-step", auth, saveStep);
 
 router.post("/upload-document", auth, upload.single("document"), uploadDocument);
+router.post("/upload-local", auth, localUpload.single("document"), uploadDocument);
 router.post("/ocr-extract", auth, ocrExtract);
 router.post("/face-match", auth, faceMatch);
 router.post("/submit", auth, submitKyc);

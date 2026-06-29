@@ -10,9 +10,18 @@ function PdfThumbnail({ src, label }) {
   const canvasRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [cloudinaryImgSrc, setCloudinaryImgSrc] = useState(null);
 
   useEffect(() => {
     let isCancelled = false;
+
+    if (src && src.includes('res.cloudinary.com') && src.toLowerCase().endsWith('.pdf')) {
+      const jpgSrc = src.replace(/\.pdf$/i, '.jpg');
+      setCloudinaryImgSrc(jpgSrc);
+      setLoading(false);
+      return;
+    }
+
     async function renderThumbnail() {
       if (!src) return;
       setLoading(true);
@@ -72,7 +81,16 @@ function PdfThumbnail({ src, label }) {
           <div style={{ marginTop: 4, fontSize: "0.75rem" }}>The file could not be loaded from the server.</div>
         </div>
       )}
-      <canvas ref={canvasRef} style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", borderRadius: 8, display: loading || failed ? "none" : "block" }} />
+      {cloudinaryImgSrc ? (
+        <img 
+          src={cloudinaryImgSrc} 
+          alt="PDF Preview" 
+          style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", borderRadius: 8, display: failed ? "none" : "block" }} 
+          onError={() => { setFailed(true); setCloudinaryImgSrc(null); }}
+        />
+      ) : (
+        <canvas ref={canvasRef} style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", borderRadius: 8, display: loading || failed ? "none" : "block" }} />
+      )}
     </div>
   );
 }

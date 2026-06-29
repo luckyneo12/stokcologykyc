@@ -252,8 +252,9 @@ const startKyc = async (req, res, next) => {
       ipAddress: req.ip,
     });
 
-    // Notify staff room
+    // Notify staff room and specific application room
     req.app.get("io")?.to("staff_room").emit("applications_updated");
+    req.app.get("io")?.to(applicationId).emit("kyc_updated");
 
     res.json({ success: true, applicationId: application.applicationId, id: application.id, isNew: true });
   } catch (error) {
@@ -422,8 +423,9 @@ const saveStep = async (req, res, next) => {
       ipAddress: req.ip,
     });
 
-    // Notify staff room
+    // Notify staff room and specific application room
     req.app.get("io")?.to("staff_room").emit("applications_updated");
+    req.app.get("io")?.to(applicationId).emit("kyc_updated");
 
     res.json({
       success: true,
@@ -543,8 +545,9 @@ const submitKyc = async (req, res, next) => {
       ipAddress: req.ip,
     });
 
-    // Notify staff room
+    // Notify staff room and specific application room
     req.app.get("io")?.to("staff_room").emit("applications_updated");
+    req.app.get("io")?.to(applicationId).emit("kyc_updated");
 
     res.json({
       success: true,

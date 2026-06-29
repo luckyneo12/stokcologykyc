@@ -236,7 +236,9 @@ async function generateKycPdf(applicationData) {
     
     // Add documents array items (e.g. DigiLocker extracted)
     parsedDocuments.forEach(doc => {
-      if (doc?.path) docsToAppend.push({ path: doc.path, title: doc.type || 'Document' });
+      if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'DIGILOCKER_DOCUMENT') {
+        docsToAppend.push({ path: doc.path, title: doc.type || 'Document' });
+      }
     });
     
     if (parsedPanUpload?.path) docsToAppend.push({ path: parsedPanUpload.path, title: 'PAN Upload' });

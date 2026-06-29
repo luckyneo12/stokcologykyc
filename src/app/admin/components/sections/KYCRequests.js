@@ -250,7 +250,7 @@ export default function KYCRequests({ searchQuery, onSearchChange }) {
                   <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>
                   <td style={{ fontWeight: 600 }}>{k.number}</td>
                   <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
-                    Step {k.stepNum || 0}/16
+                    Step {k.stepNum || 0}/14
                   </td>
                   <td><span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`}>{k.status.replace("_", " ")}</span></td>
                   <td>
