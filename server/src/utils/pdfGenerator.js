@@ -241,15 +241,24 @@ async function generateKycPdf(applicationData) {
       }
     });
     
-    if (parsedPanUpload?.path) docsToAppend.push({ path: parsedPanUpload.path, title: 'PAN Upload' });
-    if (parsedFinancialProof?.path) docsToAppend.push({ path: parsedFinancialProof.path, title: 'Financial Proof' });
-    if (parsedBankDetails?.proofPath) docsToAppend.push({ path: parsedBankDetails.proofPath, title: 'Bank Proof' });
-    if (parsedPersonalDetails?.pepProof) docsToAppend.push({ path: parsedPersonalDetails.pepProof, title: 'PEP Proof' });
+    const panPath = parsedPanUpload?.path || parsedPanUpload?.filePreview || parsedPanUpload?.preview;
+    if (panPath) docsToAppend.push({ path: panPath, title: 'PAN Upload' });
+    
+    const finPath = parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview;
+    if (finPath) docsToAppend.push({ path: finPath, title: 'Financial Proof' });
+    const bankPath = parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof;
+    if (bankPath) docsToAppend.push({ path: bankPath, title: 'Bank Proof' });
+    
+    const pepPath = parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview;
+    if (pepPath) docsToAppend.push({ path: pepPath, title: 'PEP Proof' });
     
     if (parsedNomineeDetails?.nominees) {
       parsedNomineeDetails.nominees.forEach((nom, idx) => {
-        if (nom.proofPath) docsToAppend.push({ path: nom.proofPath, title: `Nominee ${idx + 1} Proof` });
-        if (nom.guardianProofPath) docsToAppend.push({ path: nom.guardianProofPath, title: `Nominee ${idx + 1} Guardian Proof` });
+        const nomPath = nom.proofPath || nom.proofPreview || nom.preview;
+        if (nomPath) docsToAppend.push({ path: nomPath, title: `Nominee ${idx + 1} Proof` });
+        
+        const guardPath = nom.guardianProofPath || nom.guardianProofPreview || nom.guardianPreview;
+        if (guardPath) docsToAppend.push({ path: guardPath, title: `Nominee ${idx + 1} Guardian Proof` });
       });
     }
 
