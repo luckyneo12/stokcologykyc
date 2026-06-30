@@ -4,17 +4,8 @@ import Logo from "../../../components/kyc/Logo";
 const NAV_ITEMS = [
   { id: "overview", label: "Dashboard", icon: "grid" },
   { id: "kyc", label: "KYC Requests", icon: "file" },
-  { id: "users", label: "Users", icon: "users" },
-  { id: "documents", label: "Documents", icon: "doc" },
-  { id: "facematch", label: "Face Match", icon: "camera" },
-  { id: "risk", label: "Risk & Fraud", icon: "shield" },
-  { id: "rules", label: "Rules & Config", icon: "settings2" },
-  { id: "notifications", label: "Notifications", icon: "bell" },
-  { id: "analytics", label: "Analytics", icon: "chart" },
-  { id: "roles", label: "Roles & Access", icon: "lock" },
   { id: "audit", label: "Audit Logs", icon: "list" },
   { id: "estamps", label: "E-Stamps", icon: "doc" },
-  { id: "system", label: "System Settings", icon: "cog" },
 ];
 
 const ICONS = {

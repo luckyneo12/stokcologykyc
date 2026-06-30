@@ -271,19 +271,25 @@ const getStats = async (req, res, next) => {
     fourteenDaysAgo.setHours(0, 0, 0, 0);
 
     const [
-      total, pending, review, verified, rejected, onHold, recent, 
+      total, statusCounts, recent, 
       recentAppsForTrend, allAppsForDropoff, recentLogs
     ] = await Promise.all([
       prisma.kycApplication.count(),
-      prisma.kycApplication.count({ where: { status: "pending" } }),
-      prisma.kycApplication.count({ where: { status: "under_review" } }),
-      prisma.kycApplication.count({ where: { status: "verified" } }),
-      prisma.kycApplication.count({ where: { status: "rejected" } }),
-      prisma.kycApplication.count({ where: { status: "on_hold" } }),
+      prisma.kycApplication.groupBy({
+        by: ['status'],
+        _count: { status: true }
+      }),
       prisma.kycApplication.findMany({
-        orderBy: { createdAt: "desc" },
+        orderBy: { id: "desc" },
         take: 10,
-        include: { user: { select: { email: true, phone: true } } }
+        select: {
+          id: true,
+          applicationId: true,
+          status: true,
+          riskScore: true,
+          personalDetails: true,
+          user: { select: { email: true, phone: true } }
+        }
       }),
       // For Weekly Trend (14 days)
       prisma.kycApplication.findMany({
@@ -302,6 +308,16 @@ const getStats = async (req, res, next) => {
         include: { user: { select: { email: true, phone: true } } }
       })
     ]);
+
+    // Extract status counts
+    let pending = 0, review = 0, verified = 0, rejected = 0, onHold = 0;
+    statusCounts.forEach(s => {
+      if (s.status === 'pending') pending = s._count.status;
+      if (s.status === 'under_review') review = s._count.status;
+      if (s.status === 'verified') verified = s._count.status;
+      if (s.status === 'rejected') rejected = s._count.status;
+      if (s.status === 'on_hold') onHold = s._count.status;
+    });
 
     // 1. Calculate Weekly Trend
     const weeklyTrend = Array(14).fill(0);

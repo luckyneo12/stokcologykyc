@@ -5,18 +5,9 @@ import "./admin.css";
 import AdminSidebar from "./components/AdminSidebar";
 import DashboardOverview from "./components/sections/DashboardOverview";
 import KYCRequests from "./components/sections/KYCRequests";
-import UserManagement from "./components/sections/UserManagement";
 import EStamps from "./components/sections/EStamps";
 import { 
-  RiskFraud, 
-  RulesConfig, 
-  Notifications, 
-  Analytics, 
-  RolesPermissions, 
-  AuditLogs, 
-  SystemSettings,
-  DocumentRepository,
-  FaceMatchLogs
+  AuditLogs
 } from "./components/sections/OtherSections";
 
 // Self-contained Theme Toggle for Admin
@@ -102,17 +93,8 @@ export default function AdminPage() {
     switch (activeSection) {
       case "overview": return <DashboardOverview onNavigate={setActiveSection} />;
       case "kyc": return <KYCRequests searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
-      case "users": return <UserManagement searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case "estamps": return <EStamps searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
-      case "risk": return <RiskFraud />;
-      case "rules": return <RulesConfig />;
-      case "notifications": return <Notifications />;
-      case "analytics": return <Analytics />;
-      case "roles": return <RolesPermissions />;
       case "audit": return <AuditLogs />;
-      case "system": return <SystemSettings />;
-      case "documents": return <DocumentRepository />;
-      case "facematch": return <FaceMatchLogs />;
       default: return <DashboardOverview onNavigate={setActiveSection} />;
     }
   };
