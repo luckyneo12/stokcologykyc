@@ -253,6 +253,7 @@ export default function ApplicationDetail() {
   const [backofficeClientType, setBackofficeClientType] = useState("A");
   const [backofficeSubmitting, setBackofficeSubmitting] = useState(false);
   const [showSelfieVideo, setShowSelfieVideo] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const handleAssign = async () => {
     if (!selectedAgent) return;
@@ -449,6 +450,29 @@ export default function ApplicationDetail() {
     }
   };
 
+  const requestModifications = async () => {
+    if (!id) return;
+    try {
+      setSendingEmail(true);
+      const token = localStorage.getItem("adminToken");
+      const response = await fetchWithFallback(`/api/admin/application/${id}/request-modifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast(`Rejection email sent — ${data.message}`);
+        await fetchDetail();
+      } else {
+        showToast(data.error || "Failed to send rejection email", "error");
+      }
+    } catch (error) {
+      showToast("Network error while sending rejection email", "error");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   const sendToBackoffice = async () => {
     setBackofficeSubmitting(true);
     try {
@@ -640,7 +664,7 @@ export default function ApplicationDetail() {
   const rejectedCount = app ? getRejectedStepsCount() : 0;
   const totalSteps = trackedStepsList.length;
   
-  const hasCompletedDetails = app?.currentStep > 6;
+  const hasCompletedDetails = app?.currentStep > 6 || !!app?.submittedAt || !!app?.isResubmitted || !!app?.rejectionReason;
   const getDocumentsByKeywords = (keywords) => {
     const docs = Array.isArray(app?.documents) ? app.documents : [];
     const lowered = keywords.map((keyword) => keyword.toLowerCase());
@@ -868,6 +892,31 @@ export default function ApplicationDetail() {
             </div>
           )}
         </div>
+
+        {rejectedCount > 0 && (
+          <div style={{ background: "#fee2e2", border: "1px solid #f87171", color: "#991b1b", padding: 20, borderRadius: 12, marginBottom: 30 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
+              <div>
+                <strong style={{ display: "block", fontSize: "1.1rem" }}>Application Blocked</strong>
+                There are {rejectedCount} rejected steps. They must be resolved before final approval.
+              </div>
+            </div>
+            <button
+              disabled={sendingEmail}
+              onClick={requestModifications}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "10px 20px", borderRadius: 8, border: "none",
+                background: "linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)",
+                color: "white", fontWeight: 800, cursor: sendingEmail ? "not-allowed" : "pointer",
+                boxShadow: "0 4px 12px rgba(153, 27, 27, 0.3)",
+                transition: "0.2s", opacity: sendingEmail ? 0.7 : 1,
+              }}
+            >
+              {sendingEmail ? "Sending..." : "Send Rejection Email to User"}
+            </button>
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 20, paddingBottom: 60 }}>
           {/* Main Dossier */}

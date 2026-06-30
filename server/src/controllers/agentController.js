@@ -30,7 +30,7 @@ const getAssignedApplications = async (req, res, next) => {
     const [applications, total] = await Promise.all([
       prisma.kycApplication.findMany({
         where,
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ isResubmitted: "desc" }, { updatedAt: "desc" }],
         take,
         skip,
         select: {
@@ -42,6 +42,7 @@ const getAssignedApplications = async (req, res, next) => {
           createdAt: true,
           personalDetails: true,
           stepStatuses: true,
+          isResubmitted: true,
           riskScore: true,
           faceMatchScore: true,
           assignedCrmAgentId: true,
@@ -259,8 +260,165 @@ const reviewStep = async (req, res, next) => {
   }
 };
 
+// Step title mapping for human-readable email
+const STEP_TITLE_MAP = {
+  phoneVerification: "Phone Verification",
+  emailVerification: "Email Verification",
+  pricingSelection: "Pricing Plan",
+  panVerification: "PAN Verification",
+  digilocker: "DigiLocker",
+  personalDetails: "Personal Details",
+  nomineeChoice: "Nominee Choice",
+  nomineeDetails: "Nominee Details",
+  nomineeAllocation: "Nominee Allocation",
+  bankVerification: "Bank Verification",
+  financialProof: "Financial Proof",
+  signature: "Signature",
+  panUpload: "PAN Upload",
+  ipv: "In-Person Verification (Selfie)",
+  esignPreview: "eSign Preview",
+  aadhaarEsign: "Aadhaar eSign",
+  completion: "Completion",
+};
+
+// Map review step ids to KYC user step indexes for navigation
+const REVIEW_STEP_TO_KYC_INDEX = {
+  phoneVerification: 1,
+  emailVerification: 2,
+  pricingSelection: 3,
+  panVerification: 4,
+  digilocker: 5,
+  personalDetails: 6,
+  nomineeChoice: 7,
+  nomineeDetails: 8,
+  nomineeAllocation: 9,
+  bankVerification: 10,
+  financialProof: 11,
+  signature: 11,
+  panUpload: 11,
+  ipv: 11,
+  esignPreview: 12,
+  aadhaarEsign: 13,
+  completion: 14,
+};
+
+/**
+ * Sends a rejection email to the KYC user and resets the application
+ * so the user can modify only the rejected steps + re-eSign.
+ */
+const requestModifications = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const agentId = req.user.id;
+    const agentName = req.user.email || `Agent ${agentId}`;
+
+    const app = await prisma.kycApplication.findUnique({
+      where: { applicationId: id },
+      include: { user: true },
+    });
+
+    if (!app) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    // Parse stepStatuses to find rejected steps
+    let stepStatuses = {};
+    if (app.stepStatuses) {
+      try { stepStatuses = JSON.parse(app.stepStatuses); } catch (e) { stepStatuses = {}; }
+    }
+
+    const rejectedEntries = Object.entries(stepStatuses)
+      .filter(([, info]) => info?.status === "rejected")
+      .map(([stepId, info]) => ({
+        stepId,
+        stepTitle: STEP_TITLE_MAP[stepId] || stepId,
+        reason: info.reason || "",
+        kycIndex: REVIEW_STEP_TO_KYC_INDEX[stepId] || 1,
+      }));
+
+    if (rejectedEntries.length === 0) {
+      return res.status(400).json({ success: false, error: "No rejected steps found on this application" });
+    }
+
+    // Find the first rejected step's KYC index — the user will land here
+    const firstRejectedKycIndex = Math.min(...rejectedEntries.map(e => e.kycIndex));
+
+    // Get the user's email and name
+    let personalDetails = {};
+    if (app.personalDetails) {
+      try { personalDetails = JSON.parse(app.personalDetails); } catch (e) { personalDetails = {}; }
+    }
+    const userName = personalDetails.fullName || app.user?.email || app.user?.phone || "User";
+    const userEmail = personalDetails.email || app.user?.email;
+
+    if (!userEmail) {
+      return res.status(400).json({ success: false, error: "No email found for this user. Cannot send rejection notification." });
+    }
+
+    // Reset the application: move currentStep to first rejected step, set status to pending
+    await prisma.kycApplication.update({
+      where: { applicationId: id },
+      data: {
+        status: "pending",
+        currentStep: firstRejectedKycIndex,
+        isResubmitted: false,
+      },
+    });
+
+    // Build the modification link — the user's KYC portal
+    const frontendUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+    const modifyLink = `${frontendUrl}/`;
+
+    // Send the email
+    const { sendRejectionEmail } = require("../services/emailService");
+    try {
+      await sendRejectionEmail(
+        userEmail,
+        userName,
+        rejectedEntries.map(e => ({ stepTitle: e.stepTitle, reason: e.reason })),
+        modifyLink
+      );
+    } catch (emailError) {
+      console.error("[RequestModifications] Email sending failed:", emailError.message);
+      // Don't fail the whole request if email fails — the app is already reset
+    }
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: null,
+        crmAgentId: agentId,
+        crmAgentName: agentName,
+        action: "kyc_modifications_requested",
+        details: JSON.stringify({
+          applicationId: id,
+          rejectedSteps: rejectedEntries.map(e => e.stepId),
+          emailSentTo: userEmail,
+        }),
+        ipAddress: req.ip,
+      },
+    });
+
+    // Notify via Socket.IO
+    const io = req.app.get("io");
+    if (io) {
+      io.to(id).emit("kyc_updated", { action: "modifications_requested" });
+      io.to("staff_room").emit("applications_updated");
+    }
+
+    res.json({
+      success: true,
+      message: `Modification request sent to ${userEmail}`,
+      rejectedSteps: rejectedEntries.map(e => e.stepTitle),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAssignedApplications,
   reviewStep,
-  getApReferrals
+  getApReferrals,
+  requestModifications,
 };

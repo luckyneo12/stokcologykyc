@@ -63,6 +63,7 @@ const JSON_FIELD_KEYS = new Set([
   "nsdlRequest",
   "nsdlResponse",
   "segments",
+  "stepStatuses",
 ]);
 
 const saveStepSchema = z.object({
@@ -507,6 +508,8 @@ const submitKyc = async (req, res, next) => {
         status: "under_review",
         currentStep: Math.max(Number(app.currentStep || 0), 14),
         submittedAt: new Date(),
+        // Flag as resubmitted if this application was previously reviewed
+        ...(app.reviewedAt ? { isResubmitted: true } : {}),
         personalDetails: mergedPersonalDetails,
         identityMethod: data?.identityMethod || app.identityMethod,
         identityDetails: mergedIdentityDetails,

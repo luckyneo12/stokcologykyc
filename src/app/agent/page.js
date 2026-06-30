@@ -192,7 +192,14 @@ export default function AgentDashboard() {
                   <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                     Step {k.stepNum || 0}/14
                   </td>
-                  <td><span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`}>{(k.status || "pending").replace("_", " ")}</span></td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                      <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`}>{(k.status || "pending").replace("_", " ")}</span>
+                      {k.isResubmitted && (
+                        <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase" }}>Modified by User</span>
+                      )}
+                    </div>
+                  </td>
                   <td>
                     <span style={{ fontWeight: 800, fontSize: "0.9rem", color: k.riskScore > 60 ? "#e5484d" : k.riskScore > 30 ? "#b45309" : "#30a46c" }}>{k.riskScore}</span>
                     <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/100</span>

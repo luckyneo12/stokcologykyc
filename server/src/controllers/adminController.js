@@ -76,7 +76,7 @@ const getApplications = async (req, res, next) => {
     const [applications, total] = await Promise.all([
       prisma.kycApplication.findMany({
         where,
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ isResubmitted: "desc" }, { updatedAt: "desc" }],
         take,
         skip,
         select: {
@@ -88,6 +88,7 @@ const getApplications = async (req, res, next) => {
           createdAt: true,
           personalDetails: true, // Needed for name
           identityDetails: true, // Needed for PAN/Aadhaar status
+          isResubmitted: true,
           assignedCrmAgentId: true,
           user: {
             select: {
@@ -127,7 +128,9 @@ const getApplicationById = async (req, res, next) => {
         ],
       },
       include: {
-        user: true,
+        user: {
+          include: { eStampAssigned: true }
+        },
         reviewer: true,
       },
     });
@@ -140,7 +143,9 @@ const getApplicationById = async (req, res, next) => {
           },
         },
         include: {
-          user: true,
+          user: {
+            include: { eStampAssigned: true }
+          },
           reviewer: true,
         },
       });
@@ -152,11 +157,13 @@ const getApplicationById = async (req, res, next) => {
       return res.status(403).json({ success: false, error: "You are not assigned to review this application" });
     }
 
-    try {
-      app = await ensureDigilockerVerificationDocuments(app);
-    } catch (pdfError) {
+    ensureDigilockerVerificationDocuments(app).then((updatedApp) => {
+      if (updatedApp && JSON.stringify(updatedApp.documents) !== JSON.stringify(app.documents)) {
+        req.app.get("io")?.to(app.applicationId).emit("kyc_updated");
+      }
+    }).catch((pdfError) => {
       console.warn("[Admin] Could not ensure DigiLocker verification PDF:", pdfError.message);
-    }
+    });
 
     const allLogs = await prisma.auditLog.findMany({
       where: { userId: app.userId },

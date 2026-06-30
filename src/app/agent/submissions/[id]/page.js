@@ -15,6 +15,7 @@ import {
   XCircle,
   Maximize2,
   X,
+  Mail,
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -260,46 +261,17 @@ const REVIEW_STEPS = [
     ].filter(Boolean),
   },
   {
-    id: "esignPreview",
+    id: "estampPreview",
     kycIndex: 15,
-    title: "eSign Preview",
-    evidenceTitle: "Application PDF Preview",
-    evidenceHint: "Review the generated form before Aadhaar eSign.",
+    title: "E-Stamp Assigned",
+    evidenceTitle: "E-Stamp Document",
+    evidenceHint: "Review the e-stamp assigned to this user.",
+    readOnly: true,
     fields: (app) => [
-      ["Generated PDF", app.generatedPdfBase64 ? "Available" : "Not available"],
-      ["Applicant", app.personalDetails?.fullName],
+      ["Certificate No", app.user?.eStampAssigned?.certificateNo],
+      ["Serial No", app.user?.eStampAssigned?.serialNo],
     ],
-    evidence: (app) => [firstMedia(app.generatedPdfBase64, "Generated KYC PDF")].filter(Boolean),
-  },
-  {
-    id: "aadhaarEsign",
-    kycIndex: 16,
-    title: "Aadhaar eSign",
-    evidenceTitle: "eSign Status",
-    evidenceHint: "Confirm Aadhaar eSign completion and signed document availability.",
-    fields: (app) => [
-      ["eSign status", app.nsdlResponse?.status || app.esignDetails?.status || app.status],
-      ["Aadhaar reference", app.identityDetails?.aadhaar || app.identityDetails?.uid],
-    ],
-    evidence: (app) => [
-      firstMedia(app.nsdlResponse?.signedPdf || app.esignDetails?.signedPdf || (app.documents || []).find(d => String(d?.type).toUpperCase() === "ESIGN")?.path || app.generatedPdfBase64, "Signed PDF"),
-      findDocument(app, ["aadhaar", "digilocker"], "Aadhaar Evidence", ["pan"]),
-    ].filter(Boolean),
-  },
-  {
-    id: "completion",
-    kycIndex: 17,
-    title: "Completion",
-    evidenceTitle: "Final Dossier",
-    evidenceHint: "Final check before approving the full application.",
-    fields: (app) => [
-      ["Applicant", app.personalDetails?.fullName],
-      ["PAN", app.identityDetails?.pan || app.personalDetails?.pan],
-      ["Mobile", app.user?.phone],
-      ["Email", app.user?.email],
-      ["Current application status", app.status],
-    ],
-    evidence: (app) => [firstMedia(app.generatedPdfBase64, "Final KYC PDF")].filter(Boolean),
+    evidence: (app) => [firstMedia(app.user?.eStampAssigned?.fileUrl, "Assigned E-Stamp")].filter(Boolean),
   },
 ];
 
@@ -563,34 +535,53 @@ function FieldGrid({ fields }) {
   }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-      {rows.map(([label, value]) => (
-        <div key={label} style={{ padding: 14, border: "1px solid var(--border-color)", borderRadius: 8, background: "var(--bg-secondary)" }}>
-          <span className="inspection-label" style={{ marginBottom: 4 }}>{label}</span>
-          <div style={{ fontSize: "0.95rem", fontWeight: 850, color: "var(--text-primary)", overflowWrap: "anywhere" }}>
-            {label === "Segments" && typeof value === "string" ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                {value.split(",").map(seg => seg.trim()).filter(Boolean).map(seg => (
-                  <span key={seg} style={{ 
-                    padding: "6px 14px", 
-                    background: "linear-gradient(135deg, #059669 0%, #047857 100%)", 
-                    color: "white", 
-                    borderRadius: 999, 
-                    fontSize: "0.75rem", 
-                    fontWeight: 900, 
-                    textTransform: "uppercase", 
-                    letterSpacing: 0.5,
-                    boxShadow: "0 4px 10px rgba(5, 150, 105, 0.4), inset 0 2px 2px rgba(255, 255, 255, 0.3)" 
-                  }}>
-                    {seg}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              String(value)
-            )}
+      {rows.map(([label, value]) => {
+        const isShiny = label === "Certificate No" || label === "Serial No";
+        const isCert = label === "Certificate No";
+        
+        return (
+          <div key={label} style={{ 
+            padding: 14, 
+            border: "1px solid var(--border-color)", 
+            borderRadius: 8, 
+            background: "var(--bg-secondary)",
+            gridColumn: isCert ? "1 / -1" : undefined
+          }}>
+            <span className="inspection-label" style={{ marginBottom: 4 }}>{label}</span>
+            <div style={{ 
+              fontSize: "0.95rem", 
+              fontWeight: 850, 
+              color: isShiny ? "#10b981" : "var(--text-primary)", 
+              textShadow: isShiny ? "0 0 12px rgba(16, 185, 129, 0.4)" : "none",
+              overflowWrap: isCert ? "normal" : "anywhere",
+              whiteSpace: isCert ? "nowrap" : "normal",
+              overflowX: isCert ? "auto" : "visible"
+            }}>
+              {label === "Segments" && typeof value === "string" ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                  {value.split(",").map(seg => seg.trim()).filter(Boolean).map(seg => (
+                    <span key={seg} style={{ 
+                      padding: "6px 14px", 
+                      background: "linear-gradient(135deg, #059669 0%, #047857 100%)", 
+                      color: "white", 
+                      borderRadius: 999, 
+                      fontSize: "0.75rem", 
+                      fontWeight: 900, 
+                      textTransform: "uppercase", 
+                      letterSpacing: 0.5,
+                      boxShadow: "0 4px 10px rgba(5, 150, 105, 0.4), inset 0 2px 2px rgba(255, 255, 255, 0.3)" 
+                    }}>
+                      {seg}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                String(value)
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -682,12 +673,23 @@ function StepRail({ unlockedSteps, activeStepId, statuses, onSelectStep }) {
 }
 
 function ImageComparisonModal({ isOpen, onClose, leftImage, leftLabel, rightImage, rightLabel, matchScore }) {
+  const [zoom, setZoom] = useState(1);
+  
+  useEffect(() => {
+    if (isOpen) setZoom(1);
+  }, [isOpen, leftImage, rightImage]);
+
   if (!isOpen) return null;
   const isSingle = !rightLabel && !rightImage;
   
   return (
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 9999, display: "flex", flexDirection: "column", backdropFilter: "blur(8px)", padding: "40px", animation: "fadeIn 0.2s ease-out" }}>
-      <div style={{ alignSelf: "flex-end", marginBottom: 20 }}>
+      <div style={{ alignSelf: "flex-end", marginBottom: 20, display: "flex", gap: 20, alignItems: "center" }}>
+        <div style={{ display: "flex", background: "rgba(255,255,255,0.1)", borderRadius: 8, overflow: "hidden" }}>
+          <button onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} style={{ background: "transparent", border: "none", color: "white", cursor: "pointer", padding: "8px 16px", borderRight: "1px solid rgba(255,255,255,0.2)", fontWeight: 800 }}>-</button>
+          <div style={{ padding: "8px 16px", color: "white", fontWeight: 800, minWidth: 60, textAlign: "center" }}>{Math.round(zoom * 100)}%</div>
+          <button onClick={() => setZoom(z => Math.min(4, z + 0.25))} style={{ background: "transparent", border: "none", color: "white", cursor: "pointer", padding: "8px 16px", borderLeft: "1px solid rgba(255,255,255,0.2)", fontWeight: 800 }}>+</button>
+        </div>
         <button onClick={onClose} style={{ background: "transparent", border: "none", color: "white", cursor: "pointer", transition: "transform 0.2s" }} onMouseOver={e => e.currentTarget.style.transform="scale(1.1)"} onMouseOut={e => e.currentTarget.style.transform="scale(1)"}>
           <X size={40} />
         </button>
@@ -695,13 +697,17 @@ function ImageComparisonModal({ isOpen, onClose, leftImage, leftLabel, rightImag
       <div style={{ display: "flex", gap: 30, height: "80%", justifyContent: "center", alignItems: "center" }}>
         <div style={{ flex: isSingle ? "none" : 1, width: isSingle ? "80%" : "auto", background: "#1a1a1a", borderRadius: 16, overflow: "hidden", border: "1px solid #333", display: "flex", flexDirection: "column", height: "100%", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)" }}>
           <div style={{ padding: 15, background: "#2a2a2a", color: "white", fontWeight: 800, textAlign: "center", letterSpacing: 1 }}>{leftLabel}</div>
-          <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", justifyContent: "center", alignItems: "center", padding: 20 }}>
-            {leftImage ? <img src={leftImage} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8 }} /> : <div style={{color:"#666"}}>No Image Available</div>}
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", justifyContent: "center", alignItems: "center", padding: 20, overflow: "auto" }}>
+            {leftImage ? (
+              <div style={{ width: `${100 * zoom}%`, height: `${100 * zoom}%`, display: "flex", justifyContent: "center", alignItems: "center", transition: "width 0.2s, height 0.2s", minWidth: "100%", minHeight: "100%" }}>
+                <img src={leftImage} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8 }} />
+              </div>
+            ) : <div style={{color:"#666"}}>No Image Available</div>}
           </div>
         </div>
         
         {matchScore !== undefined && matchScore !== null && matchScore !== "" && !isSingle && (
-          <div style={{ width: 120, height: 120, borderRadius: 60, background: matchScore >= 70 ? "#dcfce7" : "#fee2e2", border: `4px solid ${matchScore >= 70 ? "#15803d" : "#991b1b"}`, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", color: matchScore >= 70 ? "#15803d" : "#991b1b", zIndex: 10, boxShadow: "0 10px 30px rgba(0,0,0,0.3)" }}>
+          <div style={{ width: 120, height: 120, borderRadius: 60, background: matchScore >= 70 ? "#dcfce7" : "#fee2e2", border: `4px solid ${matchScore >= 70 ? "#15803d" : "#991b1b"}`, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", color: matchScore >= 70 ? "#15803d" : "#991b1b", zIndex: 10, boxShadow: "0 10px 30px rgba(0,0,0,0.3)", flexShrink: 0 }}>
             <span style={{ fontSize: "2.2rem", fontWeight: 950 }}>{matchScore}%</span>
             <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase" }}>Match</span>
           </div>
@@ -710,8 +716,12 @@ function ImageComparisonModal({ isOpen, onClose, leftImage, leftLabel, rightImag
         {!isSingle && (
           <div style={{ flex: 1, background: "#1a1a1a", borderRadius: 16, overflow: "hidden", border: "1px solid #333", display: "flex", flexDirection: "column", height: "100%", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)" }}>
             <div style={{ padding: 15, background: "#2a2a2a", color: "white", fontWeight: 800, textAlign: "center", letterSpacing: 1 }}>{rightLabel}</div>
-            <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", justifyContent: "center", alignItems: "center", padding: 20 }}>
-              {rightImage ? <img src={rightImage} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 8 }} /> : <div style={{color:"#666"}}>No Image Available</div>}
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", justifyContent: "center", alignItems: "center", padding: 20, overflow: "auto" }}>
+              {rightImage ? (
+                <div style={{ width: `${100 * zoom}%`, height: `${100 * zoom}%`, display: "flex", justifyContent: "center", alignItems: "center", transition: "width 0.2s, height 0.2s", minWidth: "100%", minHeight: "100%" }}>
+                  <img src={rightImage} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8 }} />
+                </div>
+              ) : <div style={{color:"#666"}}>No Image Available</div>}
             </div>
           </div>
         )}
@@ -746,8 +756,8 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
           <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "0.9rem", fontWeight: 600 }}>{step.evidenceHint}</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <span style={{ padding: "6px 12px", borderRadius: 20, fontSize: "0.8rem", fontWeight: 800, background: isApproved ? "#dcfce7" : isRejected ? "#fee2e2" : "#f3f4f6", color: isApproved ? "#15803d" : isRejected ? "#991b1b" : "#4b5563" }}>
-            {isApproved ? "Approved" : isRejected ? "Rejected" : "Pending Review"}
+          <span style={{ padding: "6px 12px", borderRadius: 20, fontSize: "0.8rem", fontWeight: 800, background: step.readOnly ? "#e0e7ff" : (isApproved ? "#dcfce7" : isRejected ? "#fee2e2" : "#f3f4f6"), color: step.readOnly ? "#3730a3" : (isApproved ? "#15803d" : isRejected ? "#991b1b" : "#4b5563") }}>
+            {step.readOnly ? "Info" : (isApproved ? "Approved" : isRejected ? "Rejected" : "Pending Review")}
           </span>
         </div>
       </div>
@@ -802,20 +812,22 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
         )}
       </div>
 
-      <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "flex-end", gap: 12 }}>
-        {!showReject && (
-          <button disabled={submitting || isRejected} onClick={() => setShowReject(true)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid #fecaca", background: isRejected ? "#fee2e2" : "transparent", color: isRejected ? "#991b1b" : "#b91c1c", fontWeight: 800, cursor: submitting || isRejected ? "not-allowed" : "pointer", transition: "0.2s" }}>
-            {isRejected ? "Rejected" : "Reject Step"}
-          </button>
-        )}
-        {!showReject && (
-          <button disabled={submitting || isApproved} onClick={() => reviewStep(step, "approved")} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: isApproved ? "#15803d" : "#30a46c", color: "white", fontWeight: 800, cursor: submitting || isApproved ? "not-allowed" : "pointer", transition: "0.2s", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)" }}>
-            {isApproved ? "Approved" : "Approve Step"}
-          </button>
-        )}
-      </div>
+      {!step.readOnly && (
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "flex-end", gap: 12 }}>
+          {!showReject && (
+            <button disabled={submitting || isRejected} onClick={() => setShowReject(true)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid #fecaca", background: isRejected ? "#fee2e2" : "transparent", color: isRejected ? "#991b1b" : "#b91c1c", fontWeight: 800, cursor: submitting || isRejected ? "not-allowed" : "pointer", transition: "0.2s" }}>
+              {isRejected ? "Rejected" : "Reject Step"}
+            </button>
+          )}
+          {!showReject && (
+            <button disabled={submitting || isApproved} onClick={() => reviewStep(step, "approved")} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: isApproved ? "#15803d" : "#30a46c", color: "white", fontWeight: 800, cursor: submitting || isApproved ? "not-allowed" : "pointer", transition: "0.2s", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)" }}>
+              {isApproved ? "Approved" : "Approve Step"}
+            </button>
+          )}
+        </div>
+      )}
       
-      {showReject && (
+      {showReject && !step.readOnly && (
         <div style={{ marginTop: 16, background: "#fdf2f2", padding: 16, borderRadius: 8, border: "1px solid #fecaca" }}>
           <h4 style={{ margin: "0 0 10px 0", color: "#991b1b" }}>Provide Rejection Reason</h4>
           <textarea className="admin-input" value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason for rejection (visible in audit logs)" style={{ minHeight: 80, width: "100%", marginBottom: 12, padding: 12, borderRadius: 8, border: "1px solid #fca5a5" }} />
@@ -835,6 +847,7 @@ export default function AgentReview() {
   const [app, setApp] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [toast, setToast] = useState(null);
   
   const [modalState, setModalState] = useState({ isOpen: false });
@@ -932,6 +945,29 @@ export default function AgentReview() {
     }
   };
 
+  const requestModifications = async () => {
+    if (!app?.applicationId) return;
+    try {
+      setSendingEmail(true);
+      const token = localStorage.getItem("agent_token");
+      const response = await fetchWithFallback(`/api/agent/kyc/${app.applicationId}/request-modifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) {
+        showToast(`Rejection email sent — ${data.message}`);
+        await fetchDetail();
+      } else {
+        showToast(data.error || "Failed to send rejection email", "error");
+      }
+    } catch (error) {
+      showToast("Network error while sending rejection email", "error");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   const openComparisonModal = (leftImg, leftLbl, rightImg, rightLbl, score) => {
     setModalState({ isOpen: true, leftImage: leftImg?.src || leftImg, leftLabel: leftLbl, rightImage: rightImg?.src || rightImg, rightLabel: rightLbl, matchScore: score });
   };
@@ -966,16 +1002,22 @@ export default function AgentReview() {
   const currentUserStep = Number(app.currentStep || 0);
   const isNomineeOptOut = app.nomineeDetails?.choice === "opt-out" || app.nomineeDetails?.nomineeChoice === "opt-out" || nomineeSummary(app) === "Opted out";
 
+  const hasCompletedJourneyOnce = !!app.submittedAt || !!app.isResubmitted || !!app.rejectionReason || Object.keys(statuses).length > 0;
+
   const unlockedSteps = REVIEW_STEPS.filter((step) => {
-    if (currentUserStep < step.kycIndex) return false;
+    // If the application has already completed the journey once, we show all steps (ignoring currentUserStep)
+    // so the agent can still review the entire application.
+    if (!hasCompletedJourneyOnce && currentUserStep < step.kycIndex) return false;
     if ((step.id === "nomineeDetails" || step.id === "nomineeAllocation") && isNomineeOptOut) return false;
+    if (step.id === "estampPreview" && !app.user?.eStampAssigned) return false;
     return true;
   });
   
-  const approvedCount = unlockedSteps.filter((step) => statuses[step.id]?.status === "approved").length;
-  const rejectedSteps = unlockedSteps.filter(step => statuses[step.id]?.status === "rejected");
-  const canApproveApplication = unlockedSteps.length > 0 && approvedCount === unlockedSteps.length && currentUserStep >= 17 && app.status !== "verified" && rejectedSteps.length === 0;
-  const progress = unlockedSteps.length ? Math.round((approvedCount / unlockedSteps.length) * 100) : 0;
+  const reviewableSteps = unlockedSteps.filter(s => !s.readOnly);
+  const approvedCount = reviewableSteps.filter((step) => statuses[step.id]?.status === "approved").length;
+  const rejectedSteps = reviewableSteps.filter(step => statuses[step.id]?.status === "rejected");
+  const canApproveApplication = reviewableSteps.length > 0 && approvedCount === reviewableSteps.length && currentUserStep >= 14 && app.status !== "verified" && rejectedSteps.length === 0;
+  const progress = reviewableSteps.length ? Math.round((approvedCount / reviewableSteps.length) * 100) : 0;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f0f2f5", padding: "24px 32px", fontFamily: "'Inter', sans-serif" }}>
@@ -986,12 +1028,21 @@ export default function AgentReview() {
           <button onClick={() => router.push("/agent")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "none", background: "white", padding: "10px 16px", borderRadius: 8, color: "var(--text-primary)", fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
             <ArrowLeft size={18} /> Back to Requests
           </button>
-          
-          {canApproveApplication && (
-            <button disabled={submitting} onClick={() => updateApplicationStatus("verified")} style={{ padding: "12px 24px", borderRadius: 8, border: "none", background: "var(--wise-dark-green)", color: "white", fontWeight: 900, cursor: submitting ? "not-allowed" : "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, boxShadow: "0 4px 15px rgba(0,0,0,0.2)" }}>
-              <BadgeCheck size={20} /> Finalize Approval
-            </button>
-          )}
+          <div style={{ display: "flex", gap: 12 }}>
+            {(app.nsdlResponse?.signedPdf || app.esignDetails?.signedPdf || (app.documents || []).find(d => String(d?.type).toUpperCase() === "ESIGN")?.path || app.generatedPdfBase64) && (
+              <button onClick={() => {
+                const pdfMedia = firstMedia(app.nsdlResponse?.signedPdf || app.esignDetails?.signedPdf || (app.documents || []).find(d => String(d?.type).toUpperCase() === "ESIGN")?.path || app.generatedPdfBase64, "Signed PDF");
+                if (pdfMedia && pdfMedia.src) openInNewTab(pdfMedia.src);
+              }} style={{ padding: "12px 24px", borderRadius: 8, border: "1px solid #d1d5db", background: "white", color: "var(--text-primary)", fontWeight: 900, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+                <FileText size={20} /> Download eSigned PDF
+              </button>
+            )}
+            {canApproveApplication && (
+              <button disabled={submitting} onClick={() => updateApplicationStatus("verified")} style={{ padding: "12px 24px", borderRadius: 8, border: "none", background: "var(--wise-dark-green)", color: "white", fontWeight: 900, cursor: submitting ? "not-allowed" : "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, boxShadow: "0 4px 15px rgba(0,0,0,0.2)" }}>
+                <BadgeCheck size={20} /> Finalize Approval
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ background: "linear-gradient(135deg, #163300 0%, #2a5a00 100%)", borderRadius: 16, padding: 32, color: "white", marginBottom: 30, boxShadow: "0 10px 30px rgba(22, 51, 0, 0.15)", display: "grid", gridTemplateColumns: "1fr auto", gap: 40, alignItems: "center" }}>
@@ -1003,6 +1054,14 @@ export default function AgentReview() {
             <p style={{ margin: 0, fontSize: "1rem", color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>
               ID: <span style={{ fontWeight: 800 }}>{app.applicationId}</span> &bull; {app.user?.phone || "No phone"} &bull; {app.personalDetails?.email || app.user?.email || "No email"}
             </p>
+            {app.user?.eStampAssigned && (
+              <div style={{ marginTop: 12, display: "inline-block", background: "rgba(255,255,255,0.15)", padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)" }}>
+                <div style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 800, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>Assigned E-Stamp</div>
+                <div style={{ fontSize: "0.95rem", fontWeight: 600 }}>
+                  Cert No: <span style={{ fontWeight: 900 }}>{app.user.eStampAssigned.certificateNo}</span> &nbsp;&bull;&nbsp; Serial No: <span style={{ fontWeight: 900 }}>{app.user.eStampAssigned.serialNo}</span>
+                </div>
+              </div>
+            )}
           </div>
           
           <div style={{ display: "flex", gap: 24, textAlign: "right" }}>
@@ -1018,12 +1077,29 @@ export default function AgentReview() {
         </div>
 
         {rejectedSteps.length > 0 && (
-          <div style={{ background: "#fee2e2", border: "1px solid #f87171", color: "#991b1b", padding: 20, borderRadius: 12, marginBottom: 30, display: "flex", gap: 12, alignItems: "center" }}>
-            <AlertCircle size={24} />
-            <div>
-              <strong style={{ display: "block", fontSize: "1.1rem" }}>Application Blocked</strong>
-              There are {rejectedSteps.length} rejected steps. They must be resolved before final approval.
+          <div style={{ background: "#fee2e2", border: "1px solid #f87171", color: "#991b1b", padding: 20, borderRadius: 12, marginBottom: 30 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
+              <AlertCircle size={24} />
+              <div>
+                <strong style={{ display: "block", fontSize: "1.1rem" }}>Application Blocked</strong>
+                There are {rejectedSteps.length} rejected steps. They must be resolved before final approval.
+              </div>
             </div>
+            <button
+              disabled={sendingEmail}
+              onClick={requestModifications}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "10px 20px", borderRadius: 8, border: "none",
+                background: "linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)",
+                color: "white", fontWeight: 800, cursor: sendingEmail ? "not-allowed" : "pointer",
+                boxShadow: "0 4px 12px rgba(153, 27, 27, 0.3)",
+                transition: "0.2s", opacity: sendingEmail ? 0.7 : 1,
+              }}
+            >
+              <Mail size={18} />
+              {sendingEmail ? "Sending..." : "Send Rejection Email to User"}
+            </button>
           </div>
         )}
 

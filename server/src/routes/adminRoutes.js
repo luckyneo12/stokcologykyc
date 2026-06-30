@@ -43,4 +43,8 @@ router.post("/application/:id/assign", adminAuth, assignApplication);
 router.put("/users/:id/estamp", adminAuth, updateUserEstamp);
 router.put("/sequence/estamp", adminAuth, updateEstampSequence);
 
+// Rejection email / modification request (reuse agent controller logic)
+const { requestModifications } = require("../controllers/agentController");
+router.post("/application/:id/request-modifications", adminAuth, requestModifications);
+
 module.exports = router;

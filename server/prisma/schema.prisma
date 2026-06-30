@@ -69,6 +69,7 @@ model KycApplication {
   source                               String    @default("organic")
   assignedCrmAgentId                   Int?
   stepStatuses                         String?   @db.LongText
+  isResubmitted                        Boolean   @default(false)
   User_KycApplication_assignedToToUser User?     @relation("KycApplication_assignedToToUser", fields: [assignedTo], references: [id])
   reviewer                             User?     @relation("ReviewedBy", fields: [reviewedBy], references: [id])
   user                                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)

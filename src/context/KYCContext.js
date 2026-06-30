@@ -59,6 +59,7 @@ const INITIAL_STATE = {
   rejectionReason: "",
   submittedAt: null,
   nsdlResponse: null,
+  stepStatuses: {}, // { [reviewStepId]: { status, reason, ... } }
 };
 
 const STEPS = [
@@ -78,6 +79,50 @@ const STEPS = [
   { id: "aadhaarEsign", label: "Aadhaar eSign" },
   { id: "finalCompletion", label: "Completion" }
 ];
+
+// Maps agent review step IDs → KYC user step indexes
+// Some review steps map to the same KYC step (e.g. financialProof, signature, panUpload → documentUpload=11)
+const REVIEW_STEP_TO_KYC_INDEX = {
+  phoneVerification: 1,
+  emailVerification: 2,
+  pricingSelection: 3,
+  panVerification: 4,
+  digilocker: 5,
+  personalDetails: 6,
+  nomineeChoice: 7,
+  nomineeDetails: 8,
+  nomineeAllocation: 9,
+  bankVerification: 10,
+  financialProof: 11,
+  signature: 11,
+  panUpload: 11,
+  ipv: 11,
+  esignPreview: 12,
+  aadhaarEsign: 13,
+  completion: 14,
+};
+
+/**
+ * Returns true if a KYC step index is "approved" (i.e. all review steps
+ * that map to this KYC step have been approved).
+ * A step is NOT considered approved if ANY review step mapping to it is rejected or missing.
+ * Steps 12+ (eSign/completion) are NEVER skipped — they must always be redone after modifications.
+ */
+function isKycStepApproved(kycStepIndex, stepStatuses) {
+  if (!stepStatuses || Object.keys(stepStatuses).length === 0) return false;
+  // eSign preview and beyond must always be revisited
+  if (kycStepIndex >= 12) return false;
+
+  const reviewStepsForIndex = Object.entries(REVIEW_STEP_TO_KYC_INDEX)
+    .filter(([, idx]) => idx === kycStepIndex)
+    .map(([reviewId]) => reviewId);
+
+  if (reviewStepsForIndex.length === 0) return false;
+
+  return reviewStepsForIndex.every(
+    (reviewId) => stepStatuses[reviewId]?.status === "approved"
+  );
+}
 
 const STEP_RELEVANT_KEYS = {
   welcome: ["status"],
@@ -241,7 +286,8 @@ export function KYCProvider({ children }) {
                 bsda: app.bsda || prev.bsda,
                 nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
                 nomineeAllocation: app.nomineeAllocation || prev.nomineeAllocation,
-                generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64
+                generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
+                stepStatuses: app.stepStatuses || prev.stepStatuses,
               });
             }
 
@@ -270,7 +316,8 @@ export function KYCProvider({ children }) {
                 bsda: app.bsda || prev.bsda,
                 nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
                 nomineeAllocation: app.nomineeAllocation || prev.nomineeAllocation,
-                generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64
+                generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
+                stepStatuses: app.stepStatuses || prev.stepStatuses,
               });
             }
 
@@ -314,7 +361,8 @@ export function KYCProvider({ children }) {
                   bsda: app.bsda || prev.bsda,
                   nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
                   nomineeAllocation: app.nomineeAllocation || prev.nomineeAllocation,
-                  generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64
+                  generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
+                  stepStatuses: app.stepStatuses || prev.stepStatuses,
                 });
               }
               
@@ -567,7 +615,16 @@ export function KYCProvider({ children }) {
     const currentStepId = currentSteps[currentPrev.currentStep]?.id;
     
     const base = updates ? { ...currentPrev, ...updates } : currentPrev;
-    const nextStepIndex = Math.min(base.currentStep + 1, currentSteps.length - 1);
+    let nextStepIndex = Math.min(base.currentStep + 1, currentSteps.length - 1);
+
+    // MODIFICATION MODE: Skip approved steps (but never skip step 12+ i.e. eSign)
+    const hasStepStatuses = base.stepStatuses && Object.keys(base.stepStatuses).length > 0;
+    if (hasStepStatuses) {
+      while (nextStepIndex < currentSteps.length - 1 && isKycStepApproved(nextStepIndex, base.stepStatuses)) {
+        console.log(`[KYC Context] Skipping approved step ${nextStepIndex} (${currentSteps[nextStepIndex]?.id})`);
+        nextStepIndex++;
+      }
+    }
     
     // We must pass the NEXT step index so the backend updates the user's progress bookmark
     const computedNextState = { ...base, currentStep: nextStepIndex }; 
