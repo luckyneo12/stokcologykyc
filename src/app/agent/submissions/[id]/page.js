@@ -16,6 +16,7 @@ import {
   Maximize2,
   X,
   Mail,
+  User, Phone
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -733,6 +734,24 @@ function ImageComparisonModal({ isOpen, onClose, leftImage, leftLabel, rightImag
   );
 }
 
+
+function getInitials(name) {
+  if (!name) return "??";
+  const parts = name.trim().split(" ");
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function InfoField({ label, value }) {
+  if (value === undefined || value === null || value === "") return null;
+  return (
+    <div>
+      <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary)", wordBreak: "break-word" }}>{value}</div>
+    </div>
+  );
+}
+
 function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   const isApproved = info.status === "approved";
   const isRejected = info.status === "rejected";
@@ -1020,110 +1039,102 @@ export default function AgentReview() {
   const progress = reviewableSteps.length ? Math.round((approvedCount / reviewableSteps.length) * 100) : 0;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f2f5", padding: "24px 32px", fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f8f9fa", padding: "24px 32px", fontFamily: "'Inter', sans-serif" }}>
       <ImageComparisonModal {...modalState} onClose={() => setModalState({ isOpen: false })} />
       
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <button onClick={() => router.push("/agent")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "none", background: "white", padding: "10px 16px", borderRadius: 8, color: "var(--text-primary)", fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-            <ArrowLeft size={18} /> Back to Requests
-          </button>
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+        {/* Top Bar */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, padding: "16px 24px", background: "white", borderRadius: 12, border: "1px solid var(--border-color)", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 8, background: "#3b82f6", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: "1.2rem", boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)" }}>
+              {getInitials(getApplicantName(app))}
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <h1 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 900, color: "var(--text-primary)" }}>{getApplicantName(app)}</h1>
+                <span style={{ padding: "4px 8px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.5 }}>Pending Review</span>
+                <span style={{ padding: "4px 8px", background: "#dcfce7", color: "#15803d", borderRadius: 4, fontSize: "0.65rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.5 }}>Low Risk</span>
+              </div>
+              <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600, marginTop: 4 }}>
+                KYC-{app.applicationId.substring(0,8).toUpperCase()} • Submitted {new Date(app.submittedAt || Date.now()).toLocaleString("en-IN", { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          </div>
+          
           <div style={{ display: "flex", gap: 12 }}>
-            {(app.nsdlResponse?.signedPdf || app.esignDetails?.signedPdf || (app.documents || []).find(d => String(d?.type).toUpperCase() === "ESIGN")?.path || app.generatedPdfBase64) && (
-              <button onClick={() => {
-                const pdfMedia = firstMedia(app.nsdlResponse?.signedPdf || app.esignDetails?.signedPdf || (app.documents || []).find(d => String(d?.type).toUpperCase() === "ESIGN")?.path || app.generatedPdfBase64, "Signed PDF");
-                if (pdfMedia && pdfMedia.src) openInNewTab(pdfMedia.src);
-              }} style={{ padding: "12px 24px", borderRadius: 8, border: "1px solid #d1d5db", background: "white", color: "var(--text-primary)", fontWeight: 900, cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-                <FileText size={20} /> Download eSigned PDF
+            <button onClick={() => router.push("/agent")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid var(--border-color)", background: "white", padding: "10px 16px", borderRadius: 6, color: "var(--text-primary)", fontWeight: 700, cursor: "pointer" }}>
+              <ArrowLeft size={16} /> Back
+            </button>
+            {rejectedSteps.length > 0 && (
+              <button disabled={sendingEmail} onClick={requestModifications} style={{ padding: "10px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "white", color: "var(--text-primary)", fontWeight: 700, cursor: sendingEmail ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                <Mail size={16} /> Request Re-upload
               </button>
             )}
             {canApproveApplication && (
-              <button disabled={submitting} onClick={() => updateApplicationStatus("verified")} style={{ padding: "12px 24px", borderRadius: 8, border: "none", background: "var(--wise-dark-green)", color: "white", fontWeight: 900, cursor: submitting ? "not-allowed" : "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, boxShadow: "0 4px 15px rgba(0,0,0,0.2)" }}>
-                <BadgeCheck size={20} /> Finalize Approval
+              <button disabled={submitting} onClick={() => updateApplicationStatus("verified")} style={{ padding: "10px 24px", borderRadius: 6, border: "none", background: "#10b981", color: "white", fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer" }}>
+                Approve Complete Form
               </button>
             )}
           </div>
         </div>
 
-        <div style={{ background: "linear-gradient(135deg, #163300 0%, #2a5a00 100%)", borderRadius: 16, padding: 32, color: "white", marginBottom: 30, boxShadow: "0 10px 30px rgba(22, 51, 0, 0.15)", display: "grid", gridTemplateColumns: "1fr auto", gap: 40, alignItems: "center" }}>
-          <div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.2)", padding: "6px 12px", borderRadius: 20, fontSize: "0.8rem", fontWeight: 800, marginBottom: 16, textTransform: "uppercase", letterSpacing: 1 }}>
-              <ShieldCheck size={16} /> Comprehensive Review
+        <div style={{ display: "grid", gridTemplateColumns: "350px 1fr", gap: 32, alignItems: "start" }}>
+          {/* Left Sidebar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 24, position: "sticky", top: 24 }}>
+            {/* Personal Info Card */}
+            <div style={{ background: "white", borderRadius: 12, border: "1px solid var(--border-color)", padding: "24px 24px", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
+              <h3 style={{ margin: "0 0 24px", fontSize: "1rem", fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+                <User size={18} /> Personal Information
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                <InfoField label="FULL LEGAL NAME" value={app.personalDetails?.fullName || app.personalDetails?.name} />
+                <InfoField label="FATHER'S NAME" value={app.personalDetails?.fatherName} />
+                <InfoField label="MOTHER'S NAME" value={app.personalDetails?.motherName} />
+                <InfoField label="DATE OF BIRTH" value={app.personalDetails?.dob} />
+                <InfoField label="GENDER" value={app.personalDetails?.gender} />
+                <InfoField label="MARITAL STATUS" value={app.personalDetails?.maritalStatus} />
+                <InfoField label="NATIONALITY" value="Indian" />
+                <InfoField label="OCCUPATION" value={app.personalDetails?.occupation} />
+                <InfoField label="ANNUAL INCOME" value={app.personalDetails?.annualIncome} />
+                <InfoField label="SOURCE OF FUNDS" value={app.personalDetails?.sourceOfFunds || "Salary"} />
+              </div>
             </div>
-            <h1 style={{ margin: "0 0 8px 0", fontSize: "2.2rem", fontWeight: 900, letterSpacing: -0.5 }}>{getApplicantName(app)}</h1>
-            <p style={{ margin: 0, fontSize: "1rem", color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>
-              ID: <span style={{ fontWeight: 800 }}>{app.applicationId}</span> &bull; {app.user?.phone || "No phone"} &bull; {app.personalDetails?.email || app.user?.email || "No email"}
-            </p>
-            {app.user?.eStampAssigned && (
-              <div style={{ marginTop: 12, display: "inline-block", background: "rgba(255,255,255,0.15)", padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)" }}>
-                <div style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 800, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>Assigned E-Stamp</div>
-                <div style={{ fontSize: "0.95rem", fontWeight: 600 }}>
-                  Cert No: <span style={{ fontWeight: 900 }}>{app.user.eStampAssigned.certificateNo}</span> &nbsp;&bull;&nbsp; Serial No: <span style={{ fontWeight: 900 }}>{app.user.eStampAssigned.serialNo}</span>
-                </div>
+            
+            {/* Contact & Address Card */}
+            <div style={{ background: "white", borderRadius: 12, border: "1px solid var(--border-color)", padding: "24px 24px", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
+               <h3 style={{ margin: "0 0 24px", fontSize: "1rem", fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+                <Phone size={18} /> Contact & Address
+              </h3>
+               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                <InfoField label="MOBILE" value={app.user?.phone} />
+                <InfoField label="EMAIL" value={app.user?.email || app.personalDetails?.email} />
+                <InfoField label="ADDRESS" value={typeof app.address === 'object' ? app.address?.permanentAddress || app.address?.currentAddress || app.address?.address || app.identityDetails?.address : app.address || app.identityDetails?.address} />
+              </div>
+            </div>
+          </div>
+
+          {/* Right Content - Verification Steps */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+             {unlockedSteps.map((step) => (
+              <StepCard 
+                key={step.id} 
+                step={step} 
+                app={app} 
+                info={statuses[step.id] || {}} 
+                submitting={submitting} 
+                reviewStep={reviewStep} 
+                onImageClick={handleImageClick}
+              />
+            ))}
+            {unlockedSteps.length === 0 && (
+              <div style={{ padding: 60, borderRadius: 12, textAlign: "center", background: "white", border: "1px solid var(--border-color)" }}>
+                <Clock3 size={48} color="#9ca3af" style={{ marginBottom: 16 }} />
+                <h2 style={{ margin: "0 0 8px", fontSize: "1.5rem", fontWeight: 800 }}>Waiting for User</h2>
+                <p style={{ color: "var(--text-muted)", fontSize: "1rem" }}>The applicant has not reached a verifiable KYC step yet.</p>
               </div>
             )}
           </div>
-          
-          <div style={{ display: "flex", gap: 24, textAlign: "right" }}>
-            <div style={{ background: "rgba(0,0,0,0.2)", padding: 20, borderRadius: 12, backdropFilter: "blur(10px)" }}>
-              <div style={{ fontSize: "0.85rem", textTransform: "uppercase", fontWeight: 800, color: "rgba(255,255,255,0.7)", marginBottom: 4 }}>Overall Progress</div>
-              <div style={{ fontSize: "2rem", fontWeight: 900 }}>{progress}%</div>
-            </div>
-            <div style={{ background: "rgba(0,0,0,0.2)", padding: 20, borderRadius: 12, backdropFilter: "blur(10px)", border: Number(app.faceMatchScore || 0) < 70 ? "2px solid #ef4444" : "none" }}>
-              <div style={{ fontSize: "0.85rem", textTransform: "uppercase", fontWeight: 800, color: "rgba(255,255,255,0.7)", marginBottom: 4 }}>Face Match</div>
-              <div style={{ fontSize: "2rem", fontWeight: 900, color: Number(app.faceMatchScore || 0) >= 70 ? "#a7f3d0" : "#fca5a5" }}>{app.faceMatchScore || 0}%</div>
-            </div>
-          </div>
         </div>
-
-        {rejectedSteps.length > 0 && (
-          <div style={{ background: "#fee2e2", border: "1px solid #f87171", color: "#991b1b", padding: 20, borderRadius: 12, marginBottom: 30 }}>
-            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
-              <AlertCircle size={24} />
-              <div>
-                <strong style={{ display: "block", fontSize: "1.1rem" }}>Application Blocked</strong>
-                There are {rejectedSteps.length} rejected steps. They must be resolved before final approval.
-              </div>
-            </div>
-            <button
-              disabled={sendingEmail}
-              onClick={requestModifications}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 8,
-                padding: "10px 20px", borderRadius: 8, border: "none",
-                background: "linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)",
-                color: "white", fontWeight: 800, cursor: sendingEmail ? "not-allowed" : "pointer",
-                boxShadow: "0 4px 12px rgba(153, 27, 27, 0.3)",
-                transition: "0.2s", opacity: sendingEmail ? 0.7 : 1,
-              }}
-            >
-              <Mail size={18} />
-              {sendingEmail ? "Sending..." : "Send Rejection Email to User"}
-            </button>
-          </div>
-        )}
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {unlockedSteps.map((step) => (
-            <StepCard 
-              key={step.id} 
-              step={step} 
-              app={app} 
-              info={statuses[step.id] || {}} 
-              submitting={submitting} 
-              reviewStep={reviewStep} 
-              onImageClick={handleImageClick}
-            />
-          ))}
-          {unlockedSteps.length === 0 && (
-            <div className="card" style={{ padding: 60, borderRadius: 12, textAlign: "center", background: "white" }}>
-              <Clock3 size={48} color="#9ca3af" style={{ marginBottom: 16 }} />
-              <h2 style={{ margin: "0 0 8px", fontSize: "1.5rem", fontWeight: 800 }}>Waiting for User</h2>
-              <p style={{ color: "var(--text-muted)", fontSize: "1rem" }}>The applicant has not reached a verifiable KYC step yet.</p>
-            </div>
-          )}
-        </div>
-
       </div>
 
       {toast && (

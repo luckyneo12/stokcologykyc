@@ -4,6 +4,7 @@ import { useKYC } from "@/context/KYCContext";
 import { getPincodeData } from "@/utils/kycApi";
 import { maskAadhaarImage } from "@/utils/digio";
 import DateInput from "../DateInput";
+import ImageCropper from "@/components/ui/ImageCropper";
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", 
@@ -146,6 +147,7 @@ export default function NomineeStep() {
   });
 
   const [errors, setErrors] = useState({});
+  const [cropModalData, setCropModalData] = useState(null);
 
   const addNominee = () => {
     if (nominees.length >= 3) {
@@ -360,32 +362,37 @@ export default function NomineeStep() {
     const file = e.target.files[0];
     if (file) {
       const isAadhaar = (nominees[idx].proofType || "PAN CARD") === "AADHAAR CARD";
-      if (isAadhaar) addToast("Masking Aadhaar... Please wait", "info");
-
+      
       const reader = new FileReader();
       reader.onloadend = async () => {
-        let finalImage = reader.result;
-
-        if (isAadhaar) {
-          try {
-            const result = await maskAadhaarImage(reader.result, file.type === "application/pdf" ? "PDF" : "PNG", file.name);
-            if (result && result.masked_output) {
-              finalImage = `data:image/png;base64,${result.masked_output}`;
-              addToast("Aadhaar masked securely!", "success");
+        if (file.type === "application/pdf") {
+          // PDFs cannot be cropped, process directly
+          if (isAadhaar) addToast("Masking Aadhaar... Please wait", "info");
+          let finalImage = reader.result;
+          if (isAadhaar) {
+            try {
+              const result = await maskAadhaarImage(reader.result, "PDF", file.name);
+              if (result && result.masked_output) {
+                finalImage = `data:application/pdf;base64,${result.masked_output}`;
+                addToast("Aadhaar masked securely!", "success");
+              }
+            } catch (err) {
+              console.error("Masking error:", err);
+              addToast("Failed to mask Aadhaar securely.", "error");
+              return;
             }
-          } catch (err) {
-            console.error("Masking error:", err);
-            addToast("Failed to mask Aadhaar securely. Please try again.", "error");
-            return; // don't save unmasked image
           }
+          const updated = [...nominees];
+          updated[idx] = { ...updated[idx], proofPath: finalImage };
+          setNominees(updated);
+          if (!isAadhaar) addToast("Proof uploaded successfully", "success");
+        } else {
+          // For images, open cropper modal
+          setCropModalData({ idx, isGuardian: false, imageSrc: reader.result, isAadhaar, fileName: file.name });
         }
-
-        const updated = [...nominees];
-        updated[idx] = { ...updated[idx], proofPath: finalImage };
-        setNominees(updated);
-        if (!isAadhaar) addToast("Proof uploaded successfully", "success");
       };
       reader.readAsDataURL(file);
+      e.target.value = null; // reset input
     }
   };
 
@@ -393,33 +400,71 @@ export default function NomineeStep() {
     const file = e.target.files[0];
     if (file) {
       const isAadhaar = (nominees[idx].guardianProofType || "PAN CARD") === "AADHAAR CARD";
-      if (isAadhaar) addToast("Masking Guardian Aadhaar... Please wait", "info");
 
       const reader = new FileReader();
       reader.onloadend = async () => {
-        let finalImage = reader.result;
-
-        if (isAadhaar) {
-          try {
-            const result = await maskAadhaarImage(reader.result, file.type === "application/pdf" ? "PDF" : "PNG", file.name);
-            if (result && result.masked_output) {
-              finalImage = `data:image/png;base64,${result.masked_output}`;
-              addToast("Guardian Aadhaar masked securely!", "success");
+        if (file.type === "application/pdf") {
+          if (isAadhaar) addToast("Masking Guardian Aadhaar... Please wait", "info");
+          let finalImage = reader.result;
+          if (isAadhaar) {
+            try {
+              const result = await maskAadhaarImage(reader.result, "PDF", file.name);
+              if (result && result.masked_output) {
+                finalImage = `data:application/pdf;base64,${result.masked_output}`;
+                addToast("Guardian Aadhaar masked securely!", "success");
+              }
+            } catch (err) {
+              console.error("Masking error:", err);
+              addToast("Failed to mask Aadhaar securely.", "error");
+              return;
             }
-          } catch (err) {
-            console.error("Masking error:", err);
-            addToast("Failed to mask Aadhaar securely. Please try again.", "error");
-            return; // don't save unmasked image
           }
+          const updated = [...nominees];
+          updated[idx] = { ...updated[idx], guardianProofPath: finalImage };
+          setNominees(updated);
+          if (!isAadhaar) addToast("Guardian proof uploaded", "success");
+        } else {
+          // For images, open cropper modal
+          setCropModalData({ idx, isGuardian: true, imageSrc: reader.result, isAadhaar, fileName: file.name });
         }
-
-        const updated = [...nominees];
-        updated[idx] = { ...updated[idx], guardianProofPath: finalImage };
-        setNominees(updated);
-        if (!isAadhaar) addToast("Guardian proof uploaded", "success");
       };
       reader.readAsDataURL(file);
+      e.target.value = null; // reset input
     }
+  };
+
+  const handleCropComplete = async (croppedBase64) => {
+    if (!cropModalData) return;
+    const { idx, isGuardian, isAadhaar, fileName } = cropModalData;
+    
+    let finalImage = croppedBase64;
+    
+    if (isAadhaar) {
+      addToast(`Masking ${isGuardian ? "Guardian " : ""}Aadhaar... Please wait`, "info");
+      try {
+        const result = await maskAadhaarImage(croppedBase64, "PNG", fileName);
+        if (result && result.masked_output) {
+          finalImage = `data:image/png;base64,${result.masked_output}`;
+          addToast(`${isGuardian ? "Guardian " : ""}Aadhaar masked securely!`, "success");
+        }
+      } catch (err) {
+        console.error("Masking error:", err);
+        addToast("Failed to mask Aadhaar securely.", "error");
+        setCropModalData(null);
+        return;
+      }
+    } else {
+      addToast(`${isGuardian ? "Guardian " : ""}Proof uploaded successfully`, "success");
+    }
+
+    const updated = [...nominees];
+    if (isGuardian) {
+      updated[idx] = { ...updated[idx], guardianProofPath: finalImage };
+    } else {
+      updated[idx] = { ...updated[idx], proofPath: finalImage };
+    }
+    setNominees(updated);
+    setCropModalData(null);
   };
 
   const validate = () => {
@@ -520,7 +565,7 @@ export default function NomineeStep() {
       addToast("Please fill all required fields correctly", "error");
       return;
     }
-    nextStep({ nomineeDetails: { numberOfNominees: nominees.length.toString(), nominees } });
+    nextStep({ nomineeDetails: { ...nomineeDetails, numberOfNominees: nominees.length.toString(), nominees } });
   };
 
   return (
@@ -776,14 +821,33 @@ export default function NomineeStep() {
                 </div>
 
                 <div style={{ marginBottom: "32px" }}>
-                  <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", width: "100%", height: "48px", border: errors[`${idx}-proofPath`] ? "2px dashed var(--wise-danger)" : "1.2px dashed var(--border-color)", borderRadius: "12px", background: "var(--input-bg)", cursor: "pointer", color: "var(--text-primary)", fontSize: "0.85rem", fontWeight: 700 }}>
-                    <input type="file" style={{ display: "none" }} onChange={e => handleFileChange(idx, e)} />
-                    <UploadIcon /> <span>Upload Nominee {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN Card" : "Aadhaar Card"}</span>
-                  </label>
-                  {nom.proofPath && (
-                    <div style={{ marginTop: "12px", textAlign: "center", padding: "10px", borderRadius: "12px", background: "var(--wise-light-mint)", border: "1px solid var(--wise-green)" }}>
-                      <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Nominee {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
-                    </div>
+                  {cropModalData && cropModalData.idx === idx && !cropModalData.isGuardian ? (
+                    <ImageCropper 
+                      filePreview={cropModalData.imageSrc}
+                      setFilePreview={(res) => setCropModalData({ ...cropModalData, imageSrc: res })}
+                      cropLabel={`Crop Nominee ${(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"}`}
+                      onCropApply={(res) => handleCropComplete(res)}
+                      onCancel={() => setCropModalData(null)}
+                    />
+                  ) : (
+                    <>
+                      <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", width: "100%", height: "48px", border: errors[`${idx}-proofPath`] ? "2px dashed var(--wise-danger)" : "1.2px dashed var(--border-color)", borderRadius: "12px", background: "var(--input-bg)", cursor: "pointer", color: "var(--text-primary)", fontSize: "0.85rem", fontWeight: 700 }}>
+                        <input type="file" style={{ display: "none" }} onChange={e => handleFileChange(idx, e)} accept="image/*,application/pdf" />
+                        <UploadIcon /> <span>Upload Nominee {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN Card" : "Aadhaar Card"}</span>
+                      </label>
+                      {nom.proofPath && (
+                        <div style={{ marginTop: "12px", textAlign: "center", padding: "10px", borderRadius: "12px", background: "var(--wise-light-mint)", border: "1px solid var(--wise-green)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                          {nom.proofPath.includes("application/pdf") ? (
+                            <div style={{ width: "100%", maxWidth: "200px", height: "100px", background: "var(--bg-elevated)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-secondary)" }}>PDF Document</span>
+                            </div>
+                          ) : (
+                            <img src={nom.proofPath} alt="Nominee Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
+                          )}
+                          <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Nominee {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -967,22 +1031,38 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ gridColumn: "1 / -1" }}>
-                    <label style={{ 
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", 
-                      width: "100%", height: "48px", border: errors[`${idx}-guardianProofPath`] ? "2px dashed var(--wise-danger)" : "1.2px dashed var(--border-color)", 
-                      borderRadius: "12px", background: "var(--input-bg)", cursor: "pointer", 
-                      color: "var(--text-primary)", fontSize: "0.85rem", fontWeight: 700 
-                    }}>
-                      <input type="file" style={{ display: "none" }} onChange={e => handleGuardianFileChange(idx, e)} />
-                      <UploadIcon /> <span>Upload Guardian {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN Card" : "Aadhaar Card"}</span>
-                    </label>
-                    {nom.guardianProofPath && (
-                      <div style={{ marginTop: "12px", textAlign: "center", padding: "10px", borderRadius: "12px", background: "var(--wise-light-mint)", border: "1px solid var(--wise-green)" }}>
-                        <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Guardian {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
-                      </div>
+                  <div style={{ marginBottom: "32px" }}>
+                    {cropModalData && cropModalData.idx === idx && cropModalData.isGuardian ? (
+                      <ImageCropper 
+                        filePreview={cropModalData.imageSrc}
+                        setFilePreview={(res) => setCropModalData({ ...cropModalData, imageSrc: res })}
+                        cropLabel={`Crop Guardian ${(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"}`}
+                        onCropApply={(res) => handleCropComplete(res)}
+                        onCancel={() => setCropModalData(null)}
+                      />
+                    ) : (
+                      <>
+                        <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", width: "100%", height: "48px", border: errors[`${idx}-guardianProofPath`] ? "2px dashed var(--wise-danger)" : "1.2px dashed var(--border-color)", borderRadius: "12px", background: "var(--input-bg)", cursor: "pointer", color: "var(--text-primary)", fontSize: "0.85rem", fontWeight: 700 }}>
+                          <input type="file" style={{ display: "none" }} onChange={e => handleGuardianFileChange(idx, e)} accept="image/*,application/pdf" />
+                          <UploadIcon /> <span>Upload Guardian {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN Card" : "Aadhaar Card"}</span>
+                        </label>
+                        {nom.guardianProofPath && (
+                          <div style={{ marginTop: "12px", textAlign: "center", padding: "10px", borderRadius: "12px", background: "var(--wise-light-mint)", border: "1px solid var(--wise-green)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                            {nom.guardianProofPath.includes("application/pdf") ? (
+                              <div style={{ width: "100%", maxWidth: "200px", height: "100px", background: "var(--bg-elevated)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-secondary)" }}>PDF Document</span>
+                              </div>
+                            ) : (
+                              <img src={nom.guardianProofPath} alt="Guardian Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
+                            )}
+                            <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Guardian {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
+              </div>
               </div>
             )}
           </div>
@@ -1032,6 +1112,7 @@ export default function NomineeStep() {
           Back
         </button>
       </div>
+      {/* Modal is removed since cropping is now inline */}
     </div>
   );
 }

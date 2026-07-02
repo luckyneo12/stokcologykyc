@@ -1,55 +1,88 @@
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
-/**
- * Generates a complete KYC PDF by filling the 55-page official form 
- * and adding a 56th summary page with ALL user details.
- */
+function getVariableValue(variableName, appData) {
+  const safeJsonParse = (str) => {
+    try { return typeof str === 'string' ? JSON.parse(str) : str; } catch { return str; }
+  };
+
+  const pDetails = safeJsonParse(appData.personalDetails) || {};
+  const iDetails = safeJsonParse(appData.identityDetails) || {};
+  const aDetails = safeJsonParse(appData.address) || {};
+  const bDetails = safeJsonParse(appData.bankDetails) || {};
+  
+  switch(variableName) {
+    case 'applicationId': return appData.applicationId;
+    case 'status': return appData.status;
+    case 'plan': return safeJsonParse(appData.pricingPlan)?.name || 'Standard';
+    case 'fullName': return pDetails.fullName;
+    case 'fatherName': return pDetails.fatherName;
+    case 'dob': return pDetails.dob;
+    case 'gender': return pDetails.gender;
+    case 'pan': return iDetails.pan;
+    case 'aadhaar': return iDetails.aadhaar;
+    case 'maritalStatus': return pDetails.maritalStatus;
+    case 'occupation': return pDetails.occupation;
+    case 'annualIncome': return pDetails.incomeRange || pDetails.annualIncome;
+    case 'nationality': return pDetails.nationality || 'Indian';
+    case 'residentialStatus': return pDetails.residentialStatus || 'Resident Individual';
+    case 'email': return appData.email || pDetails.email || appData.user?.email;
+    case 'phone': return appData.phone || pDetails.phone || appData.user?.phone;
+    case 'addressLine1': return aDetails.line1;
+    case 'addressLine2': return aDetails.line2;
+    case 'city': return aDetails.city;
+    case 'state': return aDetails.state;
+    case 'pincode': return aDetails.pincode;
+    case 'fullAddress': 
+      const addr = `${aDetails.line1 || ''}, ${aDetails.line2 || ''}, ${aDetails.city || ''}, ${aDetails.state || ''} - ${aDetails.pincode || ''}`;
+      return addr.replace(/^[,\s]+|[,\s]+$/g, '');
+    case 'bankName': return bDetails.bankName;
+    case 'accountNumber': return bDetails.accountNumber;
+    case 'ifsc': return bDetails.ifsc;
+    case 'accountType': return bDetails.accountType || 'Savings';
+    default: return '';
+  }
+}
+
 async function generateKycPdf(applicationData) {
   try {
-    const { 
-      personalDetails, 
-      identityDetails, 
-      address, 
-      bankDetails, 
-      selfieDetails, 
-      signature, 
-      applicationId,
-      nomineeDetails,
-      pricingPlan,
-      financialProof
-    } = applicationData;
-
     const safeJsonParse = (str) => {
       try { return typeof str === 'string' ? JSON.parse(str) : str; } catch { return str; }
     };
 
-    const parsedPersonalDetails = safeJsonParse(personalDetails) || {};
-    const parsedIdentityDetails = safeJsonParse(identityDetails) || {};
-    const parsedAddress = safeJsonParse(address) || {};
-    const parsedBankDetails = safeJsonParse(bankDetails) || {};
-    const parsedSelfieDetails = safeJsonParse(selfieDetails) || {};
-    const parsedSignature = safeJsonParse(signature) || {};
-    const parsedNomineeDetails = safeJsonParse(nomineeDetails) || {};
-    const parsedPricingPlan = safeJsonParse(pricingPlan) || {};
-    const parsedFinancialProof = safeJsonParse(financialProof) || {};
+    const parsedSelfieDetails = safeJsonParse(applicationData.selfieDetails) || {};
+    const parsedSignature = safeJsonParse(applicationData.signature) || {};
     const parsedDocuments = safeJsonParse(applicationData.documents) || [];
     const parsedPanUpload = safeJsonParse(applicationData.panUpload) || {};
-    
-    // 1. Load the official PDF (55 pages)
+    const parsedFinancialProof = safeJsonParse(applicationData.financialProof) || {};
+    const parsedBankDetails = safeJsonParse(applicationData.bankDetails) || {};
+    const parsedPersonalDetails = safeJsonParse(applicationData.personalDetails) || {};
+    const parsedNomineeDetails = safeJsonParse(applicationData.nomineeDetails) || {};
+
+    // Check if an active template exists
+    const activeTemplate = await prisma.pdfTemplate.findFirst({
+      where: { isActive: true }
+    });
+
     let officialPdfPath = path.join(__dirname, '../../../public/official_form.pdf');
-    
-    // Add fallback paths to make path resolution more resilient on live servers
+    if (activeTemplate && activeTemplate.basePdfUrl) {
+      // Strip leading slash to prevent path.join from treating it as an absolute path
+      const safeRelPath = activeTemplate.basePdfUrl.replace(/^\/+/, '');
+      const candidatePath = path.join(__dirname, '../../', safeRelPath);
+      if (fs.existsSync(candidatePath)) officialPdfPath = candidatePath;
+    }
+
     if (!fs.existsSync(officialPdfPath)) {
       const fallbacks = [
-        path.join(__dirname, '../../../public_html/official_form.pdf'), // cPanel frontend root
-        path.join(__dirname, '../../public/official_form.pdf'),         // Inside server folder (if public was copied there)
-        path.join(__dirname, '../../official_form.pdf'),                // Inside server folder root
-        path.join(process.cwd(), 'public/official_form.pdf'),           // Next.js fallback
-        path.join(process.cwd(), 'official_form.pdf')                   // CWD root fallback
+        path.join(__dirname, '../../../public_html/official_form.pdf'),
+        path.join(__dirname, '../../public/official_form.pdf'),
+        path.join(__dirname, '../../official_form.pdf'),
+        path.join(process.cwd(), 'public/official_form.pdf'),
+        path.join(process.cwd(), 'official_form.pdf')
       ];
-
       for (const fallback of fallbacks) {
         if (fs.existsSync(fallback)) {
           officialPdfPath = fallback;
@@ -59,143 +92,151 @@ async function generateKycPdf(applicationData) {
     }
 
     if (!fs.existsSync(officialPdfPath)) {
-      throw new Error("Official form PDF not found at any known locations. Last checked: " + officialPdfPath);
+      throw new Error("Base PDF not found at any known locations.");
     }
-    
-    const officialPdfBytes = fs.readFileSync(officialPdfPath);
-    const officialPdf = await PDFDocument.load(officialPdfBytes);
 
-    // 2. Create a new document
-    const pdfDoc = await PDFDocument.create();
-    
-    const copiedPages = await pdfDoc.copyPages(officialPdf, officialPdf.getPageIndices());
-    copiedPages.forEach((page) => pdfDoc.addPage(page));
-    
-    // 3. Add the Summary Annexure Page
-    const page = pdfDoc.addPage([595.28, 841.89]); // A4
-    const { width, height } = page.getSize();
+    const officialPdfBytes = fs.readFileSync(officialPdfPath);
+    const pdfDoc = await PDFDocument.load(officialPdfBytes);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    
-    // Header
-    page.drawText('KYC SUMMARY ANNEXURE (Page 1)', {
-      x: 50, y: height - 50, size: 18, font: boldFont, color: rgb(0, 0, 0),
-    });
+    const dingbats = await pdfDoc.embedFont(StandardFonts.ZapfDingbats);
 
-    let currentY = height - 90;
-    const lineHeight = 18;
+    // If template exists, populate fields over the existing pages
+    if (activeTemplate) {
+      const fields = safeJsonParse(activeTemplate.fields) || [];
+      const pages = pdfDoc.getPages();
 
-    const drawSection = (title) => {
-      currentY -= 10;
-      page.drawRectangle({
-        x: 45, y: currentY - 5, width: width - 90, height: 20,
-        color: rgb(0.9, 0.9, 0.95),
-      });
-      page.drawText(title.toUpperCase(), {
-        x: 50, y: currentY, size: 10, font: boldFont, color: rgb(0.1, 0.1, 0.4),
-      });
-      currentY -= 25;
-    };
+      for (const field of fields) {
+        const pageIndex = (field.page || 1) - 1;
+        if (pageIndex < 0 || pageIndex >= pages.length) continue;
+        
+        const page = pages[pageIndex];
+        const { height } = page.getSize();
+        // pdf-lib's y coordinate is from bottom. The frontend will likely send y from top.
+        // We will assume frontend sends y from top, so we do height - y.
+        const yPos = height - field.y; 
 
-    const drawField = (label, value) => {
-      const displayValue = String(value || 'Not Provided');
-      page.drawText(`${label}:`, { x: 50, y: currentY, size: 9, font: boldFont });
-      
-      // Simple wrapping for long values
-      if (displayValue.length > 60) {
-        const part1 = displayValue.substring(0, 60);
-        const part2 = displayValue.substring(60);
-        page.drawText(part1, { x: 180, y: currentY, size: 9, font: font });
-        currentY -= lineHeight - 4;
-        page.drawText(part2, { x: 180, y: currentY, size: 9, font: font });
-      } else {
-        page.drawText(displayValue, { x: 180, y: currentY, size: 9, font: font });
+        if (field.variable === 'selfie' || field.variable === 'signature') {
+          // Handle Images
+          let imgRelPath = field.variable === 'selfie' 
+            ? (parsedSelfieDetails.path || parsedSelfieDetails.preview || applicationData.selfie?.preview)
+            : (parsedSignature.path || parsedSignature.preview);
+            
+          if (imgRelPath) {
+            try {
+              const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
+              const imgPath = path.join(__dirname, '../../', cleanPath);
+              if (fs.existsSync(imgPath)) {
+                const imgBytes = fs.readFileSync(imgPath);
+                const image = imgPath.toLowerCase().endsWith('.png') ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
+                // Draw image with specified width/height or default to 100x100
+                const w = field.width || 100;
+                const h = field.height || 100;
+                page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
+              }
+            } catch(e) { console.error("[PDF Gen] Img fail:", e.message); }
+          }
+        } else if (field.type === 'checkbox') {
+          const val = getVariableValue(field.variable, applicationData);
+          const isMatch = field.matchValue 
+            ? String(val).toLowerCase() === String(field.matchValue).toLowerCase()
+            : !!val; // if no match value, act as boolean flag
+            
+          if (isMatch) {
+            page.drawText('4', { // '4' in ZapfDingbats is a check mark
+              x: field.x,
+              y: yPos - (field.fontSize || 14),
+              size: (field.fontSize || 14) + 4,
+              font: dingbats,
+              color: rgb(0, 0, 0)
+            });
+          }
+        } else {
+          // Handle Text
+          const val = getVariableValue(field.variable, applicationData);
+          if (val) {
+            page.drawText(String(val), {
+              x: field.x,
+              y: yPos - (field.fontSize || 12),
+              size: field.fontSize || 12,
+              font: font,
+              color: rgb(0, 0, 0)
+            });
+          }
+        }
       }
-      currentY -= lineHeight;
-    };
+    } else {
+      // FALLBACK TO ANNEXURE PAGE (OLD BEHAVIOR)
+      const page = pdfDoc.addPage([595.28, 841.89]);
+      const { width, height } = page.getSize();
+      page.drawText('KYC SUMMARY ANNEXURE', { x: 50, y: height - 50, size: 18, font: boldFont, color: rgb(0, 0, 0) });
 
-    // Application Info
-    drawSection('Application Information');
-    drawField('Application ID', applicationId);
-    drawField('Status', applicationData.status);
-    drawField('Submission Date', new Date().toLocaleDateString());
-    drawField('Selected Plan', pricingPlan?.name || 'Standard');
+      let currentY = height - 90;
+      const lineHeight = 18;
 
-    // Personal Details
-    drawSection('Personal & Identity Details');
-    drawField('Full Name', parsedPersonalDetails?.fullName);
-    drawField('Father / Spouse', parsedPersonalDetails?.fatherName);
-    drawField('Date of Birth', parsedPersonalDetails?.dob);
-    drawField('Gender', parsedPersonalDetails?.gender);
-    drawField('PAN Number', parsedIdentityDetails?.pan);
-    drawField('Aadhaar Number', parsedIdentityDetails?.aadhaar);
-    drawField('Marital Status', parsedPersonalDetails?.maritalStatus);
-    drawField('Occupation', parsedPersonalDetails?.occupation);
-    drawField('Annual Income', parsedPersonalDetails?.incomeRange || parsedPersonalDetails?.annualIncome);
+      const drawSection = (title) => {
+        currentY -= 10;
+        page.drawRectangle({ x: 45, y: currentY - 5, width: width - 90, height: 20, color: rgb(0.9, 0.9, 0.95) });
+        page.drawText(title.toUpperCase(), { x: 50, y: currentY, size: 10, font: boldFont, color: rgb(0.1, 0.1, 0.4) });
+        currentY -= 25;
+      };
 
-    // Address Details
-    drawSection('Contact & Address Details');
-    drawField('Email', applicationData.email || parsedPersonalDetails?.email || applicationData.user?.email || 'Not Provided');
-    drawField('Phone', applicationData.phone || parsedPersonalDetails?.phone || applicationData.user?.phone || 'Not Provided');
-    
-    // Robust Address Wrapping
-    const fullAddress = `${parsedAddress?.line1 || ''}, ${parsedAddress?.line2 || ''}, ${parsedAddress?.city || ''}, ${parsedAddress?.state || ''} - ${parsedAddress?.pincode || ''}`;
-    drawField('Permanent Address', fullAddress.replace(/^[,\s]+|[,\s]+$/g, ''));
-
-    // Bank Details
-    drawSection('Bank Account Details');
-    drawField('Bank Name', parsedBankDetails?.bankName);
-    drawField('Account Number', parsedBankDetails?.accountNumber);
-    drawField('IFSC Code', parsedBankDetails?.ifsc);
-    drawField('Account Type', parsedBankDetails?.accountType || 'Savings');
-
-    // Nominee Details
-    const isNomineeOpted = parsedNomineeDetails?.opted === "Yes" || parsedNomineeDetails?.opted === true;
-    if (isNomineeOpted && parsedNomineeDetails?.nominees?.length > 0) {
-      drawSection('Nominee Details');
-      parsedNomineeDetails.nominees.forEach((nom, idx) => {
-        if (nom.name || nom.fullName) {
-          drawField(`Nominee ${idx + 1}`, nom.fullName || nom.name);
-          drawField(`Relationship`, nom.relationship || nom.relation);
-          drawField(`Nominee DOB`, nom.dob);
+      const drawField = (label, value) => {
+        const displayValue = String(value || 'Not Provided');
+        page.drawText(`${label}:`, { x: 50, y: currentY, size: 9, font: boldFont });
+        if (displayValue.length > 60) {
+          page.drawText(displayValue.substring(0, 60), { x: 180, y: currentY, size: 9, font: font });
+          currentY -= lineHeight - 4;
+          page.drawText(displayValue.substring(60), { x: 180, y: currentY, size: 9, font: font });
+        } else {
+          page.drawText(displayValue, { x: 180, y: currentY, size: 9, font: font });
         }
-      });
+        currentY -= lineHeight;
+      };
+
+      drawSection('Application Information');
+      drawField('Application ID', applicationData.applicationId);
+      drawField('Status', applicationData.status);
+
+      drawSection('Personal & Identity Details');
+      drawField('Full Name', getVariableValue('fullName', applicationData));
+      drawField('PAN Number', getVariableValue('pan', applicationData));
+      drawField('Aadhaar Number', getVariableValue('aadhaar', applicationData));
+      drawField('Phone', getVariableValue('phone', applicationData));
+
+      currentY -= 20;
+
+      // Embed Selfie and Signature on Annexure
+      const selfieRel = parsedSelfieDetails?.path || parsedSelfieDetails?.preview || applicationData?.selfie?.preview;
+      if (selfieRel) {
+        try {
+          const clean = selfieRel.startsWith('/') ? selfieRel.substring(1) : selfieRel;
+          const p = path.join(__dirname, '../../', clean);
+          if (fs.existsSync(p)) {
+            const b = fs.readFileSync(p);
+            const img = p.toLowerCase().endsWith('.png') ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
+            page.drawImage(img, { x: 50, y: currentY - 140, width: 120, height: 120 });
+            page.drawText('CUSTOMER SELFIE', { x: 50, y: currentY - 155, size: 8, font: boldFont });
+          }
+        } catch (e) { console.error(e); }
+      }
+
+      const sigRel = parsedSignature?.path || parsedSignature?.preview;
+      if (sigRel) {
+        try {
+          const clean = sigRel.startsWith('/') ? sigRel.substring(1) : sigRel;
+          const p = path.join(__dirname, '../../', clean);
+          if (fs.existsSync(p)) {
+            const b = fs.readFileSync(p);
+            const img = p.toLowerCase().endsWith('.png') ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
+            page.drawImage(img, { x: 350, y: currentY - 140, width: 120, height: 60 });
+            page.drawText('CUSTOMER SIGNATURE', { x: 350, y: currentY - 155, size: 8, font: boldFont });
+          }
+        } catch (e) { console.error(e); }
+      }
     }
 
-    // 4. Images Section
-    currentY -= 20;
-
-    // Embed Selfie
-    const selfiePathRel = selfieDetails?.path || selfieDetails?.preview || applicationData?.selfie?.preview;
-    if (selfiePathRel) {
-      try {
-        const cleanPath = selfiePathRel.startsWith('/') ? selfiePathRel.substring(1) : selfiePathRel;
-        const selfiePath = path.join(__dirname, '../../', cleanPath);
-        if (fs.existsSync(selfiePath)) {
-          const imageBytes = fs.readFileSync(selfiePath);
-          const image = (selfiePath.toLowerCase().endsWith('.png')) ? await pdfDoc.embedPng(imageBytes) : await pdfDoc.embedJpg(imageBytes);
-          page.drawImage(image, { x: 50, y: currentY - 140, width: 120, height: 120 });
-          page.drawText('CUSTOMER SELFIE', { x: 50, y: currentY - 155, size: 8, font: boldFont });
-        }
-      } catch (e) { console.error("[PDF Gen] Selfie fail:", e.message); }
-    }
-
-    // Embed Signature
-    const sigPathRel = parsedSignature?.path || parsedSignature?.preview;
-    if (sigPathRel) {
-      try {
-        const cleanPath = sigPathRel.startsWith('/') ? sigPathRel.substring(1) : sigPathRel;
-        const sigPath = path.join(__dirname, '../../', cleanPath);
-        if (fs.existsSync(sigPath)) {
-          const imageBytes = fs.readFileSync(sigPath);
-          const image = (sigPath.toLowerCase().endsWith('.png')) ? await pdfDoc.embedPng(imageBytes) : await pdfDoc.embedJpg(imageBytes);
-          page.drawImage(image, { x: 350, y: currentY - 140, width: 120, height: 60 });
-          page.drawText('CUSTOMER SIGNATURE', { x: 350, y: currentY - 155, size: 8, font: boldFont });
-        }
-      } catch (e) { console.error("[PDF Gen] Sig fail:", e.message); }
-    }
-
-    // 5. Append Uploaded and Extracted Documents
+    // 5. Append Uploaded and Extracted Documents (ALWAYS RUNS)
     const appendDocument = async (docPathRel, title) => {
       if (!docPathRel) return;
       try {
@@ -234,7 +275,6 @@ async function generateKycPdf(applicationData) {
 
     const docsToAppend = [];
     
-    // Add documents array items (e.g. DigiLocker extracted)
     parsedDocuments.forEach(doc => {
       if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'DIGILOCKER_DOCUMENT') {
         docsToAppend.push({ path: doc.path, title: doc.type || 'Document' });
@@ -246,6 +286,7 @@ async function generateKycPdf(applicationData) {
     
     const finPath = parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview;
     if (finPath) docsToAppend.push({ path: finPath, title: 'Financial Proof' });
+    
     const bankPath = parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof;
     if (bankPath) docsToAppend.push({ path: bankPath, title: 'Bank Proof' });
     
@@ -269,9 +310,7 @@ async function generateKycPdf(applicationData) {
       await appendDocument(doc.path, doc.title);
     }
 
-    // Removed fake digital signature stamp to prevent overlap with actual Digio eSign
-
-    console.log(`[PDF Gen] Successfully generated detailed 56-page PDF with appended documents`);
+    console.log(`[PDF Gen] Successfully generated PDF`);
     return await pdfDoc.saveAsBase64();
   } catch (error) {
     console.error("[PDF Gen] Fatal error:", error);

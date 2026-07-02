@@ -26,7 +26,7 @@ const formatPanValue = (value) => {
 };
 
 export default function DigilockerStep() {
-  const { nextStep, addToast, setApplicationId, updateState, personalDetails, identityDetails, address, goToStep } = useKYC();
+  const { nextStep, addToast, setApplicationId, updateState, personalDetails, identityDetails, address, goToStep, applicationId } = useKYC();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [mounted, setMounted] = useState(false);
@@ -85,6 +85,7 @@ export default function DigilockerStep() {
             personalDetails: { 
               ...personalDetails, 
               ...result.updates.personalDetails,
+              fatherName: personalDetails?.fatherName || result.updates.personalDetails?.fatherName || "",
               email: personalDetails?.email || result.updates.personalDetails?.email || "",
             },
             address: { ...address, ...result.updates.address },
@@ -116,8 +117,27 @@ export default function DigilockerStep() {
     
     if (documentId && status && !loading) {
       window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // If opened in a popup/new tab, notify opener and close
+      if (window.opener && window.opener !== window) {
+        window.opener.postMessage({ type: 'DIGIO_SUCCESS', documentId, step: 'DIGILOCKER' }, window.location.origin);
+        window.close();
+        return;
+      }
+
       handleDigioSuccess(documentId);
     }
+
+    // Listen for messages from popup
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'DIGIO_SUCCESS' && event.data?.step === 'DIGILOCKER') {
+         handleDigioSuccess(event.data.documentId);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
 
@@ -214,9 +234,11 @@ export default function DigilockerStep() {
           {loading ? "Connecting..." : "Proceed to DigiLocker"}
         </button>
 
-        <p className="text-caption" style={{ marginTop: 24, fontSize: "0.8rem", opacity: 0.7 }}>
+        <p className="text-caption" style={{ marginTop: 24, marginBottom: 24, fontSize: "0.8rem", opacity: 0.7 }}>
           Clicking above will open a secure Government portal in a new window.
         </p>
+
+
       </div>
 
       <div style={{ 

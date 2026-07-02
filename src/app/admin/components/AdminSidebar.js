@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { id: "kyc", label: "KYC Requests", icon: "file" },
   { id: "audit", label: "Audit Logs", icon: "list" },
   { id: "estamps", label: "E-Stamps", icon: "doc" },
+  { id: "pdf-builder", label: "PDF Builder", icon: "settings2" },
 ];
 
 const ICONS = {

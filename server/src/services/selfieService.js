@@ -8,19 +8,20 @@ class SelfieService {
    * Create a Liveness verification request
    */
   async createRequest(customerIdentifier, customerName = "") {
-    const endpoint = "client/kyc/v2/request/with_template";
+    const endpoint = "client/kyc/v2/request";
     
-    // Generate a unique transaction ID if not present
-    const transactionId = `TXN_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`.toUpperCase();
-
     return await digioClient.post(endpoint, {
       customer_identifier: customerIdentifier,
-      customer_name: customerName,
-      template_name: "DIGILOCKER_CONDITIONAL_JOURNEY_PAN_V0702", // Updated to combined journey template
+      customer_name: customerName || "KYC User",
       notify_customer: false,
       generate_access_token: true,
-      transaction_id: transactionId,
-      generate_deeplink_info: true
+      actions: [
+        {
+          type: "SELFIE",
+          title: "Selfie Verification",
+          description: "Capture a live selfie to verify your identity"
+        }
+      ]
     });
   }
 

@@ -25,11 +25,6 @@ class DigilockerService {
             "AADHAAR": { "mandatory": "true", "auto_select": "true" },
             "PAN": { "mandatory": "true", "auto_select": "true" }
           }
-        },
-        {
-          type: "SELFIE",
-          title: "Selfie Verification",
-          description: "Capture a live selfie to verify your identity"
         }
       ]
     });

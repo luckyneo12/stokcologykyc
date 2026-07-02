@@ -9,6 +9,7 @@ import EStamps from "./components/sections/EStamps";
 import { 
   AuditLogs
 } from "./components/sections/OtherSections";
+import PdfBuilder from "./components/sections/PdfBuilder";
 
 // Self-contained Theme Toggle for Admin
 function AdminThemeToggle() {
@@ -95,6 +96,7 @@ export default function AdminPage() {
       case "kyc": return <KYCRequests searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case "estamps": return <EStamps searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case "audit": return <AuditLogs />;
+      case "pdf-builder": return <PdfBuilder />;
       default: return <DashboardOverview onNavigate={setActiveSection} />;
     }
   };

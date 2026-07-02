@@ -2,18 +2,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { ArrowLeftIcon } from "../Icons";
-
-const RotateLeftIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2.5 2v6h6M2.66 15.57a10 10 0 1 0 .57-8.38"/>
-  </svg>
-);
-
-const RotateRightIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/>
-  </svg>
-);
+import ImageCropper from "@/components/ui/ImageCropper";
+import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import { QRCode } from "react-qrcode-logo";
 
 const UploadIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -23,155 +14,12 @@ const UploadIcon = () => (
   </svg>
 );
 
-// Reusable Image Cropper Component
-function ImageCropper({ filePreview, setFilePreview, onCropApply, onCancel, cropLabel }) {
-  const [cropRect, setCropRect] = useState({ top: 10, left: 10, bottom: 90, right: 90 });
-  const [dragInfo, setDragInfo] = useState({ isDragging: false, mode: null, startX: 0, startY: 0, startRect: null });
-  const canvasRef = useRef(null);
-  const containerRef = useRef(null);
-
-  const handlePointerDown = (mode, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    setDragInfo({ isDragging: true, mode, startX: clientX, startY: clientY, startRect: { ...cropRect } });
-  };
-
-  const handlePointerMove = (e) => {
-    if (!dragInfo.isDragging) return;
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const rect = container.getBoundingClientRect();
-    
-    const dx = ((clientX - dragInfo.startX) / rect.width) * 100;
-    const dy = ((clientY - dragInfo.startY) / rect.height) * 100;
-    
-    let newRect = { ...dragInfo.startRect };
-
-    if (dragInfo.mode === 'move') {
-      newRect.top += dy;
-      newRect.bottom += dy;
-      newRect.left += dx;
-      newRect.right += dx;
-      
-      if (newRect.top < 0) { newRect.bottom -= newRect.top; newRect.top = 0; }
-      if (newRect.left < 0) { newRect.right -= newRect.left; newRect.left = 0; }
-      if (newRect.bottom > 100) { newRect.top -= (newRect.bottom - 100); newRect.bottom = 100; }
-      if (newRect.right > 100) { newRect.left -= (newRect.right - 100); newRect.right = 100; }
-    } else {
-      if (dragInfo.mode.includes('n')) newRect.top += dy;
-      if (dragInfo.mode.includes('s')) newRect.bottom += dy;
-      if (dragInfo.mode.includes('w')) newRect.left += dx;
-      if (dragInfo.mode.includes('e')) newRect.right += dx;
-      
-      const minSize = 10;
-      if (newRect.bottom - newRect.top < minSize) {
-        if (dragInfo.mode.includes('n')) newRect.top = newRect.bottom - minSize;
-        else newRect.bottom = newRect.top + minSize;
-      }
-      if (newRect.right - newRect.left < minSize) {
-        if (dragInfo.mode.includes('w')) newRect.left = newRect.right - minSize;
-        else newRect.right = newRect.left + minSize;
-      }
-      
-      newRect.top = Math.max(0, Math.min(100, newRect.top));
-      newRect.bottom = Math.max(0, Math.min(100, newRect.bottom));
-      newRect.left = Math.max(0, Math.min(100, newRect.left));
-      newRect.right = Math.max(0, Math.min(100, newRect.right));
-    }
-    setCropRect(newRect);
-  };
-
-  const handlePointerUp = () => setDragInfo(prev => ({ ...prev, isDragging: false }));
-
-  useEffect(() => {
-    if (dragInfo.isDragging) {
-      window.addEventListener('mouseup', handlePointerUp);
-      window.addEventListener('touchend', handlePointerUp);
-      return () => {
-        window.removeEventListener('mouseup', handlePointerUp);
-        window.removeEventListener('touchend', handlePointerUp);
-      };
-    }
-  }, [dragInfo.isDragging]);
-
-  const handleRotate = (angle) => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-    img.onload = () => {
-      if (angle === 90 || angle === -90) {
-        canvas.width = img.height;
-        canvas.height = img.width;
-      } else {
-        canvas.width = img.width;
-        canvas.height = img.height;
-      }
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((angle * Math.PI) / 180);
-      ctx.drawImage(img, -img.width / 2, -img.height / 2);
-      setFilePreview(canvas.toDataURL("image/png"));
-      setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
-    };
-    img.src = filePreview;
-  };
-
-  const applyCrop = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-    img.onload = () => {
-      const cropW = img.width * ((cropRect.right - cropRect.left) / 100);
-      const cropH = img.height * ((cropRect.bottom - cropRect.top) / 100);
-      canvas.width = cropW;
-      canvas.height = cropH;
-      const srcX = img.width * (cropRect.left / 100);
-      const srcY = img.height * (cropRect.top / 100);
-      ctx.drawImage(img, srcX, srcY, cropW, cropH, 0, 0, cropW, cropH);
-      onCropApply(canvas.toDataURL("image/png"));
-    };
-    img.src = filePreview;
-  };
-
-  return (
-    <div className="animate-fade-in" style={{ textAlign: "center", padding: "10px 0" }}>
-      <canvas ref={canvasRef} style={{ display: "none" }} />
-      <p style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "16px", color: "var(--text-primary)" }}>{cropLabel || "Crop Your Image"}</p>
-      
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
-        <div ref={containerRef} onMouseMove={handlePointerMove} onTouchMove={handlePointerMove} style={{ position: "relative", display: "inline-block", maxWidth: "100%", background: "#1a1a1a", borderRadius: "12px", overflow: "hidden", touchAction: "none", userSelect: "none", lineHeight: 0 }}>
-          <div onMouseDown={(e) => handlePointerDown('move', e)} onTouchStart={(e) => handlePointerDown('move', e)} style={{ position: "absolute", top: `${cropRect.top}%`, left: `${cropRect.left}%`, width: `${cropRect.right - cropRect.left}%`, height: `${cropRect.bottom - cropRect.top}%`, border: "2px solid var(--wise-green)", boxShadow: "0 0 0 1000px rgba(0,0,0,0.75)", zIndex: 2, cursor: dragInfo.isDragging && dragInfo.mode === 'move' ? "grabbing" : "grab" }}>
-            <div onMouseDown={(e) => handlePointerDown('nw', e)} onTouchStart={(e) => handlePointerDown('nw', e)} style={{ position: "absolute", top: -8, left: -8, width: 16, height: 16, background: "var(--wise-green)", borderRadius: "50%", cursor: "nwse-resize", zIndex: 10 }} />
-            <div onMouseDown={(e) => handlePointerDown('ne', e)} onTouchStart={(e) => handlePointerDown('ne', e)} style={{ position: "absolute", top: -8, right: -8, width: 16, height: 16, background: "var(--wise-green)", borderRadius: "50%", cursor: "nesw-resize", zIndex: 10 }} />
-            <div onMouseDown={(e) => handlePointerDown('sw', e)} onTouchStart={(e) => handlePointerDown('sw', e)} style={{ position: "absolute", bottom: -8, left: -8, width: 16, height: 16, background: "var(--wise-green)", borderRadius: "50%", cursor: "nesw-resize", zIndex: 10 }} />
-            <div onMouseDown={(e) => handlePointerDown('se', e)} onTouchStart={(e) => handlePointerDown('se', e)} style={{ position: "absolute", bottom: -8, right: -8, width: 16, height: 16, background: "var(--wise-green)", borderRadius: "50%", cursor: "nwse-resize", zIndex: 10 }} />
-          </div>
-          <img src={filePreview} alt="Preview" style={{ display: "block", maxWidth: "100%", maxHeight: "300px", width: "auto", height: "auto", pointerEvents: "none" }} />
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginBottom: "20px" }}>
-        <button onClick={() => handleRotate(-90)} style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--bg-elevated)", cursor: "pointer", color: "var(--text-primary)" }}><RotateLeftIcon /></button>
-        <button onClick={() => handleRotate(90)} style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--bg-elevated)", cursor: "pointer", color: "var(--text-primary)" }}><RotateRightIcon /></button>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <button className="btn btn-primary" onClick={applyCrop} style={{ width: "100%", padding: "14px" }}>Apply Crop</button>
-        <div style={{ display: "flex", gap: "12px" }}>
-          <button className="btn btn-secondary" onClick={() => setCropRect({ top: 10, left: 10, bottom: 90, right: 90 })} style={{ flex: 1, fontSize: "0.8rem" }}>Reset Box</button>
-          <button className="btn btn-secondary" onClick={onCancel} style={{ flex: 1, fontSize: "0.8rem", color: "var(--wise-danger)" }}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function DocumentUploadStep() {
-  const { financialProof, signature, panUpload, personalDetails, updateState, nextStep, prevStep, addToast } = useKYC();
+  const { 
+    financialProof, signature, panUpload, selfie, personalDetails, 
+    segments, updateState, nextStep, prevStep, addToast, 
+    applicationId, setApplicationId 
+  } = useKYC();
   
   // Financial Proof State
   const [finType, setFinType] = useState(financialProof?.type || "");
@@ -190,9 +38,131 @@ export default function DocumentUploadStep() {
   const [rawPanImage, setRawPanImage] = useState(null);
   const panInputRef = useRef(null);
 
+  // Selfie State
+  const isSelfieDone = Boolean(selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined));
+  const [selfiePhase, setSelfiePhase] = useState(isSelfieDone ? "done" : "intro"); // intro, processing, done
+  const [matchScore, setMatchScore] = useState(selfie?.matchScore || null);
+  const [selfiePreviewUrl, setSelfiePreviewUrl] = useState(selfie?.preview || null);
+  const [showQR, setShowQR] = useState(false);
+  const [resumeUrl, setResumeUrl] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
 
-  // --- Handlers for Financial Proof ---
+  // --- Selfie Logic ---
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+      if (token && applicationId) {
+        setResumeUrl(`${window.location.origin}/resume?token=${token}&appId=${applicationId}`);
+      }
+    }
+  }, [applicationId]);
+
+  const handleDigioSuccess = async (requestId) => {
+    try {
+      const result = await fetchDigioRequestResponse(requestId, "SELFIE");
+      if (result?.success) {
+        setMatchScore(result.score || result.faceMatchScore || 0);
+        if (result.updates?.selfieDetails?.preview) {
+          const preview = result.updates.selfieDetails.preview;
+          setSelfiePreviewUrl(preview.startsWith('http') || preview.startsWith('data:') ? preview : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}${preview}`);
+        }
+      }
+      addToast("Selfie verification completed", "success");
+      setSelfiePhase("done");
+    } catch (error) {
+      addToast("Error fetching verification results", "error");
+      setSelfiePhase("intro");
+    }
+  };
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
+    const status = searchParams.get("message") || searchParams.get("status");
+    
+    if (documentId && status) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      if (window.opener && window.opener !== window) {
+        window.opener.postMessage({ type: 'DIGIO_SUCCESS', documentId, step: 'SELFIE', status }, window.location.origin);
+        window.close();
+        return;
+      }
+
+      setSelfiePhase("processing");
+      if (status.toLowerCase().includes("success") || status === "Sign completed") {
+        handleDigioSuccess(documentId);
+      } else {
+        setSelfiePhase("intro");
+        addToast(`Selfie verification failed: ${status}`, "error");
+      }
+    }
+
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'DIGIO_SUCCESS' && event.data?.step === 'SELFIE') {
+        setSelfiePhase("processing");
+        if (event.data.status.toLowerCase().includes("success") || event.data.status === "Sign completed") {
+          handleDigioSuccess(event.data.documentId);
+        } else {
+          setSelfiePhase("intro");
+          addToast(`Selfie verification failed: ${event.data.status}`, "error");
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const startVerification = async () => {
+    const digio = initializeDigio({
+      callback: async (response) => {
+        if (response.error_code) {
+          addToast(`Selfie verification failed: ${response.message}`, "error");
+          setSelfiePhase("intro");
+          return;
+        }
+        handleDigioSuccess(response.digio_doc_id || response.id);
+      },
+    });
+
+    if (!digio) {
+      addToast("Unable to initialize selfie verification flow", "error");
+      setSelfiePhase("intro");
+      return;
+    }
+
+    if (!digio.is_redirection_approach) {
+      digio.init();
+    }
+
+    setSelfiePhase("processing");
+    try {
+      const requestData = await createDigioRequest("SELFIE", {});
+      const { requestId, customerIdentifier, applicationId: newAppId } = requestData;
+      if (newAppId) setApplicationId(newAppId);
+
+      if (!requestId) {
+        addToast("Unable to create selfie request", "error");
+        setSelfiePhase("intro");
+        return;
+      }
+
+      if (requestData.accessToken) {
+        digio.submit(requestId, customerIdentifier, requestData.accessToken);
+      } else {
+        digio.submit(requestId, customerIdentifier);
+      }
+    } catch (error) {
+      if (digio.cancel) digio.cancel();
+      addToast(error?.message || "Error connecting to selfie verification service", "error");
+      setSelfiePhase("intro");
+    }
+  };
+
+  // --- Document Logic ---
   const handleFinChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -210,7 +180,6 @@ export default function DocumentUploadStep() {
     reader.readAsDataURL(file);
   };
 
-  // --- Handlers for Signature ---
   const handleSigChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -222,27 +191,12 @@ export default function DocumentUploadStep() {
     
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        if (img.height > img.width) {
-          const canvas = document.createElement("canvas");
-          const ctx = canvas.getContext("2d");
-          canvas.width = img.height; canvas.height = img.width;
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ctx.rotate((-90 * Math.PI) / 180);
-          ctx.drawImage(img, -img.width / 2, -img.height / 2);
-          setRawSigImage(canvas.toDataURL("image/png"));
-        } else {
-          setRawSigImage(event.target.result);
-        }
-        setIsCroppingSig(true);
-      };
-      img.src = event.target.result;
+      setRawSigImage(event.target.result);
+      setIsCroppingSig(true);
     };
     reader.readAsDataURL(file);
   };
 
-  // --- Handlers for PAN Upload ---
   const handlePanChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -269,10 +223,22 @@ export default function DocumentUploadStep() {
       addToast("Please upload your Signature", "error");
       return;
     }
+    if (selfiePhase !== "done") {
+      addToast("Please complete the Selfie Verification", "error");
+      return;
+    }
     
-    const requiresFinProof = personalDetails?.annualIncome === "More Than 25 Lac" || personalDetails?.segments?.derivatives;
+    const isHighIncome = personalDetails?.annualIncome === "More Than 25 Lac";
+    const isDerivatives = segments?.derivatives;
+    const requiresFinProof = isHighIncome || isDerivatives;
+
     if (requiresFinProof && (!finType || !finPreview)) {
-      addToast("Please provide Financial Proof for your selected options", "error");
+      let reason = "";
+      if (isDerivatives && isHighIncome) reason = "opted for F&O trading and reported High Income";
+      else if (isDerivatives) reason = "opted for F&O (Derivatives) trading";
+      else if (isHighIncome) reason = "reported an Annual Income above 25 Lacs";
+
+      addToast(`Financial Proof is mandatory because you ${reason}`, "error");
       return;
     }
 
@@ -283,14 +249,12 @@ export default function DocumentUploadStep() {
 
     setSubmitting(true);
     try {
-      updateState({
+      nextStep({
         financialProof: { type: finType, filePreview: finPreview },
         signature: { filePreview: sigPreview },
-        panUpload: { filePreview: panPreview }
+        panUpload: { filePreview: panPreview },
+        selfie: { matchScore: matchScore, preview: selfiePreviewUrl }
       });
-      setTimeout(() => {
-        nextStep();
-      }, 100);
     } catch (err) {
       setSubmitting(false);
       addToast("Failed to save documents", "error");
@@ -300,7 +264,7 @@ export default function DocumentUploadStep() {
   const finOptions = [
     "Bank account statement for last 6 months",
     "Copy of Demat account holding statement",
-    "Salary Slip",
+    "Salary Slip (last 3 months)",
     "Copy of Form 16",
     "Copy of ITR Acknowledgement",
     "Copy of Annual Accounts",
@@ -308,119 +272,188 @@ export default function DocumentUploadStep() {
   ];
 
   return (
-    <div className="container-sm" style={{ paddingTop: "4vh", paddingBottom: "6vh", maxWidth: "600px" }}>
+    <div className="container-sm" style={{ paddingTop: "4vh", paddingBottom: "6vh", maxWidth: "800px" }}>
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
         <h1 className="text-section" style={{ fontSize: "2.5rem", marginBottom: 12 }}>Document Upload</h1>
         <p className="text-body" style={{ color: "var(--text-secondary)", fontSize: "1rem" }}>
-          Please provide the required documents to complete your KYC.
+          Please provide the required documents and selfie to complete your KYC.
         </p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "24px" }}>
         
         {/* PAN Section */}
-        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)" }}>
+        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
           <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ background: "var(--wise-green)", color: "#000", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>1</span>
             PAN Card <span style={{ color: "var(--wise-danger)" }}>*</span>
           </h3>
           <input type="file" ref={panInputRef} onChange={handlePanChange} style={{ display: "none" }} accept="image/*" />
           
-          {isCroppingPan ? (
-            <ImageCropper 
-              filePreview={rawPanImage} 
-              setFilePreview={setRawPanImage} 
-              cropLabel="Crop Your PAN Card"
-              onCropApply={(res) => { setPanPreview(res); setIsCroppingPan(false); addToast("PAN cropped successfully", "success"); }}
-              onCancel={() => { setIsCroppingPan(false); if (panInputRef.current) panInputRef.current.value = ""; }}
-            />
-          ) : (
-            <>
-              <button onClick={() => panInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
-                <UploadIcon /> {panPreview ? "PAN Attached (Click to Replace)" : "Upload PAN"}
-              </button>
-              {panPreview && (
-                <div style={{ marginTop: "16px", textAlign: "center", padding: "10px", border: "1.5px dashed var(--border-color)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
-                  <img src={panPreview} alt="PAN Preview" style={{ maxHeight: "150px", maxWidth: "100%", borderRadius: "8px" }} />
-                </div>
-              )}
-            </>
-          )}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            {isCroppingPan ? (
+              <ImageCropper 
+                filePreview={rawPanImage} 
+                setFilePreview={setRawPanImage} 
+                cropLabel="Crop Your PAN Card"
+                onCropApply={(res) => { setPanPreview(res); setIsCroppingPan(false); addToast("PAN cropped successfully", "success"); }}
+                onCancel={() => { setIsCroppingPan(false); if (panInputRef.current) panInputRef.current.value = ""; }}
+              />
+            ) : (
+              <>
+                <button onClick={() => panInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+                  <UploadIcon /> {panPreview ? "PAN Attached (Replace)" : "Upload PAN"}
+                </button>
+                {panPreview && (
+                  <div style={{ marginTop: "16px", textAlign: "center", padding: "10px", border: "1.5px dashed var(--border-color)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
+                    <img src={panPreview} alt="PAN Preview" style={{ maxHeight: "150px", maxWidth: "100%", borderRadius: "8px" }} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* Signature Section */}
-        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)" }}>
+        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
           <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ background: "var(--wise-green)", color: "#000", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>2</span>
             Signature <span style={{ color: "var(--wise-danger)" }}>*</span>
           </h3>
           <input type="file" ref={sigInputRef} onChange={handleSigChange} style={{ display: "none" }} accept="image/jpeg,image/png" />
           
-          {isCroppingSig ? (
-            <ImageCropper 
-              filePreview={rawSigImage} 
-              setFilePreview={setRawSigImage} 
-              cropLabel="Crop Your Signature"
-              onCropApply={(res) => { setSigPreview(res); setIsCroppingSig(false); addToast("Signature cropped successfully", "success"); }}
-              onCancel={() => { setIsCroppingSig(false); if (sigInputRef.current) sigInputRef.current.value = ""; }}
-            />
-          ) : (
-            <>
-              <button onClick={() => sigInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
-                <UploadIcon /> {sigPreview ? "Signature Attached (Click to Replace)" : "Upload Signature"}
-              </button>
-              {sigPreview && (
-                <div style={{ marginTop: "16px", textAlign: "center", padding: "10px", border: "1.5px dashed var(--border-color)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
-                  <img src={sigPreview} alt="Signature Preview" style={{ maxHeight: "150px", maxWidth: "100%", borderRadius: "8px", background: "#fff" }} />
-                </div>
-              )}
-            </>
-          )}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            {isCroppingSig ? (
+              <ImageCropper 
+                filePreview={rawSigImage} 
+                setFilePreview={setRawSigImage} 
+                cropLabel="Crop Your Signature"
+                onCropApply={(res) => { setSigPreview(res); setIsCroppingSig(false); addToast("Signature cropped successfully", "success"); }}
+                onCancel={() => { setIsCroppingSig(false); if (sigInputRef.current) sigInputRef.current.value = ""; }}
+              />
+            ) : (
+              <>
+                <button onClick={() => sigInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+                  <UploadIcon /> {sigPreview ? "Signature Attached (Replace)" : "Upload Signature"}
+                </button>
+                {sigPreview && (
+                  <div style={{ marginTop: "16px", textAlign: "center", padding: "10px", border: "1.5px dashed var(--border-color)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
+                    <img src={sigPreview} alt="Signature Preview" style={{ maxHeight: "150px", maxWidth: "100%", borderRadius: "8px", background: "#fff" }} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Selfie Section */}
+        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
+          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ background: "var(--wise-green)", color: "#000", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>3</span>
+            Selfie Verification <span style={{ color: "var(--wise-danger)" }}>*</span>
+          </h3>
+
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            {selfiePhase === "intro" && (
+              <>
+                {!showQR ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <button className="btn btn-primary" onClick={startVerification} style={{ width: "100%", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem" }}>
+                      Start Selfie Capture
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => setShowQR(true)} style={{ width: "100%", padding: "12px", borderRadius: "12px", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
+                      No Camera? Use Mobile
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ padding: "16px", background: "var(--bg-secondary)", borderRadius: "12px", textAlign: "center" }}>
+                    <p style={{ fontSize: "0.9rem", marginBottom: "12px", fontWeight: 600 }}>Scan with your mobile camera</p>
+                    {resumeUrl && (
+                      <div style={{ background: "white", padding: "8px", borderRadius: "8px", display: "inline-block", marginBottom: "12px" }}>
+                        <QRCode value={resumeUrl} size={120} />
+                      </div>
+                    )}
+                    <button className="btn btn-text" onClick={() => setShowQR(false)} style={{ fontSize: "0.8rem", width: "100%" }}>
+                      Hide QR Code
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+            {selfiePhase === "processing" && (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <div className="loader" style={{ margin: "0 auto 16px", width: "24px", height: "24px" }}></div>
+                <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>Launching Digio Capture...</p>
+                <button className="btn btn-secondary" onClick={() => setSelfiePhase("intro")} style={{ marginTop: "16px", padding: "8px 16px", fontSize: "0.8rem" }}>
+                  Cancel
+                </button>
+              </div>
+            )}
+            {selfiePhase === "done" && (
+              <div style={{ textAlign: "center", padding: "16px", border: "1.5px dashed var(--wise-green)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
+                <p style={{ color: "var(--wise-green)", fontWeight: 800, fontSize: "1rem", marginBottom: "8px" }}>✓ Verified</p>
+                {selfiePreviewUrl && (
+                  <div style={{ margin: "12px auto", width: "120px", height: "120px", borderRadius: "50%", overflow: "hidden", border: "3px solid var(--wise-green)", padding: "2px", background: "#fff" }}>
+                    <img 
+                      src={selfiePreviewUrl} 
+                      alt="Selfie" 
+                      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} 
+                    />
+                  </div>
+                )}
+                <button onClick={() => setSelfiePhase("intro")} style={{ marginTop: "12px", fontSize: "0.75rem", padding: "6px 16px", borderRadius: "20px", border: "none", background: "var(--wise-green)", color: "#000", cursor: "pointer", fontWeight: 700 }}>
+                  Retake Selfie
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Financial Proof Section */}
-        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", overflow: "visible" }}>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ background: "var(--border-color)", color: "var(--text-primary)", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>3</span>
-            Financial Proof (Optional)
+        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column", overflow: "visible" }}>
+          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ background: "var(--border-color)", color: "var(--text-primary)", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>4</span>
+            Financial Proof <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>(Optional)</span>
           </h3>
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "16px" }}>Required for F&O Trading or High Income categories.</p>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "16px" }}>Required for F&O Trading or High Income.</p>
           
-          <div style={{ marginBottom: "16px" }}>
-            <select 
-              value={finType} 
-              onChange={(e) => setFinType(e.target.value)}
-              style={{ width: "100%", height: "52px", borderRadius: "12px", border: "1px solid var(--border-color)", background: "var(--input-bg)", color: "var(--text-primary)", padding: "0 16px", fontSize: "0.95rem", outline: "none" }}
-            >
-              <option value="">-- Select Income Proof Type --</option>
-              {finOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-            </select>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <div style={{ marginBottom: "16px" }}>
+              <select 
+                value={finType} 
+                onChange={(e) => setFinType(e.target.value)}
+                style={{ width: "100%", height: "48px", borderRadius: "12px", border: "1px solid var(--border-color)", background: "var(--input-bg)", color: "var(--text-primary)", padding: "0 12px", fontSize: "0.9rem", outline: "none" }}
+              >
+                <option value="">-- Select Income Proof Type --</option>
+                {finOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+
+            <input type="file" ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
+            <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+              <UploadIcon /> {finPreview ? "Proof Attached (Replace)" : "Upload Document"}
+            </button>
+            {finPreview && (
+              <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--wise-green)", marginTop: "12px", fontWeight: 600 }}>✓ Document Attached</p>
+            )}
           </div>
-
-          <input type="file" ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
-          <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
-            <UploadIcon /> {finPreview ? "Financial Proof Attached (Replace)" : "Upload Document"}
-          </button>
-          {finPreview && (
-            <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--wise-green)", marginTop: "12px", fontWeight: 600 }}>✓ Document Attached</p>
-          )}
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: "8px" }}>
-          <button 
-            className="btn btn-primary" 
-            onClick={handleSubmit} 
-            disabled={submitting || isCroppingPan || isCroppingSig}
-            style={{ width: "100%", padding: "16px", borderRadius: "16px", fontWeight: 800, fontSize: "1.1rem", opacity: (submitting || isCroppingPan || isCroppingSig) ? 0.7 : 1 }}
-          >
-            {submitting ? "Saving..." : "Continue"}
-          </button>
-          <button onClick={prevStep} className="btn-back" disabled={submitting} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "12px", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
-            <ArrowLeftIcon size={18} /> Back
-          </button>
-        </div>
+      </div>
 
+      {/* Action Buttons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: "32px" }}>
+        <button 
+          className="btn btn-primary" 
+          onClick={handleSubmit} 
+          disabled={submitting || isCroppingPan || isCroppingSig}
+          style={{ width: "100%", padding: "16px", borderRadius: "16px", fontWeight: 800, fontSize: "1.1rem", opacity: (submitting || isCroppingPan || isCroppingSig) ? 0.7 : 1 }}
+        >
+          {submitting ? "Saving..." : "Continue"}
+        </button>
+        <button onClick={prevStep} className="btn-back" disabled={submitting} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "12px", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+          <ArrowLeftIcon size={18} /> Back
+        </button>
       </div>
     </div>
   );

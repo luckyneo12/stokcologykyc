@@ -12,6 +12,7 @@ const CheckIcon = ({ size = 10, color = "white" }) => (
 
 const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -27,11 +28,24 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
   return (
     <div ref={dropdownRef} style={{ position: "relative", width: "100%" }}>
       <div 
+        tabIndex={disabled ? -1 : 0}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
         onClick={() => !disabled && setIsOpen(!isOpen)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsOpen(!isOpen);
+          } else if (e.key === "Escape") {
+            setIsOpen(false);
+          }
+        }}
         className="input-field"
         style={{ 
           cursor: disabled ? "not-allowed" : "pointer",
-          borderColor: error ? "var(--wise-danger)" : isOpen ? "var(--wise-green)" : "var(--border-color)",
+          borderColor: error ? "var(--wise-danger)" : (isOpen || isFocused) ? "var(--wise-green)" : "var(--border-color)",
+          boxShadow: isFocused ? "0 0 0 3px rgba(159, 232, 112, 0.3)" : "none",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -39,7 +53,9 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
           padding: "0 12px",
           height: "40px",
           background: "var(--input-bg)",
-          borderRadius: "10px"
+          borderRadius: "10px",
+          outline: "none",
+          transition: "all 0.2s"
         }}
       >
         <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.78rem", fontWeight: 700 }}>
@@ -60,7 +76,19 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
           {options.map((opt) => (
             <div 
               key={opt}
+              tabIndex={0}
               onClick={() => { onChange(opt); setIsOpen(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onChange(opt);
+                  setIsOpen(false);
+                  dropdownRef.current?.children[0]?.focus();
+                } else if (e.key === "Escape") {
+                  setIsOpen(false);
+                  dropdownRef.current?.children[0]?.focus();
+                }
+              }}
               style={{ 
                 padding: "6px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700,
                 background: value === opt ? "var(--wise-green)" : "transparent",
@@ -114,18 +142,34 @@ const COMMON_INPUT_STYLE = {
   outline: "none"
 };
 
-const CheckboxItem = ({ label, value, onChange, disabled }) => (
-  <div
-    style={{
+const CheckboxItem = ({ label, value, onChange, disabled }) => {
+  const [isFocused, setIsFocused] = useState(false);
+  return (
+    <div
+      tabIndex={disabled ? -1 : 0}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      style={{
       display: "flex",
       alignItems: "flex-start",
       width: "100%",
       cursor: disabled ? "not-allowed" : "pointer",
       opacity: disabled ? 0.8 : 1,
       marginBottom: "10px",
-      gap: "8px"
+      gap: "8px",
+      outline: "none",
+      padding: "4px",
+      borderRadius: "6px",
+      boxShadow: isFocused ? "0 0 0 3px rgba(159, 232, 112, 0.3)" : "none",
+      transition: "box-shadow 0.2s"
     }}
     onClick={() => !disabled && onChange(!value)}
+    onKeyDown={(e) => {
+      if (!disabled && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        onChange(!value);
+      }
+    }}
   >
     <div style={{
       marginTop: "1px",
@@ -139,7 +183,8 @@ const CheckboxItem = ({ label, value, onChange, disabled }) => (
     </div>
     <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-primary)", lineHeight: "1.3", opacity: 0.85 }}>{label}</span>
   </div>
-);
+  );
+};
 
 export default function DetailsStep() {
   const { personalDetails, updateNested, nextStep, prevStep, addToast, syncProgress } = useKYC();
@@ -238,7 +283,6 @@ export default function DetailsStep() {
     
     if (form.politicallyExposed === "Yes") {
       if (!form.pepType) errs.pepType = "Req";
-      if (!form.comments?.trim()) errs.comments = "Req";
       if (!form.pepProof) errs.pepProof = "Req";
     }
 
@@ -281,25 +325,18 @@ export default function DetailsStep() {
 
         <div className="form-grid">
 
-          <InputGroup label="Prefix" mandatory>
-            <CustomSelect 
-              value={form.prefix}
-              options={["Mr.", "Mrs.", "Ms."]}
-              placeholder="--Select--"
-              onChange={val => update("prefix", val)}
-              error={errors.prefix}
-            />
-          </InputGroup>
-  
           <InputGroup label="Father's Name / Spouse Name" mandatory>
             <input 
               className="input-field" 
               placeholder="Full Name" 
               value={form.fatherName || ""} 
               onChange={e => update("fatherName", e.target.value)} 
+              disabled={!!personalDetails.fatherName}
               style={{ 
                 ...COMMON_INPUT_STYLE,
-                borderColor: errors.fatherName ? "var(--wise-danger)" : "var(--border-color)" 
+                borderColor: errors.fatherName ? "var(--wise-danger)" : "var(--border-color)",
+                opacity: personalDetails.fatherName ? 0.7 : 1,
+                cursor: personalDetails.fatherName ? "not-allowed" : "text"
               }} 
             />
           </InputGroup>
@@ -312,7 +349,7 @@ export default function DetailsStep() {
               onChange={e => update("motherName", e.target.value)} 
               style={{ 
                 ...COMMON_INPUT_STYLE,
-                borderColor: errors.motherName ? "var(--wise-danger)" : "var(--border-color)" 
+                borderColor: errors.motherName ? "var(--wise-danger)" : "var(--border-color)",
               }} 
             />
           </InputGroup>
@@ -324,6 +361,7 @@ export default function DetailsStep() {
               placeholder="--Select--"
               onChange={val => update("gender", val)}
               error={errors.gender}
+              disabled={!!personalDetails.gender}
             />
           </InputGroup>
   
@@ -407,6 +445,15 @@ export default function DetailsStep() {
               <InputGroup label="Proof of PEP Status" mandatory>
                 <div style={{ position: "relative", width: "100%" }}>
                       <label 
+                        tabIndex={isUploading ? -1 : 0}
+                        onFocus={(e) => e.currentTarget.style.boxShadow = "0 0 0 3px rgba(159, 232, 112, 0.3)"}
+                        onBlur={(e) => e.currentTarget.style.boxShadow = "none"}
+                        onKeyDown={(e) => {
+                          if (!isUploading && (e.key === "Enter" || e.key === " ")) {
+                            e.preventDefault();
+                            e.currentTarget.querySelector('input[type="file"]').click();
+                          }
+                        }}
                         className="input-field"
                         style={{ 
                           height: "42px", 
@@ -418,7 +465,7 @@ export default function DetailsStep() {
                           borderRadius: "10px",
                       border: form.pepProof ? "1.2px solid var(--border-color)" : "1.2px dashed var(--border-color)",
                       background: "var(--input-bg)",
-                      height: "40px"
+                      outline: "none"
                     }}
                   >
                     <span style={{ fontSize: "0.8rem", fontWeight: 700, color: form.pepProof ? "var(--wise-green)" : "var(--text-muted)" }}>
@@ -442,15 +489,6 @@ export default function DetailsStep() {
                     <input type="file" style={{ display: "none" }} onChange={handleFileChange} disabled={isUploading} />
                   </label>
                 </div>
-              </InputGroup>
-              <InputGroup label="Comments / Declaration" mandatory style={{ gridColumn: "1 / -1" }}>
-                <textarea 
-                  className="input-field" 
-                  placeholder="Enter any additional comments or declarations here..." 
-                  value={form.comments || ""} 
-                  onChange={e => update("comments", e.target.value)} 
-                  style={{ minHeight: "100px", padding: "12px 16px", borderRadius: "16px", borderColor: errors.comments ? "var(--wise-danger)" : "var(--border-color)", resize: "none", fontSize: "0.85rem" }}
-                />
               </InputGroup>
             </>
           )}

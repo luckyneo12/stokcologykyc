@@ -179,7 +179,8 @@ const reviewStep = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "Unknown review step" });
     }
 
-    if ((app.currentStep || 0) < configuredStep.kycIndex) {
+    const hasCompletedJourneyOnce = !!app.submittedAt || !!app.isResubmitted || !!app.rejectionReason;
+    if (!hasCompletedJourneyOnce && (app.currentStep || 0) < configuredStep.kycIndex) {
       return res.status(400).json({
         success: false,
         error: "This step is not available yet because the applicant has not reached it"

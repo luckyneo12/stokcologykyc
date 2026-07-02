@@ -13,6 +13,7 @@ const adminRoutes = require("./src/routes/adminRoutes");
 const digioRoutes = require("./src/routes/digioRoutes");
 const agentRoutes = require("./src/routes/agentRoutes");
 const crmRoutes = require("./src/routes/crmRoutes");
+const pdfTemplateRoutes = require("./src/routes/pdfTemplateRoutes");
 const errorHandler = require("./src/middlewares/errorHandler");
 
 const app = express();
@@ -122,6 +123,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/digio", digioRoutes);
 app.use("/api/agent", agentRoutes);
 app.use("/api/crm", crmRoutes);
+app.use("/api/admin/pdf-templates", pdfTemplateRoutes);
 
 // Root route
 app.get("/", (req, res) => {
