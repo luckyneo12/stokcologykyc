@@ -47,4 +47,12 @@ router.put("/sequence/estamp", adminAuth, updateEstampSequence);
 const { requestModifications } = require("../controllers/agentController");
 router.post("/application/:id/request-modifications", adminAuth, requestModifications);
 
+// Update application details directly
+const { updateApplicationDetails, uploadAdminDocument } = require("../controllers/adminController");
+router.put("/application/:id/update-details", adminAuth, updateApplicationDetails);
+
+// Upload document from admin portal
+const localUpload = require("../middlewares/localUpload");
+router.post("/application/:id/upload-document", adminAuth, localUpload.single("document"), uploadAdminDocument);
+
 module.exports = router;

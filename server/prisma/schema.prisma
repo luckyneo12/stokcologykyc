@@ -133,8 +133,8 @@ model Sequence {
 
 model EStamp {
   id            Int      @id @default(autoincrement())
-  certificateNo String   @unique
-  serialNo      String   @unique
+  certificateNo String   @default("")
+  serialNo      String   @default("")
   fileUrl       String   @db.LongText
   status        String   @default("available")
   assignedTo    Int?     @unique
@@ -142,8 +142,11 @@ model EStamp {
   updatedAt     DateTime @updatedAt
   user          User?    @relation("EStampAssigned", fields: [assignedTo], references: [id])
 
+  @@index([certificateNo])
+  @@index([serialNo])
   @@index([assignedTo], map: "EStamp_assignedTo_fkey")
 }
+
 
 model PdfTemplate {
   id          Int      @id @default(autoincrement())

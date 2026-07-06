@@ -1398,19 +1398,7 @@ export default function ApplicationDetail() {
                         </button>
                       )}
                     </span>
-                    {app.faceMatchScore !== null && (
-                      <div style={{ 
-                        fontSize: "0.65rem", 
-                        fontWeight: 900, 
-                        color: app.faceMatchScore >= 70 ? "var(--wise-green)" : "var(--wise-danger)",
-                        background: app.faceMatchScore >= 70 ? "rgba(48, 164, 108, 0.1)" : "rgba(224, 49, 49, 0.1)",
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                        flexShrink: 0,
-                      }}>
-                        {app.faceMatchScore}% MATCH
-                      </div>
-                    )}
+
                   </div>
                   <div className="document-preview-frame">
                     {showSelfieVideo && app.selfieDetails?.videoPath ? (
@@ -1600,56 +1588,7 @@ export default function ApplicationDetail() {
           {/* Right Sidebar: Actions & Scores */}
           <div style={{ position: "sticky", top: 20, height: "fit-content", display: "flex", flexDirection: "column", gap: 12, alignSelf: "start" }}>
             
-            <div className="card" style={{ padding: 20 }}>
-              <span className="inspection-label" style={{ display: "block", marginBottom: 12 }}>Assign to Agent</span>
-              {app.assignedCrmAgentId ? (
-                <div style={{ marginBottom: 12, fontSize: "0.8rem", color: "var(--wise-dark-green)", fontWeight: 700, padding: "10px 12px", background: "var(--wise-green)", borderRadius: 12 }}>
-                  Assigned: {employees.find(e => String(e.id) === String(app.assignedCrmAgentId))?.name || `Agent #${app.assignedCrmAgentId}`}
-                </div>
-              ) : (
-                <div style={{ marginBottom: 12, fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 700, padding: "10px 12px", background: "rgba(0,0,0,0.03)", borderRadius: 12 }}>
-                  Unassigned
-                </div>
-              )}
-              <select 
-                className="admin-select" 
-                style={{ 
-                  width: "100%", 
-                  fontSize: "0.85rem", 
-                  marginBottom: 12, 
-                  cursor: "pointer", 
-                  backgroundColor: "var(--bg-secondary)", 
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "12px",
-                  padding: "10px 14px",
-                  color: "var(--text-primary)",
-                  fontWeight: 600,
-                  outline: "none",
-                  height: "auto",
-                  textOverflow: "ellipsis"
-                }}
-                value={selectedAgent}
-                onChange={e => setSelectedAgent(e.target.value)}
-              >
-                <option value="">Select an Agent...</option>
-                {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-              <button 
-                onClick={handleAssign}
-                disabled={!selectedAgent || String(selectedAgent) === String(app.assignedCrmAgentId)}
-                style={{ 
-                  width: "100%", padding: 12, borderRadius: 12, 
-                  background: (!selectedAgent || String(selectedAgent) === String(app.assignedCrmAgentId)) ? "var(--border-color)" : "var(--wise-dark-green)", 
-                  color: (!selectedAgent || String(selectedAgent) === String(app.assignedCrmAgentId)) ? "var(--text-muted)" : "var(--wise-green)", 
-                  border: "none", fontWeight: 800, cursor: (!selectedAgent || String(selectedAgent) === String(app.assignedCrmAgentId)) ? "not-allowed" : "pointer", 
-                  fontSize: "0.85rem", transition: "0.2s" 
-                }}
-              >
-                Assign Agent
-              </button>
-            </div>
+
 
             <div className="card" style={{ padding: 20, border: pendingStep !== null && pendingStep !== app.currentStep ? "2px solid var(--wise-green)" : "1px solid var(--border-color)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1677,21 +1616,7 @@ export default function ApplicationDetail() {
               )}
             </div>
 
-            <div className="card" style={{ padding: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span className="inspection-label" style={{ margin: 0 }}>Face Match</span>
-                <span style={{ 
-                  fontSize: "0.6rem", fontWeight: 900, background: "rgba(48, 164, 108, 0.1)", 
-                  color: "#30a46c", padding: "3px 6px", borderRadius: 4, letterSpacing: 0.5,
-                  display: "flex", alignItems: "center", gap: 3
-                }}>
-                  LIVE
-                </span>
-              </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: 900, color: (app.faceMatchScore || 0) > 70 ? "#30a46c" : "#e5484d" }}>
-                {app.faceMatchScore || 0}%
-              </div>
-            </div>
+
 
             <style>{`
               @keyframes pulse {

@@ -21,9 +21,14 @@ import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 
 export default function KYCJourney() {
-  const { currentStep, steps, isRestoring, prevStep, STEPS } = useKYC();
+  const { currentStep, steps, isRestoring, prevStep, STEPS, stepStatuses, rejectionReason, submittedAt, isResubmitted } = useKYC();
   const router = useRouter();
   const TOTAL_STEPS = (steps.length > 0 ? steps.length : STEPS.length) - 1;
+
+  const hasStepStatuses = stepStatuses && Object.keys(stepStatuses).length > 0;
+  const hasAnyRejected = hasStepStatuses && Object.values(stepStatuses).some(s => s?.status === "rejected");
+  const isResubmission = !!rejectionReason || !!submittedAt || !!isResubmitted || hasAnyRejected;
+  const progressStep = isResubmission ? TOTAL_STEPS : currentStep;
 
   const [mounted, setMounted] = useState(false);
 
@@ -108,10 +113,10 @@ export default function KYCJourney() {
               <div className="progress-bar-container" style={{ width: "100%" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, whiteSpace: "nowrap" }}>
                    <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--wise-green)", opacity: 0.9 }}>PROGRESS</span>
-                   <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "white" }}>{Math.round((currentStep/TOTAL_STEPS)*100)}%</span>
+                   <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "white" }}>{Math.round((progressStep/TOTAL_STEPS)*100)}%</span>
                 </div>
                 <div style={{ width: "100%", height: 5, background: "rgba(255,255,255,0.12)", borderRadius: 10, overflow: "hidden" }}>
-                  <div style={{ width: `${(currentStep/TOTAL_STEPS)*100}%`, height: "100%", background: "var(--wise-green)", transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)" }}></div>
+                  <div style={{ width: `${(progressStep/TOTAL_STEPS)*100}%`, height: "100%", background: "var(--wise-green)", transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)" }}></div>
                 </div>
               </div>
             </div>

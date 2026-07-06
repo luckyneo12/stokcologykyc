@@ -28,6 +28,7 @@ export default function AdminLogin() {
       if (data.success) {
         localStorage.setItem("adminToken", data.token);
         localStorage.setItem("adminUser", JSON.stringify(data.user));
+        localStorage.removeItem("adminActiveSection");
         
         if (data.user.role === "admin") {
           router.push("/admin");

@@ -95,7 +95,8 @@ const getApplications = async (req, res, next) => {
               id: true,
               phone: true,
               email: true,
-              eStamp: true
+              eStamp: true,
+              eStampAssigned: { select: { serialNo: true } }
             }
           }
         }
@@ -273,13 +274,26 @@ const reviewApplication = async (req, res, next) => {
 
 const getStats = async (req, res, next) => {
   try {
+    const daysParam = parseInt(req.query.days, 10) || 14;
+    const chartDays = daysParam === 30 ? 30 : 14;
+
+    const trendStartDate = new Date();
+    trendStartDate.setDate(trendStartDate.getDate() - (chartDays - 1));
+    trendStartDate.setHours(0, 0, 0, 0);
+
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
     fourteenDaysAgo.setHours(0, 0, 0, 0);
 
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
     const [
       total, statusCounts, recent, 
-      recentAppsForTrend, allAppsForDropoff, recentLogs
+      recentAppsForTrend, allAppsForDropoff, recentLogs,
+      verifiedThisWeekCount, verifiedLastWeekCount,
+      rejectedThisWeekCount, rejectedLastWeekCount
     ] = await Promise.all([
       prisma.kycApplication.count(),
       prisma.kycApplication.groupBy({
@@ -298,10 +312,24 @@ const getStats = async (req, res, next) => {
           user: { select: { email: true, phone: true } }
         }
       }),
-      // For Weekly Trend (14 days)
+      // For Trend Chart (14 or 30 days) and other analytics
       prisma.kycApplication.findMany({
-        where: { createdAt: { gte: fourteenDaysAgo } },
-        select: { createdAt: true }
+        where: { 
+          OR: [
+            { createdAt: { gte: trendStartDate } },
+            { updatedAt: { gte: trendStartDate } }
+          ]
+        },
+        select: { 
+          createdAt: true, 
+          updatedAt: true, 
+          submittedAt: true,
+          deviceType: true,
+          status: true, 
+          rejectionReason: true, 
+          reviewedBy: true, 
+          reviewer: { select: { email: true, phone: true } }
+        }
       }),
       // For Drop-off Funnel
       prisma.kycApplication.groupBy({
@@ -313,6 +341,20 @@ const getStats = async (req, res, next) => {
         orderBy: { timestamp: "desc" },
         take: 6,
         include: { user: { select: { email: true, phone: true } } }
+      }),
+      // Trends for Verified
+      prisma.kycApplication.count({
+        where: { status: 'verified', updatedAt: { gte: sevenDaysAgo } }
+      }),
+      prisma.kycApplication.count({
+        where: { status: 'verified', updatedAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } }
+      }),
+      // Trends for Rejected
+      prisma.kycApplication.count({
+        where: { status: 'rejected', updatedAt: { gte: sevenDaysAgo } }
+      }),
+      prisma.kycApplication.count({
+        where: { status: 'rejected', updatedAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } }
       })
     ]);
 
@@ -326,15 +368,98 @@ const getStats = async (req, res, next) => {
       if (s.status === 'on_hold') onHold = s._count.status;
     });
 
-    // 1. Calculate Weekly Trend
-    const weeklyTrend = Array(14).fill(0);
+    // 1. Calculate Chart Trend (14 or 30 days) & Other Stats
+    const weeklyTrend = Array.from({ length: chartDays }, () => ({ submissions: 0, approvals: 0, rejections: 0 }));
+    
+    const rejectionReasonsMap = {};
+    let totalProcessingTimeMs = 0;
+    let processedCount = 0;
+    
+    let totalUserCompletionTimeMs = 0;
+    let userCompletedCount = 0;
+    const deviceStatsMap = {};
+
     const now = new Date();
     recentAppsForTrend.forEach(app => {
+      // Trend: Submissions
       const diffDays = Math.floor((now - app.createdAt) / (1000 * 60 * 60 * 24));
-      if (diffDays >= 0 && diffDays < 14) {
-        weeklyTrend[13 - diffDays]++;
+      if (diffDays >= 0 && diffDays < chartDays) {
+        weeklyTrend[(chartDays - 1) - diffDays].submissions++;
+      }
+      
+      // User Completion Time
+      if (app.submittedAt) {
+         const timeToComplete = new Date(app.submittedAt).getTime() - new Date(app.createdAt).getTime();
+         if (timeToComplete > 0) {
+            totalUserCompletionTimeMs += timeToComplete;
+            userCompletedCount++;
+         }
+      }
+
+      // Device Stats
+      if (app.deviceType) {
+         const dt = app.deviceType.toLowerCase();
+         let category = "Desktop";
+         if (dt.includes("mobile") || dt.includes("android") || dt.includes("iphone") || dt.includes("ios") || dt.includes("webos") || dt.includes("blackberry")) category = "Mobile";
+         else if (dt.includes("tablet") || dt.includes("ipad")) category = "Tablet";
+         
+         deviceStatsMap[category] = (deviceStatsMap[category] || 0) + 1;
+      }
+
+      if (app.status === 'verified' || app.status === 'rejected') {
+        // Trend: Approvals & Rejections
+        const updatedDiff = Math.floor((now - app.updatedAt) / (1000 * 60 * 60 * 24));
+        if (updatedDiff >= 0 && updatedDiff < chartDays) {
+          if (app.status === 'verified') weeklyTrend[(chartDays - 1) - updatedDiff].approvals++;
+          if (app.status === 'rejected') weeklyTrend[(chartDays - 1) - updatedDiff].rejections++;
+        }
+
+        // Rejection Reasons
+        if (app.status === 'rejected' && app.rejectionReason) {
+          rejectionReasonsMap[app.rejectionReason] = (rejectionReasonsMap[app.rejectionReason] || 0) + 1;
+        }
+
+        // Avg Processing Time
+        const timeToProcess = new Date(app.updatedAt).getTime() - new Date(app.createdAt).getTime();
+        if (timeToProcess > 0) {
+           totalProcessingTimeMs += timeToProcess;
+           processedCount++;
+        }
       }
     });
+
+    const rejectionReasons = Object.entries(rejectionReasonsMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    const deviceStats = Object.entries(deviceStatsMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    let averageProcessingTime = "N/A";
+    if (processedCount > 0) {
+       const avgMs = totalProcessingTimeMs / processedCount;
+       const avgMins = Math.floor(avgMs / 60000);
+       if (avgMins < 60) averageProcessingTime = `${avgMins} mins`;
+       else {
+           const hrs = Math.floor(avgMins / 60);
+           const rem = avgMins % 60;
+           averageProcessingTime = `${hrs}h ${rem}m`;
+       }
+    }
+
+    let averageUserCompletionTime = "N/A";
+    if (userCompletedCount > 0) {
+       const avgMs = totalUserCompletionTimeMs / userCompletedCount;
+       const avgMins = Math.floor(avgMs / 60000);
+       if (avgMins < 60) averageUserCompletionTime = `${avgMins} mins`;
+       else {
+           const hrs = Math.floor(avgMins / 60);
+           const rem = avgMins % 60;
+           averageUserCompletionTime = `${hrs}h ${rem}m`;
+       }
+    }
 
     // 2. Calculate Drop-off Funnel
     let stepCounts = { setup: 0, identity: 0, personal: 0, docs: 0, esign: 0 };
@@ -397,9 +522,49 @@ const getStats = async (req, res, next) => {
       };
     });
 
+    // 4. Calculate Trends (Always 14-day vs 7-day trailing)
+    let totalThisWeek = 0;
+    let totalLastWeek = 0;
+    
+    // We need to count strictly 14 days ago for the WOW trends
+    const recentAppsForTrendActual = await prisma.kycApplication.findMany({
+      where: { createdAt: { gte: fourteenDaysAgo } },
+      select: { createdAt: true }
+    });
+
+    recentAppsForTrendActual.forEach(app => {
+      if (app.createdAt >= sevenDaysAgo) totalThisWeek++;
+      else totalLastWeek++;
+    });
+
+    const calculateTrend = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    const trends = {
+      total: calculateTrend(totalThisWeek, totalLastWeek),
+      verified: calculateTrend(verifiedThisWeekCount, verifiedLastWeekCount),
+      rejected: calculateTrend(rejectedThisWeekCount, rejectedLastWeekCount)
+    };
+
     res.json({ 
-      success: true, total, pending, review, verified, rejected, onHold, recent,
-      weeklyTrend, dropOff, liveActivity
+      success: true, 
+      total, 
+      pending, 
+      review, 
+      verified, 
+      rejected, 
+      onHold, 
+      recent,
+      weeklyTrend, 
+      dropOff, 
+      liveActivity, 
+      trends,
+      rejectionReasons,
+      averageProcessingTime,
+      averageUserCompletionTime,
+      deviceStats
     });
   } catch (error) {
     next(error);
@@ -407,7 +572,7 @@ const getStats = async (req, res, next) => {
 };
 
 const getAuditLogs = async (req, res, next) => {
-  const { page = 1, limit = 50, severity = "all", search = "" } = req.query;
+  const { page = 1, limit = 50, severity = "all", search = "", export: isExport } = req.query;
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const take = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
   const skip = (pageNum - 1) * take;
@@ -431,16 +596,37 @@ const getAuditLogs = async (req, res, next) => {
       prisma.auditLog.findMany({
         where,
         orderBy: { timestamp: "desc" },
-        take,
-        skip,
+        ...(isExport !== "true" && { take, skip }), // Don't paginate if exporting
         include: {
           user: {
             select: { id: true, email: true, phone: true, role: true },
           },
         },
       }),
-      prisma.auditLog.count({ where })
+      prisma.auditLog.count({ where }),
     ]);
+
+    if (isExport === "true") {
+      const csvLines = ["Log ID,Action,Actor,Target,IP Address,Severity,Timestamp"];
+      logs.forEach(log => {
+        let details = {};
+        try { details = JSON.parse(log.details || "{}"); } catch(e) {}
+        
+        const logId = `LOG-${String(log.id).padStart(6, "0")}`;
+        const action = `"${log.action || 'N/A'}"`;
+        const actor = `"${log.user?.email || log.user?.phone || log.crmAgentName || 'System'}"`;
+        const target = `"${details.applicationId || details.requestId || log.targetId || '-'}"`;
+        const ip = `"${log.ipAddress || '-'}"`;
+        const sev = `"${(details.severity || 'info').toLowerCase()}"`;
+        const time = `"${new Date(log.timestamp).toLocaleString("en-IN")}"`;
+        
+        csvLines.push([logId, action, actor, target, ip, sev, time].join(","));
+      });
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.csv"');
+      return res.send(csvLines.join("\n"));
+    }
 
     res.json({
       success: true,
@@ -906,6 +1092,209 @@ const updateEstampSequence = async (req, res, next) => {
   }
 };
 
+const updateApplicationDetails = async (req, res, next) => {
+  const { id } = req.params;
+  const { updates, requireEsign } = req.body;
+  const agentId = req.user.id;
+  const agentName = req.user.email || `Agent ${agentId}`;
+
+  try {
+    const app = await prisma.kycApplication.findUnique({
+      where: { applicationId: id },
+      include: { user: true },
+    });
+
+    if (!app) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    if (!updates || typeof updates !== "object" || Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, error: "No updates provided" });
+    }
+
+    // Process updates
+    const nextData = {};
+    for (const [keyPath, value] of Object.entries(updates)) {
+      const parts = keyPath.split(".");
+      const topKey = parts[0];
+      
+      if (!JSON_FIELD_KEYS.includes(topKey)) continue;
+
+      if (!nextData[topKey]) {
+        nextData[topKey] = { ...parseJsonField(app[topKey], {}) };
+      }
+
+      let current = nextData[topKey];
+      for (let i = 1; i < parts.length - 1; i++) {
+        const p = parts[i];
+        if (!current[p] || typeof current[p] !== "object") {
+          current[p] = {};
+        }
+        current = current[p];
+      }
+      current[parts[parts.length - 1]] = value;
+    }
+
+    // Convert updated objects to JSON strings
+    const updatePayload = {};
+    for (const [topKey, value] of Object.entries(nextData)) {
+      updatePayload[topKey] = JSON.stringify(value);
+    }
+
+    if (requireEsign) {
+      // We force re-sign
+      updatePayload.currentStep = 12; // eSign preview
+      updatePayload.status = "pending";
+      updatePayload.isResubmitted = false;
+    }
+
+    await prisma.kycApplication.update({
+      where: { applicationId: id },
+      data: updatePayload,
+    });
+
+    if (requireEsign) {
+      // Send email
+      const personalDetails = { ...parseJsonField(app.personalDetails, {}), ...(nextData.personalDetails || {}) };
+      const userName = personalDetails.fullName || app.user?.email || app.user?.phone || "User";
+      const userEmail = personalDetails.email || app.user?.email;
+
+      if (userEmail) {
+        const frontendUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+        const modifyLink = `${frontendUrl}/`;
+        const { sendRejectionEmail } = require("../services/emailService");
+        try {
+          await sendRejectionEmail(
+            userEmail,
+            userName,
+            [{ stepTitle: "Admin Modifications", reason: "Your details were updated by an admin. Please review the changes and re-sign your application to proceed." }],
+            modifyLink
+          );
+        } catch (emailError) {
+          console.error("Email sending failed:", emailError.message);
+        }
+      }
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.role !== "admin" ? null : req.user.id,
+        crmAgentId: req.user.role === "admin" ? null : agentId,
+        crmAgentName: agentName,
+        action: "kyc_admin_updated_details",
+        details: JSON.stringify({ applicationId: id, updates }),
+        ipAddress: req.ip,
+      },
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(id).emit("kyc_updated", { action: "admin_updated_details" });
+      io.to("staff_room").emit("applications_updated");
+    }
+
+    res.json({ success: true, message: "Details updated and re-signing requested" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const uploadAdminDocument = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { documentType } = req.body;
+    
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "No file uploaded" });
+    }
+
+    const app = await prisma.kycApplication.findUnique({ where: { applicationId: id } });
+    if (!app) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    const filePath = `/uploads/${req.file.filename}`;
+    const updatePayload = {};
+
+    // Map the documentType (label from UI) to the correct DB JSON field
+    if (documentType.includes("Aadhaar Document") || documentType.includes("Aadhaar Image")) {
+      const documents = parseJsonField(app.documents, {});
+      documents.front = filePath;
+      documents.frontPreview = filePath;
+      updatePayload.documents = JSON.stringify(documents);
+    } else if (documentType.includes("PAN")) {
+      const panUpload = parseJsonField(app.panUpload, {});
+      panUpload.path = filePath;
+      panUpload.filePreview = filePath;
+      updatePayload.panUpload = JSON.stringify(panUpload);
+    } else if (documentType.includes("Selfie")) {
+      const selfieDetails = parseJsonField(app.selfieDetails, {});
+      selfieDetails.path = filePath;
+      selfieDetails.preview = filePath;
+      updatePayload.selfieDetails = JSON.stringify(selfieDetails);
+    } else if (documentType.includes("Signature")) {
+      const signature = parseJsonField(app.signature, {});
+      signature.path = filePath;
+      signature.filePreview = filePath;
+      updatePayload.signature = JSON.stringify(signature);
+    } else if (documentType.includes("Bank")) {
+      const bankDetails = parseJsonField(app.bankDetails, {});
+      bankDetails.proofPath = filePath;
+      bankDetails.proofPreview = filePath;
+      updatePayload.bankDetails = JSON.stringify(bankDetails);
+    } else if (documentType.includes("F&O") || documentType.includes("Financial")) {
+      const financialProof = parseJsonField(app.financialProof, {});
+      financialProof.path = filePath;
+      financialProof.filePreview = filePath;
+      updatePayload.financialProof = JSON.stringify(financialProof);
+    } else if (documentType.includes("PEP")) {
+      const personalDetails = parseJsonField(app.personalDetails, {});
+      personalDetails.pepProof = filePath;
+      personalDetails.pepProofPreview = filePath;
+      updatePayload.personalDetails = JSON.stringify(personalDetails);
+    } else if (documentType.includes("Nominee")) {
+      const nomineeDetails = parseJsonField(app.nomineeDetails, {});
+      if (Array.isArray(nomineeDetails.nominees)) {
+        // Just apply to the first nominee for simplicity unless a specific index is parsed
+        if (documentType.includes("Guardian")) {
+           nomineeDetails.nominees[0].guardianProofPath = filePath;
+        } else {
+           nomineeDetails.nominees[0].proofPath = filePath;
+        }
+      }
+      updatePayload.nomineeDetails = JSON.stringify(nomineeDetails);
+    }
+
+    if (Object.keys(updatePayload).length > 0) {
+      await prisma.kycApplication.update({
+        where: { applicationId: id },
+        data: updatePayload,
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.role !== "admin" ? null : req.user.id,
+          crmAgentId: req.user.role === "admin" ? null : req.user.id,
+          crmAgentName: req.user.email || "Admin",
+          action: "kyc_admin_uploaded_document",
+          details: JSON.stringify({ applicationId: id, documentType, filePath }),
+          ipAddress: req.ip,
+        },
+      });
+
+      const io = req.app.get("io");
+      if (io) {
+        io.to(id).emit("kyc_updated", { action: "admin_uploaded_document" });
+        io.to("staff_room").emit("applications_updated");
+      }
+    }
+
+    res.json({ success: true, message: "Document uploaded and replaced successfully", filePath });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getApplications,
   getApplicationById,
@@ -923,5 +1312,7 @@ module.exports = {
   getCrmEmployees,
   assignApplication,
   updateUserEstamp,
-  updateEstampSequence
+  updateEstampSequence,
+  updateApplicationDetails,
+  uploadAdminDocument
 };

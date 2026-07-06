@@ -45,6 +45,7 @@ function AdminThemeToggle() {
 
 export default function AdminPage() {
   const [activeSection, setActiveSection] = useState("overview");
+  const [activeSectionParams, setActiveSectionParams] = useState({});
 
   // Load from localStorage on mount to avoid hydration mismatch
   useEffect(() => {
@@ -91,13 +92,20 @@ export default function AdminPage() {
   );
 
   const renderSection = () => {
+    const handleNavigate = (sec, params = {}) => {
+      setActiveSection(sec);
+      setActiveSectionParams(params);
+      localStorage.setItem("adminActiveSection", sec);
+      setSearchQuery("");
+    };
+
     switch (activeSection) {
-      case "overview": return <DashboardOverview onNavigate={setActiveSection} />;
-      case "kyc": return <KYCRequests searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
+      case "overview": return <DashboardOverview onNavigate={handleNavigate} />;
+      case "kyc": return <KYCRequests searchQuery={searchQuery} onSearchChange={setSearchQuery} defaultFilter={activeSectionParams?.filter} />;
       case "estamps": return <EStamps searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case "audit": return <AuditLogs />;
       case "pdf-builder": return <PdfBuilder />;
-      default: return <DashboardOverview onNavigate={setActiveSection} />;
+      default: return <DashboardOverview onNavigate={handleNavigate} />;
     }
   };
 
@@ -120,6 +128,7 @@ export default function AdminPage() {
         active={activeSection} 
         onNavigate={(sec) => {
           setActiveSection(sec);
+          setActiveSectionParams({});
           localStorage.setItem("adminActiveSection", sec);
           setSearchQuery(""); // Clear search query when changing sections
         }} 

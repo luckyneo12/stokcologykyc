@@ -10,7 +10,8 @@ const {
   getStatus,
   getKycConfig,
   getPincodeData,
-  downloadPdf
+  downloadPdf,
+  bypassEsign
 } = require("../controllers/kycController");
 const { auth } = require("../middlewares/auth");
 const upload = require("../middlewares/upload");
@@ -37,6 +38,7 @@ router.post("/upload-local", auth, localUpload.single("document"), uploadDocumen
 router.post("/ocr-extract", auth, ocrExtract);
 router.post("/face-match", auth, faceMatch);
 router.post("/submit", auth, submitKyc);
+router.post("/bypass-esign", auth, bypassEsign);
 router.get("/status/:applicationId", auth, getStatus);
 router.get("/download-pdf/:applicationId", auth, downloadPdf);
 router.get("/config", getKycConfig);

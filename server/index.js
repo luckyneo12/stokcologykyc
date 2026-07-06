@@ -134,11 +134,32 @@ app.get("/", (req, res) => {
 app.use(errorHandler);
 
 // Start Server
-server.listen(PORT, () => {
+const serverInstance = server.listen(PORT, () => {
   console.log(`\n🚀 KYC API Server running on http://localhost:${PORT}`);
   console.log(`   Database: MySQL via Prisma`);
   console.log(`   Real-time: Socket.IO enabled`);
   console.log(`   Security: Helmet, Rate Limiting, Zod Validation`);
   console.log(`   SMS Service: ${process.env.SMS_AUTH ? "Configured" : "MISSING SMS_AUTH"}\n`);
 });
+
+// Graceful Shutdown handling to free up port
+const gracefulShutdown = () => {
+  console.log('\nShutting down gracefully...');
+  serverInstance.close(() => {
+    console.log('Closed out remaining connections.');
+    process.exit(0);
+  });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown); // For Ctrl+C
+
 // Server restarted at: 2026-05-18T17:56:00
+
+// trigger restart

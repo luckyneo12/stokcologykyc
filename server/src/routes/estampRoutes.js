@@ -14,6 +14,10 @@ router.post('/bulk-upload', localUpload.array('files', 50), estampController.bul
 // Save Confirmed E-Stamps
 router.post('/bulk-save', estampController.bulkSaveEStamps);
 
+// Check for duplicates before saving
+router.post('/check-duplicates', estampController.checkDuplicates);
+
+
 // Upload E-Stamp (legacy/single)
 router.post('/upload', upload.single('file'), estampController.uploadEStamp);
 

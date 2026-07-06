@@ -152,8 +152,8 @@ const REVIEW_STEPS = [
       ["PEP status", app.personalDetails?.politicallyExposed],
     ],
     evidence: (app) => [
-      findDocument(app, ["aadhaar", "digilocker", "photo"], "Aadhaar Photo", ["pan", "pdf"]),
       findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
+      findDocument(app, ["aadhaar", "digilocker", "photo"], "Aadhaar Photo", ["pan", "pdf"]),
       findDocument(app, ["pan", "digilocker"], "DigiLocker PAN", ["aadhaar", "photo"]) || firstMedia(app.panUpload, "Uploaded PAN Card"),
       firstMedia(app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof, "PEP Proof"),
     ].filter(Boolean),
@@ -229,9 +229,18 @@ const REVIEW_STEPS = [
       ["Signature captured", app.signature ? "Yes" : "No"],
       ["Applicant", app.personalDetails?.fullName],
     ],
-    evidence: (app) => [
-      firstMedia(app.signature, "Signature")
-    ].filter(Boolean),
+    evidence: (app) => {
+      const panDocs = getAllPanDocuments(app);
+      const manualPan = panDocs.find(p => p.label === "Uploaded PAN Card") || panDocs[0];
+      const signatureDoc = firstMedia(app.signature, "Signature");
+      if (manualPan && signatureDoc) {
+        return [
+          signatureDoc,
+          { ...manualPan, defaultZoom: 2.5, defaultOffset: { x: 0, y: -150 } }
+        ];
+      }
+      return [signatureDoc].filter(Boolean);
+    },
   },
   {
     id: "panUpload",
@@ -243,7 +252,7 @@ const REVIEW_STEPS = [
       ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
       ["Name", app.personalDetails?.fullName],
     ],
-    evidence: (app) => [firstMedia(app.panUpload, "PAN Card Image") || findDocument(app, ["pan"], "PAN Card Image")].filter(Boolean),
+    evidence: (app) => getAllPanDocuments(app),
   },
   {
     id: "ipv",
@@ -450,6 +459,31 @@ function findDocument(app, keywords, label, excludeKeywords = []) {
     }
   }
   return null;
+}
+
+function getAllPanDocuments(app) {
+  const pans = [];
+  const manual = firstMedia(app.panUpload, "Uploaded PAN Card");
+  if (manual) pans.push(manual);
+
+  const docs = normalizeDocuments(app);
+  docs.forEach(doc => {
+    const type = String(doc?.type || "").toUpperCase();
+    const label = String(doc?.label || "").toUpperCase();
+    const path = String(doc?.path || "").toLowerCase();
+    
+    if (type.includes("AADHAAR") || type.includes("AADHAR") || type.includes("UID")) return;
+    if (path.includes("aadhaar") || path.includes("aadhar")) return;
+
+    if (type.includes("PAN") || label.includes("PAN") || /(^|[\/_])pan([\/_]|\.)/i.test(path)) {
+      const media = firstMedia(doc, doc.label || doc.type || "DigiLocker PAN");
+      if (media && !pans.some(p => p.src === media.src)) {
+        pans.push(media);
+      }
+    }
+  });
+
+  return pans;
 }
 
 function formatList(value) {

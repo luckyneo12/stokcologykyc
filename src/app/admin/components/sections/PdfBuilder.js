@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Rnd } from 'react-rnd';
 import { API_BASE_URL } from "@/utils/apiConfig";
 
@@ -15,8 +15,12 @@ export default function PdfBuilder() {
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customForm, setCustomForm] = useState({ name: '', key: '', type: 'text' });
   
+  // Track the natural (unscaled) canvas size for coordinate conversion
+  const [canvasNaturalSize, setCanvasNaturalSize] = useState({ width: 0, height: 0 });
+  
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
+  const containerRef = useRef(null);
 
   const availableVariables = [
     { name: 'Application ID', key: 'applicationId', type: 'text' },
@@ -24,13 +28,15 @@ export default function PdfBuilder() {
     { name: 'Pricing Plan', key: 'plan', type: 'text' },
     { name: 'Full Name', key: 'fullName', type: 'text' },
     { name: 'Father/Spouse Name', key: 'fatherName', type: 'text' },
+    { name: 'Mother\'s Name', key: 'motherName', type: 'text' },
     { name: 'Gender', key: 'gender', type: 'text' },
     { name: 'Date of Birth', key: 'dob', type: 'text' },
+    { name: 'Nationality', key: 'nationality', type: 'text' },
     { name: 'Marital Status', key: 'maritalStatus', type: 'text' },
     { name: 'Occupation', key: 'occupation', type: 'text' },
     { name: 'Annual Income', key: 'annualIncome', type: 'text' },
     { name: 'PAN Number', key: 'pan', type: 'text' },
-    { name: 'Aadhaar', key: 'aadhaar', type: 'text' },
+    { name: 'Aadhaar Number', key: 'aadhaar', type: 'text' },
     { name: 'Phone', key: 'phone', type: 'text' },
     { name: 'Email Address', key: 'email', type: 'text' },
     { name: 'Address Line 1', key: 'addressLine1', type: 'text' },
@@ -46,6 +52,8 @@ export default function PdfBuilder() {
     { name: 'Selfie (Image)', key: 'selfie', type: 'image' },
     { name: 'Signature (Image)', key: 'signature', type: 'image' },
     { name: 'eSign Stamp', key: 'esign', type: 'image' },
+    { name: 'PAN Image', key: 'panImage', type: 'image' },
+    { name: 'Aadhaar Image', key: 'aadhaarImage', type: 'image' },
     ...customVars
   ];
 
@@ -109,6 +117,13 @@ export default function PdfBuilder() {
       canvas.height = viewport.height;
       canvas.width = viewport.width;
 
+      // Store the natural (scale=1) dimensions for coordinate normalization
+      const naturalViewport = page.getViewport({ scale: 1 });
+      setCanvasNaturalSize({ 
+        width: naturalViewport.width, 
+        height: naturalViewport.height 
+      });
+
       const renderContext = {
         canvasContext: context,
         viewport: viewport,
@@ -129,6 +144,7 @@ export default function PdfBuilder() {
   };
 
   const addVariable = (variable) => {
+    // Store positions in natural (unscaled) PDF coordinates
     setFields(prev => [...prev, {
       id: Date.now().toString(),
       variable: variable.key,
@@ -143,21 +159,21 @@ export default function PdfBuilder() {
     }]);
   };
 
-  const updateField = (id, changes) => {
+  const updateField = useCallback((id, changes) => {
     setFields(prev => prev.map(f => f.id === id ? { ...f, ...changes } : f));
-  };
-
-  const updateFieldDelta = (id, deltaX, deltaY) => {
-    setFields(prev => prev.map(f => {
-      if (f.id === id) {
-        return { ...f, x: f.x + deltaX, y: f.y + deltaY };
-      }
-      return f;
-    }));
-  };
+  }, []);
 
   const removeField = (id) => {
     setFields(prev => prev.filter(f => f.id !== id));
+  };
+
+  const duplicateField = (fieldToCopy) => {
+    setFields(prev => [...prev, {
+      ...fieldToCopy,
+      id: Date.now().toString(),
+      x: fieldToCopy.x + 20,
+      y: fieldToCopy.y + 20
+    }]);
   };
 
   const handleAddCustomVar = () => {
@@ -224,6 +240,10 @@ export default function PdfBuilder() {
     }
     setUploadingPdf(false);
   };
+
+  // Get the current scaled canvas dimensions
+  const scaledCanvasWidth = canvasNaturalSize.width * scale;
+  const scaledCanvasHeight = canvasNaturalSize.height * scale;
 
   return (
     <div style={{
@@ -466,107 +486,150 @@ export default function PdfBuilder() {
           justifyContent: 'center',
           alignItems: 'flex-start'
         }}>
-          <div style={{
-            position: 'relative',
-            boxShadow: '0 24px 48px rgba(0,0,0,0.1)',
-            background: '#fff'
-          }}>
+          <div 
+            ref={containerRef}
+            style={{
+              position: 'relative',
+              boxShadow: '0 24px 48px rgba(0,0,0,0.1)',
+              background: '#fff',
+              // Explicitly set container size to match the canvas
+              width: scaledCanvasWidth || 'auto',
+              height: scaledCanvasHeight || 'auto'
+            }}
+          >
             <canvas ref={canvasRef} style={{ display: 'block' }} />
             
-            {fields.filter(f => f.page === pageNum).map(f => (
-              <Rnd
-                key={`${f.id}-${scale}-${pageNum}`}
-                default={{
-                  x: f.x * scale,
-                  y: f.y * scale,
-                  width: f.width * scale,
-                  height: f.height * scale
-                }}
-                onDragStop={(e, d) => {
-                  const canvas = canvasRef.current;
-                  if (canvas && d.node) {
-                    const canvasRect = canvas.getBoundingClientRect();
-                    const nodeRect = d.node.getBoundingClientRect();
-                    const absoluteX = nodeRect.left - canvasRect.left;
-                    const absoluteY = nodeRect.top - canvasRect.top;
-                    updateField(f.id, { x: absoluteX / scale, y: absoluteY / scale });
-                  }
-                }}
-                onResizeStop={(e, dir, ref, delta, pos) => {
-                  const canvas = canvasRef.current;
-                  if (canvas && ref) {
-                    const canvasRect = canvas.getBoundingClientRect();
-                    const nodeRect = ref.getBoundingClientRect();
-                    const absoluteX = nodeRect.left - canvasRect.left;
-                    const absoluteY = nodeRect.top - canvasRect.top;
-                    updateField(f.id, { 
-                      width: ref.offsetWidth / scale, 
-                      height: ref.offsetHeight / scale,
-                      x: absoluteX / scale,
-                      y: absoluteY / scale
-                    });
-                  }
-                }}
-                enableResizing={{ bottomRight: true, bottomLeft: true, topRight: true, topLeft: true }}
-                style={{
-                  boxSizing: 'border-box',
-                  border: f.type === 'image' ? '2px dashed var(--accent-blue)' : (f.type === 'checkbox' ? '2px solid var(--accent-red)' : '2px solid var(--wise-green)'),
-                  background: f.type === 'image' ? 'rgba(14, 165, 233, 0.1)' : (f.type === 'checkbox' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(159, 232, 112, 0.2)'),
-                  borderRadius: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'move',
-                  zIndex: 10
-                }}
-              >
-                <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', padding: '0 8px', boxSizing: 'border-box' }}>
-                  <span style={{ 
-                    fontWeight: '700', 
-                    color: f.type === 'image' ? 'var(--accent-blue)' : (f.type === 'checkbox' ? 'var(--accent-red)' : 'var(--wise-dark-green)'),
-                    fontSize: f.type === 'text' ? `${Math.max(8, (f.height || 30) * 0.6)}px` : (f.type === 'checkbox' ? '12px' : '12px'),
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    userSelect: 'none',
-                    lineHeight: '1'
-                  }}>
-                    {f.type === 'checkbox' ? `✓ ${f.matchValue}` : `{{${f.variable}}}`}
-                  </span>
-                  
-                  {/* Delete Button */}
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); removeField(f.id); }}
-                    style={{
-                      position: 'absolute',
-                      top: '-10px',
-                      right: '-10px',
-                      width: '24px',
-                      height: '24px',
-                      background: 'var(--accent-red)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '50%',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '14px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                      zIndex: 20
-                    }}
-                  >
-                    ×
-                  </button>
-                  
-                  {/* Removed Font Size Control */}
-                </div>
-              </Rnd>
+            {/* Render fields using controlled position/size props */}
+            {canvasNaturalSize.width > 0 && fields.filter(f => f.page === pageNum).map(f => (
+              <RndField
+                key={f.id}
+                field={f}
+                scale={scale}
+                canvasNaturalSize={canvasNaturalSize}
+                onUpdate={updateField}
+                onRemove={removeField}
+                onDuplicate={duplicateField}
+              />
             ))}
           </div>
         </div>
 
       </div>
     </div>
+  );
+}
+
+/**
+ * Separate component for each draggable field.
+ * Uses controlled `position` and `size` props instead of `default`
+ * to ensure positions are always correct regardless of remounting.
+ * 
+ * Coordinates in state are stored in NATURAL (unscaled) PDF coordinates.
+ * They are multiplied by `scale` for display and divided by `scale` on save.
+ */
+function RndField({ field: f, scale, canvasNaturalSize, onUpdate, onRemove, onDuplicate }) {
+  // Compute the displayed (scaled) position and size from the stored natural coordinates
+  const displayX = f.x * scale;
+  const displayY = f.y * scale;
+  const displayW = f.width * scale;
+  const displayH = f.height * scale;
+
+  const handleDragStop = (e, d) => {
+    // d.x and d.y are the new position relative to the parent container (in scaled px)
+    // Convert back to natural coordinates by dividing by scale
+    const naturalX = d.x / scale;
+    const naturalY = d.y / scale;
+    
+    // Clamp to canvas bounds
+    const clampedX = Math.max(0, Math.min(naturalX, canvasNaturalSize.width - f.width));
+    const clampedY = Math.max(0, Math.min(naturalY, canvasNaturalSize.height - f.height));
+    
+    onUpdate(f.id, { x: clampedX, y: clampedY });
+  };
+
+  const handleResizeStop = (e, dir, ref, delta, position) => {
+    // ref.offsetWidth/Height give the new scaled dimensions
+    // position.x/y give the new scaled position
+    const naturalW = ref.offsetWidth / scale;
+    const naturalH = ref.offsetHeight / scale;
+    const naturalX = position.x / scale;
+    const naturalY = position.y / scale;
+    
+    onUpdate(f.id, { 
+      width: naturalW, 
+      height: naturalH,
+      x: naturalX,
+      y: naturalY
+    });
+  };
+
+  return (
+    <Rnd
+      position={{ x: displayX, y: displayY }}
+      size={{ width: displayW, height: displayH }}
+      onDragStop={handleDragStop}
+      onResizeStop={handleResizeStop}
+      enableResizing={{ bottomRight: true, bottomLeft: true, topRight: true, topLeft: true }}
+      style={{
+        boxSizing: 'border-box',
+        border: f.type === 'image' ? '2px dashed var(--accent-blue)' : (f.type === 'checkbox' ? '2px solid var(--accent-red)' : '2px solid var(--wise-green)'),
+        background: f.type === 'image' ? 'rgba(14, 165, 233, 0.1)' : (f.type === 'checkbox' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(159, 232, 112, 0.2)'),
+        borderRadius: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'move',
+        zIndex: 10
+      }}
+    >
+      <div 
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDuplicate(f);
+        }}
+        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', padding: '0 8px', boxSizing: 'border-box' }}
+        title="Right-click to duplicate"
+      >
+        <span style={{ 
+          fontWeight: '700', 
+          color: f.type === 'image' ? 'var(--accent-blue)' : (f.type === 'checkbox' ? 'var(--accent-red)' : 'var(--wise-dark-green)'),
+          fontSize: f.type === 'text' ? `${Math.max(8, (f.height || 30) * 0.6 * scale)}px` : (f.type === 'checkbox' ? '12px' : '12px'),
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          userSelect: 'none',
+          lineHeight: '1'
+        }}>
+          {f.type === 'checkbox' ? `✓ ${f.matchValue}` : `{{${f.variable}}}`}
+        </span>
+        
+        {/* Delete Button */}
+        <button 
+          onClick={(e) => { e.stopPropagation(); onRemove(f.id); }}
+          style={{
+            position: 'absolute',
+            top: '-10px',
+            right: '-10px',
+            width: '24px',
+            height: '24px',
+            background: 'var(--accent-red)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '14px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            zIndex: 20
+          }}
+          title="Delete"
+        >
+          ×
+        </button>
+      </div>
+    </Rnd>
   );
 }

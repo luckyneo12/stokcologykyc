@@ -108,7 +108,7 @@ const REVIEW_STEP_TO_KYC_INDEX = {
  * A step is NOT considered approved if ANY review step mapping to it is rejected or missing.
  * Steps 12+ (eSign/completion) are NEVER skipped — they must always be redone after modifications.
  */
-function isKycStepApproved(kycStepIndex, stepStatuses) {
+function isKycStepApproved(kycStepIndex, stepStatuses, isResubmission) {
   if (!stepStatuses || Object.keys(stepStatuses).length === 0) return false;
   // eSign preview and beyond must always be revisited
   if (kycStepIndex >= 12) return false;
@@ -119,9 +119,18 @@ function isKycStepApproved(kycStepIndex, stepStatuses) {
 
   if (reviewStepsForIndex.length === 0) return false;
 
-  return reviewStepsForIndex.every(
-    (reviewId) => stepStatuses[reviewId]?.status === "approved"
-  );
+  if (isResubmission) {
+    // If resubmitting, we skip everything UNLESS it is explicitly rejected.
+    const hasRejection = reviewStepsForIndex.some(
+      (reviewId) => stepStatuses[reviewId]?.status === "rejected"
+    );
+    return !hasRejection;
+  } else {
+    // Normal flow: only skip if explicitly approved
+    return reviewStepsForIndex.every(
+      (reviewId) => stepStatuses[reviewId]?.status === "approved"
+    );
+  }
 }
 
 const STEP_RELEVANT_KEYS = {
@@ -250,6 +259,20 @@ export function KYCProvider({ children }) {
         if (data.success && data.application) {
           const app = data.application;
           
+          const isInitialLoad = !isPolling;
+          const adminJustMoved = app.reviewedAt && app.reviewedAt !== lastSyncedReviewedAt.current;
+
+          // Dynamically compute the starting step for rejected applications
+          if ((isInitialLoad || adminJustMoved) && app.status === "pending" && app.stepStatuses) {
+            const rejectedEntries = Object.entries(REVIEW_STEP_TO_KYC_INDEX)
+              .filter(([reviewId]) => app.stepStatuses[reviewId]?.status === "rejected")
+              .map(([, idx]) => idx);
+              
+            if (rejectedEntries.length > 0) {
+              app.currentStep = Math.min(...rejectedEntries);
+            }
+          }
+          
           setHasSynced(true);
           setState(prev => {
             // Detect if anything critical actually changed
@@ -273,6 +296,9 @@ export function KYCProvider({ children }) {
                 applicationId: app.applicationId,
                 currentStep: app.currentStep,
                 status: app.status,
+                rejectionReason: app.rejectionReason !== undefined ? app.rejectionReason : prev.rejectionReason,
+                submittedAt: app.submittedAt !== undefined ? app.submittedAt : prev.submittedAt,
+                isResubmitted: app.isResubmitted !== undefined ? app.isResubmitted : prev.isResubmitted,
                 personalDetails: { ...prev.personalDetails, ...(app.personalDetails || {}) },
                 identityDetails: { ...prev.identityDetails, ...(app.identityDetails || {}) },
                 address: { ...prev.address, ...(app.address || {}) },
@@ -299,6 +325,9 @@ export function KYCProvider({ children }) {
                 applicationId: app.applicationId,
                 currentStep: app.currentStep,
                 status: app.status,
+                rejectionReason: app.rejectionReason !== undefined ? app.rejectionReason : prev.rejectionReason,
+                submittedAt: app.submittedAt !== undefined ? app.submittedAt : prev.submittedAt,
+                isResubmitted: app.isResubmitted !== undefined ? app.isResubmitted : prev.isResubmitted,
                 isRestoring: false,
                 otpVerified: app.currentStep > 1 ? true : prev.otpVerified,
                 emailVerified: app.currentStep > 2 ? true : prev.emailVerified,
@@ -348,6 +377,9 @@ export function KYCProvider({ children }) {
                   applicationId: app.applicationId,
                   currentStep: app.currentStep, 
                   status: app.status,
+                  rejectionReason: app.rejectionReason !== undefined ? app.rejectionReason : prev.rejectionReason,
+                  submittedAt: app.submittedAt !== undefined ? app.submittedAt : prev.submittedAt,
+                  isResubmitted: app.isResubmitted !== undefined ? app.isResubmitted : prev.isResubmitted,
                   personalDetails: { ...prev.personalDetails, ...(app.personalDetails || {}) },
                   identityDetails: { ...prev.identityDetails, ...(app.identityDetails || {}) },
                   address: { ...prev.address, ...(app.address || {}) },
@@ -426,6 +458,35 @@ export function KYCProvider({ children }) {
     // Only restore from sessionStorage to ensure new tabs start fresh at Phone Verification
     const savedApplicationId = sessionStorage.getItem("kycApplicationId");
     const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token");
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const magicToken = urlParams.get('token');
+    
+    if (magicToken) {
+      sessionStorage.setItem("kycToken", magicToken);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Fetch /api/kyc/me to get the application id
+      fetch(`${API_BASE_URL}/api/kyc/me`, {
+        headers: { Authorization: `Bearer ${magicToken}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.application) {
+           sessionStorage.setItem("kycApplicationId", data.application.applicationId);
+           refreshProgress(data.application.applicationId, magicToken);
+        } else {
+           setHasSynced(true);
+           setState(prev => ({ ...prev, isRestoring: false }));
+        }
+      })
+      .catch(err => {
+         console.warn("[KYC Init] Failed to verify magic token:", err);
+         setHasSynced(true);
+         setState(prev => ({ ...prev, isRestoring: false }));
+      });
+      return;
+    }
 
     if (savedApplicationId && token) {
       console.log(`[KYC Init] Found tab session for ${savedApplicationId}. Refreshing...`);
@@ -619,8 +680,10 @@ export function KYCProvider({ children }) {
 
     // MODIFICATION MODE: Skip approved steps (but never skip step 12+ i.e. eSign)
     const hasStepStatuses = base.stepStatuses && Object.keys(base.stepStatuses).length > 0;
+    const hasAnyRejected = hasStepStatuses && Object.values(base.stepStatuses).some(s => s?.status === "rejected");
+    const isResubmission = !!base.rejectionReason || !!base.submittedAt || !!base.isResubmitted || hasAnyRejected;
     if (hasStepStatuses) {
-      while (nextStepIndex < currentSteps.length - 1 && isKycStepApproved(nextStepIndex, base.stepStatuses)) {
+      while (nextStepIndex < currentSteps.length - 1 && isKycStepApproved(nextStepIndex, base.stepStatuses, isResubmission)) {
         console.log(`[KYC Context] Skipping approved step ${nextStepIndex} (${currentSteps[nextStepIndex]?.id})`);
         nextStepIndex++;
       }
@@ -640,7 +703,18 @@ export function KYCProvider({ children }) {
     
     setState(prev => {
       const freshBase = updates ? { ...prev, ...updates } : prev;
-      const freshNextStepIndex = Math.min(freshBase.currentStep + 1, currentSteps.length - 1);
+      let freshNextStepIndex = Math.min(freshBase.currentStep + 1, currentSteps.length - 1);
+      
+      const hasStepStatuses = freshBase.stepStatuses && Object.keys(freshBase.stepStatuses).length > 0;
+      const hasAnyRejected = hasStepStatuses && Object.values(freshBase.stepStatuses).some(s => s?.status === "rejected");
+      const isResubmissionState = !!freshBase.rejectionReason || !!freshBase.submittedAt || !!freshBase.isResubmitted || hasAnyRejected;
+      if (hasStepStatuses) {
+        while (freshNextStepIndex < currentSteps.length - 1 && isKycStepApproved(freshNextStepIndex, freshBase.stepStatuses, isResubmissionState)) {
+          console.log(`[KYC Context] Skipping approved step ${freshNextStepIndex} (${currentSteps[freshNextStepIndex]?.id}) during state update`);
+          freshNextStepIndex++;
+        }
+      }
+      
       const stateToReturn = { ...freshBase, currentStep: freshNextStepIndex };
       
       if (typeof window !== "undefined") {

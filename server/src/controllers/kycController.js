@@ -353,10 +353,9 @@ const saveStep = async (req, res, next) => {
       // or if the status is not 'verified'/'under_review'.
       // Actually, just a simple rule: don't let a client-side 'saveStep' decrease the step 
       // if it's already at 16, unless it's an admin.
-      const isAlreadyCompleted = app.currentStep >= 14;
       const isAttemptingBacktrack = safeStep < app.currentStep;
 
-      if (isAlreadyCompleted && isAttemptingBacktrack && req.user.role !== "admin") {
+      if (isAttemptingBacktrack && req.user.role !== "admin") {
         console.log(`[KYC SaveStep] Blocking backtrack from ${app.currentStep} to ${safeStep} for App: ${applicationId}`);
         // We still save the DATA, but we don't update the currentStep
       } else {
@@ -674,6 +673,63 @@ const downloadPdf = async (req, res, next) => {
   }
 };
 
+const bypassEsign = async (req, res, next) => {
+  try {
+    const { pdfBase64, applicationId } = req.body;
+    
+    if (!pdfBase64) {
+      return res.status(400).json({ success: false, error: "PDF data is required" });
+    }
+
+    const app = await prisma.kycApplication.findFirst({
+      where: {
+        userId: req.user.id,
+        applicationId: applicationId || undefined,
+        status: { in: ["pending", "under_review", "on_hold"] }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!app) {
+      return res.status(404).json({ success: false, error: "Active application not found" });
+    }
+
+    // Check if bypass is allowed
+    const identityDetails = parseJsonField(app.identityDetails, {});
+    if (!identityDetails.adminEsignBypass) {
+      return res.status(403).json({ success: false, error: "Bypass not authorized for this application" });
+    }
+
+    // Remove the bypass flag so it's a one-time thing
+    delete identityDetails.adminEsignBypass;
+
+    // We keep the PDF base64 just like digioRoutes ESIGN would
+    await prisma.kycApplication.update({
+      where: { id: app.id },
+      data: {
+        generatedPdfBase64: pdfBase64,
+        identityDetails: JSON.stringify(identityDetails),
+        currentStep: 14,
+        status: "under_review",
+        submittedAt: new Date()
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: "kyc_esign_bypassed",
+        details: JSON.stringify({ applicationId: app.applicationId }),
+        ipAddress: req.ip,
+      },
+    });
+
+    res.json({ success: true, message: "eSign bypassed successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   startKyc,
   getMyApplication,
@@ -686,4 +742,5 @@ module.exports = {
   getKycConfig,
   getPincodeData,
   downloadPdf,
+  bypassEsign,
 };

@@ -31,11 +31,11 @@ const STATUS_MAP = {
   on_hold: "badge-suspended" 
 };
 
-export default function KYCRequests({ searchQuery, onSearchChange }) {
+export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter }) {
   const router = useRouter();
   const [kycs, setKycs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(defaultFilter || "all");
   const [localSearch, setLocalSearch] = useState("");
   const search = searchQuery !== undefined ? searchQuery : localSearch;
   const setSearch = onSearchChange !== undefined ? onSearchChange : setLocalSearch;
@@ -75,32 +75,40 @@ export default function KYCRequests({ searchQuery, onSearchChange }) {
         if (data.success) {
           setTotal(data.total);
           setTotalPages(data.totalPages);
-          const mapped = data.applications.map(app => ({
-            id: app.applicationId,
-            dbId: app.id,
-            number: app.user?.phone || "N/A",
-            stepNum: app.currentStep || 0,
-            stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
-            type: "Full KYC",
-            status: app.status,
-            riskScore: app.riskScore || 0,
-            faceMatch: app.faceMatchScore || 0,
-            reviewer: app.reviewer?.email || "Unassigned",
-            assignedCrmAgentId: app.assignedCrmAgentId,
-            submittedAt: new Date(app.submittedAt || app.createdAt).toLocaleString(),
+          const mapped = data.applications.map(app => {
+            let parsedPersonal = {};
+            try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
             
-            personal: app.personalDetails || {},
-            identity: app.identityDetails || {},
-            address: app.address || {},
-            ocrData: app.ocrData || {},
-            
-            documents: {
-              pan: !!app.identityDetails?.pan,
-              aadhaar: !!app.identityDetails?.aadhaar,
-              selfie: !!app.selfie,
-              financial: !!app.ocrData?.financial_proof
-            }
-          }));
+            return {
+              id: app.applicationId,
+              dbId: app.id,
+              number: app.user?.phone || "N/A",
+              name: parsedPersonal.fullName || parsedPersonal.name || "N/A",
+              email: app.user?.email || "N/A",
+              stepNum: app.currentStep || 0,
+              stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
+              type: "Full KYC",
+              status: app.status,
+              isResubmitted: app.isResubmitted,
+              riskScore: app.riskScore || 0,
+              faceMatch: app.faceMatchScore || 0,
+              reviewer: app.reviewer?.email || "Unassigned",
+              assignedCrmAgentId: app.assignedCrmAgentId,
+              submittedAt: new Date(app.submittedAt || app.createdAt).toLocaleString(),
+              
+              personal: parsedPersonal,
+              identity: app.identityDetails || {},
+              address: app.address || {},
+              ocrData: app.ocrData || {},
+              
+              documents: {
+                pan: !!app.identityDetails?.pan,
+                aadhaar: !!app.identityDetails?.aadhaar,
+                selfie: !!app.selfie,
+                financial: !!app.ocrData?.financial_proof
+              }
+            };
+          });
           setKycs(mapped);
         }
       } else {
@@ -130,6 +138,12 @@ export default function KYCRequests({ searchQuery, onSearchChange }) {
       // Optional: showToast("Failed to fetch employees", "error");
     }
   };
+
+  useEffect(() => {
+    if (defaultFilter) {
+      setFilter(defaultFilter);
+    }
+  }, [defaultFilter]);
 
   useEffect(() => {
     setPage(1);
@@ -241,7 +255,7 @@ export default function KYCRequests({ searchQuery, onSearchChange }) {
           <table className="admin-table">
             <thead><tr>
               <th><input type="checkbox" onChange={e => setBulk(e.target.checked ? kycs.map(k => k.id) : [])} checked={bulk.length === kycs.length && kycs.length > 0} /></th>
-              {["KYC ID", "Number", "Step", "Status", "Risk", "Face Match", "Assigned", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
+              {["KYC ID", "Number", "Name", "Step", "Status", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
               {kycs.map((k) => (
@@ -249,25 +263,20 @@ export default function KYCRequests({ searchQuery, onSearchChange }) {
                   <td><input type="checkbox" checked={bulk.includes(k.id)} onChange={() => toggleBulk(k.id)} /></td>
                   <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>
                   <td style={{ fontWeight: 600 }}>{k.number}</td>
+                  <td style={{ fontWeight: 600 }}>{k.name}</td>
                   <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                     Step {k.stepNum || 0}/14
                   </td>
                   <td>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
                       <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`}>{k.status.replace("_", " ")}</span>
                       {k.isResubmitted && (
-                        <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase" }}>Modified by User</span>
+                        <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
                       )}
                     </div>
                   </td>
-                  <td>
-                    <span style={{ fontWeight: 800, fontSize: "0.9rem", color: k.riskScore > 60 ? "#e5484d" : k.riskScore > 30 ? "#b45309" : "#30a46c" }}>{k.riskScore}</span>
-                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>/100</span>
-                  </td>
-                  <td style={{ fontWeight: 700, fontSize: "0.85rem" }}>{k.faceMatch}%</td>
-                  <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
-                    {employees.find(e => String(e.id) === String(k.assignedCrmAgentId))?.name || "Unassigned"}
-                  </td>
+
+
                   <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.submittedAt}</td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>

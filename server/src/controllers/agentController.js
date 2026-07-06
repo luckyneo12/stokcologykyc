@@ -11,7 +11,10 @@ const getAssignedApplications = async (req, res, next) => {
     const take = Math.min(Math.max(parseInt(limit, 10) || 15, 1), 200);
     const skip = (pageNum - 1) * take;
 
-    const where = { assignedCrmAgentId: agentId };
+    const where = {};
+    if (req.user.role !== "admin") {
+      where.assignedCrmAgentId = agentId;
+    }
     
     if (status && status !== "all") {
       where.status = status;
@@ -46,7 +49,7 @@ const getAssignedApplications = async (req, res, next) => {
           riskScore: true,
           faceMatchScore: true,
           assignedCrmAgentId: true,
-          user: { select: { email: true, phone: true, eStamp: true } }
+          user: { select: { email: true, phone: true, eStamp: true, eStampAssigned: { select: { serialNo: true } } } }
         }
       }),
       prisma.kycApplication.count({ where })
@@ -118,7 +121,7 @@ const getApReferrals = async (req, res, next) => {
 
 const reviewStepSchema = z.object({
   stepName: z.string(),
-  status: z.enum(["approved", "rejected"]),
+  status: z.enum(["approved", "rejected", "pending"]),
   reason: z.string().optional()
 });
 
@@ -206,16 +209,7 @@ const reviewStep = async (req, res, next) => {
       stepStatuses.emailVerification = { status: "approved" };
     }
 
-    const unlockedSteps = REVIEW_STEP_ORDER.filter((step) => (app.currentStep || 0) >= step.kycIndex);
-    const firstPendingStep = unlockedSteps.find((step) => stepStatuses[step.id]?.status !== "approved" && stepStatuses[step.id]?.status !== "rejected");
-    const existingStatus = stepStatuses[stepName]?.status;
-
-    if (firstPendingStep?.id !== stepName && existingStatus !== "approved" && existingStatus !== "rejected") {
-      return res.status(400).json({
-        success: false,
-        error: `Please review ${firstPendingStep?.id || "the previous step"} before this step`
-      });
-    }
+    // Sequential review check removed as per request
 
 
 
@@ -356,19 +350,24 @@ const requestModifications = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "No email found for this user. Cannot send rejection notification." });
     }
 
-    // Reset the application: move currentStep to first rejected step, set status to pending
+    // Reset the application: set status to pending, but keep currentStep intact so the admin dashboard shows max progress
     await prisma.kycApplication.update({
       where: { applicationId: id },
       data: {
         status: "pending",
-        currentStep: firstRejectedKycIndex,
         isResubmitted: false,
       },
     });
 
     // Build the modification link — the user's KYC portal
+    const jwt = require("jsonwebtoken");
+    const magicToken = jwt.sign(
+      { id: app.user.id, phone: app.user.phone, role: app.user.role || "user" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
     const frontendUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
-    const modifyLink = `${frontendUrl}/`;
+    const modifyLink = `${frontendUrl}/?token=${magicToken}`;
 
     // Send the email
     const { sendRejectionEmail } = require("../services/emailService");

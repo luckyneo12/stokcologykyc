@@ -20,6 +20,7 @@ function getVariableValue(variableName, appData) {
     case 'plan': return safeJsonParse(appData.pricingPlan)?.name || 'Standard';
     case 'fullName': return pDetails.fullName;
     case 'fatherName': return pDetails.fatherName;
+    case 'motherName': return pDetails.motherName;
     case 'dob': return pDetails.dob;
     case 'gender': return pDetails.gender;
     case 'pan': return iDetails.pan;
@@ -116,25 +117,48 @@ async function generateKycPdf(applicationData) {
         // We will assume frontend sends y from top, so we do height - y.
         const yPos = height - field.y; 
 
-        if (field.variable === 'selfie' || field.variable === 'signature') {
-          // Handle Images
-          let imgRelPath = field.variable === 'selfie' 
-            ? (parsedSelfieDetails.path || parsedSelfieDetails.preview || applicationData.selfie?.preview)
-            : (parsedSignature.path || parsedSignature.preview);
-            
+        if (['selfie', 'signature', 'esign', 'panImage', 'aadhaarImage'].includes(field.variable)) {
+          let imgRelPath = null;
+          if (field.variable === 'selfie') {
+            imgRelPath = parsedSelfieDetails.path || parsedSelfieDetails.preview || applicationData.selfie?.preview;
+          } else if (field.variable === 'signature') {
+            imgRelPath = parsedSignature.path || parsedSignature.preview;
+          } else if (field.variable === 'esign') {
+            const esignDoc = parsedDocuments.find(d => d.type === 'ESIGN');
+            if (esignDoc) imgRelPath = esignDoc.path;
+          } else if (field.variable === 'panImage') {
+            imgRelPath = parsedPanUpload?.path || parsedPanUpload?.filePreview || parsedPanUpload?.preview;
+            if (!imgRelPath) {
+              const panDoc = parsedDocuments.find(d => d.path && /digilocker_pan|_pan_issued|(^|[\/_])pan([\/_]|\.)/i.test(d.path));
+              if (panDoc) imgRelPath = panDoc.path;
+            }
+          } else if (field.variable === 'aadhaarImage') {
+            const aadhaarDoc = parsedDocuments.find(d => d.path && /digilocker_aadhaar|_aadhaar_issued|aadhaar|aadhar|uid/i.test(d.path));
+            if (aadhaarDoc) imgRelPath = aadhaarDoc.path;
+          }
+
           if (imgRelPath) {
             try {
               const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
               const imgPath = path.join(__dirname, '../../', cleanPath);
               if (fs.existsSync(imgPath)) {
                 const imgBytes = fs.readFileSync(imgPath);
-                const image = imgPath.toLowerCase().endsWith('.png') ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
-                // Draw image with specified width/height or default to 100x100
                 const w = field.width || 100;
                 const h = field.height || 100;
-                page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
+                const lowerPath = imgPath.toLowerCase();
+
+                if (lowerPath.endsWith('.pdf')) {
+                  const [embeddedPage] = await pdfDoc.embedPdf(imgBytes);
+                  page.drawPage(embeddedPage, { x: field.x, y: yPos - h, width: w, height: h });
+                } else if (lowerPath.endsWith('.png')) {
+                  const image = await pdfDoc.embedPng(imgBytes);
+                  page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
+                } else {
+                  const image = await pdfDoc.embedJpg(imgBytes);
+                  page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
+                }
               }
-            } catch(e) { console.error("[PDF Gen] Img fail:", e.message); }
+            } catch(e) { console.error("[PDF Gen] Img embed fail:", e.message); }
           }
         } else if (field.type === 'checkbox') {
           const val = getVariableValue(field.variable, applicationData);
@@ -160,7 +184,9 @@ async function generateKycPdf(applicationData) {
               y: yPos - (field.fontSize || 12),
               size: field.fontSize || 12,
               font: font,
-              color: rgb(0, 0, 0)
+              color: rgb(0, 0, 0),
+              maxWidth: field.width || undefined,
+              lineHeight: (field.fontSize || 12) * 1.2
             });
           }
         }

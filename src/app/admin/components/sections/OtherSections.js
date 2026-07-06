@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { MOCK_KYC } from "../../mockData";
 import { MOCK_RULES, MOCK_NOTIFICATIONS, MOCK_ROLES, MOCK_AUDIT_LOGS, DASHBOARD_STATS } from "../../mockData";
 import { API_BASE_URL } from "@/utils/apiConfig";
@@ -296,10 +296,12 @@ export function RolesPermissions() {
 export function AuditLogs() {
   const [logs, setLogs] = useState([]);
   const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [expandedLogId, setExpandedLogId] = useState(null);
 
   useEffect(() => {
     const loadLogs = async () => {
@@ -308,6 +310,9 @@ export function AuditLogs() {
         const url = new URL(`${API_BASE_URL}/api/admin/audit-logs`);
         if (filter !== "all") {
           url.searchParams.set("severity", filter);
+        }
+        if (search) {
+          url.searchParams.set("search", search);
         }
         url.searchParams.append("page", page);
         url.searchParams.append("limit", 20);
@@ -326,11 +331,12 @@ export function AuditLogs() {
             const mapped = data.logs.map((log) => ({
               id: `LOG-${String(log.id).padStart(6, "0")}`,
               action: log.action || "N/A",
-              actor: log.user?.email || log.user?.phone || "System",
-              target: log.details?.applicationId || log.details?.requestId || "-",
+              actor: log.user?.email || log.user?.phone || log.crmAgentName || "System",
+              target: log.details?.applicationId || log.details?.requestId || log.targetId || "-",
               ip: log.ipAddress || "-",
               timestamp: new Date(log.timestamp).toLocaleString("en-IN"),
               severity: (log.details?.severity || "info").toLowerCase(),
+              rawDetails: log.details || "{}"
             }));
             setLogs(mapped);
           }
@@ -345,11 +351,33 @@ export function AuditLogs() {
       }
     };
     loadLogs();
-  }, [filter, page]);
+  }, [filter, search, page]);
 
   useEffect(() => {
     setPage(1);
-  }, [filter]);
+  }, [filter, search]);
+
+  const handleExport = async () => {
+    try {
+      const url = new URL(`${API_BASE_URL}/api/admin/audit-logs`);
+      if (filter !== "all") url.searchParams.set("severity", filter);
+      if (search) url.searchParams.set("search", search);
+      url.searchParams.set("export", "true");
+      
+      const token = localStorage.getItem("adminToken");
+      const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `audit-logs-${new Date().getTime()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error("Export failed", e);
+    }
+  };
 
   const filtered = filter === "all" ? logs : logs.filter(l => l.severity === filter);
 
@@ -357,20 +385,31 @@ export function AuditLogs() {
     <div className="admin-animate">
       <h1 className="admin-section-title">Audit Logs</h1>
       <p className="admin-section-subtitle">Immutable record of all admin actions. Timestamped and IP-tracked.</p>
-      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-        <select className="admin-select" value={filter} onChange={e => setFilter(e.target.value)}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "center" }}>
+        <input 
+          type="text" 
+          placeholder="Search actor, target, action..." 
+          className="admin-input global-search-input" 
+          value={search} 
+          onChange={(e) => setSearch(e.target.value)} 
+        />
+        <select className="admin-select" value={filter} onChange={e => setFilter(e.target.value)} style={{ width: 160 }}>
           <option value="all">All Severity</option>
           <option value="info">Info</option>
           <option value="warning">Warning</option>
         </select>
-        <button style={{ padding: "10px 20px", borderRadius: 999, border: "none", background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", marginLeft: "auto" }}>Export Logs</button>
+        <button onClick={handleExport} style={{ padding: "10px 20px", borderRadius: 12, border: "none", background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
       </div>
       <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 20, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table">
-            <thead><tr>{["Log ID", "Action", "Actor", "Target", "IP Address", "Severity", "Timestamp"].map(h => <th key={h}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Log ID", "Action", "Actor", "Target", "IP Address", "Severity", "Timestamp", "Details"].map(h => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>{filtered.map(l => (
-              <tr key={l.id}>
+              <React.Fragment key={l.id}>
+              <tr style={{ cursor: "pointer" }} onClick={() => setExpandedLogId(expandedLogId === l.id ? null : l.id)}>
                 <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--text-muted)" }}>{l.id}</td>
                 <td style={{ fontWeight: 700, fontSize: "0.88rem" }}>{l.action}</td>
                 <td style={{ fontSize: "0.85rem" }}>{l.actor}</td>
@@ -378,7 +417,21 @@ export function AuditLogs() {
                 <td style={{ fontSize: "0.82rem", fontFamily: "monospace", color: "var(--text-muted)" }}>{l.ip}</td>
                 <td><span className={`badge ${l.severity === "warning" ? "badge-pending" : "badge-verified"}`}>{l.severity}</span></td>
                 <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{l.timestamp}</td>
+                <td>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedLogId === l.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                </td>
               </tr>
+              {expandedLogId === l.id && (
+                <tr>
+                  <td colSpan={8} style={{ padding: "16px 24px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 8 }}>Raw Log Payload</div>
+                    <pre style={{ margin: 0, padding: 16, background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, fontSize: "0.8rem", color: "var(--text-primary)", overflowX: "auto", fontFamily: "var(--font-mono)" }}>
+                      {JSON.stringify(JSON.parse(l.rawDetails || "{}"), null, 2)}
+                    </pre>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             ))}</tbody>
           </table>
         </div>
