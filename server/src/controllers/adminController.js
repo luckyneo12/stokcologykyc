@@ -59,7 +59,18 @@ const getApplications = async (req, res, next) => {
     const where = {};
     const normalizedStatus = String(status || "").toLowerCase();
     if (normalizedStatus && normalizedStatus !== "all") {
-      where.status = normalizedStatus;
+      if (normalizedStatus === "globe_approved") {
+        where.globeStatus = "approved";
+      } else if (normalizedStatus === "globe_rejected") {
+        where.globeStatus = "rejected";
+      } else if (normalizedStatus === "pushed_to_bo") {
+        where.pushedToBackoffice = true;
+      } else if (normalizedStatus === "not_pushed_to_bo") {
+        where.status = "verified";
+        where.pushedToBackoffice = false;
+      } else {
+        where.status = normalizedStatus;
+      }
     }
 
     if (search) {
@@ -90,6 +101,7 @@ const getApplications = async (req, res, next) => {
           identityDetails: true, // Needed for PAN/Aadhaar status
           isResubmitted: true,
           assignedCrmAgentId: true,
+          globeStatus: true,
           user: {
             select: {
               id: true,
@@ -203,6 +215,18 @@ const reviewApplication = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
+    if (status === "verified") {
+      let statuses = {};
+      try {
+        statuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {});
+      } catch (e) {}
+      
+      const hasRejected = Object.values(statuses).some(s => s?.status === "rejected");
+      if (hasRejected) {
+        return res.status(400).json({ success: false, error: "Cannot approve application because one or more steps are marked as rejected." });
+      }
+    }
+
     const isKycAgent = req.user.role === "kyc_team";
     const updateData = {
       status,
@@ -225,24 +249,35 @@ const reviewApplication = async (req, res, next) => {
 
     if (status === "verified") {
       const user = await prisma.user.findUnique({ where: { id: app.userId } });
-      if (user && !user.eStamp) {
+      if (user) {
         await prisma.$transaction(async (tx) => {
-          const availableStamp = await tx.eStamp.findFirst({
-            where: { status: "available" },
-            orderBy: { createdAt: "asc" }
+          const existingStamp = await tx.eStamp.findFirst({
+            where: { assignedTo: user.id }
           });
 
-          if (availableStamp) {
-            await tx.eStamp.update({
-              where: { id: availableStamp.id },
-              data: { status: "assigned", assignedTo: user.id }
+          if (!existingStamp && !user.eStamp) {
+            const availableStamp = await tx.eStamp.findFirst({
+              where: { status: "available" },
+              orderBy: { createdAt: "asc" }
             });
+
+            if (availableStamp) {
+              await tx.eStamp.update({
+                where: { id: availableStamp.id },
+                data: { status: "assigned", assignedTo: user.id }
+              });
+              await tx.user.update({
+                where: { id: app.userId },
+                data: { eStamp: availableStamp.certificateNo }
+              });
+            } else {
+              console.warn(`[KYC Verification] No available E-Stamps for user ${user.id}`);
+            }
+          } else if (existingStamp && !user.eStamp) {
             await tx.user.update({
               where: { id: app.userId },
-              data: { eStamp: availableStamp.certificateNo }
+              data: { eStamp: existingStamp.certificateNo }
             });
-          } else {
-            console.warn(`[KYC Verification] No available E-Stamps for user ${user.id}`);
           }
         });
       }
@@ -293,7 +328,9 @@ const getStats = async (req, res, next) => {
       total, statusCounts, recent, 
       recentAppsForTrend, allAppsForDropoff, recentLogs,
       verifiedThisWeekCount, verifiedLastWeekCount,
-      rejectedThisWeekCount, rejectedLastWeekCount
+      rejectedThisWeekCount, rejectedLastWeekCount,
+      globeApprovedCount, globeRejectedCount,
+      pushedToBoCount, notPushedToBoCount
     ] = await Promise.all([
       prisma.kycApplication.count(),
       prisma.kycApplication.groupBy({
@@ -355,6 +392,19 @@ const getStats = async (req, res, next) => {
       }),
       prisma.kycApplication.count({
         where: { status: 'rejected', updatedAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } }
+      }),
+      // Globe KPIs
+      prisma.kycApplication.count({
+        where: { globeStatus: 'approved' }
+      }),
+      prisma.kycApplication.count({
+        where: { globeStatus: 'rejected' }
+      }),
+      prisma.kycApplication.count({
+        where: { pushedToBackoffice: true }
+      }),
+      prisma.kycApplication.count({
+        where: { status: 'verified', pushedToBackoffice: false }
       })
     ]);
 
@@ -561,6 +611,10 @@ const getStats = async (req, res, next) => {
       dropOff, 
       liveActivity, 
       trends,
+      globeApprovedCount,
+      globeRejectedCount,
+      pushedToBoCount,
+      notPushedToBoCount,
       rejectionReasons,
       averageProcessingTime,
       averageUserCompletionTime,
@@ -1101,7 +1155,7 @@ const updateApplicationDetails = async (req, res, next) => {
   try {
     const app = await prisma.kycApplication.findUnique({
       where: { applicationId: id },
-      include: { user: true },
+      include: { user: { include: { eStampAssigned: true } } },
     });
 
     if (!app) {
@@ -1118,6 +1172,12 @@ const updateApplicationDetails = async (req, res, next) => {
       const parts = keyPath.split(".");
       const topKey = parts[0];
       
+      if (topKey === "user" && parts[1] === "eStampAssigned" && parts[2]) {
+        nextData.eStampAssigned = nextData.eStampAssigned || {};
+        nextData.eStampAssigned[parts[2]] = value;
+        continue;
+      }
+
       if (!JSON_FIELD_KEYS.includes(topKey)) continue;
 
       if (!nextData[topKey]) {
@@ -1138,7 +1198,18 @@ const updateApplicationDetails = async (req, res, next) => {
     // Convert updated objects to JSON strings
     const updatePayload = {};
     for (const [topKey, value] of Object.entries(nextData)) {
+      if (topKey === "eStampAssigned") continue;
       updatePayload[topKey] = JSON.stringify(value);
+    }
+
+    if (nextData.eStampAssigned && app.user?.eStampAssigned?.id) {
+       await prisma.eStamp.update({
+         where: { id: app.user.eStampAssigned.id },
+         data: {
+           certificateNo: nextData.eStampAssigned.certificateNo,
+           serialNo: nextData.eStampAssigned.serialNo
+         }
+       });
     }
 
     if (requireEsign) {
@@ -1194,6 +1265,29 @@ const updateApplicationDetails = async (req, res, next) => {
     }
 
     res.json({ success: true, message: "Details updated and re-signing requested" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const generateUserToken = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const app = await prisma.kycApplication.findUnique({
+      where: { applicationId: id },
+      include: { user: true }
+    });
+    if (!app || !app.user) {
+      return res.status(404).json({ success: false, error: "Application or User not found" });
+    }
+    const jwt = require("jsonwebtoken");
+    const JWT_SECRET = process.env.JWT_SECRET || "kyc-secret-key-change-in-production";
+    const token = jwt.sign(
+      { id: app.user.id, phone: app.user.phone, role: app.user.role },
+      JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+    res.json({ success: true, token });
   } catch (error) {
     next(error);
   }
@@ -1310,6 +1404,7 @@ module.exports = {
   refreshFromDigio,
   sendToBackoffice,
   getCrmEmployees,
+  generateUserToken,
   assignApplication,
   updateUserEstamp,
   updateEstampSequence,

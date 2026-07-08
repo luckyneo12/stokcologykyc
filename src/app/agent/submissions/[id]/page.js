@@ -268,6 +268,7 @@ const REVIEW_STEPS = [
     evidence: (app) => [
       firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
       findDocument(app, ["aadhaar", "photo", "digilocker"], "Reference Photo", ["pan"]),
+      firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document"),
     ].filter(Boolean),
   },
   {

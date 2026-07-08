@@ -106,6 +106,10 @@ export default function DashboardOverview({ onNavigate }) {
   const verified = liveStats?.verified || 0;
   const rejected = liveStats?.rejected || 0;
   const review = liveStats?.review || 0;
+  const globeApproved = liveStats?.globeApprovedCount || 0;
+  const globeRejected = liveStats?.globeRejectedCount || 0;
+  const pushedToBo = liveStats?.pushedToBoCount || 0;
+  const notPushedToBo = liveStats?.notPushedToBoCount || 0;
   const trends = liveStats?.trends || { total: 0, verified: 0, rejected: 0 };
 
   const getTrendIcon = (val) => val >= 0 ? "up" : "down";
@@ -213,9 +217,13 @@ export default function DashboardOverview({ onNavigate }) {
       {/* Top Metric Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 24, marginBottom: 32 }}>
         <StatCard label="Total Submissions" value={total} trend={getTrendIcon(trends.total)} trendValue={getTrendStr(trends.total)} icon={Users} color="#8b5cf6" onClick={() => onNavigate("kyc", { filter: "all" })} />
-        <StatCard label="Verified Identities" value={verified} trend={getTrendIcon(trends.verified)} trendValue={getTrendStr(trends.verified)} icon={CheckCircle} color="#10b981" onClick={() => onNavigate("kyc", { filter: "verified" })} />
+        <StatCard label="Verified" value={verified} trend={getTrendIcon(trends.verified)} trendValue={getTrendStr(trends.verified)} icon={CheckCircle} color="#10b981" onClick={() => onNavigate("kyc", { filter: "verified" })} />
         <StatCard label="Pending Review" value={review} icon={Activity} color="#f59e0b" onClick={() => onNavigate("kyc", { filter: "under_review" })} />
         <StatCard label="Rejected" value={rejected} trend={getTrendIcon(trends.rejected)} trendValue={getTrendStr(trends.rejected)} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "rejected" })} />
+        <StatCard label="Globe Approved" value={globeApproved} icon={CheckCircle} color="#10b981" onClick={() => onNavigate("kyc", { filter: "globe_approved" })} />
+        <StatCard label="Globe Rejected" value={globeRejected} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "globe_rejected" })} />
+        <StatCard label="Pushed To BO" value={pushedToBo} icon={CheckCircle} color="#8b5cf6" onClick={() => onNavigate("kyc", { filter: "pushed_to_bo" })} />
+        <StatCard label="Not Pushed" value={notPushedToBo} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "not_pushed_to_bo" })} />
         <StatCard label="Agent Processing" value={avgProcessing} icon={Clock} color="#3b82f6" />
         <StatCard label="User Completion" value={avgUserCompletion} icon={Clock} color="#8b5cf6" />
       </div>

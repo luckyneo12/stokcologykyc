@@ -138,6 +138,48 @@ const adminLoginSchema = z.object({
   password: z.string().min(6, "Password too short"),
 });
 
+
+const globeLogin = async (req, res, next) => {
+  try {
+    const { email, password } = adminLoginSchema.parse(req.body);
+    
+    const user = await prisma.user.findFirst({
+      where: { 
+        email,
+        role: "globe"
+      }
+    });
+
+    if (!user || !user.password) {
+      return res.status(401).json({ error: "Invalid credentials or unauthorized role" });
+    }
+
+    const bcrypt = require("bcryptjs");
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const adminLogin = async (req, res, next) => {
   try {
     const { email, password } = adminLoginSchema.parse(req.body);
@@ -295,4 +337,4 @@ const setupAdmin = async (req, res, next) => {
   }
 };
 
-module.exports = { sendOtp, verifyOtp, adminLogin, kycTeamLogin, kycTeamSignup, setupAdmin };
+module.exports = { sendOtp, verifyOtp, adminLogin, globeLogin, kycTeamLogin, kycTeamSignup, setupAdmin };

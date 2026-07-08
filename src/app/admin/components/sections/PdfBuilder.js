@@ -576,8 +576,8 @@ function RndField({ field: f, scale, canvasNaturalSize, onUpdate, onRemove, onDu
         background: f.type === 'image' ? 'rgba(14, 165, 233, 0.1)' : (f.type === 'checkbox' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(159, 232, 112, 0.2)'),
         borderRadius: '4px',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        alignItems: 'flex-start',
+        justifyContent: 'flex-start',
         cursor: 'move',
         zIndex: 10
       }}
@@ -588,7 +588,7 @@ function RndField({ field: f, scale, canvasNaturalSize, onUpdate, onRemove, onDu
           e.stopPropagation();
           onDuplicate(f);
         }}
-        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', padding: '0 8px', boxSizing: 'border-box' }}
+        style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'flex-start', padding: '0', boxSizing: 'border-box' }}
         title="Right-click to duplicate"
       >
         <span style={{ 

@@ -1628,7 +1628,13 @@ export default function ApplicationDetail() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 20 }}>
               <button 
-                onClick={() => updateStatus("verified")}
+                onClick={() => {
+                  if (getRejectedStepsCount() > 0) {
+                    showToast("Cannot approve: Some documents or steps are marked as rejected.", "error");
+                    return;
+                  }
+                  updateStatus("verified");
+                }}
                 style={{ width: "100%", padding: 16, borderRadius: 16, background: "#30a46c", color: "white", border: "none", fontWeight: 900, fontSize: "1.1rem", cursor: "pointer" }}
               >
                 Approve Application

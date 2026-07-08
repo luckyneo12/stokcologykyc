@@ -120,14 +120,14 @@ async function generateKycPdf(applicationData) {
         if (['selfie', 'signature', 'esign', 'panImage', 'aadhaarImage'].includes(field.variable)) {
           let imgRelPath = null;
           if (field.variable === 'selfie') {
-            imgRelPath = parsedSelfieDetails.path || parsedSelfieDetails.preview || applicationData.selfie?.preview;
+            imgRelPath = parsedSelfieDetails.filePreview || parsedSelfieDetails.path || parsedSelfieDetails.preview || applicationData.selfie?.preview;
           } else if (field.variable === 'signature') {
-            imgRelPath = parsedSignature.path || parsedSignature.preview;
+            imgRelPath = parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview;
           } else if (field.variable === 'esign') {
             const esignDoc = parsedDocuments.find(d => d.type === 'ESIGN');
             if (esignDoc) imgRelPath = esignDoc.path;
           } else if (field.variable === 'panImage') {
-            imgRelPath = parsedPanUpload?.path || parsedPanUpload?.filePreview || parsedPanUpload?.preview;
+            imgRelPath = parsedPanUpload?.filePreview || parsedPanUpload?.path || parsedPanUpload?.preview;
             if (!imgRelPath) {
               const panDoc = parsedDocuments.find(d => d.path && /digilocker_pan|_pan_issued|(^|[\/_])pan([\/_]|\.)/i.test(d.path));
               if (panDoc) imgRelPath = panDoc.path;
@@ -139,18 +139,33 @@ async function generateKycPdf(applicationData) {
 
           if (imgRelPath) {
             try {
-              const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
-              const imgPath = path.join(__dirname, '../../', cleanPath);
-              if (fs.existsSync(imgPath)) {
-                const imgBytes = fs.readFileSync(imgPath);
+              let imgBytes;
+              let isPng = false;
+              let isPdf = false;
+              
+              if (imgRelPath.startsWith('data:image')) {
+                const base64Data = imgRelPath.split(',')[1];
+                imgBytes = Buffer.from(base64Data, 'base64');
+                isPng = imgRelPath.includes('image/png');
+              } else {
+                const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
+                const imgPath = path.join(__dirname, '../../', cleanPath);
+                if (fs.existsSync(imgPath)) {
+                  imgBytes = fs.readFileSync(imgPath);
+                  const lowerPath = imgPath.toLowerCase();
+                  isPng = lowerPath.endsWith('.png');
+                  isPdf = lowerPath.endsWith('.pdf');
+                }
+              }
+
+              if (imgBytes) {
                 const w = field.width || 100;
                 const h = field.height || 100;
-                const lowerPath = imgPath.toLowerCase();
 
-                if (lowerPath.endsWith('.pdf')) {
+                if (isPdf) {
                   const [embeddedPage] = await pdfDoc.embedPdf(imgBytes);
                   page.drawPage(embeddedPage, { x: field.x, y: yPos - h, width: w, height: h });
-                } else if (lowerPath.endsWith('.png')) {
+                } else if (isPng) {
                   const image = await pdfDoc.embedPng(imgBytes);
                   page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
                 } else {
@@ -233,28 +248,46 @@ async function generateKycPdf(applicationData) {
       currentY -= 20;
 
       // Embed Selfie and Signature on Annexure
-      const selfieRel = parsedSelfieDetails?.path || parsedSelfieDetails?.preview || applicationData?.selfie?.preview;
+      const selfieRel = parsedSelfieDetails?.filePreview || parsedSelfieDetails?.path || parsedSelfieDetails?.preview || applicationData?.selfie?.preview;
       if (selfieRel) {
         try {
-          const clean = selfieRel.startsWith('/') ? selfieRel.substring(1) : selfieRel;
-          const p = path.join(__dirname, '../../', clean);
-          if (fs.existsSync(p)) {
-            const b = fs.readFileSync(p);
-            const img = p.toLowerCase().endsWith('.png') ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
+          let b, isPng;
+          if (selfieRel.startsWith('data:image')) {
+            b = Buffer.from(selfieRel.split(',')[1], 'base64');
+            isPng = selfieRel.includes('image/png');
+          } else {
+            const clean = selfieRel.startsWith('/') ? selfieRel.substring(1) : selfieRel;
+            const p = path.join(__dirname, '../../', clean);
+            if (fs.existsSync(p)) {
+              b = fs.readFileSync(p);
+              isPng = p.toLowerCase().endsWith('.png');
+            }
+          }
+          if (b) {
+            const img = isPng ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
             page.drawImage(img, { x: 50, y: currentY - 140, width: 120, height: 120 });
             page.drawText('CUSTOMER SELFIE', { x: 50, y: currentY - 155, size: 8, font: boldFont });
           }
         } catch (e) { console.error(e); }
       }
 
-      const sigRel = parsedSignature?.path || parsedSignature?.preview;
+      const sigRel = parsedSignature?.filePreview || parsedSignature?.path || parsedSignature?.preview;
       if (sigRel) {
         try {
-          const clean = sigRel.startsWith('/') ? sigRel.substring(1) : sigRel;
-          const p = path.join(__dirname, '../../', clean);
-          if (fs.existsSync(p)) {
-            const b = fs.readFileSync(p);
-            const img = p.toLowerCase().endsWith('.png') ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
+          let b, isPng;
+          if (sigRel.startsWith('data:image')) {
+            b = Buffer.from(sigRel.split(',')[1], 'base64');
+            isPng = sigRel.includes('image/png');
+          } else {
+            const clean = sigRel.startsWith('/') ? sigRel.substring(1) : sigRel;
+            const p = path.join(__dirname, '../../', clean);
+            if (fs.existsSync(p)) {
+              b = fs.readFileSync(p);
+              isPng = p.toLowerCase().endsWith('.png');
+            }
+          }
+          if (b) {
+            const img = isPng ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
             page.drawImage(img, { x: 350, y: currentY - 140, width: 120, height: 60 });
             page.drawText('CUSTOMER SIGNATURE', { x: 350, y: currentY - 155, size: 8, font: boldFont });
           }

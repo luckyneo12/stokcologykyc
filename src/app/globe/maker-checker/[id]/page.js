@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
-import AdminSidebar from "../../components/AdminSidebar";
+
 import "@/app/admin/admin.css";
 
 const USER_STEP_LABELS = {
@@ -292,8 +292,8 @@ const REVIEW_STEPS = [
     evidenceHint: "Review the e-stamp assigned to this user.",
     readOnly: true,
     fields: (app) => [
-      ["Certificate No", app.user?.eStampAssigned?.certificateNo, "user.eStampAssigned.certificateNo"],
-      ["Serial No", app.user?.eStampAssigned?.serialNo, "user.eStampAssigned.serialNo"],
+      ["Certificate No", app.user?.eStampAssigned?.certificateNo],
+      ["Serial No", app.user?.eStampAssigned?.serialNo],
     ],
     evidence: (app) => [firstMedia(app.user?.eStampAssigned?.fileUrl, "Assigned E-Stamp")].filter(Boolean),
   },
@@ -1004,13 +1004,13 @@ export default function AgentReview() {
   const fetchDetail = useCallback(async () => {
     if (!id || typeof window === "undefined") return;
     try {
-      const token = localStorage.getItem("adminToken");
-      const response = await fetchWithFallback(`/api/admin/application/${id}`, {
+      const token = localStorage.getItem("globeToken");
+      const response = await fetchWithFallback(`/api/globe/application/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.status === 401) {
-        router.push("/admin/login");
+        router.push("/globe/login");
         return;
       }
 
@@ -1064,8 +1064,8 @@ export default function AgentReview() {
     }
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/admin/application/${id}/update-details`, {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/application/${id}/update-details`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ updates: editValues, requireEsign }),
@@ -1087,33 +1087,11 @@ export default function AgentReview() {
     }
   };
 
-  const autoSaveField = async (key, value) => {
-    if (!id || value === undefined) return;
-    try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/admin/application/${id}/update-details`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ updates: { [key]: value }, requireEsign: false }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast("Field updated automatically.");
-        fetchDetail();
-      } else {
-        showToast(data.error || "Failed to update field.", "error");
-      }
-    } catch (error) {
-      console.error(error);
-      showToast("Network error while auto-saving.", "error");
-    }
-  };
-
   const handleSendRejectionMail = async () => {
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/admin/application/${id}/request-modifications`, {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/application/${id}/request-modifications`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
       });
@@ -1139,11 +1117,11 @@ export default function AgentReview() {
     }
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/admin/review/${id}`, {
-        method: "PUT",
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/kycs/${id}/reject`, {
+        method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "rejected", reason: globalRejectReason }),
+        body: JSON.stringify({ remarks: globalRejectReason }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1171,18 +1149,18 @@ export default function AgentReview() {
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/admin/review/${id}`, {
-        method: "PUT",
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/kycs/${id}/approve`, {
+        method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "verified", reason: "" }),
+        body: JSON.stringify({ remarks: "" }),
       });
       const data = await res.json();
       if (data.success) {
         showToast("Application approved successfully.");
         fetchDetail();
         // Optionally redirect back after a delay
-        setTimeout(() => router.push("/admin/maker-checker"), 1500);
+        setTimeout(() => router.push("/globe"), 1500);
       } else {
         showToast(data.error || "Failed to approve application.", "error");
       }
@@ -1201,8 +1179,8 @@ export default function AgentReview() {
     }
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/agent/kyc/${id}/step/${rejectStepModal.id}/review`, {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/kyc/${id}/step/${rejectStepModal.id}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: "rejected", reason: stepRejectReason }),
@@ -1227,8 +1205,8 @@ export default function AgentReview() {
   const handleUnrejectStep = async (stepId, stepTitle) => {
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/agent/kyc/${id}/step/${stepId}/review`, {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/kyc/${id}/step/${stepId}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: "pending", reason: "" }),
@@ -1262,8 +1240,8 @@ export default function AgentReview() {
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("adminToken");
-      const res = await fetchWithFallback(`/api/admin/application/${id}/upload-document`, {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/application/${id}/upload-document`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }, // Do not set Content-Type, browser will set it with boundary
         body: formData,
@@ -1399,11 +1377,7 @@ export default function AgentReview() {
         transform: "scale(0.8)",
         transformOrigin: "top left"
       }}>
-      <AdminSidebar 
-        active="maker_checker" 
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+      <div style={{ padding: '16px', background: 'var(--bg-primary)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: 16 }}><button onClick={() => router.push('/globe')} style={{ padding: '8px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>← Back to Globe</button></div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", background: "var(--bg-secondary)", overflow: "hidden", fontFamily: "'Inter', sans-serif" }}>
       {/* Top Bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px", background: "var(--bg-primary)", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
@@ -1447,7 +1421,7 @@ export default function AgentReview() {
           <button onClick={handleSendRejectionMail} disabled={submitting} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", color: "#ef4444", fontWeight: 600, fontSize: "0.8rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
             <Mail size={14} /> Send Rejection Mail
           </button>
-          <button onClick={() => router.push("/admin/maker-checker")} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => router.push("/globe")} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <ArrowLeft size={14} /> Back
           </button>
         </div>
@@ -1554,32 +1528,8 @@ export default function AgentReview() {
                                       style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
                                       value={currentValue || ""}
                                       onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
-                                      onBlur={(e) => {
-                                        setEditingField(null);
-                                        if (jsonPath.startsWith("user.eStampAssigned")) {
-                                          const val = e.target.value;
-                                          setEditValues(prev => {
-                                            const next = { ...prev };
-                                            delete next[jsonPath];
-                                            return next;
-                                          });
-                                          autoSaveField(jsonPath, val);
-                                        }
-                                      }}
-                                      onKeyDown={e => { 
-                                        if (e.key === "Enter") {
-                                          setEditingField(null);
-                                          if (jsonPath.startsWith("user.eStampAssigned")) {
-                                            const val = e.currentTarget.value;
-                                            setEditValues(prev => {
-                                              const next = { ...prev };
-                                              delete next[jsonPath];
-                                              return next;
-                                            });
-                                            autoSaveField(jsonPath, val);
-                                          }
-                                        } 
-                                      }}
+                                      onBlur={() => setEditingField(null)}
+                                      onKeyDown={e => { if (e.key === "Enter") setEditingField(null); }}
                                     />
                                   ) : (
                                     <div style={{ fontSize: "0.8rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 500, minHeight: 18 }}>

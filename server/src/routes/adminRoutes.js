@@ -48,8 +48,9 @@ const { requestModifications } = require("../controllers/agentController");
 router.post("/application/:id/request-modifications", adminAuth, requestModifications);
 
 // Update application details directly
-const { updateApplicationDetails, uploadAdminDocument } = require("../controllers/adminController");
+const { updateApplicationDetails, uploadAdminDocument, generateUserToken } = require("../controllers/adminController");
 router.put("/application/:id/update-details", adminAuth, updateApplicationDetails);
+router.post("/application/:id/generate-token", adminAuth, generateUserToken);
 
 // Upload document from admin portal
 const localUpload = require("../middlewares/localUpload");

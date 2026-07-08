@@ -46,6 +46,85 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
   const [toast, setToast] = useState(null);
   const [employees, setEmployees] = useState([]);
 
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [changeStatusAppId, setChangeStatusAppId] = useState(null);
+  const [pendingStep, setPendingStep] = useState(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.action-menu-container')) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  const handleContinueJourney = async (k) => {
+    try {
+      const adminToken = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/api/admin/application/${k.id}/generate-token`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${adminToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem("kycApplicationId", k.id);
+        sessionStorage.setItem("kycApplicationId", k.id);
+        localStorage.setItem("kycToken", data.token);
+        sessionStorage.setItem("kycToken", data.token);
+        localStorage.setItem("token", data.token);
+        window.open("/", "_blank");
+      } else {
+        if (typeof showToast === 'function') showToast(data.error || "Failed to generate session for user", "error");
+        else alert(data.error || "Failed to generate session for user");
+      }
+    } catch (e) {
+      console.error("Error continuing journey:", e);
+      if (typeof showToast === 'function') showToast("Error starting journey", "error");
+      else alert("Error starting journey");
+    }
+  };
+
+  const deleteUser = async (applicationId) => {
+    if (!confirm("Are you sure you want to delete this application?")) return;
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/api/admin/application/${applicationId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Application deleted successfully", "success");
+        fetchApplications(true);
+      } else {
+        showToast(data.error || "Failed to delete", "error");
+      }
+    } catch (e) {
+      showToast("Error deleting application", "error");
+    }
+  };
+
+  const sendToBackoffice = async (applicationId) => {
+    if (!confirm("Are you sure you want to send this user's data to the Backoffice?")) return;
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/api/admin/application/${applicationId}/send-backoffice`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Sent to Backoffice successfully", "success");
+      } else {
+        showToast(data.error || "Failed to send to Backoffice", "error");
+      }
+    } catch (e) {
+      showToast("Error sending to Backoffice", "error");
+    }
+  };
+
   const fetchApplications = async (isSilent = false) => {
     if (typeof window === "undefined") return;
     if (!isSilent) setLoading(true);
@@ -94,6 +173,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
               faceMatch: app.faceMatchScore || 0,
               reviewer: app.reviewer?.email || "Unassigned",
               assignedCrmAgentId: app.assignedCrmAgentId,
+              globeStatus: app.globeStatus || "pending",
               submittedAt: new Date(app.submittedAt || app.createdAt).toLocaleString(),
               
               personal: parsedPersonal,
@@ -235,8 +315,8 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <input className="admin-input" placeholder="Search by name or ID..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} />
         <select className="admin-select" value={filter} onChange={e => setFilter(e.target.value)}>
-          {["all", "pending", "verified", "rejected", "under_review", "on_hold"].map(f => (
-            <option key={f} value={f}>{f.replace("_", " ").toUpperCase()}</option>
+          {["all", "pending", "verified", "rejected", "under_review", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
+            <option key={f} value={f}>{f.replace(/_/g, " ").toUpperCase()}</option>
           ))}
         </select>
         {bulk.length > 0 && (
@@ -255,7 +335,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
           <table className="admin-table">
             <thead><tr>
               <th><input type="checkbox" onChange={e => setBulk(e.target.checked ? kycs.map(k => k.id) : [])} checked={bulk.length === kycs.length && kycs.length > 0} /></th>
-              {["KYC ID", "Number", "Name", "Step", "Status", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
+              {["KYC ID", "Number", "Name", "Step", "Admin Status", "Globe Status", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
               {kycs.map((k) => (
@@ -275,21 +355,40 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                       )}
                     </div>
                   </td>
-
+                  <td>
+                    <span style={{ 
+                      padding: "4px 8px", borderRadius: "6px", fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase",
+                      background: k.globeStatus === 'approved' ? 'rgba(16, 185, 129, 0.1)' : k.globeStatus === 'rejected' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)', 
+                      color: k.globeStatus === 'approved' ? '#10b981' : k.globeStatus === 'rejected' ? '#ef4444' : '#f59e0b', 
+                    }}>
+                      {k.globeStatus}
+                    </span>
+                  </td>
 
                   <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.submittedAt}</td>
                   <td>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div className="action-menu-container" style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
                       <button 
-                        onClick={() => router.push(`/admin/application/${k.id}`)} 
-                        style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--border-color)", background: "transparent", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setOpenMenuId(openMenuId === k.id ? null : k.id);
+                        }}
+                        style={{ padding: "4px 8px", borderRadius: 4, background: "transparent", border: "1px solid var(--border-color)", cursor: "pointer", fontWeight: "bold", fontSize: "1.1rem" }}
                       >
-                        View
+                        ⋮
                       </button>
-                      {k.status === "pending" && <>
-                        <button onClick={() => updateStatus(k.id, "verified")} style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "rgba(48,164,108,0.1)", color: "#30a46c", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}>✓</button>
-                        <button onClick={() => router.push(`/admin/application/${k.id}?action=reject`)} style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "rgba(229,72,77,0.1)", color: "#e5484d", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" }}>✕</button>
-                      </>}
+                      
+                      {openMenuId === k.id && (
+                        <div style={{ position: "absolute", right: 30, top: 0, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 160, display: "flex", flexDirection: "column", padding: "4px 0" }}>
+                          <button onClick={() => { setOpenMenuId(null); router.push(`/admin/application/${k.id}`); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Verify</button>
+                          <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Continue Journey</button>
+                          <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", color: "#e5484d", borderBottom: "1px solid var(--border-color)" }}>Delete</button>
+                          <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: k.status === "verified" ? "1px solid var(--border-color)" : "none" }}>Change Status</button>
+                          {k.status === "verified" && (
+                            <button onClick={() => { setOpenMenuId(null); sendToBackoffice(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", color: "var(--wise-green)", fontWeight: 800 }}>Send to Backoffice</button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -319,6 +418,53 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
           <span style={{ fontWeight: 700, color: "var(--wise-green)" }}>NSDL v2.2.3 Compliant</span>
         </div>
       </div>
+
+      {changeStatusAppId && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 320, border: "1px solid var(--border-color)", boxShadow: "0 10px 30px rgba(0,0,0,0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0 }}>Change Progress</h3>
+              <button onClick={() => { setChangeStatusAppId(null); setPendingStep(null); }} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)" }}>×</button>
+            </div>
+            
+            {(() => {
+              const appForStatus = kycs.find(k => k.id === changeStatusAppId);
+              const currentAppStep = appForStatus ? (appForStatus.stepNum || 0) : 0;
+              return (
+                <div style={{ padding: 16, border: pendingStep !== null && pendingStep !== currentAppStep ? "2px solid var(--wise-green)" : "1px solid var(--border-color)", borderRadius: 8, background: "var(--bg-secondary)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>PROGRESS</span>
+                    {pendingStep !== null && pendingStep !== currentAppStep && (
+                      <span style={{ fontSize: "0.6rem", color: "var(--wise-green)", fontWeight: 800 }}>CHANGED</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 900, color: "var(--wise-green)", marginTop: 4 }}>{STEP_LABELS[currentAppStep] || `Step ${currentAppStep}`}</div>
+                  <select 
+                    className="admin-select" 
+                    style={{ width: "100%", marginTop: 12, height: 40, fontSize: "0.85rem" }}
+                    value={pendingStep !== null ? pendingStep : currentAppStep}
+                    onChange={e => setPendingStep(parseInt(e.target.value))}
+                  >
+                    {Object.entries(STEP_LABELS).map(([num, label]) => <option key={num} value={num}>{label}</option>)}
+                  </select>
+                  {pendingStep !== null && pendingStep !== currentAppStep && (
+                    <button 
+                      onClick={() => {
+                        updateStatus(changeStatusAppId, appForStatus?.status || "pending", { currentStep: pendingStep });
+                        setChangeStatusAppId(null);
+                        setPendingStep(null);
+                      }}
+                      style={{ width: "100%", marginTop: 12, padding: 10, borderRadius: 8, background: "var(--wise-green)", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.85rem", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)" }}
+                    >
+                      Save Step Change
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
     </div>
   );

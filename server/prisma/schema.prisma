@@ -70,6 +70,12 @@ model KycApplication {
   assignedCrmAgentId                   Int?
   stepStatuses                         String?   @db.LongText
   isResubmitted                        Boolean   @default(false)
+  globeStatus                          String    @default("pending")
+  globeRemarks                         String?   @db.LongText
+  globeReviewedAt                      DateTime?
+  globeReviewedBy                      Int?
+  pushedToBackoffice                   Boolean   @default(false)
+  pushedToBackofficeAt                 DateTime?
   User_KycApplication_assignedToToUser User?     @relation("KycApplication_assignedToToUser", fields: [assignedTo], references: [id])
   reviewer                             User?     @relation("ReviewedBy", fields: [reviewedBy], references: [id])
   user                                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)

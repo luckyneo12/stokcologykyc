@@ -16,8 +16,16 @@ const getAssignedApplications = async (req, res, next) => {
       where.assignedCrmAgentId = agentId;
     }
     
-    if (status && status !== "all") {
-      where.status = status;
+    const normalizedStatus = String(status || "").toLowerCase();
+    if (normalizedStatus && normalizedStatus !== "all") {
+      if (normalizedStatus === "pushed_to_bo") {
+        where.pushedToBackoffice = true;
+      } else if (normalizedStatus === "not_pushed_to_bo") {
+        where.status = "verified";
+        where.pushedToBackoffice = false;
+      } else {
+        where.status = normalizedStatus;
+      }
     }
 
     if (search) {
