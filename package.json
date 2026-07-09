@@ -18,7 +18,8 @@
     "react-qrcode-logo": "^4.0.0",
     "react-rnd": "^10.5.3",
     "recharts": "^3.9.1",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "eslint": "^9",

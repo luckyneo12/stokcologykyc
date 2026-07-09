@@ -265,7 +265,8 @@ async function generateKycPdf(applicationData) {
           }
           if (b) {
             const img = isPng ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
-            page.drawImage(img, { x: 50, y: currentY - 140, width: 120, height: 120 });
+            const imgDims = img.scaleToFit(120, 120);
+            page.drawImage(img, { x: 50, y: currentY - 140 + (120 - imgDims.height), width: imgDims.width, height: imgDims.height });
             page.drawText('CUSTOMER SELFIE', { x: 50, y: currentY - 155, size: 8, font: boldFont });
           }
         } catch (e) { console.error(e); }
@@ -288,7 +289,8 @@ async function generateKycPdf(applicationData) {
           }
           if (b) {
             const img = isPng ? await pdfDoc.embedPng(b) : await pdfDoc.embedJpg(b);
-            page.drawImage(img, { x: 350, y: currentY - 140, width: 120, height: 60 });
+            const imgDims = img.scaleToFit(120, 60);
+            page.drawImage(img, { x: 350, y: currentY - 140 + (60 - imgDims.height), width: imgDims.width, height: imgDims.height });
             page.drawText('CUSTOMER SIGNATURE', { x: 350, y: currentY - 155, size: 8, font: boldFont });
           }
         } catch (e) { console.error(e); }

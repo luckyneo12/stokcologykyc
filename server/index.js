@@ -64,8 +64,12 @@ io.on("connection", (socket) => {
 
 // Security Middleware
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: false // Disable CSP for easier dev with multiple ports
+  crossOriginResourcePolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: false,
+  hsts: false,
+  xFrameOptions: false
 }));
 app.use(cors({
   origin: function (origin, callback) {

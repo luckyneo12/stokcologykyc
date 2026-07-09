@@ -1,141 +1,6 @@
 const prisma = require("../config/db");
-const Tesseract = require('tesseract.js');
 const cloudinary = require('cloudinary').v2;
-const { PDFDocument } = require('pdf-lib');
 const fs = require('fs');
-const { Readable } = require('stream');
-
-// ─── Improved OCR Extraction Helpers ───────────────────────────────────────────
-
-/**
- * Extract all certificate numbers from OCR text.
- * Indian e-stamp certificate numbers follow patterns like:
- *   IN-DL12345678901234, IN-MH98765432101234, etc.
- * OCR can introduce noise: spaces, dashes, lowercase, character substitution.
- */
-function extractCertificateNumbers(text) {
-  const results = new Set();
-  
-  // Normalize common OCR noise
-  const cleaned = text
-    .replace(/[''`]/g, '')  // remove stray quotes
-    .replace(/\r\n/g, '\n');
-
-  // Pattern 1: Standard IN-XX followed by digits (most common)
-  // e.g. IN-DL12345678901234, IN-MH98765432101234
-  const p1 = cleaned.match(/IN[-–—.\s]?[A-Z]{2}[-–—.\s]?\d[\d\s]{6,20}/gi) || [];
-  for (const m of p1) {
-    const normalized = m.replace(/[\s–—.]/g, '').replace(/^IN/i, 'IN-').replace(/^IN--/, 'IN-').toUpperCase();
-    // Ensure it looks like IN-XX followed by digits
-    if (/^IN-[A-Z]{2}\d{7,}$/.test(normalized)) {
-      results.add(normalized);
-    }
-  }
-
-  // Pattern 2: OCR misreads I as 1 or l, N as |\[
-  const p2 = cleaned.match(/[I1l][N|\\[\]][-–—.\s]?[A-Z]{2}[-–—.\s]?\d[\d\s]{6,20}/gi) || [];
-  for (const m of p2) {
-    let normalized = m.replace(/[\s–—.]/g, '').toUpperCase();
-    // Fix the leading characters to "IN"
-    normalized = normalized.replace(/^[I1L][N|\\[\]]/i, 'IN-');
-    normalized = normalized.replace(/^IN--/, 'IN-');
-    if (/^IN-[A-Z]{2}\d{7,}$/.test(normalized)) {
-      results.add(normalized);
-    }
-  }
-
-  // Pattern 3: Look for "Certificate No" label followed by value
-  const certLabelPattern = /(?:certificate\s*(?:no\.?|number)\s*:?\s*)([A-Z0-9][-A-Z0-9\s]{8,30})/gi;
-  let match;
-  while ((match = certLabelPattern.exec(cleaned)) !== null) {
-    const val = match[1].replace(/\s+/g, '').toUpperCase();
-    if (/^IN-?[A-Z]{2}\d{7,}$/.test(val)) {
-      const normalized = val.replace(/^IN([A-Z])/, 'IN-$1');
-      results.add(normalized);
-    }
-  }
-
-  return [...results];
-}
-
-/**
- * Extract all serial numbers from OCR text.
- * Serial numbers are typically 6-14 digit numbers, often printed in red.
- * We try labeled patterns first, then fall back to standalone numbers.
- */
-function extractSerialNumbers(text, certificateNumbers = []) {
-  const results = new Set();
-
-  const cleaned = text
-    .replace(/[''`]/g, '')
-    .replace(/\r\n/g, '\n');
-
-  // Pattern 1: Labeled serial numbers ("Serial No:", "Sr. No:", "S.No:", etc.)
-  const labeledPatterns = [
-    /(?:serial\s*(?:no\.?|number)\s*:?\s*)(\d[\d\s]{4,14})/gi,
-    /(?:sr\.?\s*(?:no\.?)?\s*:?\s*)(\d[\d\s]{4,14})/gi,
-    /(?:s\.?\s*no\.?\s*:?\s*)(\d[\d\s]{4,14})/gi,
-  ];
-
-  for (const pattern of labeledPatterns) {
-    let match;
-    while ((match = pattern.exec(cleaned)) !== null) {
-      const num = match[1].replace(/\s+/g, '');
-      if (num.length >= 6 && num.length <= 14) {
-        results.add(num);
-      }
-    }
-  }
-
-  // Pattern 2: Standalone digit sequences (6-14 digits)
-  // Filter out numbers that are part of certificate numbers
-  const standalonePattern = /\b(\d{6,14})\b/g;
-  let match;
-  while ((match = standalonePattern.exec(cleaned)) !== null) {
-    const num = match[1];
-    // Skip if this number is embedded in a certificate number
-    const isPartOfCert = certificateNumbers.some(cert => cert.includes(num));
-    if (!isPartOfCert) {
-      results.add(num);
-    }
-  }
-
-  return [...results];
-}
-
-/**
- * Given OCR text from a single page/image, extract all e-stamp entries.
- * Returns an array of { certificateNo, serialNo } objects.
- * 
- * Strategy:
- * - Extract all cert numbers and serial numbers independently
- * - If we find equal counts, pair them 1:1
- * - If counts differ, pair what we can, leave rest with blank counterpart
- * - If nothing found, return one blank entry for manual input
- */
-function extractEStampEntries(text) {
-  const certNumbers = extractCertificateNumbers(text);
-  const serialNumbers = extractSerialNumbers(text, certNumbers);
-
-  const entries = [];
-
-  if (certNumbers.length === 0 && serialNumbers.length === 0) {
-    // Nothing found — create one blank entry for manual input
-    entries.push({ certificateNo: "", serialNo: "" });
-    return entries;
-  }
-
-  const maxCount = Math.max(certNumbers.length, serialNumbers.length);
-
-  for (let i = 0; i < maxCount; i++) {
-    entries.push({
-      certificateNo: certNumbers[i] || "",
-      serialNo: serialNumbers[i] || "",
-    });
-  }
-
-  return entries;
-}
 
 
 // ─── Controller Methods ────────────────────────────────────────────────────────
@@ -292,94 +157,21 @@ exports.bulkUploadEStamps = async (req, res) => {
       return res.status(400).json({ success: false, error: "No E-Stamp files provided." });
     }
 
-    const results = [];
+    const files = [];
 
     for (const file of req.files) {
-      let fileUrl = file.path; // Local path from localUpload
-      const isPdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
-      let pagesToProcess = [];
-
-      if (isPdf) {
-        try {
-          const pdfBytes = fs.readFileSync(file.path);
-          const pdfDoc = await PDFDocument.load(pdfBytes);
-          const numPages = pdfDoc.getPageCount();
-          
-          console.log(`[E-Stamp] Processing PDF with ${numPages} pages: ${file.originalname}`);
-          
-          for (let i = 0; i < numPages; i++) {
-            try {
-              const singlePageDoc = await PDFDocument.create();
-              const [copiedPage] = await singlePageDoc.copyPages(pdfDoc, [i]);
-              singlePageDoc.addPage(copiedPage);
-              const singlePageBytes = await singlePageDoc.save();
-              
-              // Upload to Cloudinary via buffer, converting PDF page to JPG for OCR
-              const uploadResult = await new Promise((resolve, reject) => {
-                  const stream = cloudinary.uploader.upload_stream({
-                      folder: "kyc_uploads",
-                      format: "jpg", 
-                      resource_type: "image"
-                  }, (error, result) => {
-                      if (error) reject(error);
-                      else resolve(result);
-                  });
-                  
-                  const buffer = Buffer.from(singlePageBytes);
-                  Readable.from(buffer).pipe(stream);
-              });
-              
-              pagesToProcess.push({ url: uploadResult.secure_url, pageIndex: i + 1 });
-            } catch (pageErr) {
-              console.error(`[E-Stamp] Failed to process PDF page ${i + 1}:`, pageErr.message);
-            }
-          }
-        } catch (err) {
-          console.error("[E-Stamp] Failed to process PDF:", err.message);
-        }
-      } else {
-        // Direct image upload
-        try {
-          const uploadResult = await cloudinary.uploader.upload(file.path, {
-            folder: "kyc_uploads",
-            resource_type: "auto"
-          });
-          pagesToProcess.push({ url: uploadResult.secure_url, pageIndex: 1 });
-        } catch (err) {
-          console.error("[E-Stamp] Failed to upload image to Cloudinary:", err.message);
-        }
-      }
-
-      // Process each page with OCR
-      for (const page of pagesToProcess) {
-        try {
-          console.log(`[E-Stamp] Running OCR on page ${page.pageIndex}...`);
-          const { data: { text } } = await Tesseract.recognize(page.url, 'eng');
-          
-          console.log(`[E-Stamp] OCR text for page ${page.pageIndex} (first 300 chars):`, text.substring(0, 300));
-          
-          // Use improved extraction
-          const entries = extractEStampEntries(text);
-          
-          console.log(`[E-Stamp] Page ${page.pageIndex}: Found ${entries.length} e-stamp entries`);
-          
-          for (const entry of entries) {
-            results.push({
-              fileUrl: page.url,
-              certificateNo: entry.certificateNo,
-              serialNo: entry.serialNo,
-              status: "pending_verification"
-            });
-          }
-        } catch (ocrError) {
-          console.error("[E-Stamp] OCR Failed for page:", page.pageIndex, ocrError.message);
-          results.push({
-            fileUrl: page.url,
-            certificateNo: "",
-            serialNo: "",
-            status: "pending_verification"
-          });
-        }
+      try {
+        const uploadResult = await cloudinary.uploader.upload(file.path, {
+          folder: "kyc_uploads",
+          resource_type: "auto"
+        });
+        
+        files.push({
+          originalName: file.originalname,
+          fileUrl: uploadResult.secure_url
+        });
+      } catch (err) {
+        console.error("[E-Stamp] Failed to upload to Cloudinary:", err.message);
       }
       
       // Clean up local file after processing
@@ -390,8 +182,7 @@ exports.bulkUploadEStamps = async (req, res) => {
       }
     }
 
-    console.log(`[E-Stamp] Total extracted entries: ${results.length}`);
-    res.json({ success: true, extractedData: results });
+    res.json({ success: true, files });
   } catch (error) {
     console.error("Error during bulk upload:", error);
     res.status(500).json({ success: false, error: "Server error during bulk upload." });

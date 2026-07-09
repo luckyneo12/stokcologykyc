@@ -17,7 +17,7 @@ import {
   X,
   Mail,
   User, Phone,
-  ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate
+  ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -107,31 +107,33 @@ const REVIEW_STEPS = [
       { id: "pan", label: "PAN Details" }
     ],
     fields: (app, tab = "aadhaar") => {
+      const dlAadhaar = app.ocrData?.digio?.DIGILOCKER?.actions?.[0]?.details?.aadhaar;
+      const dlPan = app.ocrData?.digio?.DIGILOCKER?.actions?.[0]?.details?.pan;
+      const panVerify = app.ocrData?.pan_verification;
+
       if (tab === "pan") {
         return [
-          ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
-          ["Name on PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
-          ["Father's Name", app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName, "personalDetails.fatherName"],
-          ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
-          ["Aadhaar Seeding Status", app.identityDetails?.pan_verification?.aadhaar_seeding_status],
-          ["PAN verified", app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified],
+          ["PAN number", dlPan?.id_number || app.identityDetails?.pan || app.personalDetails?.pan || "Not Available", "identityDetails.pan"],
+          ["Name on PAN", dlPan?.name || app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName || "Not Available", "identityDetails.pan_name"],
+          ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available", "personalDetails.fatherName"],
+          ["Date of birth", dlPan?.dob || app.identityDetails?.dob || app.personalDetails?.dob || "Not Available", "identityDetails.dob"],
+          ["Aadhaar Seeding Status", panVerify?.data?.aadhaar_seeding_status || app.identityDetails?.pan_verification?.aadhaar_seeding_status || "Not Available"],
+          ["PAN verified", panVerify?.status || app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified || "Not Available"],
         ];
       }
       return [
-        ["Identity method", app.identityMethod],
-        ["Aadhaar reference", app.identityDetails?.aadhaar || app.identityDetails?.aadhaarNumber || app.identityDetails?.uid, "identityDetails.aadhaar"],
-        ["Name on Aadhaar", app.identityDetails?.name || app.ocrData?.digilocker?.name, "identityDetails.name"],
-        ["Date of birth", app.identityDetails?.dob || app.ocrData?.digilocker?.dob, "identityDetails.dob"],
-        ["Gender", app.identityDetails?.gender || app.ocrData?.digilocker?.gender, "identityDetails.gender"],
-        ["Address", typeof app.address === 'object' ? app.address?.permanentAddress || app.address?.currentAddress || app.address?.address || app.identityDetails?.address : app.address || app.identityDetails?.address],
-        ["DigiLocker status", app.identityDetails?.digilocker?.status || app.ocrData?.digilocker?.status],
+        ["Aadhaar reference", dlAadhaar?.id_number || app.identityDetails?.aadhaar || app.identityDetails?.aadhaarNumber || app.identityDetails?.uid || "Not Available", "identityDetails.aadhaar"],
+        ["Name on Aadhaar", dlAadhaar?.name || app.identityDetails?.name || app.ocrData?.digilocker?.name || "Not Available", "identityDetails.name"],
+        ["Date of birth", dlAadhaar?.dob || app.identityDetails?.dob || app.ocrData?.digilocker?.dob || "Not Available", "identityDetails.dob"],
+        ["Gender", dlAadhaar?.gender || app.identityDetails?.gender || app.ocrData?.digilocker?.gender || "Not Available", "identityDetails.gender"],
+        ["Address", dlAadhaar?.current_address || dlAadhaar?.permanent_address || (typeof app.address === 'object' ? app.address?.permanentAddress || app.address?.currentAddress || app.address?.address || app.identityDetails?.address : app.address || app.identityDetails?.address) || "Not Available"],
       ];
     },
     evidence: (app, tab = "aadhaar") => {
-      if (tab === "pan") {
-        return [findDocument(app, ["pan", "digilocker"], "DigiLocker PAN", ["aadhaar", "photo"])].filter(Boolean);
-      }
-      return [findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"])].filter(Boolean);
+      return [
+        findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
+        ...getAllPanDocuments(app).filter(doc => doc.label !== "Uploaded PAN Card")
+      ].filter(Boolean);
     },
   },
   {
@@ -153,12 +155,14 @@ const REVIEW_STEPS = [
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["PEP status", app.personalDetails?.politicallyExposed],
     ],
-    evidence: (app) => [
-      findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
-      findDocument(app, ["aadhaar", "digilocker", "photo"], "Aadhaar Photo", ["pan", "pdf"]),
-      findDocument(app, ["pan", "digilocker"], "DigiLocker PAN", ["aadhaar", "photo"]) || firstMedia(app.panUpload, "Uploaded PAN Card"),
-      firstMedia(app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof, "PEP Proof"),
-    ].filter(Boolean),
+    evidence: (app) => {
+      const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
+      return [
+        findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
+        getAllPanDocuments(app).find(doc => doc.label !== "Uploaded PAN Card") || getAllPanDocuments(app)[0],
+        pepProof ? firstMedia(pepProof, "PEP Document") : null
+      ].filter(Boolean);
+    },
   },
   {
     id: "nomineeChoice",
@@ -316,7 +320,7 @@ function PdfThumbnail({ src }) {
         pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version || "5.7.284"}/build/pdf.worker.min.mjs`;
         const pdf = await pdfjs.getDocument({ url: src }).promise;
         const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 0.9 });
+        const viewport = page.getViewport({ scale: 3.0 });
         const canvas = canvasRef.current;
         if (!canvas || cancelled) return;
         canvas.width = viewport.width;
@@ -557,6 +561,12 @@ function getStepStatuses(app) {
 
 function isPdf(src) {
   return src?.startsWith("data:application/pdf") || src?.toLowerCase().includes(".pdf");
+}
+
+function shouldDisplayAsIframe(label) {
+  if (!label) return false;
+  const l = label.toLowerCase();
+  return l.includes("esigned pdf") || l.includes("pep") || l.includes("f&o") || l.includes("financial");
 }
 
 function openInNewTab(src) {
@@ -908,7 +918,7 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   );
 }
 
-function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, y: 0 } }) {
+function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, y: 0 }, label }) {
   const [zoom, setZoom] = useState(defaultZoom);
   const [offset, setOffset] = useState(defaultOffset);
   const [rotation, setRotation] = useState(0);
@@ -917,46 +927,69 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
-      <div 
-        style={{ flex: 1, position: "relative", overflow: "hidden", cursor: isDragging ? "grabbing" : "grab", userSelect: "none" }}
-        onWheel={(e) => {
-          if (e.deltaY < 0) {
-            setZoom(Math.min(5, zoom + 0.1));
-          } else {
-            setZoom(Math.max(0.2, zoom - 0.1));
-          }
-        }}
-        onMouseDown={(e) => {
-          if (zoom > 1) {
-            setIsDragging(true);
-            setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
-          }
-        }}
-        onMouseMove={(e) => {
-          if (isDragging && zoom > 1) {
-            setOffset({
-              x: e.clientX - dragStart.x,
-              y: e.clientY - dragStart.y
-            });
-          }
-        }}
-        onMouseUp={() => setIsDragging(false)}
-        onMouseLeave={() => setIsDragging(false)}
-      >
-        <div style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom}) rotate(${rotation}deg)`, 
-          transition: isDragging ? "none" : "transform 0.2s ease",
-          height: "100%", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none"
-        }}>
-          {isPdf(src) ? <PdfThumbnail src={src} /> : <img src={src} alt="Preview" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: 4 }} />}
+      {isPdf(src) && shouldDisplayAsIframe(label) ? (
+        <object data={`/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={`/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        </object>
+      ) : (
+        <div 
+          style={{ flex: 1, position: "relative", overflow: "hidden", cursor: isDragging ? "grabbing" : "grab", userSelect: "none" }}
+          onWheel={(e) => {
+            if (e.deltaY < 0) {
+              setZoom(Math.min(5, zoom + 0.1));
+            } else {
+              const newZoom = Math.max(0.2, zoom - 0.1);
+              setZoom(newZoom);
+              if (newZoom <= 1) {
+                setOffset({ x: 0, y: 0 });
+              }
+            }
+          }}
+          onMouseDown={(e) => {
+            if (zoom > 1) {
+              setIsDragging(true);
+              setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+            }
+          }}
+          onMouseMove={(e) => {
+            if (isDragging && zoom > 1) {
+              setOffset({
+                x: e.clientX - dragStart.x,
+                y: e.clientY - dragStart.y
+              });
+            }
+          }}
+          onMouseUp={() => setIsDragging(false)}
+          onMouseLeave={() => setIsDragging(false)}
+        >
+          <div style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom}) rotate(${rotation}deg)`, 
+            transition: isDragging ? "none" : "transform 0.2s ease",
+            height: "100%", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none"
+          }}>
+            {isPdf(src) ? <PdfThumbnail src={src} /> : <img src={src} alt="Preview" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: 4 }} />}
+          </div>
         </div>
-      </div>
-      <div style={{ position: "absolute", bottom: 12, right: 12, display: "flex", gap: 6, background: "var(--bg-primary)", padding: "4px 8px", borderRadius: 20, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)", zIndex: 10 }}>
-        <button onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={14} /></button>
-        <button onClick={() => setZoom(Math.min(3, zoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={14} /></button>
-        <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
-        <button onClick={() => setRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={14} /></button>
-      </div>
+      )}
+      {!(isPdf(src) && shouldDisplayAsIframe(label)) && (
+        <div style={{ position: "absolute", bottom: 12, right: 12, display: "flex", gap: 6, background: "var(--bg-primary)", padding: "4px 8px", borderRadius: 20, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)", zIndex: 10 }}>
+          <button onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={14} /></button>
+          <button onClick={() => setZoom(Math.min(3, zoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={14} /></button>
+          <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
+          <button onClick={() => setRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={14} /></button>
+          <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
+          <button onClick={(e) => {
+            e.stopPropagation();
+            const link = document.createElement('a');
+            link.href = src;
+            link.target = '_blank';
+            link.download = 'document';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={14} /></button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1282,7 +1315,17 @@ export default function AgentReview() {
     panDocs.forEach(doc => pushDoc(doc, "panUpload"));
 
     // eSigned PDF
-    if (app.generatedPdfBase64) pushDoc(firstMedia(app.generatedPdfBase64, "eSigned PDF"), "aadhaarEsign");
+    let esignDoc = null;
+    try {
+      const docs = Array.isArray(app.documents) ? app.documents : (app.documents ? JSON.parse(app.documents) : []);
+      esignDoc = docs.find(doc => doc.type === "ESIGN" || (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")));
+    } catch(e) {}
+    
+    if (esignDoc) {
+      pushDoc(firstMedia(esignDoc.path, "eSigned PDF"), "aadhaarEsign");
+    } else if (app.generatedPdfBase64) {
+      pushDoc(firstMedia(app.generatedPdfBase64, "eSigned PDF (Unsigned)"), "aadhaarEsign");
+    }
 
     // PEP Document
     const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
@@ -1342,7 +1385,7 @@ export default function AgentReview() {
       const activeTab = step.tabs ? step.tabs[0].id : null;
       const stepDocs = step.evidence(app, activeTab);
       if (stepDocs && stepDocs.length > 0) {
-        setSelectedDocument({ ...stepDocs[0], stepKey: step.id });
+        setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
         setPreviewZoom(1);
         setPreviewRotation(0);
         setPreviewOffset({ x: 0, y: 0 });
@@ -1351,7 +1394,7 @@ export default function AgentReview() {
   };
 
   const handleDocumentClick = (doc) => {
-    setSelectedDocument(doc);
+    setSelectedDocument({ ...doc, isModuleView: false });
     setPreviewZoom(1);
     setPreviewRotation(0);
     setPreviewOffset({ x: 0, y: 0 });
@@ -1511,43 +1554,55 @@ export default function AgentReview() {
                   
                   {isExpanded && (
                     <div style={{ padding: "10px 16px", background: "var(--bg-secondary)" }}>
-                      {fields.length === 0 ? (
-                         <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>No details available.</div>
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                          {fields.map(([label, value, jsonPath]) => {
-                            const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
-                            return (
-                              <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>{label}</div>
-                                  {editingField === jsonPath && jsonPath ? (
-                                    <input 
-                                      autoFocus
-                                      className="admin-input"
-                                      style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
-                                      value={currentValue || ""}
-                                      onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
-                                      onBlur={() => setEditingField(null)}
-                                      onKeyDown={e => { if (e.key === "Enter") setEditingField(null); }}
-                                    />
-                                  ) : (
-                                    <div style={{ fontSize: "0.8rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 500, minHeight: 18 }}>
-                                      {label === "Segments" && typeof currentValue === "string" 
-                                        ? currentValue.split(",").join(", ") 
-                                        : (currentValue !== undefined && currentValue !== null ? String(currentValue) : "")
-                                      }
-                                    </div>
-                                  )}
-                                </div>
-                                {jsonPath && (
-                                  <Edit2 onClick={() => setEditingField(jsonPath)} size={14} color="var(--text-muted)" style={{ cursor: "pointer", marginTop: 14 }} />
-                                )}
+                      {(step.tabs || [{ id: null, label: null }]).map((tab, tabIndex) => {
+                        const tabFields = step.fields(app, tab.id).filter(([, value]) => value !== undefined && value !== null && value !== "");
+                        if (tabFields.length === 0) {
+                          if (step.tabs) return null;
+                          return <div key="empty" style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>No details available.</div>;
+                        }
+                        return (
+                          <div key={tab.id || "default"} style={{ marginBottom: step.tabs && tabIndex < step.tabs.length - 1 ? 16 : 0 }}>
+                            {tab.label && (
+                              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 8, textTransform: "uppercase", borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>
+                                {tab.label}
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                            )}
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              {tabFields.map(([label, value, jsonPath]) => {
+                                const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
+                                return (
+                                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>{label}</div>
+                                      {editingField === jsonPath && jsonPath ? (
+                                        <input 
+                                          autoFocus
+                                          className="admin-input"
+                                          style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
+                                          value={currentValue || ""}
+                                          onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
+                                          onBlur={() => setEditingField(null)}
+                                          onKeyDown={e => { if (e.key === "Enter") setEditingField(null); }}
+                                        />
+                                      ) : (
+                                        <div style={{ fontSize: "0.8rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 500, minHeight: 18 }}>
+                                          {label === "Segments" && typeof currentValue === "string" 
+                                            ? currentValue.split(",").join(", ") 
+                                            : (currentValue !== undefined && currentValue !== null ? String(currentValue) : "")
+                                          }
+                                        </div>
+                                      )}
+                                    </div>
+                                    {jsonPath && (
+                                      <Edit2 onClick={() => setEditingField(jsonPath)} size={14} color="var(--text-muted)" style={{ cursor: "pointer", marginTop: 14 }} />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1648,40 +1703,50 @@ export default function AgentReview() {
                  <span style={{ fontWeight: 600, fontSize: "1.1rem" }}>NO DOCUMENT</span>
                  <span style={{ fontSize: "0.9rem" }}>uploaded</span>
               </div>
-            ) : (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1 ? (
+            ) : selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1 ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "row", gap: 16, padding: 16, overflow: "hidden" }}>
                 {REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).map((doc, idx) => (
                   <div key={`${selectedDocument.stepKey}-${idx}`} style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)", borderRadius: 8, border: "1px solid var(--border-color)", overflow: "hidden" }}>
                     <div style={{ padding: "8px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)", fontSize: "0.75rem", fontWeight: 700, textAlign: "center", color: "var(--text-primary)" }}>
                       {doc.label || "Document"}
                     </div>
-                    <IndependentImageViewer src={doc.src} defaultZoom={doc.defaultZoom} defaultOffset={doc.defaultOffset} />
+                    <IndependentImageViewer src={doc.src} defaultZoom={doc.defaultZoom} defaultOffset={doc.defaultOffset} label={doc.label} />
                   </div>
                 ))}
               </div>
             ) : (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
-                <div style={{ 
-                  transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom}) rotate(${previewRotation}deg)`, 
-                  transition: isDragging ? "none" : "transform 0.2s ease",
-                  maxHeight: "100%",
-                  maxWidth: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  pointerEvents: "none"
-                }}>
-                  {isPdf(selectedDocument.src) ? (
-                    <PdfThumbnail src={selectedDocument.src} />
-                  ) : (
-                    <img 
-                      src={selectedDocument.src} 
-                      alt="Preview" 
-                      draggable={false}
-                      style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", userSelect: "none" }} 
-                    />
-                  )}
-                </div>
+                {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
+                  <object 
+                    data={`/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
+                    type="application/pdf"
+                    style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
+                  >
+                    <embed src={`/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                  </object>
+                ) : (
+                  <div style={{ 
+                    transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom}) rotate(${previewRotation}deg)`, 
+                    transition: isDragging ? "none" : "transform 0.2s ease",
+                    maxHeight: "100%",
+                    maxWidth: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    pointerEvents: "none"
+                  }}>
+                    {isPdf(selectedDocument.src) ? (
+                      <PdfThumbnail src={selectedDocument.src} />
+                    ) : (
+                      <img 
+                        src={selectedDocument.src} 
+                        alt="Preview" 
+                        draggable={false}
+                        style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", userSelect: "none" }} 
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1691,6 +1756,17 @@ export default function AgentReview() {
                   <button onClick={() => handleZoomChange(Math.min(3, previewZoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={18} /></button>
                   <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
                   <button onClick={() => setPreviewRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={18} /></button>
+                  <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                  <button onClick={(e) => {
+                    e.stopPropagation();
+                    const link = document.createElement('a');
+                    link.href = selectedDocument.src;
+                    link.target = '_blank';
+                    link.download = 'document';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={18} /></button>
                   <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
                   <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{Math.round(previewZoom * 100)}%</span>
                </div>

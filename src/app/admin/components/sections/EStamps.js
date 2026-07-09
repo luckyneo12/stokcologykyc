@@ -1,11 +1,14 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { UploadCloud, CheckCircle, Clock, Archive, Search, Eye, Edit2, Trash2, FileText, Image as ImageIcon } from "lucide-react";
 
 export default function EStamps({ searchQuery, onSearchChange }) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [eStamps, setEStamps] = useState([]);
   const [stats, setStats] = useState({ totalUploaded: 0, totalUsed: 0, totalLeft: 0 });
   
@@ -95,12 +98,56 @@ export default function EStamps({ searchQuery, onSearchChange }) {
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append("files", files[i]);
-    }
-
     try {
+      const Tesseract = (await import('tesseract.js')).default;
+      const pdfjs = await import('pdfjs-dist/build/pdf');
+      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+      const { extractEStampEntries } = await import('@/utils/estampParser');
+
+      const localResults = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const isPdf = file.type === "application/pdf";
+        const imageUrlsToOcr = [];
+
+        if (isPdf) {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await page.render({ canvasContext: context, viewport }).promise;
+            imageUrlsToOcr.push(canvas.toDataURL("image/png"));
+          }
+        } else {
+          imageUrlsToOcr.push(URL.createObjectURL(file));
+        }
+
+        for (const imgUrl of imageUrlsToOcr) {
+          console.log(`[OCR] Processing image for file: ${file.name}`);
+          const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng');
+          const entries = extractEStampEntries(text);
+          for (const entry of entries) {
+            localResults.push({
+              fileName: file.name,
+              certificateNo: entry.certificateNo,
+              serialNo: entry.serialNo,
+              status: "pending_verification"
+            });
+          }
+        }
+      }
+
+      // Now upload to backend
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append("files", files[i]);
+      }
+
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/api/admin/estamp/bulk-upload`, {
         method: "POST",
@@ -108,16 +155,25 @@ export default function EStamps({ searchQuery, onSearchChange }) {
         body: formData
       });
       const data = await res.json();
+      
       if (data.success) {
-        setExtractedData(data.extractedData);
-        // Auto-check duplicates
-        await checkDuplicates(data.extractedData);
+        // Map backend cloudinary URLs to our local OCR results based on filename
+        const finalData = localResults.map(res => {
+          const uploadedFile = data.files.find(f => f.originalName === res.fileName);
+          return {
+            ...res,
+            fileUrl: uploadedFile ? uploadedFile.fileUrl : ""
+          };
+        });
+        
+        setExtractedData(finalData);
+        await checkDuplicates(finalData);
       } else {
         alert("Upload failed: " + data.error);
       }
     } catch (error) {
       console.error(error);
-      alert("Error uploading files.");
+      alert("Error processing files.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -427,7 +483,7 @@ export default function EStamps({ searchQuery, onSearchChange }) {
       </div>
 
       {/* Bulk Upload Modal */}
-      {showModal && (
+      {mounted && showModal && createPortal(
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
           background: "rgba(0,0,0,0.6)", zIndex: 1000,
@@ -639,15 +695,15 @@ export default function EStamps({ searchQuery, onSearchChange }) {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Premium Edit Modal */}
-      {editingStamp && (
+      {mounted && editingStamp && createPortal(
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
-          background: "rgba(0,0,0,0.4)", backdropFilter: "blur(8px)", zIndex: 1000,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          animation: "fadeIn 0.2s ease-out"
+          background: "rgba(0,0,0,0.6)", zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center"
         }}>
           <div style={{
             background: "var(--bg-primary)", width: "90%", maxWidth: 850,
@@ -657,8 +713,6 @@ export default function EStamps({ searchQuery, onSearchChange }) {
             <button 
               onClick={() => { setEditingStamp(null); setPreviewScale(1); setPreviewPos({ x: 0, y: 0 }); }} 
               style={{ position: "absolute", top: 24, right: 24, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-muted)", transition: "all 0.2s" }}
-              onMouseOver={e => { e.currentTarget.style.background = "var(--border-color)"; e.currentTarget.style.color = "var(--text-primary)"; }}
-              onMouseOut={e => { e.currentTarget.style.background = "var(--bg-secondary)"; e.currentTarget.style.color = "var(--text-muted)"; }}
             >
               &times;
             </button>
@@ -675,47 +729,57 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                 overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", height: 320, position: "relative"
               }}>
                 {editingStamp.fileUrl ? (
-                  <div 
-                    style={{ width: "100%", height: "100%", overflow: "hidden", cursor: isDragging ? "grabbing" : (previewScale > 1 ? "grab" : "zoom-in") }}
-                    onWheel={e => {
-                      setPreviewScale(prev => Math.min(Math.max(1, prev + (e.deltaY > 0 ? -0.2 : 0.2)), 5));
-                    }}
-                    onMouseDown={e => {
-                      if (previewScale > 1) {
-                        setIsDragging(true);
-                        setDragStart({ x: e.clientX - previewPos.x, y: e.clientY - previewPos.y });
-                      }
-                    }}
-                    onMouseMove={e => {
-                      if (isDragging) {
-                        setPreviewPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-                      }
-                    }}
-                    onMouseUp={() => setIsDragging(false)}
-                    onMouseLeave={() => setIsDragging(false)}
-                  >
-                    <img 
-                      src={editingStamp.fileUrl} 
-                      alt="E-Stamp Preview" 
-                      draggable={false}
-                      style={{ 
-                        width: "100%", height: "100%", objectFit: "contain", background: "rgba(0,0,0,0.05)", 
-                        transform: `translate(${previewPos.x}px, ${previewPos.y}px) scale(${previewScale})`, 
-                        transformOrigin: "center", 
-                        transition: isDragging ? "none" : "transform 0.15s ease-out" 
-                      }} 
-                    />
-                  </div>
+                  editingStamp.fileUrl.toLowerCase().includes('.pdf') ? (
+                    <object 
+                      data={`/api/pdf-proxy?url=${encodeURIComponent(editingStamp.fileUrl)}`}
+                      type="application/pdf"
+                      width="100%"
+                      height="100%"
+                      style={{ borderRadius: 8 }}
+                    >
+                      <p>PDF cannot be displayed. <a href={editingStamp.fileUrl} target="_blank">Download</a></p>
+                    </object>
+                  ) : (
+                    <div 
+                      style={{ width: "100%", height: "100%", overflow: "hidden", cursor: isDragging ? "grabbing" : (previewScale > 1 ? "grab" : "zoom-in") }}
+                      onWheel={e => setPreviewScale(prev => Math.min(Math.max(1, prev + (e.deltaY > 0 ? -0.2 : 0.2)), 5))}
+                      onMouseDown={e => {
+                        if (previewScale > 1) {
+                          setIsDragging(true);
+                          setDragStart({ x: e.clientX - previewPos.x, y: e.clientY - previewPos.y });
+                        }
+                      }}
+                      onMouseMove={e => {
+                        if (isDragging) {
+                          setPreviewPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+                        }
+                      }}
+                      onMouseUp={() => setIsDragging(false)}
+                      onMouseLeave={() => setIsDragging(false)}
+                    >
+                      <img 
+                        src={editingStamp.fileUrl} 
+                        alt="E-Stamp Preview" 
+                        draggable={false}
+                        style={{ 
+                          width: "100%", height: "100%", objectFit: "contain", background: "rgba(0,0,0,0.05)", 
+                          transform: `translate(${previewPos.x}px, ${previewPos.y}px) scale(${previewScale})`, 
+                          transformOrigin: "center", 
+                          transition: isDragging ? "none" : "transform 0.15s ease-out" 
+                        }} 
+                      />
+                    </div>
+                  )
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, color: "var(--text-muted)" }}>
                     <ImageIcon size={48} opacity={0.5} />
                     <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>No image available</span>
                   </div>
                 )}
-                {editingStamp.fileUrl && (
+                {editingStamp.fileUrl && !editingStamp.fileUrl.toLowerCase().includes('.pdf') && (
                   <a href={editingStamp.fileUrl} target="_blank" rel="noreferrer" style={{
                     position: "absolute", bottom: 16, right: 16, background: "rgba(0,0,0,0.75)", color: "white", padding: "6px 12px", borderRadius: 8, fontSize: "0.75rem", fontWeight: 700, textDecoration: "none", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", gap: 6, transition: "background 0.2s"
-                  }} onMouseOver={e => e.currentTarget.style.background = "rgba(0,0,0,0.9)"} onMouseOut={e => e.currentTarget.style.background = "rgba(0,0,0,0.75)"}>
+                  }}>
                     <Eye size={14} /> Full Size
                   </a>
                 )}
@@ -732,9 +796,7 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                     value={editingStamp.certificateNo || ""} 
                     onChange={e => setEditingStamp({...editingStamp, certificateNo: e.target.value})} 
                     placeholder="e.g. IN-DL..."
-                    style={{ width: "100%", padding: "12px 16px", fontSize: "1rem", borderRadius: 10, background: "var(--bg-secondary)", border: "2px solid transparent", transition: "all 0.2s" }}
-                    onFocus={e => { e.currentTarget.style.borderColor = "var(--wise-green)"; e.currentTarget.style.background = "var(--bg-primary)"; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                    style={{ width: "100%", padding: "12px 16px", fontSize: "1rem", borderRadius: 10, background: "var(--bg-secondary)", border: "2px solid var(--border-color)" }}
                   />
                 </div>
                 <div>
@@ -746,9 +808,7 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                     value={editingStamp.serialNo || ""} 
                     onChange={e => setEditingStamp({...editingStamp, serialNo: e.target.value})} 
                     placeholder="e.g. 61828003"
-                    style={{ width: "100%", padding: "12px 16px", fontSize: "1rem", borderRadius: 10, background: "var(--bg-secondary)", border: "2px solid transparent", transition: "all 0.2s" }}
-                    onFocus={e => { e.currentTarget.style.borderColor = "var(--wise-green)"; e.currentTarget.style.background = "var(--bg-primary)"; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                    style={{ width: "100%", padding: "12px 16px", fontSize: "1rem", borderRadius: 10, background: "var(--bg-secondary)", border: "2px solid var(--border-color)" }}
                   />
                 </div>
                 
@@ -756,18 +816,14 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                   <button 
                     onClick={() => { setEditingStamp(null); setPreviewScale(1); setPreviewPos({ x: 0, y: 0 }); }} 
                     disabled={isUpdating}
-                    style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1px solid var(--border-color)", background: "transparent", color: "var(--text-primary)", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}
-                    onMouseOver={e => e.currentTarget.style.background = "var(--bg-secondary)"}
-                    onMouseOut={e => e.currentTarget.style.background = "transparent"}
+                    style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1px solid var(--border-color)", background: "transparent", color: "var(--text-primary)", fontWeight: 700, cursor: "pointer" }}
                   >
                     Cancel
                   </button>
                   <button 
                     onClick={handleUpdate}
                     disabled={isUpdating}
-                    style={{ flex: 2, padding: "12px 0", background: "var(--wise-green)", color: "white", border: "none", borderRadius: 10, fontWeight: 700, fontSize: "1rem", cursor: isUpdating ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 12px rgba(16, 185, 129, 0.25)", transition: "all 0.2s", opacity: isUpdating ? 0.7 : 1 }}
-                    onMouseOver={e => { if(!isUpdating) e.currentTarget.style.transform = "translateY(-1px)"; }}
-                    onMouseOut={e => { if(!isUpdating) e.currentTarget.style.transform = "translateY(0)"; }}
+                    style={{ flex: 2, padding: "12px 0", background: "var(--wise-green)", color: "white", border: "none", borderRadius: 10, fontWeight: 700, fontSize: "1rem", cursor: isUpdating ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
                   >
                     {isUpdating ? "Saving Changes..." : (
                       <>
@@ -780,7 +836,8 @@ export default function EStamps({ searchQuery, onSearchChange }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
