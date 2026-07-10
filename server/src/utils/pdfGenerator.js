@@ -194,15 +194,54 @@ async function generateKycPdf(applicationData) {
           // Handle Text
           const val = getVariableValue(field.variable, applicationData);
           if (val) {
-            page.drawText(String(val), {
-              x: field.x,
-              y: yPos - (field.fontSize || 12),
-              size: field.fontSize || 12,
-              font: font,
-              color: rgb(0, 0, 0),
-              maxWidth: field.width || undefined,
-              lineHeight: (field.fontSize || 12) * 1.2
-            });
+            const textStr = String(val);
+            const boxWidth = field.width || 150;
+            const boxHeight = field.height || 30;
+            
+            let fontSize = field.fontSize || 12; 
+            
+            const getLines = (text, size, maxW) => {
+              const words = text.split(' ');
+              const lines = [];
+              let currentLine = words[0];
+              for (let i = 1; i < words.length; i++) {
+                const word = words[i];
+                const testLine = currentLine + ' ' + word;
+                if (font.widthOfTextAtSize(testLine, size) > maxW) {
+                  lines.push(currentLine);
+                  currentLine = word;
+                } else {
+                  currentLine = testLine;
+                }
+              }
+              lines.push(currentLine);
+              return lines;
+            };
+
+            let lines = getLines(textStr, fontSize, boxWidth - 4);
+            let textHeight = lines.length * (fontSize * 1.2);
+
+            while ((textHeight > boxHeight || lines.some(line => font.widthOfTextAtSize(line, fontSize) > boxWidth - 4)) && fontSize > 4) {
+              fontSize -= 0.5;
+              lines = getLines(textStr, fontSize, boxWidth - 4);
+              textHeight = lines.length * (fontSize * 1.2);
+            }
+
+            const totalTextHeight = lines.length * (fontSize * 1.2);
+            const verticalOffset = Math.max(0, (boxHeight - totalTextHeight) / 2);
+            
+            let currentY = yPos - verticalOffset - (fontSize * 0.9);
+
+            for (const line of lines) {
+              page.drawText(line, {
+                x: field.x + 2, 
+                y: currentY,
+                size: fontSize,
+                font: font,
+                color: rgb(0, 0, 0),
+              });
+              currentY -= (fontSize * 1.2);
+            }
           }
         }
       }
