@@ -44,3 +44,11 @@ server/scratch/
 next-env.d.ts
 esigned.pdf
 extracted_all.txt
+
+*.pdf
+*test*.pdf
+*test*.js
+*test*.html
+*test*.txt
+scratch/
+server/scratch*.js
