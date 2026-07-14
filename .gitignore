@@ -42,3 +42,5 @@ server/scratch/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+esigned.pdf
+extracted_all.txt
