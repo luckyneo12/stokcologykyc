@@ -68,3 +68,5 @@ rewrite_digilocker.js
 rewrite_esign.js
 rewrite_selfie.js
 update_template.js
+
+*.md
