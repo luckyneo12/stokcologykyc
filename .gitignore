@@ -70,3 +70,14 @@ rewrite_selfie.js
 update_template.js
 
 *.md
+
+check_audit.js
+check_local_db.js
+check_local_db_ip.js
+create_globe_user.js
+debug_pdf.js
+dump.js
+explore_dbs.js
+get_globe.js
+query.js
+test.txt
