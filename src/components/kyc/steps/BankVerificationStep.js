@@ -26,6 +26,8 @@ export default function BankVerificationStep() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isFetchingIfsc, setIsFetchingIfsc] = useState(false);
 
+  const isAlreadyVerified = !!bankDetails?.accountHolderName && form.accountNumber === bankDetails.accountNumber && form.ifsc === bankDetails.ifsc;
+
   useEffect(() => {
     const fetchBankDetails = async () => {
       const ifsc = form.ifsc?.trim().toUpperCase();
@@ -129,6 +131,10 @@ export default function BankVerificationStep() {
 
   const handleSubmit = () => {
     if (!validateBankDetails()) return;
+    if (isAlreadyVerified) {
+       nextStep({ bankDetails: { ...form, method } });
+       return;
+    }
     setShowSubmitConfirm(true);
   };
 
@@ -340,7 +346,7 @@ export default function BankVerificationStep() {
                 onClick={handleSubmit} 
                 style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
               >
-                {verificationState === "verifying" ? "Verifying..." : "Submit"}
+                {verificationState === "verifying" ? "Verifying..." : isAlreadyVerified ? "Verified - Continue" : "Submit"}
               </button>
 
               <button 
@@ -377,7 +383,7 @@ export default function BankVerificationStep() {
                 onClick={handleSubmit} 
                 style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
               >
-                {verificationState === "verifying" ? "Verifying..." : "Submit"}
+                {verificationState === "verifying" ? "Verifying..." : isAlreadyVerified ? "Verified - Continue" : "Submit"}
               </button>
               <button 
                 onClick={() => setMethod("")} 

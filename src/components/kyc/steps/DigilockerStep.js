@@ -225,14 +225,24 @@ export default function DigilockerStep() {
           </div>
         )}
 
-        <button 
-          className="btn btn-primary" 
-          disabled={loading}
-          onClick={startFlow}
-          style={{ width: "100%", height: "56px", fontSize: "1.1rem" }}
-        >
-          {loading ? "Connecting..." : "Proceed to DigiLocker"}
-        </button>
+        {identityDetails?.aadhaar ? (
+          <button 
+            className="btn btn-primary" 
+            onClick={() => nextStep()}
+            style={{ width: "100%", height: "56px", fontSize: "1.1rem", background: "var(--wise-green)", color: "#000" }}
+          >
+            Aadhaar Verified - Continue
+          </button>
+        ) : (
+          <button 
+            className="btn btn-primary" 
+            disabled={loading}
+            onClick={startFlow}
+            style={{ width: "100%", height: "56px", fontSize: "1.1rem" }}
+          >
+            {loading ? "Connecting..." : "Proceed to DigiLocker"}
+          </button>
+        )}
 
         <p className="text-caption" style={{ marginTop: 24, marginBottom: 24, fontSize: "0.8rem", opacity: 0.7 }}>
           Clicking above will open a secure Government portal in a new window.

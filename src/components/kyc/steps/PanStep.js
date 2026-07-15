@@ -28,13 +28,15 @@ const formatPanValue = (value) => {
 };
 
 export default function PanStep() {
-  const { personalDetails, identityDetails, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId } = useKYC();
+  const { personalDetails, identityDetails, panVerified, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId } = useKYC();
   const [pan, setPan] = useState(formatPanValue(identityDetails.pan));
   const [fullName, setFullName] = useState(personalDetails.fullName || "");
   const [dob, setDob] = useState(personalDetails.dob || "");
   const [loading, setLoading] = useState(false);
   const [digioLoading, setDigioLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  const isAlreadyVerified = panVerified && pan === identityDetails?.pan && fullName === personalDetails?.fullName && dob === personalDetails?.dob;
 
   useEffect(() => {
     setMounted(true);
@@ -185,10 +187,10 @@ export default function PanStep() {
             type="button" 
             className="btn-primary" 
             disabled={loading || digioLoading || pan.length < 10 || !dob || !fullName} 
-            onClick={handleVerify}
+            onClick={isAlreadyVerified ? () => nextStep() : handleVerify}
             style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
           >
-            {digioLoading ? "Connecting..." : loading ? "Verifying..." : "Verify & Continue"}
+            {digioLoading ? "Connecting..." : loading ? "Verifying..." : isAlreadyVerified ? "Verified - Continue" : "Verify & Continue"}
           </button>
           
           <button 

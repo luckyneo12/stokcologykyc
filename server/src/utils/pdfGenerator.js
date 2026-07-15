@@ -78,14 +78,28 @@ async function generateKycPdf(applicationData) {
 
     if (!fs.existsSync(officialPdfPath)) {
       const fallbacks = [
+        path.join(__dirname, '../../../public/official_form.pdf'),
         path.join(__dirname, '../../../public_html/official_form.pdf'),
         path.join(__dirname, '../../public/official_form.pdf'),
         path.join(__dirname, '../../official_form.pdf'),
         path.join(process.cwd(), 'public/official_form.pdf'),
-        path.join(process.cwd(), 'official_form.pdf')
+        path.join(process.cwd(), 'official_form.pdf'),
+        path.join(process.cwd(), '../public/official_form.pdf'),
+        path.join(__dirname, '../../../../public/official_form.pdf')
       ];
+      
+      // Let's dynamically find it by walking up
+      let currentDir = __dirname;
+      for (let i = 0; i < 5; i++) {
+        fallbacks.push(path.join(currentDir, 'public/official_form.pdf'));
+        fallbacks.push(path.join(currentDir, 'official_form.pdf'));
+        currentDir = path.join(currentDir, '..');
+      }
+
+      console.error("[PDF Gen] Initial path failed:", officialPdfPath);
       for (const fallback of fallbacks) {
         if (fs.existsSync(fallback)) {
+          console.log("[PDF Gen] Found base PDF at fallback:", fallback);
           officialPdfPath = fallback;
           break;
         }
@@ -93,6 +107,7 @@ async function generateKycPdf(applicationData) {
     }
 
     if (!fs.existsSync(officialPdfPath)) {
+      console.error("[PDF Gen] FINAL PATH FAILED. Checked multiple locations.");
       throw new Error("Base PDF not found at any known locations.");
     }
 

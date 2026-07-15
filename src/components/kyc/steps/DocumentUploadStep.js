@@ -18,7 +18,7 @@ export default function DocumentUploadStep() {
   const { 
     financialProof, signature, panUpload, selfie, personalDetails, 
     segments, updateState, nextStep, prevStep, addToast, 
-    applicationId, setApplicationId 
+    applicationId, setApplicationId, syncProgress
   } = useKYC();
   
   // Financial Proof State
@@ -47,6 +47,25 @@ export default function DocumentUploadStep() {
   const [resumeUrl, setResumeUrl] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
+
+  // --- Sync from Context (for cross-device updates) ---
+  useEffect(() => {
+    if (panUpload?.filePreview && panUpload.filePreview !== panPreview) {
+      setPanPreview(panUpload.filePreview);
+    }
+    if (signature?.filePreview && signature.filePreview !== sigPreview) {
+      setSigPreview(signature.filePreview);
+    }
+    if (financialProof?.filePreview && financialProof.filePreview !== finPreview) {
+      setFinPreview(financialProof.filePreview);
+      if (financialProof.type) setFinType(financialProof.type);
+    }
+    if (selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined)) {
+      setSelfiePhase("done");
+      if (selfie.preview && selfie.preview !== selfiePreviewUrl) setSelfiePreviewUrl(selfie.preview);
+      if (selfie.matchScore !== undefined && selfie.matchScore !== matchScore) setMatchScore(selfie.matchScore);
+    }
+  }, [panUpload, signature, financialProof, selfie]);
 
   // --- Selfie Logic ---
   useEffect(() => {
@@ -173,9 +192,11 @@ export default function DocumentUploadStep() {
     if (file.size > 5 * 1024 * 1024) { addToast("File size too large (max 5MB)", "error"); return; }
     
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       setFinPreview(event.target.result);
       addToast("Financial proof attached", "success");
+      updateState({ financialProof: { type: finType, filePreview: event.target.result } });
+      await syncProgress({ financialProof: { type: finType, filePreview: event.target.result } }, false, "documentUpload");
     };
     reader.readAsDataURL(file);
   };
@@ -296,7 +317,13 @@ export default function DocumentUploadStep() {
                 filePreview={rawPanImage} 
                 setFilePreview={setRawPanImage} 
                 cropLabel="Crop Your PAN Card"
-                onCropApply={(res) => { setPanPreview(res); setIsCroppingPan(false); addToast("PAN cropped successfully", "success"); }}
+                onCropApply={async (res) => { 
+                  setPanPreview(res); 
+                  setIsCroppingPan(false); 
+                  addToast("PAN cropped successfully", "success");
+                  updateState({ panUpload: { filePreview: res } });
+                  await syncProgress({ panUpload: { filePreview: res } }, false, "documentUpload");
+                }}
                 onCancel={() => { setIsCroppingPan(false); if (panInputRef.current) panInputRef.current.value = ""; }}
               />
             ) : (
@@ -328,7 +355,13 @@ export default function DocumentUploadStep() {
                 filePreview={rawSigImage} 
                 setFilePreview={setRawSigImage} 
                 cropLabel="Crop Your Signature"
-                onCropApply={(res) => { setSigPreview(res); setIsCroppingSig(false); addToast("Signature cropped successfully", "success"); }}
+                onCropApply={async (res) => { 
+                  setSigPreview(res); 
+                  setIsCroppingSig(false); 
+                  addToast("Signature cropped successfully", "success");
+                  updateState({ signature: { filePreview: res } });
+                  await syncProgress({ signature: { filePreview: res } }, false, "documentUpload");
+                }}
                 onCancel={() => { setIsCroppingSig(false); if (sigInputRef.current) sigInputRef.current.value = ""; }}
               />
             ) : (
@@ -370,7 +403,7 @@ export default function DocumentUploadStep() {
                     <p style={{ fontSize: "0.9rem", marginBottom: "12px", fontWeight: 600 }}>Scan with your mobile camera</p>
                     {resumeUrl && (
                       <div style={{ background: "white", padding: "8px", borderRadius: "8px", display: "inline-block", marginBottom: "12px" }}>
-                        <QRCode value={resumeUrl} size={120} />
+                        <QRCode value={resumeUrl} size={256} />
                       </div>
                     )}
                     <button className="btn btn-text" onClick={() => setShowQR(false)} style={{ fontSize: "0.8rem", width: "100%" }}>
@@ -413,7 +446,12 @@ export default function DocumentUploadStep() {
         <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column", overflow: "visible" }}>
           <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ background: "var(--border-color)", color: "var(--text-primary)", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>4</span>
-            Financial Proof <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>(Optional)</span>
+            Financial Proof 
+            { (personalDetails?.annualIncome === "More Than 25 Lac" || segments?.derivatives) ? (
+              <span style={{ color: "var(--wise-danger)" }}>*</span>
+            ) : (
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>(Optional)</span>
+            )}
           </h3>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "16px" }}>Required for F&O Trading or High Income.</p>
           
@@ -421,7 +459,11 @@ export default function DocumentUploadStep() {
             <div style={{ marginBottom: "16px" }}>
               <select 
                 value={finType} 
-                onChange={(e) => setFinType(e.target.value)}
+                onChange={async (e) => {
+                  setFinType(e.target.value);
+                  updateState({ financialProof: { type: e.target.value, filePreview: finPreview } });
+                  await syncProgress({ financialProof: { type: e.target.value, filePreview: finPreview } }, false, "documentUpload");
+                }}
                 style={{ width: "100%", height: "48px", borderRadius: "12px", border: "1px solid var(--border-color)", background: "var(--input-bg)", color: "var(--text-primary)", padding: "0 12px", fontSize: "0.9rem", outline: "none" }}
               >
                 <option value="">-- Select Income Proof Type --</option>
