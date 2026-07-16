@@ -5,7 +5,6 @@ import { API_BASE_URL } from "@/utils/apiConfig";
 
 const STATUS_MAP = { 
   pending: "badge-pending", 
-  under_review: "badge-review",
   identity_verified: "badge-verified",
   verified: "badge-verified", 
   rejected: "badge-rejected", 
@@ -51,6 +50,7 @@ export default function UserManagement({ searchQuery, onSearchChange }) {
           const latest = (u.kycApplications || [])[0] || {};
           return {
             userId: u.id,
+            appId: latest.id,
             customerRefNo: latest.applicationId || "-",
             kycRequestId: latest.applicationId ? `KID${latest.applicationId}` : "-",
             customerIdentifier: u.phone || u.email || "-",
@@ -72,6 +72,24 @@ export default function UserManagement({ searchQuery, onSearchChange }) {
     const t = setTimeout(fetchUsers, 180);
     return () => clearTimeout(t);
   }, [search]);
+
+  const updateStatus = async (applicationId, status) => {
+    if (!applicationId) return;
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/api/admin/review/${applicationId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "Failed to update status");
+      }
+    } catch (e) {
+      alert("Error updating status");
+    }
+  };
 
   const handleUpdateSequence = async () => {
     try {
@@ -146,9 +164,21 @@ export default function UserManagement({ searchQuery, onSearchChange }) {
               <div style={{ fontSize: "1.9ch", color: "var(--text-secondary)" }}>{u.customerIdentifier}</div>
 
               <div>
-                <span className={`badge ${STATUS_MAP[u.status] || "badge-pending"}`}>
-                  {u.status === "under_review" ? "Pending: Approval" : (u.status || "Pending").replace("_", " ")}
-                </span>
+                <select 
+                  className={`badge ${STATUS_MAP[u.status === 'under_review' ? 'pending' : u.status] || "badge-pending"}`}
+                  value={u.status === 'under_review' ? 'pending' : u.status}
+                  onChange={(e) => {
+                    updateStatus(u.appId, e.target.value);
+                    setUsers(prev => prev.map(user => user.userId === u.userId ? { ...user, status: e.target.value } : user));
+                  }}
+                  disabled={!u.appId}
+                  style={{ outline: "none", cursor: u.appId ? "pointer" : "default", appearance: "auto", border: "none" }}
+                >
+                  <option value="pending">PENDING</option>
+                  <option value="verified">VERIFIED</option>
+                  <option value="rejected">REJECTED</option>
+                  <option value="on_hold">ON HOLD</option>
+                </select>
               </div>
 
               <div style={{ color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }}>{u.workflowName}</div>

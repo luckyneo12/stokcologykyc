@@ -154,13 +154,15 @@ const REVIEW_STEPS = [
       ["Trading experience", app.personalDetails?.experience, "personalDetails.experience"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["PEP status", app.personalDetails?.politicallyExposed],
+      ["PEP Type", app.personalDetails?.pepType],
+      ["PEP Comment", app.personalDetails?.pepComment],
     ],
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
       return [
         findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
         getAllPanDocuments(app).find(doc => doc.label !== "Uploaded PAN Card") || getAllPanDocuments(app)[0],
-        pepProof ? firstMedia(pepProof, "PEP Document") : null
+        (app.personalDetails?.politicallyExposed === "Yes" && pepProof) ? firstMedia(pepProof, "PEP Document") : null
       ].filter(Boolean);
     },
   },
@@ -1434,19 +1436,19 @@ export default function AgentReview() {
     <div style={{ display: "flex", width: "100vw", height: "100vh", overflow: "hidden", background: "var(--bg-secondary)" }}>
       <div style={{ 
         display: "flex", 
-        width: "125%",
-        height: "125%",
-        minWidth: "125%",
-        minHeight: "125%",
-        flexShrink: 0,
-        transform: "scale(0.8)",
-        transformOrigin: "top left"
+        width: "100%",
+        height: "100%",
+        minWidth: "100%",
+        minHeight: "100%",
+        flexShrink: 0
       }}>
-      <AdminSidebar 
-        active="maker_checker" 
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+      <div style={{ zoom: 0.8, height: "125vh", flexShrink: 0 }}>
+        <AdminSidebar 
+          active="maker_checker" 
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+      </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", background: "var(--bg-secondary)", overflow: "hidden", fontFamily: "'Inter', sans-serif" }}>
       {/* Top Bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px", background: "var(--bg-primary)", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
@@ -1500,7 +1502,7 @@ export default function AgentReview() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         
         {/* Left Column: Modules */}
-        <div style={{ width: "30%", background: "var(--bg-primary)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
+        <div style={{ width: "20%", background: "var(--bg-primary)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "12px 16px", background: "linear-gradient(to bottom, var(--bg-primary), var(--bg-secondary))", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
             <LayoutTemplate size={16} color="var(--text-primary)" />
             <span style={{ fontWeight: 800, fontSize: "0.8rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Modules</span>
@@ -1662,7 +1664,7 @@ export default function AgentReview() {
         </div>
 
         {/* Middle Column: Documents */}
-        <div style={{ width: "25%", background: "var(--bg-primary)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
+        <div style={{ width: "20%", background: "var(--bg-primary)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "12px 16px", background: "linear-gradient(to bottom, var(--bg-primary), var(--bg-secondary))", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
             <FileText size={16} color="var(--text-primary)" />
             <span style={{ fontWeight: 800, fontSize: "0.8rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Documents</span>

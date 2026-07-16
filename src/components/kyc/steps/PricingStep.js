@@ -160,37 +160,26 @@ export default function PricingStep() {
               onClick={() => { 
                 setShowBrokerageModal(true); 
                 setBrokerageOpened(true);
-                setBrokerageAccepted(true);
               }} 
               style={{ flex: 1, padding: "12px", fontSize: "0.85rem", borderRadius: "10px", justifyContent: "center" }}
             >
               Brokerage Plan
             </button>
             <div 
-              onClick={() => brokerageOpened && setBrokerageAccepted(!brokerageAccepted)}
-              onMouseEnter={() => !brokerageOpened && setShowBrokerageTooltip(true)}
-              onMouseLeave={() => setShowBrokerageTooltip(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setBrokerageAccepted(!brokerageAccepted);
+              }}
               style={{ 
                 width: 38, height: 38, borderRadius: "10px", background: "var(--bg-secondary)", 
                 display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: brokerageOpened ? "pointer" : "help",
-                opacity: brokerageOpened ? 1 : 0.5,
+                cursor: "pointer",
                 border: brokerageAccepted ? "2px solid var(--wise-green)" : "1px solid var(--border-color)",
                 transition: "all 0.2s ease",
                 position: "relative",
                 flexShrink: 0
               }}
             >
-              {showBrokerageTooltip && (
-                <div style={{
-                  position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)",
-                  marginBottom: 8, padding: "6px 10px", background: "var(--text-primary)", color: "var(--bg-primary)",
-                  fontSize: "0.65rem", borderRadius: "6px", whiteSpace: "nowrap", zIndex: 10,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)", pointerEvents: "none"
-                }}>
-                  View document first
-                </div>
-              )}
               <div style={{ 
                 width: 16, height: 16, borderRadius: 4, border: "2px solid var(--border-color)",
                 background: brokerageAccepted ? "var(--wise-green)" : "transparent",
@@ -209,37 +198,26 @@ export default function PricingStep() {
               onClick={() => { 
                 setShowTariffModal(true); 
                 setTariffOpened(true);
-                setTariffAccepted(true);
               }} 
               style={{ flex: 1, padding: "12px", fontSize: "0.85rem", borderRadius: "10px", justifyContent: "center" }}
             >
               DP Tariff Sheet
             </button>
             <div 
-              onClick={() => tariffOpened && setTariffAccepted(!tariffAccepted)}
-              onMouseEnter={() => !tariffOpened && setShowTariffTooltip(true)}
-              onMouseLeave={() => setShowTariffTooltip(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setTariffAccepted(!tariffAccepted);
+              }}
               style={{ 
                 width: 38, height: 38, borderRadius: "10px", background: "var(--bg-secondary)", 
                 display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: tariffOpened ? "pointer" : "help",
-                opacity: tariffOpened ? 1 : 0.5,
+                cursor: "pointer",
                 border: tariffAccepted ? "2px solid var(--wise-green)" : "1px solid var(--border-color)",
                 transition: "all 0.2s ease",
                 position: "relative",
                 flexShrink: 0
               }}
             >
-              {showTariffTooltip && (
-                <div style={{
-                  position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)",
-                  marginBottom: 8, padding: "6px 10px", background: "var(--text-primary)", color: "var(--bg-primary)",
-                  fontSize: "0.65rem", borderRadius: "6px", whiteSpace: "nowrap", zIndex: 10,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)", pointerEvents: "none"
-                }}>
-                  View document first
-                </div>
-              )}
               <div style={{ 
                 width: 16, height: 16, borderRadius: 4, border: "2px solid var(--border-color)",
                 background: tariffAccepted ? "var(--wise-green)" : "transparent",
@@ -302,9 +280,8 @@ export default function PricingStep() {
             <div style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: 24, lineHeight: 1.4 }}>
               <p style={{ marginBottom: 12 }}>To enable F&O/Currency/Commodity, you need to provide one of the below proof. <strong style={{ color: "var(--text-primary)" }}>(ANY one is required)</strong></p>
               <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6, listStyleType: "decimal" }}>
-                <li>Bank account statement for last 6 months.</li>
-                <li>Copy of Demat account holding statement.</li>
-                <li>Salary Slip</li>
+                <li>Bank account statement of latest 6 months.</li>
+                <li>Salary Slip (latest 3 months).</li>
                 <li>Copy of Form 16.</li>
                 <li>Copy of ITR Acknowledgement.</li>
                 <li>Copy of Annual Accounts.</li>

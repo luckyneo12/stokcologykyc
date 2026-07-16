@@ -423,7 +423,7 @@ export default function DetailsStep() {
               onChange={val => {
                 update("politicallyExposed", val);
                 if (val === "No") {
-                  setForm(prev => ({ ...prev, pepType: "", pepProof: null }));
+                  setForm(prev => ({ ...prev, pepType: "", pepProof: null, pepComment: "" }));
                 }
               }}
               error={errors.politicallyExposed}
@@ -489,6 +489,19 @@ export default function DetailsStep() {
                     <input type="file" style={{ display: "none" }} onChange={handleFileChange} disabled={isUploading} />
                   </label>
                 </div>
+              </InputGroup>
+
+              <InputGroup label="Comments (Optional)">
+                <input 
+                  className="input-field" 
+                  placeholder="Additional details..." 
+                  value={form.pepComment || ""} 
+                  onChange={e => update("pepComment", e.target.value)} 
+                  style={{ 
+                    ...COMMON_INPUT_STYLE,
+                    borderColor: "var(--border-color)",
+                  }} 
+                />
               </InputGroup>
             </>
           )}

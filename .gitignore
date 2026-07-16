@@ -81,3 +81,6 @@ explore_dbs.js
 get_globe.js
 query.js
 test.txt
+
+# Generated KYC HTML pages
+kyc_pages/

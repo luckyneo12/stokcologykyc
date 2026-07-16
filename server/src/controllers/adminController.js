@@ -68,6 +68,8 @@ const getApplications = async (req, res, next) => {
       } else if (normalizedStatus === "not_pushed_to_bo") {
         where.status = "verified";
         where.pushedToBackoffice = false;
+      } else if (normalizedStatus === "pending") {
+        where.status = { in: ["pending", "under_review"] };
       } else {
         where.status = normalizedStatus;
       }

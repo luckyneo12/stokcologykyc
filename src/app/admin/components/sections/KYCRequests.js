@@ -24,7 +24,6 @@ const STEP_LABELS = {
 
 const STATUS_MAP = { 
   pending: "badge-pending", 
-  under_review: "badge-review",
   identity_verified: "badge-verified",
   verified: "badge-verified", 
   rejected: "badge-rejected", 
@@ -147,6 +146,25 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
         window.location.href = "/admin/login";
         return;
       }
+
+      const updateStatus = async (applicationId, status) => {
+        try {
+          const token = localStorage.getItem("adminToken");
+          const res = await fetch(`${API_BASE_URL}/api/admin/review/${applicationId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ status })
+          });
+          const data = await res.json();
+          if (!data.success) {
+            if (typeof showToast === 'function') showToast(data.error || "Failed to update status", "error");
+            else alert(data.error || "Failed to update status");
+          }
+        } catch (e) {
+          if (typeof showToast === 'function') showToast("Error updating status", "error");
+          else alert("Error updating status");
+        }
+      };
 
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
@@ -315,7 +333,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <input className="admin-input" placeholder="Search by name or ID..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} />
         <select className="admin-select" value={filter} onChange={e => setFilter(e.target.value)}>
-          {["all", "pending", "verified", "rejected", "under_review", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
+          {["all", "pending", "verified", "rejected", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
             <option key={f} value={f}>{f.replace(/_/g, " ").toUpperCase()}</option>
           ))}
         </select>
@@ -349,7 +367,20 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                   </td>
                   <td>
                     <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
-                      <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`}>{k.status.replace("_", " ")}</span>
+                      <select 
+                        className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
+                        value={k.status === 'under_review' ? 'pending' : k.status}
+                        onChange={(e) => {
+                          updateStatus(k.id, e.target.value);
+                          setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: e.target.value } : app));
+                        }}
+                        style={{ outline: "none", cursor: "pointer", appearance: "auto", border: "none" }}
+                      >
+                        <option value="pending">PENDING</option>
+                        <option value="verified">VERIFIED</option>
+                        <option value="rejected">REJECTED</option>
+                        <option value="on_hold">ON HOLD</option>
+                      </select>
                       {k.isResubmitted && (
                         <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
                       )}

@@ -138,7 +138,7 @@ export default function NomineeStep() {
       name: "", email: "", mobile: "", relation: "", dob: "", 
       sameAddress: false, address: "", city: "", state: "", 
       pincode: "", country: "India", proofType: "PAN CARD", proofNumber: "", proofPath: "",
-      guardianDob: "", guardianName: "", guardianAddress: "", guardianCity: "",
+      guardianDob: "", guardianName: "", guardianSameAddress: false, guardianAddress: "", guardianCity: "",
       guardianState: "", guardianCountry: "India", guardianPincode: "",
       guardianMobile: "", guardianEmail: "", guardianRelation: "",
       guardianProofType: "PAN CARD", guardianProofNumber: "", guardianProofPath: ""
@@ -158,7 +158,7 @@ export default function NomineeStep() {
       name: "", email: "", mobile: "", relation: "", dob: "", 
       sameAddress: false, address: "", city: "", state: "", 
       pincode: "", country: "India", proofType: "PAN CARD", proofNumber: "", proofPath: "",
-      guardianDob: "", guardianName: "", guardianAddress: "", guardianCity: "",
+      guardianDob: "", guardianName: "", guardianSameAddress: false, guardianAddress: "", guardianCity: "",
       guardianState: "", guardianCountry: "India", guardianPincode: "",
       guardianMobile: "", guardianEmail: "", guardianRelation: "",
       guardianProofType: "PAN CARD", guardianProofNumber: "", guardianProofPath: ""
@@ -531,7 +531,7 @@ export default function NomineeStep() {
           newErrors[`${idx}-guardianMobile`] = "Must be 10 digits starting with 6-9"; isValid = false; 
         }
         if (!nom.guardianEmail?.trim() || !/^\S+@\S+\.\S+$/.test(nom.guardianEmail.trim())) { newErrors[`${idx}-guardianEmail`] = true; isValid = false; }
-        if (!nom.guardianAddress?.trim()) { newErrors[`${idx}-guardianAddress`] = true; isValid = false; }
+        if (!nom.guardianAddress?.trim() && !nom.guardianSameAddress) { newErrors[`${idx}-guardianAddress`] = true; isValid = false; }
         if (!nom.guardianCity?.trim()) { newErrors[`${idx}-guardianCity`] = true; isValid = false; }
         if (!nom.guardianState?.trim()) { newErrors[`${idx}-guardianState`] = true; isValid = false; }
         if (!nom.guardianPincode?.trim()) { newErrors[`${idx}-guardianPincode`] = true; isValid = false; }
@@ -925,13 +925,43 @@ export default function NomineeStep() {
                     />
                   </div>
 
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, opacity: 0.85 }}>
+                      Guardian Address {!nom.guardianSameAddress && <span>*</span>}
+                    </label>
+                    <div 
+                      style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}
+                      onClick={() => {
+                        const newVal = !nom.guardianSameAddress;
+                        if (newVal) {
+                          const updated = [...nominees];
+                          updated[idx] = {
+                            ...updated[idx], guardianSameAddress: true,
+                            guardianAddress: [userAddress?.line1, userAddress?.line2].filter(Boolean).join(", "),
+                            guardianCity: userAddress?.city || "", guardianState: userAddress?.state || "", guardianPincode: userAddress?.pincode || "", guardianCountry: userAddress?.country || "India"
+                          };
+                          setNominees(updated);
+                        } else { updateNominee(idx, "guardianSameAddress", false); }
+                      }}
+                    >
+                      <div style={{ 
+                        width: "16px", height: "16px", borderRadius: "4px", border: "1.5px solid var(--wise-green)", 
+                        background: nom.guardianSameAddress ? "var(--wise-green)" : "transparent", 
+                        display: "flex", alignItems: "center", justifyContent: "center"
+                      }}>
+                        {nom.guardianSameAddress && <CheckIcon size={10} color="white" />}
+                      </div>
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-secondary)" }}>Same as mine</span>
+                    </div>
+                  </div>
+
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Address *</label>
                     <input 
                       className="input-field" 
                       placeholder="Address" 
                       value={nom.guardianAddress || ""} 
                       onChange={e => updateNominee(idx, "guardianAddress", e.target.value)} 
+                      disabled={nom.guardianSameAddress}
                       style={{ borderColor: errors[`${idx}-guardianAddress`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
                   </div>
@@ -943,6 +973,7 @@ export default function NomineeStep() {
                       placeholder="City" 
                       value={nom.guardianCity || ""} 
                       onChange={e => updateNominee(idx, "guardianCity", e.target.value)} 
+                      disabled={nom.guardianSameAddress}
                       style={{ borderColor: errors[`${idx}-guardianCity`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
                   </div>
@@ -954,6 +985,7 @@ export default function NomineeStep() {
                       placeholder="--Select State--"
                       options={INDIAN_STATES}
                       onChange={val => updateNominee(idx, "guardianState", val)}
+                      disabled={nom.guardianSameAddress}
                       error={errors[`${idx}-guardianState`]}
                     />
                   </div>
@@ -966,6 +998,7 @@ export default function NomineeStep() {
                       value={nom.guardianPincode || ""} 
                       onChange={e => handlePincodeChange(idx, "guardianPincode", e.target.value)} 
                       maxLength={6}
+                      disabled={nom.guardianSameAddress}
                       style={{ borderColor: errors[`${idx}-guardianPincode`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
                   </div>
@@ -977,6 +1010,7 @@ export default function NomineeStep() {
                       placeholder="Country" 
                       value={nom.guardianCountry || "India"} 
                       onChange={e => updateNominee(idx, "guardianCountry", e.target.value)} 
+                      disabled={nom.guardianSameAddress}
                       style={{ borderColor: errors[`${idx}-guardianCountry`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
                   </div>

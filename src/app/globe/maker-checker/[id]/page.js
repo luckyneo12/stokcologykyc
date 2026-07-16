@@ -154,13 +154,15 @@ const REVIEW_STEPS = [
       ["Trading experience", app.personalDetails?.experience, "personalDetails.experience"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["PEP status", app.personalDetails?.politicallyExposed],
+      ["PEP Type", app.personalDetails?.pepType],
+      ["PEP Comment", app.personalDetails?.pepComment],
     ],
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
       return [
         findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
         getAllPanDocuments(app).find(doc => doc.label !== "Uploaded PAN Card") || getAllPanDocuments(app)[0],
-        pepProof ? firstMedia(pepProof, "PEP Document") : null
+        (app.personalDetails?.politicallyExposed === "Yes" && pepProof) ? firstMedia(pepProof, "PEP Document") : null
       ].filter(Boolean);
     },
   },

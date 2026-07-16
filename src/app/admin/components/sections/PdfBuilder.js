@@ -14,6 +14,8 @@ export default function PdfBuilder() {
   const [customVars, setCustomVars] = useState([]);
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customForm, setCustomForm] = useState({ name: '', key: '', type: 'text' });
+  const [replacingPage, setReplacingPage] = useState(false);
+  const [pages, setPages] = useState([]);
   
   // Track the natural (unscaled) canvas size for coordinate conversion
   const [canvasNaturalSize, setCanvasNaturalSize] = useState({ width: 0, height: 0 });
@@ -69,7 +71,15 @@ export default function PdfBuilder() {
         if (res.ok) {
           const data = await res.json();
           if (data && data.fields) {
-            setFields(JSON.parse(data.fields));
+            const parsedFields = JSON.parse(data.fields);
+            if (Array.isArray(parsedFields)) {
+               setFields(parsedFields);
+            } else {
+               setFields(parsedFields.variables || []);
+               if (parsedFields.pages && parsedFields.pages.length > 0) {
+                  setPages(parsedFields.pages);
+               }
+            }
             if (data.basePdfUrl && data.basePdfUrl.startsWith('/uploads/')) {
               setBasePdfUrl(`${API_BASE_URL}${data.basePdfUrl}`);
             }
@@ -91,6 +101,10 @@ export default function PdfBuilder() {
         setPdfDoc(pdf);
         setNumPages(pdf.numPages);
         setPageNum(1);
+        setPages(prev => {
+          if (prev.length > 0) return prev;
+          return Array.from({ length: pdf.numPages }, (_, i) => ({ type: 'pdf', pageNumberInSource: i + 1 }));
+        });
       } catch (err) {
         console.error("Error loading PDF document:", err);
       }
@@ -101,14 +115,21 @@ export default function PdfBuilder() {
   }, [basePdfUrl]);
 
   useEffect(() => {
-    if (pdfDoc && canvasRef.current) {
+    if (pages[pageNum - 1]?.type === 'html') {
+      // Use standard A4 points (72 DPI) as the natural size so coordinates are saved in PDF points
+      setCanvasNaturalSize({ width: 595.28, height: 841.89 });
+    } else if (pdfDoc && canvasRef.current) {
       renderPage(pageNum);
     }
-  }, [pdfDoc, pageNum, scale]);
+  }, [pdfDoc, pageNum, scale, pages]);
 
   const renderPage = async (num) => {
     try {
-      const page = await pdfDoc.getPage(num);
+      const pageInfo = pages[num - 1];
+      if (pageInfo?.type !== 'pdf') return;
+      const sourcePageNum = pageInfo.pageNumberInSource || num;
+      
+      const page = await pdfDoc.getPage(sourcePageNum);
       const viewport = page.getViewport({ scale });
       
       const canvas = canvasRef.current;
@@ -186,10 +207,9 @@ export default function PdfBuilder() {
     setShowCustomForm(false);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (compilePdf = true, currentPages = pages, currentBaseUrl = basePdfUrl) => {
     setLoading(true);
     try {
-      const dbBaseUrl = basePdfUrl.startsWith(API_BASE_URL) ? basePdfUrl.replace(API_BASE_URL, '') : 'public/official_form.pdf';
       const res = await fetch(`${API_BASE_URL}/api/admin/pdf-templates`, {
         method: 'POST',
         headers: { 
@@ -199,11 +219,20 @@ export default function PdfBuilder() {
         body: JSON.stringify({
           name: 'Default Template',
           isActive: true,
-          basePdfUrl: dbBaseUrl,
-          fields: fields
+          basePdfUrl: currentBaseUrl ? (currentBaseUrl.startsWith(API_BASE_URL) ? currentBaseUrl.replace(API_BASE_URL, '') : currentBaseUrl) : null,
+          fields: fields,
+          pages: currentPages,
+          compilePdf: compilePdf
         })
       });
-      if (res.ok) alert('Template saved successfully!');
+      if (res.ok) {
+        const data = await res.json();
+        if (compilePdf && data.template && data.template.basePdfUrl) {
+           setBasePdfUrl(data.template.basePdfUrl.startsWith('http') ? data.template.basePdfUrl : `${API_BASE_URL}${data.template.basePdfUrl}`);
+           setPages([]);
+        }
+        alert(compilePdf ? 'Template Finalized & Saved successfully!' : 'Page layout & edits saved successfully! (Not finalized to PDF yet)');
+      }
       else alert('Failed to save template');
     } catch (err) {
       console.error(err);
@@ -219,26 +248,94 @@ export default function PdfBuilder() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/pdf-templates/upload-base`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
-        },
-        body: formData
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBasePdfUrl(`${API_BASE_URL}${data.url}`);
-        // Reset fields when changing PDF to avoid out-of-bounds
-        setFields([]);
+      if (file.type === 'application/pdf') {
+        const res = await fetch(`${API_BASE_URL}/api/admin/pdf-templates/upload-base`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` },
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setBasePdfUrl(`${API_BASE_URL}${data.url}`);
+          setFields([]);
+          setPages([]);
+        } else alert('Failed to upload PDF');
       } else {
-        alert('Failed to upload PDF');
+        const res = await fetch(`${API_BASE_URL}/api/admin/pdf-templates/convert-to-html`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` },
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setBasePdfUrl(null);
+          setPdfDoc(null);
+          setNumPages(1);
+          setPageNum(1);
+          setPages([{ type: 'html', content: data.html }]);
+          setFields([]);
+        } else alert('Failed to process document');
       }
     } catch (err) {
       console.error("Upload error", err);
       alert('Upload error');
     }
     setUploadingPdf(false);
+  };
+
+  const handleReplacePage = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    setReplacingPage(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      if (file.type === 'application/pdf') {
+        formData.append('basePdfUrl', basePdfUrl || '');
+        formData.append('pageIndex', pageNum - 1); // 0-based index for backend
+        const res = await fetch(`${API_BASE_URL}/api/admin/pdf-templates/replace-page`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` },
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const newBase = `${API_BASE_URL}${data.url}`;
+          setBasePdfUrl(newBase);
+          alert('Page replaced successfully!');
+          handleSave(false, pages, newBase);
+        } else {
+          const errorData = await res.json();
+          alert(`Failed to replace page: ${errorData.error || 'Unknown error'}`);
+        }
+      } else {
+        const res = await fetch(`${API_BASE_URL}/api/admin/pdf-templates/convert-to-html`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` },
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          let newPagesForSave = [];
+          setPages(prev => {
+            const newPages = [...prev];
+            newPages[pageNum - 1] = { type: 'html', content: data.html };
+            newPagesForSave = newPages;
+            return newPages;
+          });
+          alert('Page switched to visual editor successfully!');
+          handleSave(false, newPagesForSave, basePdfUrl);
+        } else {
+          alert('Failed to process document for replacement');
+        }
+      }
+    } catch (err) {
+      console.error("Replace page error", err);
+      alert('Error replacing page');
+    }
+    setReplacingPage(false);
   };
 
   // Get the current scaled canvas dimensions
@@ -368,7 +465,7 @@ export default function PdfBuilder() {
 
         <div style={{ padding: '24px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-elevated)' }}>
           <button 
-            onClick={handleSave} 
+            onClick={() => handleSave(true)} 
             disabled={loading}
             style={{
               width: '100%',
@@ -423,8 +520,55 @@ export default function PdfBuilder() {
               borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px'
             }}>
               {uploadingPdf ? 'Uploading...' : 'Upload Base PDF'}
-              <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={handlePdfUpload} disabled={uploadingPdf} />
+              <input type="file" accept=".pdf,.doc,.docx,.html" style={{ display: 'none' }} onChange={handlePdfUpload} disabled={uploadingPdf} />
             </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 12px', background: 'var(--accent-red-bg, rgba(239, 68, 68, 0.1))', color: 'var(--accent-red, #ef4444)',
+              borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px'
+            }}>
+              {replacingPage ? 'Replacing...' : 'Replace Current Page'}
+              <input type="file" accept=".pdf,.doc,.docx,.html" style={{ display: 'none' }} onChange={handleReplacePage} disabled={replacingPage || pages.length === 0} />
+            </label>
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to delete this page?')) {
+                  const newPages = pages.filter((_, i) => i !== pageNum - 1);
+                  setPages(newPages);
+                  setPageNum(p => Math.max(1, p - 1));
+                  handleSave(false, newPages, basePdfUrl);
+                }
+              }}
+              style={{ 
+                padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', 
+                borderRadius: '8px', border: 'none', cursor: 'pointer', 
+                fontWeight: '600', fontSize: '13px',
+                opacity: pages.length <= 1 ? 0.5 : 1
+              }}
+              disabled={pages.length <= 1}
+            >
+              Delete Page
+            </button>
+            <button
+              onClick={() => {
+                let newPagesForSave = [];
+                setPages(prev => {
+                  const newPages = [...prev];
+                  newPages.splice(pageNum, 0, { type: 'html', content: '<div style="font-family: Arial; padding: 20px;">New Blank HTML Page. Type your content here...</div>' });
+                  newPagesForSave = newPages;
+                  return newPages;
+                });
+                setPageNum(p => p + 1);
+                handleSave(false, newPagesForSave, basePdfUrl);
+              }}
+              style={{ 
+                padding: '8px 12px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', 
+                borderRadius: '8px', border: 'none', cursor: 'pointer', 
+                fontWeight: '600', fontSize: '13px' 
+              }}
+            >
+              Add Page After
+            </button>
             <button 
               onClick={() => setPageNum(p => Math.max(1, p - 1))}
               disabled={pageNum <= 1}
@@ -433,17 +577,17 @@ export default function PdfBuilder() {
               Previous
             </button>
             <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
-              Page {pageNum} of {numPages || '-'}
+              Page {pageNum} of {pages.length || '-'}
             </span>
             <button 
-              onClick={() => setPageNum(p => Math.min(numPages, p + 1))}
-              disabled={pageNum >= numPages}
+              onClick={() => setPageNum(p => Math.min(pages.length, p + 1))}
+              disabled={pageNum >= pages.length}
               style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', cursor: 'pointer' }}
             >
               Next
             </button>
             <button 
-              onClick={handleSave}
+              onClick={() => handleSave(false)}
               style={{ 
                 marginLeft: '16px', 
                 padding: '8px 16px', 
@@ -497,7 +641,32 @@ export default function PdfBuilder() {
               height: scaledCanvasHeight || 'auto'
             }}
           >
-            <canvas ref={canvasRef} style={{ display: 'block' }} />
+            {pages[pageNum - 1]?.type === 'html' ? (
+              <div 
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => {
+                  const newContent = e.currentTarget.innerHTML;
+                  setPages(prev => {
+                    const newPages = [...prev];
+                    newPages[pageNum - 1] = { ...newPages[pageNum - 1], content: newContent };
+                    return newPages;
+                  });
+                }}
+                dangerouslySetInnerHTML={{ __html: pages[pageNum - 1].content }}
+                style={{ 
+                  width: '794px', 
+                  minHeight: '1123px', 
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                  transform: `scale(${scale * (595.28 / 794)})`,
+                  transformOrigin: 'top left',
+                  background: 'white'
+                }} 
+              />
+            ) : (
+              <canvas ref={canvasRef} style={{ display: 'block' }} />
+            )}
             
             {/* Render fields using controlled position/size props */}
             {canvasNaturalSize.width > 0 && fields.filter(f => f.page === pageNum).map(f => (
@@ -588,8 +757,15 @@ function RndField({ field: f, scale, canvasNaturalSize, onUpdate, onRemove, onDu
           e.stopPropagation();
           onDuplicate(f);
         }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          const newVar = window.prompt("Rename variable to:", f.variable);
+          if (newVar && newVar.trim()) {
+            onUpdate(f.id, { variable: newVar.trim() });
+          }
+        }}
         style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'flex-start', padding: '0', boxSizing: 'border-box' }}
-        title="Right-click to duplicate"
+        title="Double-click to rename, Right-click to duplicate"
       >
         <span style={{ 
           fontWeight: '700', 

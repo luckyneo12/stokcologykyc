@@ -26,7 +26,6 @@ const STEP_LABELS = {
 
 const STATUS_MAP = { 
   pending: "badge-pending", 
-  under_review: "badge-review",
   identity_verified: "badge-verified",
   verified: "badge-verified", 
   rejected: "badge-rejected", 
@@ -50,10 +49,17 @@ export default function MakerCheckerDashboard() {
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
 
+  const ALL_COLUMNS = ["Actions", "KYC ID", "Number", "Name", "Email", "PAN", "Step", "Status", "Globe Status", "E-Stamp", "Date"];
+  const [visibleColumns, setVisibleColumns] = useState(["Actions", "KYC ID", "Number", "Name", "Step", "Status", "E-Stamp", "Date"]);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!e.target.closest('.action-menu-container')) {
         setOpenMenuId(null);
+      }
+      if (!e.target.closest('.columns-dropdown-container')) {
+        setColumnsOpen(false);
       }
     };
     document.addEventListener("click", handleClickOutside);
@@ -213,16 +219,23 @@ export default function MakerCheckerDashboard() {
           const mapped = data.applications.map(app => {
             let parsedPersonal = {};
             try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
+            
+            let parsedIdentity = {};
+            try { parsedIdentity = typeof app.identityDetails === "string" ? JSON.parse(app.identityDetails) : (app.identityDetails || {}); } catch(e) {}
+            
             return {
             id: app.applicationId,
             dbId: app.id,
             number: app.user?.phone || "N/A",
+            email: app.user?.email || "N/A",
             name: parsedPersonal.fullName || parsedPersonal.name || "N/A",
+            pan: parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || "N/A",
             eStamp: app.user?.eStampAssigned?.serialNo || app.user?.eStamp || "N/A",
             stepNum: app.currentStep || 0,
             stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
             type: "Full KYC",
             status: app.status,
+            globeStatus: app.globeStatus || "pending",
             isResubmitted: app.isResubmitted,
             riskScore: app.riskScore || 0,
             faceMatch: app.faceMatchScore || 0,
@@ -253,6 +266,31 @@ export default function MakerCheckerDashboard() {
     
     return () => socket.disconnect();
   }, [filter, search, page, loadingAuth, isAuthenticated, adminUser]);
+  const exportToCSV = () => {
+    if (!kycs || kycs.length === 0) return;
+    const headers = ALL_COLUMNS.filter(c => c !== "Actions");
+    const rows = kycs.map(k => headers.map(col => {
+      if (col === "KYC ID") return k.id;
+      if (col === "Number") return k.number;
+      if (col === "Name") return `"${k.name || ""}"`;
+      if (col === "Email") return `"${k.email || ""}"`;
+      if (col === "PAN") return k.pan;
+      if (col === "Step") return `Step ${k.stepNum || 0}/14`;
+      if (col === "Status") return k.status;
+      if (col === "Globe Status") return k.globeStatus;
+      if (col === "E-Stamp") return k.eStamp;
+      if (col === "Date") return `"${k.submittedAt || ""}"`;
+      return "";
+    }));
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `kyc_export_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   if (loadingAuth || !isAuthenticated) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-secondary)" }}>
@@ -269,16 +307,16 @@ export default function MakerCheckerDashboard() {
     }}>
       <div style={{ 
         display: "flex", 
-        width: "125%",
-        height: "125%",
-        transform: "scale(0.8)",
-        transformOrigin: "top left"
+        width: "100%",
+        height: "100%"
       }}>
+      <div style={{ zoom: 0.8, height: "125vh", flexShrink: 0 }}>
         <AdminSidebar 
           active="maker_checker" 
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
+      </div>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflowY: "auto" }}>
           {/* Top Header */}
@@ -309,10 +347,62 @@ export default function MakerCheckerDashboard() {
               <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
                 <input className="admin-input" placeholder="Search by name or ID..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} />
                 <select className="admin-select" value={filter} onChange={e => setFilter(e.target.value)} style={{ width: "200px" }}>
-                  {["all", "pending", "verified", "rejected", "under_review", "on_hold", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
+                  {["all", "pending", "verified", "rejected", "on_hold", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
                     <option key={f} value={f}>{f.replace(/_/g, " ").toUpperCase()}</option>
                   ))}
                 </select>
+                
+                <div className="columns-dropdown-container" style={{ position: "relative", marginLeft: "auto" }}>
+                  <button 
+                    onClick={() => setColumnsOpen(!columnsOpen)}
+                    style={{ 
+                      padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", 
+                      background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, 
+                      cursor: "pointer", display: "flex", alignItems: "center", gap: 8 
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                    Columns
+                  </button>
+                  {columnsOpen && (
+                    <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 200, padding: "8px 0" }}>
+                      <div style={{ padding: "4px 16px", fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", borderBottom: "1px solid var(--border-color)", paddingBottom: 8, marginBottom: 4 }}>Toggle Columns</div>
+                      {ALL_COLUMNS.map(col => (
+                        <label key={col} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", cursor: "pointer", fontSize: "0.85rem", color: "var(--text-primary)" }}>
+                          <input 
+                            type="checkbox" 
+                            checked={visibleColumns.includes(col)}
+                            onChange={() => {
+                              setVisibleColumns(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
+                            }}
+                          />
+                          {col}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={exportToCSV}
+                  disabled={kycs.length === 0}
+                  style={{ 
+                    padding: "10px 16px", 
+                    borderRadius: 8, 
+                    border: "none", 
+                    background: "var(--wise-green)", 
+                    color: "white", 
+                    fontWeight: 700, 
+                    cursor: kycs.length === 0 ? "not-allowed" : "pointer",
+                    opacity: kycs.length === 0 ? 0.6 : 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Export CSV
+                </button>
               </div>
 
               {/* Table */}
@@ -320,7 +410,7 @@ export default function MakerCheckerDashboard() {
                 <div style={{ overflowX: "auto" }}>
                   <table className="admin-table">
                     <thead><tr>
-                      {["KYC ID", "Number", "Name", "Step", "Status", "E-Stamp", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
+                      {ALL_COLUMNS.filter(h => visibleColumns.includes(h)).map(h => <th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {kycs.length === 0 ? (
@@ -331,26 +421,7 @@ export default function MakerCheckerDashboard() {
                         </tr>
                       ) : kycs.map((k) => (
                         <tr key={k.id}>
-                          <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>
-                          <td style={{ fontWeight: 600 }}>{k.number}</td>
-                          <td style={{ fontWeight: 600 }}>{k.name}</td>
-                          <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
-                            Step {k.stepNum || 0}/14
-                          </td>
-                          <td>
-                            <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
-                              <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`}>{(k.status || "pending").replace("_", " ")}</span>
-                              {k.isResubmitted && (
-                                <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td style={{ fontSize: "0.82rem", color: "var(--wise-green)", fontWeight: 800 }}>
-                            {k.eStamp}
-                          </td>
-                          <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.submittedAt}</td>
-                          <td>
+                          {visibleColumns.includes("Actions") && (<td>
                             <div className="action-menu-container" style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
                               <button 
                                 onClick={(e) => {
@@ -363,7 +434,7 @@ export default function MakerCheckerDashboard() {
                               </button>
                               
                               {openMenuId === k.id && (
-                                <div style={{ position: "absolute", right: 30, top: 0, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 160, display: "flex", flexDirection: "column", padding: "4px 0" }}>
+                                <div style={{ position: "absolute", left: 0, top: "100%", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 160, display: "flex", flexDirection: "column", padding: "4px 0" }}>
                                   <button onClick={() => { setOpenMenuId(null); router.push(`/admin/maker-checker/${k.id}`); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Verify</button>
                                   <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Continue Journey</button>
                                   <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", color: "#e5484d", borderBottom: "1px solid var(--border-color)" }}>Delete</button>
@@ -374,7 +445,51 @@ export default function MakerCheckerDashboard() {
                                 </div>
                               )}
                             </div>
-                          </td>
+                          </td>)}
+                          {visibleColumns.includes("KYC ID") && <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>}
+                          {visibleColumns.includes("Number") && <td style={{ fontWeight: 600 }}>{k.number}</td>}
+                          {visibleColumns.includes("Name") && <td style={{ fontWeight: 600 }}>{k.name}</td>}
+                          {visibleColumns.includes("Email") && <td style={{ fontSize: "0.82rem", color: "var(--text-primary)" }}>{k.email}</td>}
+                          {visibleColumns.includes("PAN") && <td style={{ fontWeight: 600 }}>{k.pan}</td>}
+                          {visibleColumns.includes("Step") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
+                            Step {k.stepNum || 0}/14
+                          </td>}
+                          {visibleColumns.includes("Status") && <td>
+                            <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
+                              <select 
+                                className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
+                                value={k.status === 'under_review' ? 'pending' : k.status}
+                                onChange={(e) => {
+                                  updateStatus(k.id, e.target.value);
+                                  // Optimistically update the UI
+                                  setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: e.target.value } : app));
+                                }}
+                                style={{ outline: "none", cursor: "pointer", appearance: "auto", border: "none" }}
+                              >
+                                <option value="pending">PENDING</option>
+                                <option value="verified">VERIFIED</option>
+                                <option value="rejected">REJECTED</option>
+                                <option value="on_hold">ON HOLD</option>
+                              </select>
+                              {k.isResubmitted && (
+                                <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
+                              )}
+                            </div>
+                          </td>}
+
+                          {visibleColumns.includes("Globe Status") && <td>
+                            <span style={{ 
+                              padding: "4px 8px", borderRadius: "6px", fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase",
+                              background: k.globeStatus === 'approved' ? 'rgba(16, 185, 129, 0.1)' : k.globeStatus === 'rejected' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)', 
+                              color: k.globeStatus === 'approved' ? '#10b981' : k.globeStatus === 'rejected' ? '#ef4444' : '#f59e0b', 
+                            }}>
+                              {k.globeStatus}
+                            </span>
+                          </td>}
+                          {visibleColumns.includes("E-Stamp") && <td style={{ fontSize: "0.82rem", color: "var(--wise-green)", fontWeight: 800 }}>
+                            {k.eStamp}
+                          </td>}
+                          {visibleColumns.includes("Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.submittedAt}</td>}
                         </tr>
                       ))}
                     </tbody>

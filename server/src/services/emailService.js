@@ -19,7 +19,10 @@ const sendOtpEmail = async (email, otp) => {
       text: `Your OTP for KYC verification is ${otp}. It is valid for 5 minutes.`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-          <h2 style="color: #333; text-align: center;">KYC Verification</h2>
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="https://res.cloudinary.com/dogfk2nyq/image/upload/v1777096537/stklogo_ofmddh.png" alt="Stockology logo" style="max-width: 150px; height: auto;" />
+          </div>
+          <h2 style="color: #333; text-align: center; margin-top: 0;">KYC Verification</h2>
           <p style="font-size: 16px; color: #555;">Hello,</p>
           <p style="font-size: 16px; color: #555;">Your One-Time Password (OTP) for KYC verification is:</p>
           <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0;">

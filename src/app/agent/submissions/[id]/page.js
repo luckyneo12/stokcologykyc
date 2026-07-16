@@ -150,6 +150,8 @@ const REVIEW_STEPS = [
       ["Trading experience", app.personalDetails?.experience],
       ["Occupation", app.personalDetails?.occupation],
       ["PEP status", app.personalDetails?.politicallyExposed],
+      ["PEP Type", app.personalDetails?.pepType],
+      ["PEP Comment", app.personalDetails?.pepComment],
     ],
     evidence: (app) => [
       findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),

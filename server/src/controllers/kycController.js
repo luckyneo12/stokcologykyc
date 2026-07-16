@@ -730,6 +730,29 @@ const bypassEsign = async (req, res, next) => {
   }
 };
 
+const previewPdf = async (req, res, next) => {
+  try {
+    const { generateKycPdf } = require("../utils/pdfGenerator");
+    const app = await prisma.kycApplication.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: "desc" }
+    });
+    
+    if (!app) {
+      return res.status(404).json({ success: false, error: "Active application not found" });
+    }
+
+    // Merge latest frontend state with DB state
+    const applicationData = { ...app, ...req.body };
+    const pdfBase64 = await generateKycPdf(applicationData);
+    
+    res.json({ success: true, pdfBase64 });
+  } catch (error) {
+    console.error("[KYC Preview] Error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
   startKyc,
   getMyApplication,
@@ -743,4 +766,5 @@ module.exports = {
   getPincodeData,
   downloadPdf,
   bypassEsign,
+  previewPdf,
 };

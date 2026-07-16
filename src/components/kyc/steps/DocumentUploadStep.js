@@ -283,9 +283,8 @@ export default function DocumentUploadStep() {
   };
 
   const finOptions = [
-    "Bank account statement for last 6 months",
-    "Copy of Demat account holding statement",
-    "Salary Slip (last 3 months)",
+    "Bank account statement of latest 6 months",
+    "Salary Slip (latest 3 months)",
     "Copy of Form 16",
     "Copy of ITR Acknowledgement",
     "Copy of Annual Accounts",
