@@ -179,6 +179,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
             return {
               id: app.applicationId,
               dbId: app.id,
+              clientCode: app.clientCode,
               number: app.user?.phone || "N/A",
               name: parsedPersonal.fullName || parsedPersonal.name || "N/A",
               email: app.user?.email || "N/A",
@@ -353,13 +354,14 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
           <table className="admin-table">
             <thead><tr>
               <th><input type="checkbox" onChange={e => setBulk(e.target.checked ? kycs.map(k => k.id) : [])} checked={bulk.length === kycs.length && kycs.length > 0} /></th>
-              {["KYC ID", "Number", "Name", "Step", "Admin Status", "Globe Status", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
+              {["KYC ID", "Client Code", "Number", "Name", "Step", "Admin Status", "Globe Status", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
               {kycs.map((k) => (
                 <tr key={k.id}>
                   <td><input type="checkbox" checked={bulk.includes(k.id)} onChange={() => toggleBulk(k.id)} /></td>
                   <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>
+                  <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)" }}>{k.clientCode || "N/A"}</td>
                   <td style={{ fontWeight: 600 }}>{k.number}</td>
                   <td style={{ fontWeight: 600 }}>{k.name}</td>
                   <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>

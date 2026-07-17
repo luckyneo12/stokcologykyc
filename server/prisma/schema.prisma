@@ -32,6 +32,7 @@ model KycApplication {
   id                                   Int       @id @default(autoincrement())
   userId                               Int
   applicationId                        String    @unique
+  clientCode                           String?
   status                               String    @default("pending")
   currentStep                          Int       @default(0)
   personalDetails                      String?   @db.LongText

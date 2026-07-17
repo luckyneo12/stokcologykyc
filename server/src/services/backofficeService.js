@@ -297,7 +297,7 @@ class BackofficeService {
 
   deriveClientCode(application, requestedClientCode) {
     const nsdlResponse = parseJsonField(application.nsdlResponse, {});
-    return pickFirst(requestedClientCode, nsdlResponse.clientId, nsdlResponse.ClientCode, application.clientId, application.applicationId);
+    return pickFirst(requestedClientCode, application.clientCode, nsdlResponse.clientId, nsdlResponse.ClientCode, application.clientId, application.applicationId);
   }
 
   buildModificationPayload(application, existingData = {}, clientCode, clientType = "A") {

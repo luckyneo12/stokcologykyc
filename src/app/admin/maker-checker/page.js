@@ -49,8 +49,8 @@ export default function MakerCheckerDashboard() {
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
 
-  const ALL_COLUMNS = ["Actions", "KYC ID", "Number", "Name", "Email", "PAN", "Step", "Status", "Globe Status", "E-Stamp", "Date"];
-  const [visibleColumns, setVisibleColumns] = useState(["Actions", "KYC ID", "Number", "Name", "Step", "Status", "E-Stamp", "Date"]);
+  const ALL_COLUMNS = ["Actions", "KYC ID", "Client Code", "Number", "Name", "Email", "PAN", "Step", "Status", "Globe Status", "E-Stamp", "Date"];
+  const [visibleColumns, setVisibleColumns] = useState(["Actions", "KYC ID", "Client Code", "Number", "Name", "Step", "Status", "E-Stamp", "Date"]);
   const [columnsOpen, setColumnsOpen] = useState(false);
 
   useEffect(() => {
@@ -226,6 +226,7 @@ export default function MakerCheckerDashboard() {
             return {
             id: app.applicationId,
             dbId: app.id,
+            clientCode: app.clientCode,
             number: app.user?.phone || "N/A",
             email: app.user?.email || "N/A",
             name: parsedPersonal.fullName || parsedPersonal.name || "N/A",
@@ -447,6 +448,7 @@ export default function MakerCheckerDashboard() {
                             </div>
                           </td>)}
                           {visibleColumns.includes("KYC ID") && <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>}
+                          {visibleColumns.includes("Client Code") && <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)" }}>{k.clientCode || "N/A"}</td>}
                           {visibleColumns.includes("Number") && <td style={{ fontWeight: 600 }}>{k.number}</td>}
                           {visibleColumns.includes("Name") && <td style={{ fontWeight: 600 }}>{k.name}</td>}
                           {visibleColumns.includes("Email") && <td style={{ fontSize: "0.82rem", color: "var(--text-primary)" }}>{k.email}</td>}

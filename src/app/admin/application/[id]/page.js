@@ -356,7 +356,8 @@ export default function ApplicationDetail() {
         console.log("Fetch result:", data);
         if (data.success) {
           setApp(data.application);
-          const generatedClientCode = data.application?.nsdlResponse?.clientId || data.application?.nsdlResponse?.ClientCode || "";
+          const appData = data.application;
+          const generatedClientCode = appData?.clientCode || appData?.nsdlResponse?.clientId || appData?.nsdlResponse?.ClientCode || `CLI-${appData?.id || id}`;
           if (generatedClientCode) {
             setBackofficeClientCode((current) => current || generatedClientCode);
           }
