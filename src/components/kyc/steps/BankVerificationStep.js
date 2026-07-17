@@ -7,7 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
 
 export default function BankVerificationStep() {
-  const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId } = useKYC();
+  const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified } = useKYC();
   
   // Local state for the dropdown selection
   const [method, setMethod] = useState(bankDetails.method || "");
@@ -153,7 +153,9 @@ export default function BankVerificationStep() {
         if (result.data.beneficiary_name_with_bank) {
           update("accountHolderName", result.data.beneficiary_name_with_bank);
         }
-        nextStep({ bankDetails: { ...form, method } });
+        // Record verification fingerprint so this step auto-skips on re-navigation
+        markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
+        nextStep({ bankDetails: { ...form, method, accountHolderName: result.data.beneficiary_name_with_bank || form.accountHolderName } });
       } else {
         setVerificationState("idle");
         addToast(result.error || "Bank verification failed", "error");

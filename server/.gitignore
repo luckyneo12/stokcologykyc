@@ -68,3 +68,18 @@ typings/
 
 # Windows
 Thumbs.db
+
+# Ignored Uploads and Test Scripts
+uploads/
+temp_template.json
+test*.js
+test.txt
+check_*.js
+debug_*.js
+fix_*.js
+explore_*.js
+get_globe.js
+query.js
+create_globe_user.js
+dump.js
+import_template_to_db.js

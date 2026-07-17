@@ -60,6 +60,7 @@ const INITIAL_STATE = {
   submittedAt: null,
   nsdlResponse: null,
   stepStatuses: {}, // { [reviewStepId]: { status, reason, ... } }
+  verifiedSteps: {}, // { [stepIndex]: { fingerprint: string } } — tracks verified API steps to skip on re-navigation
 };
 
 const STEPS = [
@@ -153,6 +154,30 @@ const STEP_RELEVANT_KEYS = {
     "address", "bankDetails", "segments", "bsda", 
     "nomineeDetails", "nomineeAllocation", "panUpload", "signature", "financialProof", "selfieDetails", "generatedPdfBase64"
   ],
+};
+
+/**
+ * Fingerprint functions for API-verified steps.
+ * If a step has a fingerprint function, it means the step uses an external API for verification.
+ * When moving forward, if the computed fingerprint matches the stored one, the step is auto-skipped.
+ * Returning null/falsy means "not yet verified" → never skip.
+ */
+const VERIFICATION_FINGERPRINTS = {
+  // Step 4: PAN Verification — fingerprint is PAN + Name + DOB
+  4: (state) => {
+    if (!state.panVerified) return null;
+    return `${state.identityDetails?.pan || ''}|${state.personalDetails?.fullName || ''}|${state.personalDetails?.dob || ''}`;
+  },
+  // Step 5: DigiLocker — fingerprint is the aadhaar number (set after successful DigiLocker flow)
+  5: (state) => {
+    if (!state.identityDetails?.aadhaar) return null;
+    return `aadhaar:${state.identityDetails.aadhaar}`;
+  },
+  // Step 10: Bank Verification — fingerprint is account number + IFSC (only if penny-drop succeeded)
+  10: (state) => {
+    if (!state.bankDetails?.accountHolderName) return null;
+    return `${state.bankDetails.accountNumber || ''}|${state.bankDetails.ifsc || ''}`;
+  },
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -646,21 +671,30 @@ export function KYCProvider({ children }) {
     }
   }, [getBackendPayload, addToast, steps]);
 
-  // Automatically persist step whenever it changes
-  // We only auto-save when the STEP itself changes, to capture the transition
-  useEffect(() => {
-    const activeAppId = state.applicationId || (typeof window !== "undefined" ? sessionStorage.getItem("kycApplicationId") : null);
-    
-    // CRITICAL: Only save if we have an active app AND we have synced with the server 
-    // AND the user has explicitly moved (checked via lastClientStepChange)
-    if (activeAppId && state.currentStep > 0 && hasSynced) {
-      // Avoid saving if we just loaded from server or jump sync happened
-      if (Date.now() - lastClientStepChange.current < 500) return;
-      
-      console.log(`[KYC AutoSave] Syncing state for Step: ${state.currentStep}`);
-      persistStepToBackend(null); // Save current state without partial overrides
-    }
-  }, [state.currentStep, persistStepToBackend, hasSynced]);
+  /**
+   * Records that a step has been verified with a specific data fingerprint.
+   * Called by step components after successful API verification.
+   */
+  const markStepVerified = useCallback((stepIndex, fingerprint) => {
+    if (!fingerprint) return;
+    setState(prev => {
+      const next = {
+        ...prev,
+        verifiedSteps: {
+          ...prev.verifiedSteps,
+          [stepIndex]: { fingerprint }
+        }
+      };
+      try {
+        sessionStorage.setItem("kyc-progress", JSON.stringify(next));
+      } catch (e) {
+        console.warn("[KYC Context] sessionStorage update failed:", e.message);
+      }
+      return next;
+    });
+    console.log(`[KYC Context] Step ${stepIndex} marked as verified with fingerprint: ${fingerprint}`);
+  }, []);
+
 
   const nextStep = useCallback(async (updates) => {
     const now = Date.now();
@@ -688,6 +722,28 @@ export function KYCProvider({ children }) {
         nextStepIndex++;
       }
     }
+
+    // AUTO-SKIP VERIFIED API STEPS: If the user is moving forward through a step
+    // that was already verified (PAN, DigiLocker, Bank) and the data hasn't changed,
+    // skip it automatically so the user doesn't have to click "Continue" on each one.
+    while (nextStepIndex < currentSteps.length - 1 && VERIFICATION_FINGERPRINTS[nextStepIndex]) {
+      const fpFn = VERIFICATION_FINGERPRINTS[nextStepIndex];
+      const currentFp = fpFn(base);
+      if (!currentFp) break; // Step not verified at all — stop here
+
+      const savedFp = base.verifiedSteps?.[nextStepIndex]?.fingerprint;
+      if (savedFp && currentFp !== savedFp) break; // Data CHANGED since verification — must re-verify
+
+      // Either fingerprint matches, or no saved fingerprint but step IS verified
+      // (e.g., server-restored session, admin-moved user, pre-existing session)
+      console.log(`[KYC Context] Auto-skipping verified step ${nextStepIndex} (${currentSteps[nextStepIndex]?.id}) — ${savedFp ? 'fingerprint matches' : 'auto-populated from verified state'}`);
+      
+      // Auto-populate fingerprint if missing (so future changes can be detected)
+      if (!savedFp) {
+        base.verifiedSteps = { ...(base.verifiedSteps || {}), [nextStepIndex]: { fingerprint: currentFp } };
+      }
+      nextStepIndex++;
+    }
     
     // We must pass the NEXT step index so the backend updates the user's progress bookmark
     const computedNextState = { ...base, currentStep: nextStepIndex }; 
@@ -713,6 +769,24 @@ export function KYCProvider({ children }) {
           console.log(`[KYC Context] Skipping approved step ${freshNextStepIndex} (${currentSteps[freshNextStepIndex]?.id}) during state update`);
           freshNextStepIndex++;
         }
+      }
+
+      // AUTO-SKIP VERIFIED API STEPS (mirror of the pre-persist logic above)
+      while (freshNextStepIndex < currentSteps.length - 1 && VERIFICATION_FINGERPRINTS[freshNextStepIndex]) {
+        const fpFn = VERIFICATION_FINGERPRINTS[freshNextStepIndex];
+        const currentFp = fpFn(freshBase);
+        if (!currentFp) break; // Step not verified
+
+        const savedFp = freshBase.verifiedSteps?.[freshNextStepIndex]?.fingerprint;
+        if (savedFp && currentFp !== savedFp) break; // Data changed
+
+        console.log(`[KYC Context] Auto-skipping verified step ${freshNextStepIndex} (${currentSteps[freshNextStepIndex]?.id}) during state update`);
+        
+        // Auto-populate fingerprint if missing
+        if (!savedFp) {
+          freshBase.verifiedSteps = { ...(freshBase.verifiedSteps || {}), [freshNextStepIndex]: { fingerprint: currentFp } };
+        }
+        freshNextStepIndex++;
       }
       
       const stateToReturn = { ...freshBase, currentStep: freshNextStepIndex };
@@ -793,7 +867,7 @@ export function KYCProvider({ children }) {
   }, []);
 
   return (
-    <KYCContext.Provider value={{ ...state, theme, toasts, steps: steps.length > 0 ? steps : STEPS, STEPS, updateState, updateNested, nextStep, prevStep, goToStep, addToast, toggleTheme, resetKYC, setApplicationId, syncProgress: persistStepToBackend, refreshProgress, getBackendPayload }}>
+    <KYCContext.Provider value={{ ...state, theme, toasts, steps: steps.length > 0 ? steps : STEPS, STEPS, updateState, updateNested, nextStep, prevStep, goToStep, addToast, toggleTheme, resetKYC, setApplicationId, syncProgress: persistStepToBackend, refreshProgress, getBackendPayload, markStepVerified }}>
       {children}
     </KYCContext.Provider>
   );

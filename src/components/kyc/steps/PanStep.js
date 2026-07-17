@@ -28,7 +28,7 @@ const formatPanValue = (value) => {
 };
 
 export default function PanStep() {
-  const { personalDetails, identityDetails, panVerified, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId } = useKYC();
+  const { personalDetails, identityDetails, panVerified, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId, markStepVerified } = useKYC();
   const [pan, setPan] = useState(formatPanValue(identityDetails.pan));
   const [fullName, setFullName] = useState(personalDetails.fullName || "");
   const [dob, setDob] = useState(personalDetails.dob || "");
@@ -76,6 +76,8 @@ export default function PanStep() {
         const extractedFatherName = result.data?.father_name || result.data?.parent_name || result.data?.fathers_name || result.data?.fatherName || result.data?.relative_name || "";
         
         addToast("PAN verified successfully!", "success");
+        // Record verification fingerprint so this step auto-skips on re-navigation
+        markStepVerified(4, `${pan.toUpperCase()}|${fullName.toUpperCase()}|${dob}`);
         nextStep({
           identityDetails: { ...identityDetails, pan: pan.toUpperCase() },
           personalDetails: { 

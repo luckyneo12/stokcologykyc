@@ -28,7 +28,10 @@ const getActiveTemplate = async (req, res) => {
 
 const saveTemplate = async (req, res) => {
   try {
+    const logFile = path.join(__dirname, '../../compile_log.txt');
+    fs.appendFileSync(logFile, `\n--- Compile Request at ${new Date().toISOString()} ---\n`);
     const { name, basePdfUrl, isActive, pages, compilePdf } = req.body;
+    fs.appendFileSync(logFile, `compilePdf: ${compilePdf}, pages: ${pages ? pages.length : 0}, basePdfUrl: ${basePdfUrl}\n`);
     let fields = req.body.fields;
     
     // First, if this one is being set to active, deactivate others
@@ -43,6 +46,7 @@ const saveTemplate = async (req, res) => {
     
     // If pages array exists, and compilePdf is true, we compile the mixed pages into a single PDF
     if (compilePdf && pages && pages.length > 0) {
+      fs.appendFileSync(logFile, `Starting compilation...\n`);
       const finalPdfDoc = await PDFDocument.create();
       
       let basePdfDoc = null;
@@ -53,10 +57,15 @@ const saveTemplate = async (req, res) => {
          } else {
            baseFilePath = path.join(__dirname, '../../', basePdfUrl);
          }
+         fs.appendFileSync(logFile, `baseFilePath: ${baseFilePath}\n`);
          try {
            const basePdfBytes = fs.readFileSync(baseFilePath);
            basePdfDoc = await PDFDocument.load(basePdfBytes);
-         } catch (e) { console.error("Could not load base PDF", e); }
+           fs.appendFileSync(logFile, `Loaded basePdfDoc with ${basePdfDoc.getPageCount()} pages.\n`);
+         } catch (e) { 
+           console.error("Could not load base PDF", e); 
+           fs.appendFileSync(logFile, `Error loading base PDF: ${e.message}\n`);
+         }
       }
 
       let currentPhysicalPage = 1;
@@ -64,6 +73,7 @@ const saveTemplate = async (req, res) => {
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
+        fs.appendFileSync(logFile, `Processing page ${i+1}, type: ${page.type}\n`);
         visualToPhysicalPageMap[i + 1] = currentPhysicalPage;
 
         if (page.type === 'pdf' && basePdfDoc) {
@@ -75,6 +85,7 @@ const saveTemplate = async (req, res) => {
           // Convert HTML to a temporary PDF
           const tempPdfFilename = `${Date.now()}-temp.pdf`;
           const tempPdfPath = path.join(__dirname, '../../uploads', tempPdfFilename);
+          fs.appendFileSync(logFile, `Converting HTML to PDF: ${tempPdfPath}\n`);
           await convertHtmlToPdf(page.content, tempPdfPath);
           
           const tempPdfBytes = fs.readFileSync(tempPdfPath);
@@ -89,6 +100,7 @@ const saveTemplate = async (req, res) => {
         }
       }
       
+      fs.appendFileSync(logFile, `All pages processed. Saving final document...\n`);
       // Update fields with new physical page numbers so they don't get lost on blank overflow pages
       if (fields && Array.isArray(fields)) {
         fields = fields.map(f => {
@@ -104,6 +116,7 @@ const saveTemplate = async (req, res) => {
       const newPath = path.join(__dirname, '../../uploads', newFilename);
       fs.writeFileSync(newPath, newPdfBytes);
       finalBasePdfUrl = `/uploads/${newFilename}`;
+      fs.appendFileSync(logFile, `Compiled successfully to ${newFilename}\n`);
     }
 
     // Build backward-compatible fields payload
@@ -134,9 +147,12 @@ const saveTemplate = async (req, res) => {
       }
     });
     
+    fs.appendFileSync(logFile, `Database upsert successful.\n`);
     res.status(200).json({ message: 'Template saved successfully', template });
   } catch (error) {
     console.error('Error saving template:', error);
+    const logFile = path.join(__dirname, '../../compile_log.txt');
+    fs.appendFileSync(logFile, `CRITICAL ERROR: ${error.message}\n${error.stack}\n`);
     res.status(500).json({ error: 'Failed to save template' });
   }
 };
@@ -304,11 +320,146 @@ const convertToHtml = async (req, res) => {
   }
 };
 
+// Known KYC variable labels and their mapping to variable keys
+const KNOWN_LABELS = [
+  { patterns: ['application', 'app id', 'application no', 'application number'], variable: 'applicationId', name: 'Application ID', type: 'text' },
+  { patterns: ['full name', 'name of applicant', 'applicant name', 'name'], variable: 'fullName', name: 'Full Name', type: 'text' },
+  { patterns: ['father', 'spouse', "father's name", 'father/spouse', 'father name'], variable: 'fatherName', name: 'Father/Spouse Name', type: 'text' },
+  { patterns: ['mother', "mother's name", 'mother name'], variable: 'motherName', name: "Mother's Name", type: 'text' },
+  { patterns: ['gender', 'sex'], variable: 'gender', name: 'Gender', type: 'text' },
+  { patterns: ['date of birth', 'dob', 'birth date', 'd.o.b'], variable: 'dob', name: 'Date of Birth', type: 'text' },
+  { patterns: ['nationality'], variable: 'nationality', name: 'Nationality', type: 'text' },
+  { patterns: ['marital', 'marital status'], variable: 'maritalStatus', name: 'Marital Status', type: 'text' },
+  { patterns: ['occupation', 'profession'], variable: 'occupation', name: 'Occupation', type: 'text' },
+  { patterns: ['annual income', 'income', 'gross annual income'], variable: 'annualIncome', name: 'Annual Income', type: 'text' },
+  { patterns: ['pan', 'pan no', 'pan number', 'permanent account'], variable: 'pan', name: 'PAN Number', type: 'text' },
+  { patterns: ['aadhaar', 'aadhar', 'uid', 'aadhaar no', 'aadhaar number'], variable: 'aadhaar', name: 'Aadhaar Number', type: 'text' },
+  { patterns: ['phone', 'mobile', 'contact no', 'mobile no', 'tel'], variable: 'phone', name: 'Phone', type: 'text' },
+  { patterns: ['email', 'e-mail', 'email id', 'email address'], variable: 'email', name: 'Email Address', type: 'text' },
+  { patterns: ['address', 'correspondence address', 'residential address', 'address line'], variable: 'addressLine1', name: 'Address Line 1', type: 'text' },
+  { patterns: ['city', 'town'], variable: 'city', name: 'City', type: 'text' },
+  { patterns: ['state', 'province'], variable: 'state', name: 'State', type: 'text' },
+  { patterns: ['pin', 'pincode', 'pin code', 'zip', 'postal'], variable: 'pincode', name: 'Pincode', type: 'text' },
+  { patterns: ['bank name', 'name of bank'], variable: 'bankName', name: 'Bank Name', type: 'text' },
+  { patterns: ['account', 'account no', 'account number', 'a/c no'], variable: 'accountNumber', name: 'Account Number', type: 'text' },
+  { patterns: ['ifsc', 'ifsc code', 'micr'], variable: 'ifsc', name: 'IFSC Code', type: 'text' },
+  { patterns: ['signature', 'sign here'], variable: 'signature', name: 'Signature', type: 'image' },
+  { patterns: ['photograph', 'photo', 'passport photo', 'selfie'], variable: 'selfie', name: 'Selfie', type: 'image' },
+];
+
+const analyzePdfPage = async (req, res) => {
+  try {
+    const { basePdfUrl, pageNumber } = req.body;
+    if (!basePdfUrl) {
+      return res.status(400).json({ error: 'Missing basePdfUrl' });
+    }
+
+    // Load the PDF
+    let baseFilePath = '';
+    if (basePdfUrl.startsWith('/uploads/')) {
+      baseFilePath = path.join(__dirname, '../../uploads', basePdfUrl.replace('/uploads/', ''));
+    } else {
+      baseFilePath = path.join(__dirname, '../../', basePdfUrl);
+    }
+
+    if (!fs.existsSync(baseFilePath)) {
+      return res.status(404).json({ error: 'PDF file not found' });
+    }
+
+    const pdfBytes = fs.readFileSync(baseFilePath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pages = pdfDoc.getPages();
+    const pageIdx = (pageNumber || 1) - 1;
+
+    if (pageIdx < 0 || pageIdx >= pages.length) {
+      return res.status(400).json({ error: 'Invalid page number' });
+    }
+
+    // Use pdfjs-dist for text extraction (ESM module, needs dynamic import)
+    let textItems = [];
+    try {
+      const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) });
+      const pdfDocument = await loadingTask.promise;
+      const page = await pdfDocument.getPage(pageNumber || 1);
+      const textContent = await page.getTextContent();
+      const viewport = page.getViewport({ scale: 1 });
+      
+      textItems = textContent.items.map(item => {
+        // pdfjs returns y from bottom, we need y from top
+        const tx = item.transform;
+        return {
+          text: item.str,
+          x: tx[4],
+          y: viewport.height - tx[5], // Convert to top-down Y
+          width: item.width,
+          height: item.height || 12,
+          fontSize: Math.abs(tx[0]) || 12
+        };
+      }).filter(item => item.text.trim().length > 0);
+    } catch (pdfjsError) {
+      console.error('pdfjs text extraction failed:', pdfjsError.message);
+      // Return empty suggestions if text extraction fails
+      return res.json({ suggestions: [], message: 'Text extraction not available for this PDF. Try a PDF with selectable text.' });
+    }
+
+    // Match extracted text against known labels
+    const suggestions = [];
+    const usedVariables = new Set();
+
+    for (const item of textItems) {
+      const textLower = item.text.toLowerCase().trim();
+      if (textLower.length < 2 || textLower.length > 50) continue;
+
+      for (const label of KNOWN_LABELS) {
+        if (usedVariables.has(label.variable)) continue;
+        
+        for (const pattern of label.patterns) {
+          if (textLower.includes(pattern) || pattern.includes(textLower)) {
+            // Calculate confidence based on how close the match is
+            const exactMatch = textLower === pattern;
+            const confidence = exactMatch ? 0.95 : (textLower.includes(pattern) ? 0.8 : 0.6);
+            
+            // Position the variable field to the right of or below the label
+            const suggestedX = item.x + item.width + 5;
+            const suggestedY = item.y - 2;
+            
+            suggestions.push({
+              variable: label.variable,
+              name: label.name,
+              type: label.type,
+              x: Math.round(suggestedX),
+              y: Math.round(suggestedY),
+              width: label.type === 'image' ? 100 : 150,
+              height: label.type === 'image' ? 50 : Math.round(item.fontSize * 1.8),
+              fontSize: Math.round(item.fontSize),
+              confidence,
+              matchedText: item.text
+            });
+            
+            usedVariables.add(label.variable);
+            break;
+          }
+        }
+      }
+    }
+
+    // Sort by confidence (highest first)
+    suggestions.sort((a, b) => b.confidence - a.confidence);
+
+    res.json({ suggestions });
+  } catch (error) {
+    console.error('Analyze PDF error:', error);
+    res.status(500).json({ error: 'Failed to analyze PDF' });
+  }
+};
+
 module.exports = {
   getTemplates,
   getActiveTemplate,
   saveTemplate,
   uploadBasePdf,
   replacePage,
-  convertToHtml
+  convertToHtml,
+  analyzePdfPage
 };

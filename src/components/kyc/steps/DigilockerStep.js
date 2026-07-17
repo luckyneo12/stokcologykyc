@@ -26,7 +26,7 @@ const formatPanValue = (value) => {
 };
 
 export default function DigilockerStep() {
-  const { nextStep, addToast, setApplicationId, updateState, personalDetails, identityDetails, address, goToStep, applicationId } = useKYC();
+  const { nextStep, addToast, setApplicationId, updateState, personalDetails, identityDetails, address, goToStep, applicationId, markStepVerified } = useKYC();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [mounted, setMounted] = useState(false);
@@ -76,6 +76,11 @@ export default function DigilockerStep() {
             return;
           }
 
+          // Record verification fingerprint so this step auto-skips on re-navigation
+          const aadhaarNumber = result.updates.identityDetails?.aadhaar;
+          if (aadhaarNumber) {
+            markStepVerified(5, `aadhaar:${aadhaarNumber}`);
+          }
           nextStep({
             identityDetails: { 
               ...identityDetails, 

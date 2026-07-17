@@ -51,12 +51,23 @@ function getVariableValue(variableName, appData) {
 async function generateKycPdf(applicationData) {
   try {
     const safeJsonParse = (str) => {
-      try { return typeof str === 'string' ? JSON.parse(str) : str; } catch { return str; }
+      let result = str;
+      while (typeof result === 'string') {
+        try {
+          const parsed = JSON.parse(result);
+          if (typeof parsed === 'string' && parsed === result) break;
+          result = parsed;
+        } catch {
+          break;
+        }
+      }
+      return result;
     };
 
     const parsedSelfieDetails = safeJsonParse(applicationData.selfieDetails) || {};
     const parsedSignature = safeJsonParse(applicationData.signature) || {};
-    const parsedDocuments = safeJsonParse(applicationData.documents) || [];
+    let _parsedDocuments = safeJsonParse(applicationData.documents);
+    const parsedDocuments = Array.isArray(_parsedDocuments) ? _parsedDocuments : [];
     const parsedPanUpload = safeJsonParse(applicationData.panUpload) || {};
     const parsedFinancialProof = safeJsonParse(applicationData.financialProof) || {};
     const parsedBankDetails = safeJsonParse(applicationData.bankDetails) || {};
@@ -119,7 +130,13 @@ async function generateKycPdf(applicationData) {
 
     // If template exists, populate fields over the existing pages
     if (activeTemplate) {
-      const fields = safeJsonParse(activeTemplate.fields) || [];
+      let parsedFields = safeJsonParse(activeTemplate.fields);
+      let fields = [];
+      if (Array.isArray(parsedFields)) {
+        fields = parsedFields;
+      } else if (parsedFields && Array.isArray(parsedFields.variables)) {
+        fields = parsedFields.variables;
+      }
       const pages = pdfDoc.getPages();
 
       for (const field of fields) {
@@ -408,7 +425,7 @@ async function generateKycPdf(applicationData) {
     const pepPath = parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview;
     if (pepPath) docsToAppend.push({ path: pepPath, title: 'PEP Proof' });
     
-    if (parsedNomineeDetails?.nominees) {
+    if (parsedNomineeDetails?.nominees && Array.isArray(parsedNomineeDetails.nominees)) {
       parsedNomineeDetails.nominees.forEach((nom, idx) => {
         const nomPath = nom.proofPath || nom.proofPreview || nom.preview;
         if (nomPath) docsToAppend.push({ path: nomPath, title: `Nominee ${idx + 1} Proof` });

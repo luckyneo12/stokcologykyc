@@ -84,3 +84,8 @@ test.txt
 
 # Generated KYC HTML pages
 kyc_pages/
+
+# Unnecessary untracked files
+auto_mapped_fields.json
+map_variables.js
+server/compile_log.txt
