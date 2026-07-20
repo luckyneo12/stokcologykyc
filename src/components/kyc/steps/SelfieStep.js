@@ -82,7 +82,21 @@ export default function SelfieStep() {
     setPhase("processing");
 
     try {
-      const requestData = await createDigioRequest("SELFIE", {});
+      // Capture geolocation if possible
+      let coords = { lat: null, lng: null };
+      if ("geolocation" in navigator) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+          });
+          coords.lat = pos.coords.latitude;
+          coords.lng = pos.coords.longitude;
+        } catch(err) {
+          console.warn("Geolocation skipped:", err.message);
+        }
+      }
+
+      const requestData = await createDigioRequest("SELFIE", coords);
       const { requestId, customerIdentifier, applicationId } = requestData;
       if (applicationId) setApplicationId(applicationId);
 

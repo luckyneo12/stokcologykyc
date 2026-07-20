@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { UploadCloud, CheckCircle, Clock, Archive, Search, Eye, Edit2, Trash2, FileText, Image as ImageIcon } from "lucide-react";
+import { useDragScroll } from "@/utils/useDragScroll";
 
 export default function EStamps({ searchQuery, onSearchChange }) {
   const router = useRouter();
@@ -36,6 +37,8 @@ export default function EStamps({ searchQuery, onSearchChange }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isUpdating, setIsUpdating] = useState(false);
+
+  const scrollRef = useDragScroll();
 
   const fetchEStamps = async () => {
     setLoading(true);
@@ -400,7 +403,7 @@ export default function EStamps({ searchQuery, onSearchChange }) {
       </div>
 
       <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "var(--card-shadow)" }}>
-        <div style={{ overflowX: "auto" }}>
+        <div ref={scrollRef} style={{ overflowX: "auto" }}>
           <table className="admin-table">
             <thead>
               <tr>

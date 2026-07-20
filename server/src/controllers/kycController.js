@@ -401,6 +401,32 @@ const saveStep = async (req, res, next) => {
         }
       }
 
+      // Generate Client Code if not exists and PAN is provided
+      if (!app.clientCode && updateData.identityDetails) {
+        const idDetails = parseJsonField(updateData.identityDetails);
+        const panValue = idDetails?.pan || idDetails?.panNumber;
+        if (panValue && typeof panValue === 'string' && panValue.length >= 3) {
+          const prefix = panValue.substring(0, 3).toUpperCase();
+          let uniqueClientCode = null;
+          let attempts = 0;
+          while (!uniqueClientCode && attempts < 10) {
+            const randomDigits = Math.floor(100 + Math.random() * 900).toString(); // 3 digits
+            const candidate = prefix + randomDigits;
+            const existing = await prisma.kycApplication.findFirst({
+              where: { clientCode: candidate }
+            });
+            if (!existing) {
+              uniqueClientCode = candidate;
+            }
+            attempts++;
+          }
+          if (uniqueClientCode) {
+            updateData.clientCode = uniqueClientCode;
+            console.log(`[KYC SaveStep] Generated unique clientCode ${uniqueClientCode} for App: ${applicationId}`);
+          }
+        }
+      }
+
       await prisma.kycApplication.update({
         where: { applicationId },
         data: updateData,

@@ -22,6 +22,7 @@ import {
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
 import AdminSidebar from "../../components/AdminSidebar";
+import AdminThemeToggle from "../../components/AdminThemeToggle";
 import "@/app/admin/admin.css";
 
 const USER_STEP_LABELS = {
@@ -43,32 +44,32 @@ const USER_STEP_LABELS = {
 };
 
 const REVIEW_STEPS = [
-  {
-    id: "phoneVerification",
-    kycIndex: 1,
-    title: "Phone Verification",
-    evidenceTitle: "",
-    evidenceHint: "Confirm the applicant's verified mobile number and reference their photo.",
-    fields: (app) => [
-      ["Mobile number", app.user?.phone, "user.phone"],
-    ],
-    evidence: (app) => {
-      const doc = findDocument(app, ["aadhaar", "digilocker", "photo"], "", ["pan"]);
-      return doc ? [{ ...doc, label: "" }] : [];
-    },
-  },
-  {
-    id: "emailVerification",
-    kycIndex: 2,
-    title: "Email Verification",
-    evidenceTitle: "",
-    evidenceHint: "Confirm the applicant's verified email address.",
-    fields: (app) => [
-      ["Email", app.personalDetails?.email || app.user?.email, "personalDetails.email"],
-      ["Mobile number", app.user?.phone, "user.phone"],
-    ],
-    evidence: () => [],
-  },
+  // {
+  //   id: "phoneVerification",
+  //   kycIndex: 1,
+  //   title: "Phone Verification",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm the applicant's verified mobile number and reference their photo.",
+  //   fields: (app) => [
+  //     ["Mobile number", app.user?.phone, "user.phone"],
+  //   ],
+  //   evidence: (app) => {
+  //     const doc = findDocument(app, ["aadhaar", "digilocker", "photo"], "", ["pan"]);
+  //     return doc ? [{ ...doc, label: "" }] : [];
+  //   },
+  // },
+  // {
+  //   id: "emailVerification",
+  //   kycIndex: 2,
+  //   title: "Email Verification",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm the applicant's verified email address.",
+  //   fields: (app) => [
+  //     ["Email", app.personalDetails?.email || app.user?.email, "personalDetails.email"],
+  //     ["Mobile number", app.user?.phone, "user.phone"],
+  //   ],
+  //   evidence: () => [],
+  // },
   {
     id: "pricingSelection",
     kycIndex: 3,
@@ -76,9 +77,9 @@ const REVIEW_STEPS = [
     evidenceTitle: "",
     evidenceHint: "Verify the plan and segment choices before moving ahead.",
     fields: (app) => [
-      ["Selected plan", app.pricingSelection?.plan || app.segments?.pricingPlan || app.segments?.plan],
-      ["Segments", formatList(app.segments?.selected || app.segments?.segments || app.segments)],
-      ["BSDA", app.bsda],
+      ["Selected plan", app.pricingSelection?.plan || app.segments?.pricingPlan || app.segments?.plan, "pricingSelection.plan"],
+      ["Segments", formatList(app.segments?.selected || app.segments?.segments || app.segments), "segments.selected"],
+      ["BSDA", app.bsda, "bsda"],
     ],
     evidence: () => [],
   },
@@ -88,12 +89,16 @@ const REVIEW_STEPS = [
     title: "PAN Verification",
     evidenceTitle: "PAN Data",
     evidenceHint: "Match PAN number, name, and date of birth with uploaded PAN evidence when available.",
-    fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
-      ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
-      ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
-      ["PAN verified", app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified],
-    ],
+    fields: (app) => {
+      const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
+      return [
+        ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
+        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
+        ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
+        ["PAN verified", panMatchData.status || app.identityDetails?.panVerified, "identityDetails.panVerified"],
+        ["Name match score", panMatchData.name_match_score ? `${panMatchData.name_match_score}%` : "N/A", "identityDetails.pan_verification.name_match_score"],
+      ];
+    },
     evidence: (app) => [firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document")].filter(Boolean),
   },
   {
@@ -110,23 +115,33 @@ const REVIEW_STEPS = [
       const dlAadhaar = app.ocrData?.digio?.DIGILOCKER?.actions?.[0]?.details?.aadhaar;
       const dlPan = app.ocrData?.digio?.DIGILOCKER?.actions?.[0]?.details?.pan;
       const panVerify = app.ocrData?.pan_verification;
+      const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
 
       if (tab === "pan") {
         return [
-          ["PAN number", dlPan?.id_number || app.identityDetails?.pan || app.personalDetails?.pan || "Not Available", "identityDetails.pan"],
-          ["Name on PAN", dlPan?.name || app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName || "Not Available", "identityDetails.pan_name"],
           ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available", "personalDetails.fatherName"],
-          ["Date of birth", dlPan?.dob || app.identityDetails?.dob || app.personalDetails?.dob || "Not Available", "identityDetails.dob"],
-          ["Aadhaar Seeding Status", panVerify?.data?.aadhaar_seeding_status || app.identityDetails?.pan_verification?.aadhaar_seeding_status || "Not Available"],
-          ["PAN verified", panVerify?.status || app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified || "Not Available"],
+          ["Name", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
+          ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A", "identityDetails.pan"],
+          ["Dob1", app.personalDetails?.dob || "N/A", "personalDetails.dob"],
+          ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y", "identityDetails.pan_verification.aadhaar_seeding_status"],
+          ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N", "identityDetails.pan_verification.dob_match"],
+          ["Name status", panMatchData.name_match || panMatchData.name_as_per_pan_match ? "Y" : "N", "identityDetails.pan_verification.name_match"],
+          ["Name match score", panMatchData.name_match_score ? `${panMatchData.name_match_score}%` : "N/A", "identityDetails.pan_verification.name_match_score"],
+          ["Pan status", panMatchData.status === "VALID" || panMatchData.status === "valid" || app.identityDetails?.panVerified ? "True" : "False", "identityDetails.panVerified"],
         ];
       }
       return [
-        ["Aadhaar reference", dlAadhaar?.id_number || app.identityDetails?.aadhaar || app.identityDetails?.aadhaarNumber || app.identityDetails?.uid || "Not Available", "identityDetails.aadhaar"],
-        ["Name on Aadhaar", dlAadhaar?.name || app.identityDetails?.name || app.ocrData?.digilocker?.name || "Not Available", "identityDetails.name"],
-        ["Date of birth", dlAadhaar?.dob || app.identityDetails?.dob || app.ocrData?.digilocker?.dob || "Not Available", "identityDetails.dob"],
-        ["Gender", dlAadhaar?.gender || app.identityDetails?.gender || app.ocrData?.digilocker?.gender || "Not Available", "identityDetails.gender"],
-        ["Address", dlAadhaar?.current_address || dlAadhaar?.permanent_address || (typeof app.address === 'object' ? app.address?.permanentAddress || app.address?.currentAddress || app.address?.address || app.identityDetails?.address : app.address || app.identityDetails?.address) || "Not Available"],
+        ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A", "address.line1"],
+        ["Aadhar country", app.address?.country || "India", "address.country"],
+        ["Aadhar dist", app.address?.district || app.address?.city || "N/A", "address.district"],
+        ["Aadhar dob", app.personalDetails?.dob || "N/A", "personalDetails.dob"],
+        ["Aadhar fathername", app.personalDetails?.fatherName || "", "personalDetails.fatherName"],
+        ["Aadhar gender", app.personalDetails?.gender || "N/A", "personalDetails.gender"],
+        ["Aadhar house", app.address?.line1 || "N/A", "address.line1"],
+        ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A", "identityDetails.aadhaarName"],
+        ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A", "identityDetails.aadhaar"],
+        ["Aadhar pincode", app.address?.pincode || "N/A", "address.pincode"],
+        ["Aadhar state", app.address?.state || "N/A", "address.state"]
       ];
     },
     evidence: (app, tab = "aadhaar") => {
@@ -135,6 +150,31 @@ const REVIEW_STEPS = [
         ...getAllPanDocuments(app).filter(doc => doc.label !== "Uploaded PAN Card")
       ].filter(Boolean);
     },
+  },
+  {
+    id: "kra_fetch_new",
+    kycIndex: 5.5,
+    title: "kra_fetch_new",
+    evidenceTitle: "KRA Details",
+    evidenceHint: "Review the KRA fetched information.",
+    fields: (app) => [
+      ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A", "address.line1"],
+      ["Aadhar country", app.address?.country || "India", "address.country"],
+      ["Aadhar dist", app.address?.district || app.address?.city || "N/A", "address.district"],
+      ["Aadhar dob", app.personalDetails?.dob || "N/A", "personalDetails.dob"],
+      ["Aadhar fathername", app.personalDetails?.fatherName || "", "personalDetails.fatherName"],
+      ["Aadhar gender", app.personalDetails?.gender || "N/A", "personalDetails.gender"],
+      ["Aadhar house", app.address?.line1 || "N/A", "address.line1"],
+      ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A", "identityDetails.aadhaarName"],
+      ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A", "identityDetails.aadhaar"],
+      ["Aadhar pincode", app.address?.pincode || "N/A", "address.pincode"],
+      ["Aadhar state", app.address?.state || "N/A", "address.state"],
+      ["Annual income", app.personalDetails?.annualIncome || "N/A", "personalDetails.annualIncome"],
+      ["Locality", app.address?.line2 || app.address?.city || "N/A", "address.line2"],
+      ["Name", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
+      ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A", "identityDetails.pan"]
+    ],
+    evidence: () => [],
   },
   {
     id: "personalDetails",
@@ -152,10 +192,41 @@ const REVIEW_STEPS = [
       ["Education", app.personalDetails?.education, "personalDetails.education"],
       ["Annual income", app.personalDetails?.annualIncome, "personalDetails.annualIncome"],
       ["Trading experience", app.personalDetails?.experience, "personalDetails.experience"],
+      ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
+      ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
+      ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
+      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
+      ["Namematch1", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A", "identityDetails.pan_name"],
+      ["Dobmatch1", app.identityDetails?.dob || app.personalDetails?.dob || "N/A", "identityDetails.dob"],
+      ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
+      ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
+      ["Reject reason personal details", app.personalDetails?.rejectReason || "N/A", "personalDetails.rejectReason"],
+      ["Rejected by personal details", app.personalDetails?.rejectedBy || "N/A", "personalDetails.rejectedBy"],
+      ["Rejected timestamp personal details", app.personalDetails?.rejectedAt ? new Date(app.personalDetails.rejectedAt).toLocaleString() : "N/A", "personalDetails.rejectedAt"],
+      ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
+      ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
+      ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
+      ["Tax payer identification number2", app.personalDetails?.taxPayerId2 || "N/A", "personalDetails.taxPayerId2"],
+      ["Country tax residence3", app.personalDetails?.taxResidenceCountry3 || "N/A", "personalDetails.taxResidenceCountry3"],
+      ["Tax payer identification number3", app.personalDetails?.taxPayerId3 || "N/A", "personalDetails.taxPayerId3"],
+      ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
+      ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
+      ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
+      ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
+      ["State code", app.address?.state || "N/A", "address.state"],
+      ["Clientcode", app.applicationId || "N/A", "applicationId"],
+      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
+      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
+      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
+      ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
+      ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
+      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
-      ["PEP status", app.personalDetails?.politicallyExposed],
-      ["PEP Type", app.personalDetails?.pepType],
-      ["PEP Comment", app.personalDetails?.pepComment],
+      ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
+      ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
+      ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
+      ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
     ],
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
@@ -166,50 +237,50 @@ const REVIEW_STEPS = [
       ].filter(Boolean);
     },
   },
-  {
-    id: "nomineeChoice",
-    kycIndex: 7,
-    title: "Nominee Choice",
-    evidenceTitle: "",
-    evidenceHint: "Confirm whether the applicant added or opted out of nominee registration.",
-    fields: (app) => [
-      ["Nominee preference", app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app)],
-      ["Nominees added", Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees.length : 0],
-    ],
-    evidence: () => [],
-  },
+  // {
+  //   id: "nomineeChoice",
+  //   kycIndex: 7,
+  //   title: "Nominee Choice",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm whether the applicant added or opted out of nominee registration.",
+  //   fields: (app) => [
+  //     ["Nominee preference", app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app)],
+  //     ["Nominees added", Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees.length : 0],
+  //   ],
+  //   evidence: () => [],
+  // },
   {
     id: "nomineeDetails",
     kycIndex: 8,
     title: "Nominee Details",
     evidenceTitle: "Nominee Identity Proof",
-    evidenceHint: "Check nominee name, relation, date of birth, and guardian details if nominee is a minor.",
+    evidenceHint: "Check nominee name, relation, date of birth, guardian details, and allocation.",
     fields: (app) => nomineeFields(app),
     evidence: (app) => nomineeEvidence(app),
   },
-  {
-    id: "nomineeAllocation",
-    kycIndex: 9,
-    title: "Nominee Allocation",
-    evidenceTitle: "",
-    evidenceHint: "Confirm nominee percentages add up correctly.",
-    fields: (app) => {
-      const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
-      const nominees = app.nomineeDetails?.nominees || [];
-      
-      let details = "";
-      if (Array.isArray(percentages) && percentages.length > 0 && Array.isArray(nominees) && nominees.length > 0) {
-        details = nominees.map((nom, i) => `Nominee ${i+1}: ${typeof percentages[i] === 'object' ? (percentages[i].percentage || percentages[i].allocation) : percentages[i]}%`).join(" | ");
-      } else {
-        details = formatList(percentages);
-      }
-      
-      return [
-        ["Allocation details", details],
-      ];
-    },
-    evidence: () => [],
-  },
+  // {
+  //   id: "nomineeAllocation",
+  //   kycIndex: 9,
+  //   title: "Nominee Allocation",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm nominee percentages add up correctly.",
+  //   fields: (app) => {
+  //     const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  //     const nominees = app.nomineeDetails?.nominees || [];
+  //     
+  //     let details = "";
+  //     if (Array.isArray(percentages) && percentages.length > 0 && Array.isArray(nominees) && nominees.length > 0) {
+  //       details = nominees.map((nom, i) => `Nominee ${i+1}: ${typeof percentages[i] === 'object' ? (percentages[i].percentage || percentages[i].allocation) : percentages[i]}%`).join(" | ");
+  //     } else {
+  //       details = formatList(percentages);
+  //     }
+  //     
+  //     return [
+  //       ["Allocation details", details],
+  //     ];
+  //   },
+  //   evidence: () => [],
+  // },
   {
     id: "bankVerification",
     kycIndex: 10,
@@ -217,11 +288,31 @@ const REVIEW_STEPS = [
     evidenceTitle: "Bank Account Proof",
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
-      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName, "bankDetails.beneficiaryName"],
-      ["Account number", app.bankDetails?.accountNumber, "bankDetails.accountNumber"],
-      ["IFSC", app.bankDetails?.ifsc, "bankDetails.ifsc"],
-      ["Bank name", app.bankDetails?.bankName, "bankDetails.bankName"],
-      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus],
+      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.beneficiaryName"],
+      ["Account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
+      ["IFSC", app.bankDetails?.ifsc || "N/A", "bankDetails.ifsc"],
+      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus || (app.bankDetails?.verified ? "Verified" : "Pending"), "bankDetails.status"],
+      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A", "bankDetails.branch"],
+      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A", "bankDetails.micr"],
+      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A", "bankDetails.verifiedAt"],
+      ["Reenter account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
+      ["Micr1", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A", "bankDetails.micr"],
+      // ["Bank add", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
+      // ["Reject reason bank", app.bankDetails?.rejectReason || app.ocrData?.bank?.rejectReason || "N/A"],
+      // ["Rejected by bank", app.bankDetails?.rejectedBy || app.ocrData?.bank?.rejectedBy || "N/A"],
+      // ["Rejected timestamp bank", app.bankDetails?.rejectedAt ? new Date(app.bankDetails.rejectedAt).toLocaleString() : app.ocrData?.bank?.rejectedAt || "N/A"],
+      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A", "bankDetails.address"],
+      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A", "bankDetails.bankName"],
+      ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A", "bankDetails.city"],
+      ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A", "bankDetails.district"],
+      ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A", "bankDetails.pincode"],
+      ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A", "bankDetails.state"],
+      ["Bank attached pan", app.identityDetails?.pan || app.personalDetails?.pan || "N/A", "identityDetails.pan"],
+      ["Bank attached aadhar", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : app.identityDetails?.uid ? `xxxxxxxx${app.identityDetails.uid.slice(-4)}` : "N/A", "identityDetails.aadhaar"],
+      ["Name on pan", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A", "identityDetails.pan_name"],
+      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.beneficiaryName"],
+      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A", "bankDetails.name_match_score"],
+      ["Bank Log", JSON.stringify(app.bankDetails || {}), "bankDetails.rawLog"],
     ],
     evidence: (app) => [firstMedia(app.bankDetails?.proofPreview || app.bankDetails?.proofPath || app.bankDetails?.proof, "Bank Proof")].filter(Boolean),
   },
@@ -232,9 +323,9 @@ const REVIEW_STEPS = [
     evidenceTitle: "Income / Financial Document",
     evidenceHint: "Review the uploaded bank statement, salary slip, ITR, or other financial proof.",
     fields: (app) => [
-      ["Proof type", app.financialProof?.type || app.financialProof?.documentType],
-      ["Annual income", app.personalDetails?.annualIncome || app.financialProof?.annualIncome],
-      ["Trading experience", app.personalDetails?.tradingExperience],
+      ["Proof type", app.financialProof?.type || app.financialProof?.documentType, "financialProof.type"],
+      ["Annual income", app.personalDetails?.annualIncome || app.financialProof?.annualIncome, "personalDetails.annualIncome"],
+      ["Trading experience", app.personalDetails?.tradingExperience, "personalDetails.tradingExperience"],
     ],
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
   },
@@ -245,8 +336,12 @@ const REVIEW_STEPS = [
     evidenceTitle: "Wet Signature",
     evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
     fields: (app) => [
-      ["Signature captured", app.signature ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName],
+      ["Signature captured", app.signature ? "Yes" : "No", "signature.captured"],
+      ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A", "identityDetails.aadhaarName"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A", "identityDetails.panName"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A", "bankDetails.accountHolderName"],
+      ["Name as per kra", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
     ],
     evidence: (app) => {
       const panDocs = getAllPanDocuments(app);
@@ -268,8 +363,8 @@ const REVIEW_STEPS = [
     evidenceTitle: "PAN Card Image",
     evidenceHint: "Compare the PAN image against the PAN details verified earlier.",
     fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
-      ["Name", app.personalDetails?.fullName],
+      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
+      ["Name", app.personalDetails?.fullName, "personalDetails.fullName"],
     ],
     evidence: (app) => getAllPanDocuments(app),
   },
@@ -280,9 +375,12 @@ const REVIEW_STEPS = [
     evidenceTitle: "Live Selfie",
     evidenceHint: "Compare live selfie with Aadhaar/PAN photo and face match score.",
     fields: (app) => [
-      ["Face match score", app.faceMatchScore !== null && app.faceMatchScore !== undefined ? `${app.faceMatchScore}%` : ""],
-      ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName],
+      ["Face match score", app.faceMatchScore !== null && app.faceMatchScore !== undefined ? `${app.faceMatchScore}%` : "", "faceMatchScore"],
+      ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No", "selfieDetails.captured"],
+      ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
+      ["Latitude", app.selfieDetails?.latitude || "N/A", "selfieDetails.latitude"],
+      ["Location", app.selfieDetails?.location || "N/A", "selfieDetails.location"],
+      ["Longitude", app.selfieDetails?.longitude || "N/A", "selfieDetails.longitude"],
     ],
     evidence: (app) => [
       firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
@@ -303,6 +401,22 @@ const REVIEW_STEPS = [
     ],
     evidence: (app) => [firstMedia(app.user?.eStampAssigned?.fileUrl, "Assigned E-Stamp")].filter(Boolean),
   },
+  {
+    id: "esignPreview",
+    kycIndex: 16,
+    title: "eSign",
+    evidenceTitle: "eSigned Document",
+    evidenceHint: "Review the e-signed application.",
+    fields: (app) => [
+      ["Email", app.personalDetails?.email || app.user?.email || "N/A", "personalDetails.email"],
+      ["Mobile", app.user?.phone || "N/A", "user.phone"],
+      ["Name", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
+      ["Ip", app.esignDetails?.ip || "N/A", "esignDetails.ip"],
+      ["Lat", app.esignDetails?.lat || "N/A", "esignDetails.lat"],
+      ["Lng", app.esignDetails?.lng || "N/A", "esignDetails.lng"],
+    ],
+    evidence: () => [],
+  }
 ];
 
 function PdfThumbnail({ src }) {
@@ -527,14 +641,32 @@ function nomineeSummary(app) {
 }
 
 function nomineeFields(app) {
+  const preference = app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app);
   const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
-  if (!nominees.length) return [["Nominee details", "No nominee details submitted"]];
-  return nominees.flatMap((nominee, index) => [
-    [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
-    [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
-    [`Nominee ${index + 1} DOB`, nominee.dob],
-    [`Nominee ${index + 1} guardian`, nominee.guardianName],
-  ]);
+  const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  
+  const baseFields = [
+    ["Nominee preference", preference],
+    ["Nominees added", nominees.length],
+  ];
+
+  if (!nominees.length) return [...baseFields, ["Nominee details", "No nominee details submitted"]];
+  
+  const detailedFields = nominees.flatMap((nominee, index) => {
+    let allocation = "N/A";
+    if (Array.isArray(percentages) && percentages[index] !== undefined) {
+      allocation = typeof percentages[index] === 'object' ? (percentages[index].percentage || percentages[index].allocation) : percentages[index];
+    }
+    return [
+      [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
+      [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
+      [`Nominee ${index + 1} DOB`, nominee.dob],
+      [`Nominee ${index + 1} guardian`, nominee.guardianName],
+      [`Nominee ${index + 1} allocation`, `${allocation}%`],
+    ];
+  });
+  
+  return [...baseFields, ...detailedFields];
 }
 
 function nomineeEvidence(app) {
@@ -1442,16 +1574,14 @@ export default function AgentReview() {
         minHeight: "100%",
         flexShrink: 0
       }}>
-      <div style={{ zoom: 0.8, height: "125vh", flexShrink: 0 }}>
         <AdminSidebar 
           active="maker_checker" 
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
-      </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", background: "var(--bg-secondary)", overflow: "hidden", fontFamily: "'Inter', sans-serif" }}>
       {/* Top Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 20px", background: "var(--bg-primary)", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 24px", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", borderTopColor: "rgba(255,255,255,0.4)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--wise-green)", color: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: "0.9rem" }}>
             {getInitials(getApplicantName(app))}
@@ -1486,12 +1616,13 @@ export default function AgentReview() {
              <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>{formatDateToYMDHMS(app.submittedAt || app.createdAt)}</span>
              <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>Date of KYC</span>
           </div>
-          <button onClick={handleGlobalApprove} disabled={submitting} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", fontWeight: 600, fontSize: "0.8rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
-            <CheckCircle2 size={14} /> Approve KYC
+          <button onClick={handleGlobalApprove} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.4)", transition: "all 0.2s" }}>
+            <CheckCircle2 size={16} /> Approve KYC
           </button>
-          <button onClick={handleSendRejectionMail} disabled={submitting} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", color: "#ef4444", fontWeight: 600, fontSize: "0.8rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
-            <Mail size={14} /> Send Rejection Mail
+          <button onClick={handleSendRejectionMail} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.4)", transition: "all 0.2s" }}>
+            <Mail size={16} /> Send Rejection Mail
           </button>
+          <AdminThemeToggle />
           <button onClick={() => router.push("/admin/maker-checker")} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <ArrowLeft size={14} /> Back
           </button>
@@ -1502,12 +1633,12 @@ export default function AgentReview() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         
         {/* Left Column: Modules */}
-        <div style={{ width: "20%", background: "var(--bg-primary)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "12px 16px", background: "linear-gradient(to bottom, var(--bg-primary), var(--bg-secondary))", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-            <LayoutTemplate size={16} color="var(--text-primary)" />
-            <span style={{ fontWeight: 800, fontSize: "0.8rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Modules</span>
+        <div style={{ width: "22%", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column", boxShadow: "var(--card-shadow)" }}>
+          <div style={{ padding: "16px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+            <LayoutTemplate size={18} color="var(--text-primary)" />
+            <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Modules</span>
           </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div className="premium-sidebar-list" style={{ flex: 1, overflowY: "auto" }}>
             {unlockedSteps.map((step) => {
               const isExpanded = expandedModule === step.id;
               const activeTab = step.tabs ? step.tabs[0].id : null;
@@ -1517,20 +1648,12 @@ export default function AgentReview() {
               const displayAsRejected = isRejected && !app.isResubmitted;
 
               return (
-                <div key={step.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
+                <div key={step.id} className={`premium-sidebar-module ${isExpanded ? 'active' : ''}`}>
                   <div 
                     onClick={() => handleModuleClick(step)}
-                    style={{ 
-                      padding: "8px 16px", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "space-between", 
-                      cursor: "pointer", 
-                      background: isExpanded ? "var(--bg-secondary)" : "var(--bg-primary)",
-                      transition: "background 0.2s"
-                    }}
+                    className="premium-sidebar-module-header"
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : isModified ? "#ca8a04" : "var(--text-primary)", fontWeight: 500, fontSize: "0.8rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : isModified ? "#ca8a04" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
                       {step.title}
                       {displayAsRejected && (
                         <span 
@@ -1581,7 +1704,16 @@ export default function AgentReview() {
                   </div>
                   
                   {isExpanded && (
-                    <div style={{ padding: "10px 16px", background: "var(--bg-secondary)" }}>
+                    <div style={{ 
+                      padding: "20px 16px 20px 24px", 
+                      background: "var(--bg-primary)", 
+                      boxShadow: "inset 0 8px 16px rgba(0,0,0,0.03)", 
+                      borderTop: "1px solid var(--border-color)",
+                      borderLeft: "3px solid var(--text-primary)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "16px"
+                    }}>
                       {(step.tabs || [{ id: null, label: null }]).map((tab, tabIndex) => {
                         const tabFields = step.fields(app, tab.id).filter(([, value]) => value !== undefined && value !== null && value !== "");
                         if (tabFields.length === 0) {
@@ -1599,9 +1731,13 @@ export default function AgentReview() {
                               {tabFields.map(([label, value, jsonPath]) => {
                                 const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
                                 return (
-                                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                  <div key={label} style={{ 
+                                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
+                                    padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
+                                    border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                                  }}>
                                     <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>{label}</div>
+                                      <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                                       {editingField === jsonPath && jsonPath ? (
                                         <input 
                                           autoFocus
@@ -1637,7 +1773,7 @@ export default function AgentReview() {
                                           }}
                                         />
                                       ) : (
-                                        <div style={{ fontSize: "0.8rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 500, minHeight: 18 }}>
+                                        <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4 }}>
                                           {label === "Segments" && typeof currentValue === "string" 
                                             ? currentValue.split(",").join(", ") 
                                             : (currentValue !== undefined && currentValue !== null ? String(currentValue) : "")
@@ -1664,12 +1800,12 @@ export default function AgentReview() {
         </div>
 
         {/* Middle Column: Documents */}
-        <div style={{ width: "20%", background: "var(--bg-primary)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "12px 16px", background: "linear-gradient(to bottom, var(--bg-primary), var(--bg-secondary))", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-            <FileText size={16} color="var(--text-primary)" />
-            <span style={{ fontWeight: 800, fontSize: "0.8rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Documents</span>
+        <div style={{ width: "22%", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column", boxShadow: "var(--card-shadow)" }}>
+          <div style={{ padding: "16px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+            <FileText size={18} color="var(--text-primary)" />
+            <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Documents</span>
           </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div className="premium-sidebar-list" style={{ flex: 1, overflowY: "auto" }}>
             {allDocuments.length === 0 ? (
               <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: "0.9rem" }}>No documents available.</div>
             ) : (
@@ -1679,17 +1815,8 @@ export default function AgentReview() {
                   <div 
                     key={idx}
                     onClick={() => handleDocumentClick(doc)}
-                    style={{ 
-                      padding: "8px 16px", 
-                      borderBottom: "1px solid var(--border-color)", 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "space-between",
-                      cursor: "pointer",
-                      background: isSelected ? "var(--bg-secondary)" : "var(--bg-primary)",
-                      color: isSelected ? "#16a34a" : "var(--text-primary)",
-                      transition: "background 0.2s"
-                    }}
+                    className={`premium-sidebar-item ${isSelected ? 'active' : ''}`}
+                    style={{ color: isSelected ? "var(--wise-green)" : "var(--text-primary)" }}
                   >
                     <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{doc.label || "Document"}</span>
                     <Paperclip size={14} color={isSelected ? "#16a34a" : "var(--text-muted)"} />
@@ -1702,12 +1829,12 @@ export default function AgentReview() {
 
         {/* Right Column: Preview */}
         <div style={{ flex: 1, background: "var(--bg-primary)", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "10px 16px", background: "linear-gradient(to bottom, var(--bg-primary), var(--bg-secondary))", borderBottom: "1px solid var(--border-color)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ padding: "12px 24px", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", borderTopColor: "rgba(255,255,255,0.4)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Maximize2 size={16} color="var(--text-primary)" />
-              <span style={{ fontWeight: 800, fontSize: "0.8rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Preview</span>
+              <Maximize2 size={18} color="var(--text-primary)" />
+              <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Preview</span>
             </div>
-            <button style={{ padding: "6px 14px", background: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <button style={{ padding: "8px 16px", background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 8, fontSize: "0.75rem", fontWeight: 800, cursor: "pointer", boxShadow: "var(--card-shadow)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               Auto Match
             </button>
           </div>
@@ -1718,7 +1845,7 @@ export default function AgentReview() {
               position: "relative", 
               display: "flex", 
               flexDirection: "column", 
-              background: "#f3f4f6", 
+              background: "var(--bg-secondary)", 
               overflow: "hidden",
               cursor: isDragging ? "grabbing" : "grab",
               userSelect: "none"
@@ -1826,8 +1953,8 @@ export default function AgentReview() {
           </div>
 
           {/* Bottom Actions */}
-          <div style={{ padding: "10px 20px", background: "var(--bg-primary)", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ padding: "12px 24px", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--card-shadow)" }}>
+            <div style={{ display: "flex", gap: 12 }}>
                <button onClick={() => {
                   const docMapping = {
                     "Uploaded PAN Card": "panUpload",
@@ -1844,19 +1971,19 @@ export default function AgentReview() {
                   };
                   const finalId = selectedDocument.stepKey || docMapping[selectedDocument.label] || selectedDocument.label;
                   setRejectStepModal({ id: finalId, title: selectedDocument.label });
-               }} disabled={submitting || !selectedDocument} style={{ padding: "6px 12px", fontSize: "0.8rem", color: "#ef4444", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, fontWeight: 600, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.6 : 1 }}>
+               }} disabled={submitting || !selectedDocument} style={{ padding: "8px 16px", fontSize: "0.85rem", color: "#ffffff", background: "#ef4444", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.5 : 1, boxShadow: (!submitting && selectedDocument) ? "0 0 16px rgba(239, 68, 68, 0.4)" : "none", transition: "all 0.2s" }}>
                   Reject
                </button>
                <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleUploadFile} accept="image/*,application/pdf" />
-               <button onClick={() => fileInputRef.current?.click()} disabled={submitting || !selectedDocument} style={{ padding: "6px 12px", fontSize: "0.8rem", color: "#16a34a", background: "var(--bg-secondary)", border: "1px solid #bbf7d0", borderRadius: 6, fontWeight: 600, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.6 : 1 }}>
+               <button onClick={() => fileInputRef.current?.click()} disabled={submitting || !selectedDocument} style={{ padding: "8px 16px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.5 : 1, boxShadow: (!submitting && selectedDocument) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
                   Upload File
                </button>
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
-               <button onClick={() => handleSaveDetails(false)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "6px 16px", fontSize: "0.8rem", color: "var(--text-primary)", background: "#f3f4f6", border: "1px solid var(--border-color)", borderRadius: 6, fontWeight: 600, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", opacity: submitting || Object.keys(editValues).length === 0 ? 0.6 : 1 }}>
+            <div style={{ display: "flex", gap: 12 }}>
+               <button onClick={() => handleSaveDetails(false)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", borderRadius: 8, fontWeight: 700, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", opacity: submitting || Object.keys(editValues).length === 0 ? 0.5 : 1, transition: "all 0.2s" }}>
                   Save
                </button>
-               <button onClick={() => handleSaveDetails(true)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "6px 16px", fontSize: "0.8rem", color: "var(--bg-primary)", background: "#16a34a", border: "none", borderRadius: 6, fontWeight: 600, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", opacity: submitting || Object.keys(editValues).length === 0 ? 0.6 : 1 }}>
+               <button onClick={() => handleSaveDetails(true)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", opacity: submitting || Object.keys(editValues).length === 0 ? 0.5 : 1, boxShadow: (!submitting && Object.keys(editValues).length > 0) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
                   Save & Generate PDF
                </button>
             </div>

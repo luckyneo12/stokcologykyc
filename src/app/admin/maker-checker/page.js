@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
 import AdminSidebar from "../components/AdminSidebar";
+import AdminThemeToggle from "../components/AdminThemeToggle";
+import { useDragScroll } from "@/utils/useDragScroll";
 import "@/app/admin/admin.css";
 
 const STEP_LABELS = {
@@ -49,9 +51,59 @@ export default function MakerCheckerDashboard() {
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
 
-  const ALL_COLUMNS = ["Actions", "KYC ID", "Client Code", "Number", "Name", "Email", "PAN", "Step", "Status", "Globe Status", "E-Stamp", "Date"];
-  const [visibleColumns, setVisibleColumns] = useState(["Actions", "KYC ID", "Client Code", "Number", "Name", "Step", "Status", "E-Stamp", "Date"]);
+  const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code"];
+  const PERMANENT_WIDTHS = {
+    "S.No.": 60,
+    "Actions": 80,
+    "Name": 180,
+    "Client Code": 120
+  };
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Step", "Status", "Globe Status", "E-Stamp", "Date"];
+  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Status", "E-Stamp", "Date"]);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [columnsLoaded, setColumnsLoaded] = useState(false);
+
+  const scrollRef = useDragScroll();
+
+  const getStickyStyle = (colName, isHeader = false) => {
+    if (!PERMANENT_COLUMNS.includes(colName)) return {};
+    let left = 0;
+    for (const c of PERMANENT_COLUMNS) {
+      if (c === colName) break;
+      left += PERMANENT_WIDTHS[c];
+    }
+    return {
+      position: "sticky",
+      left,
+      zIndex: isHeader ? 11 : 10,
+      minWidth: PERMANENT_WIDTHS[colName],
+      maxWidth: PERMANENT_WIDTHS[colName],
+      width: PERMANENT_WIDTHS[colName],
+      backgroundColor: "var(--bg-sticky)",
+      boxShadow: "none",
+    };
+  };
+
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("makerCheckerVisibleColumns");
+      if (saved) {
+        try {
+          setVisibleColumns(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to parse visible columns", e);
+        }
+      }
+    }
+    setColumnsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (columnsLoaded && typeof window !== "undefined") {
+      localStorage.setItem("makerCheckerVisibleColumns", JSON.stringify(visibleColumns));
+    }
+  }, [visibleColumns, columnsLoaded]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -228,7 +280,7 @@ export default function MakerCheckerDashboard() {
             dbId: app.id,
             clientCode: app.clientCode,
             number: app.user?.phone || "N/A",
-            email: app.user?.email || "N/A",
+            email: app.user?.email || parsedPersonal.email || "N/A",
             name: parsedPersonal.fullName || parsedPersonal.name || "N/A",
             pan: parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || "N/A",
             eStamp: app.user?.eStampAssigned?.serialNo || app.user?.eStamp || "N/A",
@@ -269,7 +321,7 @@ export default function MakerCheckerDashboard() {
   }, [filter, search, page, loadingAuth, isAuthenticated, adminUser]);
   const exportToCSV = () => {
     if (!kycs || kycs.length === 0) return;
-    const headers = ALL_COLUMNS.filter(c => c !== "Actions");
+    const headers = ALL_COLUMNS.filter(c => c !== "Actions" && c !== "S.No.");
     const rows = kycs.map(k => headers.map(col => {
       if (col === "KYC ID") return k.id;
       if (col === "Number") return k.number;
@@ -311,13 +363,11 @@ export default function MakerCheckerDashboard() {
         width: "100%",
         height: "100%"
       }}>
-      <div style={{ zoom: 0.8, height: "125vh", flexShrink: 0 }}>
         <AdminSidebar 
           active="maker_checker" 
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
-      </div>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflowY: "auto" }}>
           {/* Top Header */}
@@ -327,6 +377,7 @@ export default function MakerCheckerDashboard() {
             </div>
             
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <AdminThemeToggle />
               <div style={{ display: "flex", alignItems: "center", gap: 12, borderLeft: "1px solid var(--border-color)", paddingLeft: 20 }}>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>Super Admin</div>
@@ -369,12 +420,18 @@ export default function MakerCheckerDashboard() {
                     <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 200, padding: "8px 0" }}>
                       <div style={{ padding: "4px 16px", fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", borderBottom: "1px solid var(--border-color)", paddingBottom: 8, marginBottom: 4 }}>Toggle Columns</div>
                       {ALL_COLUMNS.map(col => (
-                        <label key={col} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", cursor: "pointer", fontSize: "0.85rem", color: "var(--text-primary)" }}>
+                        <label key={col} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", cursor: PERMANENT_COLUMNS.includes(col) ? "not-allowed" : "pointer", fontSize: "0.85rem", color: "var(--text-primary)", opacity: PERMANENT_COLUMNS.includes(col) ? 0.6 : 1 }}>
                           <input 
                             type="checkbox" 
-                            checked={visibleColumns.includes(col)}
+                            checked={visibleColumns.includes(col) || PERMANENT_COLUMNS.includes(col)}
+                            disabled={PERMANENT_COLUMNS.includes(col)}
                             onChange={() => {
-                              setVisibleColumns(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
+                              if (PERMANENT_COLUMNS.includes(col)) return;
+                              setVisibleColumns(prev => {
+                                const next = prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col];
+                                localStorage.setItem("makerCheckerVisibleColumns", JSON.stringify(next));
+                                return next;
+                              });
                             }}
                           />
                           {col}
@@ -408,10 +465,10 @@ export default function MakerCheckerDashboard() {
 
               {/* Table */}
               <div className="admin-table-container">
-                <div style={{ overflowX: "auto" }}>
+                <div ref={scrollRef} style={{ overflowX: "auto" }}>
                   <table className="admin-table">
                     <thead><tr>
-                      {ALL_COLUMNS.filter(h => visibleColumns.includes(h)).map(h => <th key={h}>{h}</th>)}
+                      {ALL_COLUMNS.filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h)).map(h => <th key={h} style={getStickyStyle(h, true)}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {kycs.length === 0 ? (
@@ -420,9 +477,14 @@ export default function MakerCheckerDashboard() {
                             {loading ? "Loading..." : "No matching KYC requests found."}
                           </td>
                         </tr>
-                      ) : kycs.map((k) => (
-                        <tr key={k.id}>
-                          {visibleColumns.includes("Actions") && (<td>
+                      ) : kycs.map((k, index) => (
+                        <tr key={k.id} onClick={() => router.push(`/admin/maker-checker/${k.id}`)} style={{ cursor: "pointer" }}>
+                          {visibleColumns.includes("S.No.") && (
+                            <td style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text-muted)", ...getStickyStyle("S.No.") }}>
+                              {(page - 1) * 15 + index + 1}
+                            </td>
+                          )}
+                          {visibleColumns.includes("Actions") && (<td style={{ ...getStickyStyle("Actions"), zIndex: openMenuId === k.id ? 20 : 2 }}>
                             <div className="action-menu-container" style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
                               <button 
                                 onClick={(e) => {
@@ -435,22 +497,22 @@ export default function MakerCheckerDashboard() {
                               </button>
                               
                               {openMenuId === k.id && (
-                                <div style={{ position: "absolute", left: 0, top: "100%", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 160, display: "flex", flexDirection: "column", padding: "4px 0" }}>
-                                  <button onClick={() => { setOpenMenuId(null); router.push(`/admin/maker-checker/${k.id}`); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Verify</button>
-                                  <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Continue Journey</button>
-                                  <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", color: "#e5484d", borderBottom: "1px solid var(--border-color)" }}>Delete</button>
-                                  <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: k.status === "verified" ? "1px solid var(--border-color)" : "none" }}>Change Status</button>
+                                <div className="premium-action-menu" style={{ right: colName === "Actions" ? 'auto' : 30, left: colName === "Actions" ? 0 : 'auto', top: "100%" }}>
+                                  <button onClick={() => { setOpenMenuId(null); router.push(`/admin/maker-checker/${k.id}`); }} className="premium-action-item">Verify</button>
+                                  <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} className="premium-action-item">Continue Journey</button>
+                                  <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} className="premium-action-item danger">Delete</button>
+                                  <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} className="premium-action-item">Change Status</button>
                                   {k.status === "verified" && (
-                                    <button onClick={() => { setOpenMenuId(null); sendToBackoffice(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", color: "var(--wise-green)", fontWeight: 800 }}>Send to Backoffice</button>
+                                    <button onClick={() => { setOpenMenuId(null); sendToBackoffice(k.id); }} className="premium-action-item success">Send to Backoffice</button>
                                   )}
                                 </div>
                               )}
                             </div>
                           </td>)}
+                          {visibleColumns.includes("Name") && <td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", ...getStickyStyle("Name") }}>{k.name}</td>}
+                          {visibleColumns.includes("Client Code") && <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)", ...getStickyStyle("Client Code") }}>{k.clientCode || "N/A"}</td>}
                           {visibleColumns.includes("KYC ID") && <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>}
-                          {visibleColumns.includes("Client Code") && <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)" }}>{k.clientCode || "N/A"}</td>}
                           {visibleColumns.includes("Number") && <td style={{ fontWeight: 600 }}>{k.number}</td>}
-                          {visibleColumns.includes("Name") && <td style={{ fontWeight: 600 }}>{k.name}</td>}
                           {visibleColumns.includes("Email") && <td style={{ fontSize: "0.82rem", color: "var(--text-primary)" }}>{k.email}</td>}
                           {visibleColumns.includes("PAN") && <td style={{ fontWeight: 600 }}>{k.pan}</td>}
                           {visibleColumns.includes("Step") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
@@ -461,6 +523,7 @@ export default function MakerCheckerDashboard() {
                               <select 
                                 className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
                                 value={k.status === 'under_review' ? 'pending' : k.status}
+                                onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => {
                                   updateStatus(k.id, e.target.value);
                                   // Optimistically update the UI
@@ -539,10 +602,12 @@ export default function MakerCheckerDashboard() {
                               <span style={{ fontSize: "0.6rem", color: "var(--wise-green)", fontWeight: 800 }}>CHANGED</span>
                             )}
                           </div>
-                          <div style={{ fontSize: "1.1rem", fontWeight: 900, color: "var(--wise-green)", marginTop: 4 }}>{STEP_LABELS[currentAppStep] || `Step ${currentAppStep}`}</div>
+                          <div style={{ fontSize: "1.2rem", fontWeight: 900, color: "var(--wise-green)", marginTop: 8, marginBottom: 4, lineHeight: "1.4", paddingBottom: "2px" }}>
+                            {STEP_LABELS[currentAppStep] || `Step ${currentAppStep}`}
+                          </div>
                           <select 
                             className="admin-select" 
-                            style={{ width: "100%", marginTop: 12, height: 40, fontSize: "0.85rem" }}
+                            style={{ width: "100%", marginTop: 12, height: "44px", fontSize: "0.95rem", padding: "8px 12px", borderRadius: "8px" }}
                             value={pendingStep !== null ? pendingStep : currentAppStep}
                             onChange={e => setPendingStep(parseInt(e.target.value))}
                           >
@@ -555,7 +620,7 @@ export default function MakerCheckerDashboard() {
                                 setChangeStatusAppId(null);
                                 setPendingStep(null);
                               }}
-                              style={{ width: "100%", marginTop: 12, padding: 10, borderRadius: 8, background: "var(--wise-green)", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.85rem", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)" }}
+                              style={{ width: "100%", marginTop: 16, padding: "12px", borderRadius: 8, background: "var(--wise-green)", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.95rem", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)", transition: "all 0.2s ease" }}
                             >
                               Save Step Change
                             </button>

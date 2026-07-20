@@ -6,42 +6,12 @@ import AdminSidebar from "./components/AdminSidebar";
 import DashboardOverview from "./components/sections/DashboardOverview";
 import KYCRequests from "./components/sections/KYCRequests";
 import EStamps from "./components/sections/EStamps";
+import AdminThemeToggle from "./components/AdminThemeToggle";
 import { 
   AuditLogs
 } from "./components/sections/OtherSections";
 import PdfBuilder from "./components/sections/PdfBuilder";
 
-// Self-contained Theme Toggle for Admin
-function AdminThemeToggle() {
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    const isDark = localStorage.getItem("adminTheme") === "dark" || document.documentElement.getAttribute("data-theme") === "dark";
-    setDark(isDark);
-    if (isDark) document.documentElement.setAttribute("data-theme", "dark");
-  }, []);
-
-  const toggle = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
-    localStorage.setItem("adminTheme", next ? "dark" : "light");
-  };
-  return (
-    <button onClick={toggle} title="Toggle theme" style={{
-      width: 40, height: 40, borderRadius: "12px",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      border: "1px solid var(--border-color)", background: "var(--bg-primary)",
-      cursor: "pointer", transition: "all 0.2s ease"
-    }}>
-      {dark ? (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      ) : (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      )}
-    </button>
-  );
-}
 
 export default function AdminPage() {
   const [activeSection, setActiveSection] = useState("overview");
@@ -114,15 +84,9 @@ export default function AdminPage() {
       width: "100vw",
       height: "100vh",
       overflow: "hidden",
-      background: "var(--bg-secondary)"
+      background: "var(--bg-secondary)",
+      display: "flex"
     }}>
-      <div style={{ 
-        display: "flex", 
-        width: "125%",
-        height: "125%",
-        transform: "scale(0.8)",
-        transformOrigin: "top left"
-      }}>
       {/* Sidebar Navigation */}
       <AdminSidebar 
         active={activeSection} 
@@ -139,12 +103,22 @@ export default function AdminPage() {
       {/* Main Content Area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflowY: "auto" }}>
         {/* Top Header */}
-        <header className="admin-header">
-          <div style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "0.9rem" }}>
+        <header className="admin-header" style={{ 
+          padding: "24px 40px", 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center",
+          borderBottom: "1px solid var(--border-color)",
+          background: "var(--bg-primary)",
+          position: "sticky",
+          top: 0,
+          zIndex: 20
+        }}>
+          <div style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "0.95rem" }}>
             Admin / <span style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>{activeSection.replace("_", " ")}</span>
           </div>
           
-          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
             {/* Search Placeholder */}
             <div style={{ position: "relative" }}>
               <svg style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", zIndex: 10 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -187,14 +161,15 @@ export default function AdminPage() {
             
             <AdminThemeToggle />
             
-            <div style={{ display: "flex", alignItems: "center", gap: 12, borderLeft: "1px solid var(--border-color)", paddingLeft: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, borderLeft: "1px solid var(--border-color)", paddingLeft: 20, cursor: "pointer", transition: "opacity 0.2s" }} onMouseOver={e => e.currentTarget.style.opacity="0.8"} onMouseOut={e => e.currentTarget.style.opacity="1"}>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>Super Admin</div>
                 <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Role: Master Control</div>
               </div>
-              <div style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-dark-green)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <div style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green-alpha)", border: "1px solid var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
           </div>
         </header>
@@ -203,7 +178,6 @@ export default function AdminPage() {
         <main style={{ padding: "24px", flex: 1, width: "100%" }}>
           {renderSection()}
         </main>
-        </div>
       </div>
     </div>
   );

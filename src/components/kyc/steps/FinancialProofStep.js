@@ -9,6 +9,10 @@ export default function FinancialProofStep() {
   const [type, setType] = useState(financialProof?.type || "");
   const [filePreview, setFilePreview] = useState(financialProof?.filePreview || null);
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [pendingEncryptedFile, setPendingEncryptedFile] = useState(null);
+  const [pdfPassword, setPdfPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   // Sync with context if it updates (e.g. after server sync)
   useEffect(() => {
@@ -18,7 +22,7 @@ export default function FinancialProofStep() {
 
   const fileInputRef = useRef(null);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
@@ -33,12 +37,64 @@ export default function FinancialProofStep() {
       return; 
     }
     
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setFilePreview(event.target.result);
-      addToast("Document attached successfully", "success");
-    };
-    reader.readAsDataURL(file);
+    if (file.type === 'application/pdf') {
+      const arrayBuffer = await file.arrayBuffer();
+      try {
+        const { PDFDocument } = await import('pdf-lib');
+        await PDFDocument.load(arrayBuffer);
+        // If successful, not encrypted. Convert to DataURL and store.
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setFilePreview(event.target.result);
+          addToast("Document attached successfully", "success");
+        };
+        reader.readAsDataURL(file);
+      } catch (error) {
+        if (error.name === 'EncryptedPDFError' || (error.message && error.message.toLowerCase().includes('encrypted'))) {
+          setPendingEncryptedFile({ file, arrayBuffer });
+          setShowPasswordModal(true);
+        } else {
+          addToast("Error reading PDF. File might be corrupted.", "error");
+        }
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFilePreview(event.target.result);
+        addToast("Document attached successfully", "success");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!pdfPassword) {
+      setPasswordError("Please enter a password");
+      return;
+    }
+    try {
+      setPasswordError("");
+      const { PDFDocument } = await import('pdf-lib');
+      const pdfDoc = await PDFDocument.load(pendingEncryptedFile.arrayBuffer, { password: pdfPassword });
+      
+      // Decryption successful! Save the decrypted PDF.
+      const pdfBytes = await pdfDoc.save();
+      
+      // Convert to base64 data URL
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFilePreview(event.target.result);
+        setShowPasswordModal(false);
+        setPendingEncryptedFile(null);
+        setPdfPassword("");
+        addToast("Document decrypted and attached successfully", "success");
+      };
+      reader.readAsDataURL(blob);
+
+    } catch (error) {
+      setPasswordError("Incorrect password or unable to decrypt");
+    }
   };
 
   const handleSubmit = () => {
@@ -272,6 +328,82 @@ export default function FinancialProofStep() {
         </div>
 
       </div>
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
+          display: "flex", alignItems: "center", justifyContent: "center",
+          paddingBottom: "40px",
+          zIndex: 1000, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)"
+        }}>
+          <div className="animate-slide-up" style={{ 
+            background: "var(--bg-card)", padding: "32px", borderRadius: "24px", 
+            width: "90%", maxWidth: "380px", textAlign: "center",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
+            border: "1px solid var(--border-color)"
+          }}>
+            <h3 style={{ color: "var(--text-primary)", fontSize: "1.5rem", fontWeight: 800, marginBottom: "8px" }}>
+              Password Protected
+            </h3>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "24px", lineHeight: "1.5" }}>
+              This PDF is encrypted. Please enter the password to unlock it.
+            </p>
+            
+            <div style={{ marginBottom: "24px", textAlign: "left" }}>
+              <input 
+                type="password" 
+                value={pdfPassword}
+                onChange={(e) => {
+                  setPdfPassword(e.target.value);
+                  if (passwordError) setPasswordError("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handlePasswordSubmit();
+                }}
+                placeholder="Enter document password"
+                style={{
+                  width: "100%", height: "56px", borderRadius: "16px", padding: "0 16px",
+                  border: "1.5px solid var(--border-color)", background: "var(--input-bg)",
+                  color: "var(--text-primary)", fontSize: "1rem", outline: "none"
+                }}
+              />
+              {passwordError && (
+                <p style={{ color: "var(--wise-danger)", fontSize: "0.85rem", marginTop: "8px", fontWeight: 600 }}>
+                  {passwordError}
+                </p>
+              )}
+            </div>
+            
+            <button 
+              onClick={handlePasswordSubmit}
+              className="btn-primary"
+              style={{ 
+                width: "100%", marginBottom: "12px", height: "56px", borderRadius: "16px",
+                fontWeight: 800, fontSize: "1.1rem", background: "var(--wise-green)", color: "#000", border: "none"
+              }}
+            >
+              Unlock Document
+            </button>
+            
+            <button 
+              onClick={() => {
+                setShowPasswordModal(false);
+                setPendingEncryptedFile(null);
+                setPdfPassword("");
+                setPasswordError("");
+              }} 
+              className="btn-secondary"
+              style={{ 
+                width: "100%", height: "56px", borderRadius: "16px",
+                fontWeight: 700, fontSize: "1rem", border: "1.5px solid var(--border-color)", background: "transparent", color: "var(--text-primary)"
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Skip Confirmation Modal */}
       {showSkipConfirm && (

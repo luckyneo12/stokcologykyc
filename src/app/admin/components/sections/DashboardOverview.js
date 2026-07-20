@@ -35,15 +35,14 @@ const StatCard = ({ label, value, trend, trendValue, icon: Icon, color, onClick 
     e.currentTarget.style.boxShadow = "0 4px 24px rgba(0,0,0,0.02)";
     e.currentTarget.style.borderColor = "var(--border-color)";
   }}>
-    <div style={{ position: "absolute", top: -20, right: -20, width: 100, height: 100, background: `radial-gradient(circle, ${color}15 0%, transparent 70%)`, borderRadius: "50%" }} />
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
       <div style={{ 
-        width: 48, height: 48, borderRadius: 16, 
-        background: `linear-gradient(135deg, ${color}20 0%, ${color}05 100%)`, 
-        border: `1px solid ${color}30`,
-        display: "flex", alignItems: "center", justifyContent: "center", color 
+        width: 44, height: 44, borderRadius: 12, 
+        background: "var(--bg-secondary)", 
+        border: "1px solid var(--border-color)",
+        display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-primary)" 
       }}>
-        <Icon size={24} strokeWidth={2.5} />
+        <Icon size={22} strokeWidth={2} />
       </div>
       {trend && (
         <div style={{ display: "flex", alignItems: "center", gap: 4, background: trend === 'up' ? '#10b98115' : '#ef444415', color: trend === 'up' ? '#10b981' : '#ef4444', padding: "4px 10px", borderRadius: 999, fontSize: "0.75rem", fontWeight: 700 }}>
@@ -101,6 +100,50 @@ export default function DashboardOverview({ onNavigate }) {
     };
     fetchStats();
   }, [chartDays]);
+
+  if (loading) {
+    return (
+      <div className="admin-animate" style={{ paddingBottom: 40 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32 }}>
+          <div>
+            <div className="skeleton" style={{ width: 300, height: 40, marginBottom: 8, borderRadius: 12 }}></div>
+            <div className="skeleton" style={{ width: 200, height: 20, borderRadius: 8 }}></div>
+          </div>
+          <div className="skeleton" style={{ width: 140, height: 40, borderRadius: 999 }}></div>
+        </div>
+
+        {/* Skeleton Top Metric Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 24, marginBottom: 32 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="metric-card" style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div className="skeleton" style={{ width: 48, height: 48, borderRadius: 16 }}></div>
+                <div className="skeleton" style={{ width: 50, height: 20, borderRadius: 999 }}></div>
+              </div>
+              <div className="skeleton" style={{ width: "60%", height: 36, borderRadius: 8 }}></div>
+              <div className="skeleton" style={{ width: "40%", height: 16, borderRadius: 4 }}></div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr", gap: 24, marginBottom: 24 }}>
+          {/* Skeleton Chart */}
+          <div className="card">
+            <div className="skeleton" style={{ width: 200, height: 24, marginBottom: 8, borderRadius: 8 }}></div>
+            <div className="skeleton" style={{ width: 150, height: 16, marginBottom: 30, borderRadius: 4 }}></div>
+            <div className="skeleton" style={{ width: "100%", height: 280, borderRadius: 12 }}></div>
+          </div>
+          {/* Skeleton Pie */}
+          <div className="card">
+            <div className="skeleton" style={{ width: 150, height: 24, marginBottom: 8, borderRadius: 8 }}></div>
+            <div className="skeleton" style={{ width: 180, height: 16, marginBottom: 30, borderRadius: 4 }}></div>
+            <div className="skeleton" style={{ width: "100%", height: 200, borderRadius: "50%", margin: "0 auto 20px", maxWidth: 200 }}></div>
+            <div className="skeleton" style={{ width: "100%", height: 40, borderRadius: 8 }}></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const total = liveStats?.total || 0;
   const verified = liveStats?.verified || 0;

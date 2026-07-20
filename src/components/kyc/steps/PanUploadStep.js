@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { ArrowLeftIcon } from "../Icons";
 import Logo from "../Logo";
+import Tesseract from 'tesseract.js';
 
 const RotateLeftIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -27,12 +28,36 @@ export default function PanUploadStep() {
   }, [panUpload?.filePreview]);
 
   const [isCropping, setIsCropping] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [cropRect, setCropRect] = useState({ top: 10, left: 10, bottom: 90, right: 90 });
   const [dragInfo, setDragInfo] = useState({ isDragging: false, mode: null, startX: 0, startY: 0, startRect: null });
   
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+
+  const autoRotateImage = (dataUrl, angle) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const img = new Image();
+      img.onload = () => {
+        if (angle === 90 || angle === 270) {
+          canvas.width = img.height;
+          canvas.height = img.width;
+        } else {
+          canvas.width = img.width;
+          canvas.height = img.height;
+        }
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        // orientation_degrees is the clockwise rotation of the image. We rotate counter-clockwise to fix.
+        ctx.rotate(((360 - angle) * Math.PI) / 180);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.src = dataUrl;
+    });
+  };
 
   const handlePointerDown = (mode, e) => {
     e.preventDefault();
@@ -115,9 +140,23 @@ export default function PanUploadStep() {
       return; 
     }
     
+    setIsAnalyzing(true);
     const reader = new FileReader();
-    reader.onload = (event) => {
-      setFilePreview(event.target.result);
+    reader.onload = async (event) => {
+      let resultDataUrl = event.target.result;
+      try {
+        const { data } = await Tesseract.recognize(file, 'osd');
+        const degrees = data.orientation_degrees;
+        if (degrees && degrees !== 0 && degrees !== 360) {
+          console.log("Auto-rotating image by", degrees, "degrees");
+          resultDataUrl = await autoRotateImage(resultDataUrl, degrees);
+        }
+      } catch (err) {
+        console.warn("Tesseract OSD failed, skipping auto-rotation:", err);
+      }
+      
+      setFilePreview(resultDataUrl);
+      setIsAnalyzing(false);
       setIsCropping(true);
       setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
     };
@@ -200,7 +239,7 @@ export default function PanUploadStep() {
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
         <h1 className="text-section" style={{ fontSize: "2.8rem", marginBottom: 16 }}>PAN Upload</h1>
         <p className="text-body" style={{ color: "var(--text-secondary)", marginTop: "12px", fontSize: "1rem", lineHeight: 1.5, padding: "0 20px", fontWeight: 500 }}>
-          {isCropping ? "Crop and rotate your PAN image for clarity." : "Please upload your PAN card to continue with your onboarding process."}
+          {isAnalyzing ? "Analyzing image orientation..." : isCropping ? "Crop and rotate your PAN image for clarity." : "Please upload your PAN card to continue with your onboarding process."}
         </p>
       </div>
 
@@ -212,20 +251,21 @@ export default function PanUploadStep() {
             <div style={{ marginBottom: "32px" }}>
               <button 
                 onClick={() => fileInputRef.current.click()}
+                disabled={isAnalyzing}
                 style={{ 
                   width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", 
                   padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem",
-                  cursor: "pointer", border: "1px solid var(--border-color)",
+                  cursor: isAnalyzing ? "wait" : "pointer", border: "1px solid var(--border-color)",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
-                  transition: "all var(--transition-fast)"
+                  transition: "all var(--transition-fast)", opacity: isAnalyzing ? 0.7 : 1
                 }}
-                className="hover-scale"
+                className={isAnalyzing ? "" : "hover-scale"}
               >
                 <span style={{ fontSize: "1.2rem" }}>↑</span> 
-                {filePreview ? "PAN Attached (Click to Replace)" : "Upload PAN *"}
+                {isAnalyzing ? "Analyzing Document..." : filePreview ? "PAN Attached (Click to Replace)" : "Upload PAN *"}
               </button>
 
-              {filePreview && (
+              {filePreview && !isAnalyzing && (
                 <div style={{ marginTop: "20px", textAlign: "center", border: "1.5px dashed var(--border-color)", padding: "12px", borderRadius: "12px", background: "var(--bg-secondary)" }}>
                   <img src={filePreview} alt="PAN Preview" style={{ maxHeight: "180px", maxWidth: "100%", objectFit: "contain", borderRadius: "8px" }} />
                   <p style={{ fontSize: "0.8rem", color: "var(--wise-positive)", marginTop: "10px", fontWeight: 600 }}>✓ Document Attached</p>

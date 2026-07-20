@@ -599,6 +599,28 @@ router.post("/create-request", auth, async (req, res) => {
       ...(data?.aadhaar ? { aadhaar: String(data.aadhaar) } : {}),
     });
 
+    let nextEsignDetails = parseJsonField(application.esignDetails, {});
+    if (type === "ESIGN") {
+      nextEsignDetails = mergeJson(nextEsignDetails, {
+        ip: req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'],
+        lat: data?.lat || nextEsignDetails?.lat,
+        lng: data?.lng || nextEsignDetails?.lng,
+        name: application.personalDetails?.fullName || req.user.name,
+        email: application.personalDetails?.email || req.user.email,
+        phone: application.user?.phone || req.user.phone,
+        status: "requested"
+      });
+    }
+
+    let nextSelfieDetails = parseJsonField(application.selfieDetails, {});
+    if (type === "SELFIE" || type === "LIVENESS") {
+      nextSelfieDetails = mergeJson(nextSelfieDetails, {
+        ip: req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'],
+        lat: data?.lat || nextSelfieDetails?.lat,
+        lng: data?.lng || nextSelfieDetails?.lng,
+      });
+    }
+
     const nextPersonalDetails = mergeJson(application.personalDetails, {
       ...(data?.dob ? { dob: data.dob } : {}),
     });
@@ -622,8 +644,10 @@ router.post("/create-request", auth, async (req, res) => {
         identityDetails: nextIdentityDetails,
         personalDetails: nextPersonalDetails,
         ocrData: nextOcrData,
+        ...(type === "ESIGN" ? { esignDetails: nextEsignDetails } : {}),
+        ...((type === "SELFIE" || type === "LIVENESS") ? { selfieDetails: nextSelfieDetails } : {}),
         ...(type === "ESIGN" && result.pdfBase64 ? { generatedPdfBase64: result.pdfBase64 } : {}),
-      }, ["identityDetails", "personalDetails", "ocrData"]),
+      }, ["identityDetails", "personalDetails", "ocrData", "esignDetails", "selfieDetails"]),
     });
 
     await writeAuditLog({
@@ -968,7 +992,13 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       if (panDetails?.id_number) {
         nextIdentityDetails.pan = extractPanNumber(panDetails.id_number) || String(panDetails.id_number).trim().toUpperCase();
       }
-      if (aadhaarDetails?.name && !extractedName) nextPersonalDetails.fullName = aadhaarDetails.name;
+      if (aadhaarDetails?.name) {
+        nextIdentityDetails.aadhaarName = aadhaarDetails.name;
+        if (!extractedName) nextPersonalDetails.fullName = aadhaarDetails.name;
+      }
+      if (panDetails?.name) {
+        nextIdentityDetails.panName = panDetails.name;
+      }
       if (aadhaarDetails?.dob && !extractedDob) nextPersonalDetails.dob = aadhaarDetails.dob;
       if (aadhaarDetails?.gender && !extractedGender) nextPersonalDetails.gender = aadhaarDetails.gender;
       if (aadhaarDetails?.father_name && !nextPersonalDetails.fatherName) {
@@ -980,7 +1010,11 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
     if (extractedPan && !nextIdentityDetails.pan) nextIdentityDetails.pan = extractedPan;
     if (extractedName) {
       nextPersonalDetails.fullName = extractedName;
-      if (!nextIdentityDetails.pan_name) nextIdentityDetails.pan_name = extractedName;
+      if (payload.type === "PAN_VERIFICATION" || findValue(digioResponse, "pan_no")) {
+        if (!nextIdentityDetails.panName) nextIdentityDetails.panName = extractedName;
+      } else {
+        if (!nextIdentityDetails.aadhaarName) nextIdentityDetails.aadhaarName = extractedName;
+      }
     }
     if (extractedDob) nextPersonalDetails.dob = extractedDob;
     if (extractedGender) nextPersonalDetails.gender = extractedGender;
@@ -1423,17 +1457,35 @@ router.post("/verify-bank", auth, async (req, res) => {
     const result = await bankService.verifyAccount(accountNumber, ifsc, beneficiaryName || application.personalDetails?.fullName);
 
     if (result.verified) {
+      // Fetch branch details using IFSC to populate address/city
+      let branchDetails = {};
+      try {
+        if (ifsc) {
+          const ifscRes = await bankService.verifyIfsc(ifsc);
+          branchDetails = ifscRes?.data || ifscRes?.result || ifscRes?.details || ifscRes || {};
+        }
+      } catch (e) {
+        console.warn("IFSC lookup failed during bank verification:", e.message);
+      }
+
       // Update application state
       const nextBankDetails = mergeJson(application.bankDetails, {
         accountNumber,
         ifsc,
-        bankName: result.bank_name || result.bank || application.bankDetails?.bankName,
-        micr: result.micr || application.bankDetails?.micr,
+        bankName: result.bank_name || result.bank || branchDetails.bank_name || application.bankDetails?.bankName,
+        micr: result.micr || branchDetails.micr || application.bankDetails?.micr,
         accountHolderName: result.beneficiary_name_with_bank || beneficiaryName,
         verified: true,
         verifiedAt: result.verified_at,
         bankRequestId: result.id,
-        method: "PENNY_DROP"
+        method: "PENNY_DROP",
+        name_match_score: result.name_match_score || result.name_match_score_percentage || null,
+        name_match: result.name_match || null,
+        address: branchDetails.address || branchDetails.bank_address || branchDetails.branch || application.bankDetails?.address,
+        city: branchDetails.city || application.bankDetails?.city,
+        state: branchDetails.state || application.bankDetails?.state,
+        district: branchDetails.district || application.bankDetails?.district,
+        pincode: branchDetails.pin || branchDetails.pincode || branchDetails.pin_code || application.bankDetails?.pincode
       });
 
       await prisma.kycApplication.update({

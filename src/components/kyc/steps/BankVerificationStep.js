@@ -18,6 +18,11 @@ export default function BankVerificationStep() {
     upiId: bankDetails.upiId || "",
     micr: bankDetails.micr || "",
     accountType: bankDetails.accountType || "",
+    branch: bankDetails.branch || "",
+    address: bankDetails.address || "",
+    city: bankDetails.city || "",
+    district: bankDetails.district || "",
+    state: bankDetails.state || "",
     confirmAccountNumber: ""
   });
   const [showAccountNumber, setShowAccountNumber] = useState(false);
@@ -50,11 +55,21 @@ export default function BankVerificationStep() {
             
             const micr = bankInfo.micr || bankInfo.MICR || bankInfo.micr_code;
             const bankName = bankInfo.bank || bankInfo.bank_name || bankInfo.name;
+            const branch = bankInfo.branch;
+            const address = bankInfo.address;
+            const city = bankInfo.city;
+            const district = bankInfo.district;
+            const state = bankInfo.state;
             
             setForm(prev => ({
               ...prev,
               ...(micr ? { micr } : {}),
-              ...(bankName ? { bankName } : {})
+              ...(bankName ? { bankName } : {}),
+              ...(branch ? { branch } : {}),
+              ...(address ? { address } : {}),
+              ...(city ? { city } : {}),
+              ...(district ? { district } : {}),
+              ...(state ? { state } : {})
             }));
           }
         } catch (error) {
@@ -77,14 +92,24 @@ export default function BankVerificationStep() {
           bankName: prev.bankName,
           upiId: prev.upiId,
           micr: prev.micr,
-          accountType: prev.accountType
+          accountType: prev.accountType,
+          branch: prev.branch,
+          address: prev.address,
+          city: prev.city,
+          district: prev.district,
+          state: prev.state
         }) !== JSON.stringify({
           accountNumber: bankDetails.accountNumber || prev.accountNumber,
           ifsc: bankDetails.ifsc || prev.ifsc,
           bankName: bankDetails.bankName || prev.bankName,
           upiId: bankDetails.upiId || prev.upiId,
           micr: bankDetails.micr || prev.micr,
-          accountType: bankDetails.accountType || prev.accountType
+          accountType: bankDetails.accountType || prev.accountType,
+          branch: bankDetails.branch || prev.branch,
+          address: bankDetails.address || prev.address,
+          city: bankDetails.city || prev.city,
+          district: bankDetails.district || prev.district,
+          state: bankDetails.state || prev.state
         });
 
         if (isDifferent) {
@@ -95,6 +120,11 @@ export default function BankVerificationStep() {
             upiId: bankDetails.upiId || prev.upiId,
             micr: bankDetails.micr || prev.micr,
             accountType: bankDetails.accountType || prev.accountType,
+            branch: bankDetails.branch || prev.branch,
+            address: bankDetails.address || prev.address,
+            city: bankDetails.city || prev.city,
+            district: bankDetails.district || prev.district,
+            state: bankDetails.state || prev.state,
             confirmAccountNumber: prev.confirmAccountNumber
           };
         }

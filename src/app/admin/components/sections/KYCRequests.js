@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
+import { useDragScroll } from "@/utils/useDragScroll";
 
 const STEP_LABELS = {
   0: "Step 0: Welcome", 
@@ -48,6 +49,8 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
   const [openMenuId, setOpenMenuId] = useState(null);
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
+
+  const scrollRef = useDragScroll();
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -350,7 +353,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
 
       {/* Table */}
       <div className="admin-table-container">
-        <div style={{ overflowX: "auto" }}>
+        <div ref={scrollRef} style={{ overflowX: "auto" }}>
           <table className="admin-table">
             <thead><tr>
               <th><input type="checkbox" onChange={e => setBulk(e.target.checked ? kycs.map(k => k.id) : [])} checked={bulk.length === kycs.length && kycs.length > 0} /></th>
@@ -412,13 +415,13 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                       </button>
                       
                       {openMenuId === k.id && (
-                        <div style={{ position: "absolute", right: 30, top: 0, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 160, display: "flex", flexDirection: "column", padding: "4px 0" }}>
-                          <button onClick={() => { setOpenMenuId(null); router.push(`/admin/application/${k.id}`); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Verify</button>
-                          <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: "1px solid var(--border-color)" }}>Continue Journey</button>
-                          <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", color: "#e5484d", borderBottom: "1px solid var(--border-color)" }}>Delete</button>
-                          <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", borderBottom: k.status === "verified" ? "1px solid var(--border-color)" : "none" }}>Change Status</button>
+                        <div className="premium-action-menu" style={{ right: 30, top: 0 }}>
+                          <button onClick={() => { setOpenMenuId(null); router.push(`/admin/application/${k.id}`); }} className="premium-action-item">Verify</button>
+                          <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} className="premium-action-item">Continue Journey</button>
+                          <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} className="premium-action-item danger">Delete</button>
+                          <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} className="premium-action-item">Change Status</button>
                           {k.status === "verified" && (
-                            <button onClick={() => { setOpenMenuId(null); sendToBackoffice(k.id); }} style={{ padding: "10px 16px", background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: "0.85rem", width: "100%", color: "var(--wise-green)", fontWeight: 800 }}>Send to Backoffice</button>
+                            <button onClick={() => { setOpenMenuId(null); sendToBackoffice(k.id); }} className="premium-action-item success">Send to Backoffice</button>
                           )}
                         </div>
                       )}
@@ -471,10 +474,12 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                       <span style={{ fontSize: "0.6rem", color: "var(--wise-green)", fontWeight: 800 }}>CHANGED</span>
                     )}
                   </div>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 900, color: "var(--wise-green)", marginTop: 4 }}>{STEP_LABELS[currentAppStep] || `Step ${currentAppStep}`}</div>
+                  <div style={{ fontSize: "1.2rem", fontWeight: 900, color: "var(--wise-green)", marginTop: 8, marginBottom: 4, lineHeight: "1.4", paddingBottom: "2px" }}>
+                    {STEP_LABELS[currentAppStep] || `Step ${currentAppStep}`}
+                  </div>
                   <select 
                     className="admin-select" 
-                    style={{ width: "100%", marginTop: 12, height: 40, fontSize: "0.85rem" }}
+                    style={{ width: "100%", marginTop: 12, height: "44px", fontSize: "0.95rem", padding: "8px 12px", borderRadius: "8px" }}
                     value={pendingStep !== null ? pendingStep : currentAppStep}
                     onChange={e => setPendingStep(parseInt(e.target.value))}
                   >
@@ -487,7 +492,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                         setChangeStatusAppId(null);
                         setPendingStep(null);
                       }}
-                      style={{ width: "100%", marginTop: 12, padding: 10, borderRadius: 8, background: "var(--wise-green)", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.85rem", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)" }}
+                      style={{ width: "100%", marginTop: 16, padding: "12px", borderRadius: 8, background: "var(--wise-green)", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.95rem", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)", transition: "all 0.2s ease" }}
                     >
                       Save Step Change
                     </button>

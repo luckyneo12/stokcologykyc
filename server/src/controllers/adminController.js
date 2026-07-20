@@ -99,6 +99,7 @@ const getApplications = async (req, res, next) => {
           currentStep: true,
           updatedAt: true,
           createdAt: true,
+          clientCode: true,
           personalDetails: true, // Needed for name
           identityDetails: true, // Needed for PAN/Aadhaar status
           isResubmitted: true,

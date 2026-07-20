@@ -116,9 +116,24 @@ export default function AadhaarEsignStep() {
     setPhase("processing");
     
     try {
+      // Capture geolocation if possible
+      let coords = { lat: null, lng: null };
+      if ("geolocation" in navigator) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+          });
+          coords.lat = pos.coords.latitude;
+          coords.lng = pos.coords.longitude;
+        } catch(err) {
+          console.warn("Geolocation skipped:", err.message);
+        }
+      }
+
       const { requestId, customerIdentifier, accessToken, applicationId: requestApplicationId } = await createDigioRequest("ESIGN", {
         customerIdentifier: identifier,
-        fullName: personalDetails?.fullName || "KYC Applicant"
+        fullName: personalDetails?.fullName || "KYC Applicant",
+        ...coords
       });
       if (requestApplicationId) setApplicationId(requestApplicationId);
       if (accessToken) {

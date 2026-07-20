@@ -139,19 +139,50 @@ const REVIEW_STEPS = [
     evidenceTitle: "Extracted Documents",
     evidenceHint: "Compare details with the Aadhaar photo, Aadhaar document, and PAN document.",
     fields: (app) => [
-      ["Full name", app.personalDetails?.fullName],
-      ["Father/Spouse name", app.personalDetails?.fatherName || app.personalDetails?.spouseName],
-      ["Mother's name", app.personalDetails?.motherName],
-      ["Date of birth", app.personalDetails?.dob],
-      ["Gender", app.personalDetails?.gender],
-      ["Marital status", app.personalDetails?.maritalStatus],
-      ["Education", app.personalDetails?.education],
-      ["Annual income", app.personalDetails?.annualIncome],
-      ["Trading experience", app.personalDetails?.experience],
-      ["Occupation", app.personalDetails?.occupation],
-      ["PEP status", app.personalDetails?.politicallyExposed],
-      ["PEP Type", app.personalDetails?.pepType],
-      ["PEP Comment", app.personalDetails?.pepComment],
+      ["Full name", app.personalDetails?.fullName, "personalDetails.fullName"],
+      ["Father/Spouse name", app.personalDetails?.fatherName || app.personalDetails?.spouseName, "personalDetails.fatherName"],
+      ["Mother's name", app.personalDetails?.motherName, "personalDetails.motherName"],
+      ["Date of birth", app.personalDetails?.dob, "personalDetails.dob"],
+      ["Gender", app.personalDetails?.gender, "personalDetails.gender"],
+      ["Marital status", app.personalDetails?.maritalStatus, "personalDetails.maritalStatus"],
+      ["Education", app.personalDetails?.education, "personalDetails.education"],
+      ["Annual income", app.personalDetails?.annualIncome, "personalDetails.annualIncome"],
+      ["Trading experience", app.personalDetails?.experience, "personalDetails.experience"],
+      ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
+      ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
+      ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A"],
+      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
+      ["Namematch1", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
+      ["Dobmatch1", app.identityDetails?.dob || app.personalDetails?.dob || "N/A"],
+      ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER"],
+      ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
+      ["Reject reason personal details", app.personalDetails?.rejectReason || "N/A"],
+      ["Rejected by personal details", app.personalDetails?.rejectedBy || "N/A"],
+      ["Rejected timestamp personal details", app.personalDetails?.rejectedAt ? new Date(app.personalDetails.rejectedAt).toLocaleString() : "N/A"],
+      ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
+      ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
+      ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
+      ["Tax payer identification number2", app.personalDetails?.taxPayerId2 || "N/A", "personalDetails.taxPayerId2"],
+      ["Country tax residence3", app.personalDetails?.taxResidenceCountry3 || "N/A", "personalDetails.taxResidenceCountry3"],
+      ["Tax payer identification number3", app.personalDetails?.taxPayerId3 || "N/A", "personalDetails.taxPayerId3"],
+      ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
+      ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
+      ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
+      ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
+      ["State code", app.address?.state || "N/A"],
+      ["Clientcode", app.applicationId || "N/A"],
+      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
+      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
+      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
+      ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
+      ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
+      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
+      ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
+      ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
+      ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
+      ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
+      ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
     ],
     evidence: (app) => [
       findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
@@ -160,39 +191,50 @@ const REVIEW_STEPS = [
       firstMedia(app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof, "PEP Proof"),
     ].filter(Boolean),
   },
-  {
-    id: "nomineeChoice",
-    kycIndex: 7,
-    title: "Nominee Choice",
-    evidenceTitle: "",
-    evidenceHint: "Confirm whether the applicant added or opted out of nominee registration.",
-    fields: (app) => [
-      ["Nominee preference", app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app)],
-      ["Nominees added", Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees.length : 0],
-    ],
-    evidence: () => [],
-  },
+  // {
+  //   id: "nomineeChoice",
+  //   kycIndex: 7,
+  //   title: "Nominee Choice",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm whether the applicant added or opted out of nominee registration.",
+  //   fields: (app) => [
+  //     ["Nominee preference", app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app)],
+  //     ["Nominees added", Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees.length : 0],
+  //   ],
+  //   evidence: () => [],
+  // },
   {
     id: "nomineeDetails",
     kycIndex: 8,
     title: "Nominee Details",
     evidenceTitle: "Nominee Identity Proof",
-    evidenceHint: "Check nominee name, relation, date of birth, and guardian details if nominee is a minor.",
+    evidenceHint: "Check nominee name, relation, date of birth, guardian details, and allocation.",
     fields: (app) => nomineeFields(app),
     evidence: (app) => nomineeEvidence(app),
   },
-  {
-    id: "nomineeAllocation",
-    kycIndex: 9,
-    title: "Nominee Allocation",
-    evidenceTitle: "",
-    evidenceHint: "Confirm nominee percentages add up correctly.",
-    fields: (app) => [
-      ["Allocation total", allocationTotal(app)],
-      ["Allocation details", formatList(app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations)],
-    ],
-    evidence: () => [],
-  },
+  // {
+  //   id: "nomineeAllocation",
+  //   kycIndex: 9,
+  //   title: "Nominee Allocation",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm nominee percentages add up correctly.",
+  //   fields: (app) => {
+  //     const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  //     const nominees = app.nomineeDetails?.nominees || [];
+  //     
+  //     let details = "";
+  //     if (Array.isArray(percentages) && percentages.length > 0 && Array.isArray(nominees) && nominees.length > 0) {
+  //       details = nominees.map((nom, i) => `Nominee ${i+1}: ${typeof percentages[i] === 'object' ? (percentages[i].percentage || percentages[i].allocation) : percentages[i]}%`).join(" | ");
+  //     } else {
+  //       details = formatList(percentages);
+  //     }
+  //     
+  //     return [
+  //       ["Allocation details", details],
+  //     ];
+  //   },
+  //   evidence: () => [],
+  // },
   {
     id: "bankVerification",
     kycIndex: 10,
@@ -204,6 +246,11 @@ const REVIEW_STEPS = [
       ["Account number", app.bankDetails?.accountNumber],
       ["IFSC", app.bankDetails?.ifsc],
       ["Bank name", app.bankDetails?.bankName],
+      ["Branch", app.bankDetails?.branch],
+      ["Address", app.bankDetails?.address],
+      ["City", app.bankDetails?.city],
+      ["District", app.bankDetails?.district],
+      ["State", app.bankDetails?.state],
       ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus],
     ],
     evidence: (app) => [firstMedia(app.bankDetails?.proofPreview || app.bankDetails?.proofPath || app.bankDetails?.proof, "Bank Proof")].filter(Boolean),
@@ -510,14 +557,32 @@ function nomineeSummary(app) {
 }
 
 function nomineeFields(app) {
+  const preference = app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app);
   const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
-  if (!nominees.length) return [["Nominee details", "No nominee details submitted"]];
-  return nominees.flatMap((nominee, index) => [
-    [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
-    [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
-    [`Nominee ${index + 1} DOB`, nominee.dob],
-    [`Nominee ${index + 1} guardian`, nominee.guardianName],
-  ]);
+  const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  
+  const baseFields = [
+    ["Nominee preference", preference],
+    ["Nominees added", nominees.length],
+  ];
+
+  if (!nominees.length) return [...baseFields, ["Nominee details", "No nominee details submitted"]];
+  
+  const detailedFields = nominees.flatMap((nominee, index) => {
+    let allocation = "N/A";
+    if (Array.isArray(percentages) && percentages[index] !== undefined) {
+      allocation = typeof percentages[index] === 'object' ? (percentages[index].percentage || percentages[index].allocation) : percentages[index];
+    }
+    return [
+      [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
+      [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
+      [`Nominee ${index + 1} DOB`, nominee.dob],
+      [`Nominee ${index + 1} guardian`, nominee.guardianName],
+      [`Nominee ${index + 1} allocation`, `${allocation}%`],
+    ];
+  });
+  
+  return [...baseFields, ...detailedFields];
 }
 
 function nomineeEvidence(app) {

@@ -43,32 +43,32 @@ const USER_STEP_LABELS = {
 };
 
 const REVIEW_STEPS = [
-  {
-    id: "phoneVerification",
-    kycIndex: 1,
-    title: "Phone Verification",
-    evidenceTitle: "",
-    evidenceHint: "Confirm the applicant's verified mobile number and reference their photo.",
-    fields: (app) => [
-      ["Mobile number", app.user?.phone, "user.phone"],
-    ],
-    evidence: (app) => {
-      const doc = findDocument(app, ["aadhaar", "digilocker", "photo"], "", ["pan"]);
-      return doc ? [{ ...doc, label: "" }] : [];
-    },
-  },
-  {
-    id: "emailVerification",
-    kycIndex: 2,
-    title: "Email Verification",
-    evidenceTitle: "",
-    evidenceHint: "Confirm the applicant's verified email address.",
-    fields: (app) => [
-      ["Email", app.personalDetails?.email || app.user?.email, "personalDetails.email"],
-      ["Mobile number", app.user?.phone, "user.phone"],
-    ],
-    evidence: () => [],
-  },
+  // {
+  //   id: "phoneVerification",
+  //   kycIndex: 1,
+  //   title: "Phone Verification",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm the applicant's verified mobile number and reference their photo.",
+  //   fields: (app) => [
+  //     ["Mobile number", app.user?.phone, "user.phone"],
+  //   ],
+  //   evidence: (app) => {
+  //     const doc = findDocument(app, ["aadhaar", "digilocker", "photo"], "", ["pan"]);
+  //     return doc ? [{ ...doc, label: "" }] : [];
+  //   },
+  // },
+  // {
+  //   id: "emailVerification",
+  //   kycIndex: 2,
+  //   title: "Email Verification",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm the applicant's verified email address.",
+  //   fields: (app) => [
+  //     ["Email", app.personalDetails?.email || app.user?.email, "personalDetails.email"],
+  //     ["Mobile number", app.user?.phone, "user.phone"],
+  //   ],
+  //   evidence: () => [],
+  // },
   {
     id: "pricingSelection",
     kycIndex: 3,
@@ -88,12 +88,16 @@ const REVIEW_STEPS = [
     title: "PAN Verification",
     evidenceTitle: "PAN Data",
     evidenceHint: "Match PAN number, name, and date of birth with uploaded PAN evidence when available.",
-    fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
-      ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
-      ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
-      ["PAN verified", app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified],
-    ],
+    fields: (app) => {
+      const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
+      return [
+        ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
+        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
+        ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
+        ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
+        ["Name match score", panMatchData.name_match_score ? `${panMatchData.name_match_score}%` : "N/A"],
+      ];
+    },
     evidence: (app) => [firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document")].filter(Boolean),
   },
   {
@@ -110,23 +114,33 @@ const REVIEW_STEPS = [
       const dlAadhaar = app.ocrData?.digio?.DIGILOCKER?.actions?.[0]?.details?.aadhaar;
       const dlPan = app.ocrData?.digio?.DIGILOCKER?.actions?.[0]?.details?.pan;
       const panVerify = app.ocrData?.pan_verification;
+      const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
 
       if (tab === "pan") {
         return [
-          ["PAN number", dlPan?.id_number || app.identityDetails?.pan || app.personalDetails?.pan || "Not Available", "identityDetails.pan"],
-          ["Name on PAN", dlPan?.name || app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName || "Not Available", "identityDetails.pan_name"],
           ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available", "personalDetails.fatherName"],
-          ["Date of birth", dlPan?.dob || app.identityDetails?.dob || app.personalDetails?.dob || "Not Available", "identityDetails.dob"],
-          ["Aadhaar Seeding Status", panVerify?.data?.aadhaar_seeding_status || app.identityDetails?.pan_verification?.aadhaar_seeding_status || "Not Available"],
-          ["PAN verified", panVerify?.status || app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified || "Not Available"],
+          ["Name", app.personalDetails?.fullName || "N/A"],
+          ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
+          ["Dob1", app.personalDetails?.dob || "N/A"],
+          ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y"],
+          ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N"],
+          ["Name status", panMatchData.name_match || panMatchData.name_as_per_pan_match ? "Y" : "N"],
+          ["Name match score", panMatchData.name_match_score ? `${panMatchData.name_match_score}%` : "N/A"],
+          ["Pan status", panMatchData.status === "VALID" || panMatchData.status === "valid" || app.identityDetails?.panVerified ? "True" : "False"],
         ];
       }
       return [
-        ["Aadhaar reference", dlAadhaar?.id_number || app.identityDetails?.aadhaar || app.identityDetails?.aadhaarNumber || app.identityDetails?.uid || "Not Available", "identityDetails.aadhaar"],
-        ["Name on Aadhaar", dlAadhaar?.name || app.identityDetails?.name || app.ocrData?.digilocker?.name || "Not Available", "identityDetails.name"],
-        ["Date of birth", dlAadhaar?.dob || app.identityDetails?.dob || app.ocrData?.digilocker?.dob || "Not Available", "identityDetails.dob"],
-        ["Gender", dlAadhaar?.gender || app.identityDetails?.gender || app.ocrData?.digilocker?.gender || "Not Available", "identityDetails.gender"],
-        ["Address", dlAadhaar?.current_address || dlAadhaar?.permanent_address || (typeof app.address === 'object' ? app.address?.permanentAddress || app.address?.currentAddress || app.address?.address || app.identityDetails?.address : app.address || app.identityDetails?.address) || "Not Available"],
+        ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A"],
+        ["Aadhar country", app.address?.country || "India"],
+        ["Aadhar dist", app.address?.district || app.address?.city || "N/A"],
+        ["Aadhar dob", app.personalDetails?.dob || "N/A"],
+        ["Aadhar fathername", app.personalDetails?.fatherName || ""],
+        ["Aadhar gender", app.personalDetails?.gender || "N/A"],
+        ["Aadhar house", app.address?.line1 || "N/A"],
+        ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A"],
+        ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A"],
+        ["Aadhar pincode", app.address?.pincode || "N/A"],
+        ["Aadhar state", app.address?.state || "N/A"]
       ];
     },
     evidence: (app, tab = "aadhaar") => {
@@ -135,6 +149,31 @@ const REVIEW_STEPS = [
         ...getAllPanDocuments(app).filter(doc => doc.label !== "Uploaded PAN Card")
       ].filter(Boolean);
     },
+  },
+  {
+    id: "kra_fetch_new",
+    kycIndex: 5.5,
+    title: "kra_fetch_new",
+    evidenceTitle: "KRA Details",
+    evidenceHint: "Review the KRA fetched information.",
+    fields: (app) => [
+      ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A"],
+      ["Aadhar country", app.address?.country || "India"],
+      ["Aadhar dist", app.address?.district || app.address?.city || "N/A"],
+      ["Aadhar dob", app.personalDetails?.dob || "N/A"],
+      ["Aadhar fathername", app.personalDetails?.fatherName || ""],
+      ["Aadhar gender", app.personalDetails?.gender || "N/A"],
+      ["Aadhar house", app.address?.line1 || "N/A"],
+      ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A"],
+      ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A"],
+      ["Aadhar pincode", app.address?.pincode || "N/A"],
+      ["Aadhar state", app.address?.state || "N/A"],
+      ["Annual income", app.personalDetails?.annualIncome || "N/A"],
+      ["Locality", app.address?.line2 || app.address?.city || "N/A"],
+      ["Name", app.personalDetails?.fullName || "N/A"],
+      ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"]
+    ],
+    evidence: () => [],
   },
   {
     id: "personalDetails",
@@ -152,10 +191,41 @@ const REVIEW_STEPS = [
       ["Education", app.personalDetails?.education, "personalDetails.education"],
       ["Annual income", app.personalDetails?.annualIncome, "personalDetails.annualIncome"],
       ["Trading experience", app.personalDetails?.experience, "personalDetails.experience"],
+      ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
+      ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
+      ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A"],
+      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
+      ["Namematch1", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
+      ["Dobmatch1", app.identityDetails?.dob || app.personalDetails?.dob || "N/A"],
+      ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER"],
+      ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
+      ["Reject reason personal details", app.personalDetails?.rejectReason || "N/A"],
+      ["Rejected by personal details", app.personalDetails?.rejectedBy || "N/A"],
+      ["Rejected timestamp personal details", app.personalDetails?.rejectedAt ? new Date(app.personalDetails.rejectedAt).toLocaleString() : "N/A"],
+      ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
+      ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
+      ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
+      ["Tax payer identification number2", app.personalDetails?.taxPayerId2 || "N/A", "personalDetails.taxPayerId2"],
+      ["Country tax residence3", app.personalDetails?.taxResidenceCountry3 || "N/A", "personalDetails.taxResidenceCountry3"],
+      ["Tax payer identification number3", app.personalDetails?.taxPayerId3 || "N/A", "personalDetails.taxPayerId3"],
+      ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
+      ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
+      ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
+      ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
+      ["State code", app.address?.state || "N/A"],
+      ["Clientcode", app.applicationId || "N/A"],
+      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
+      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
+      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
+      ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
+      ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
+      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
-      ["PEP status", app.personalDetails?.politicallyExposed],
-      ["PEP Type", app.personalDetails?.pepType],
-      ["PEP Comment", app.personalDetails?.pepComment],
+      ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
+      ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
+      ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
+      ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
     ],
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
@@ -166,50 +236,50 @@ const REVIEW_STEPS = [
       ].filter(Boolean);
     },
   },
-  {
-    id: "nomineeChoice",
-    kycIndex: 7,
-    title: "Nominee Choice",
-    evidenceTitle: "",
-    evidenceHint: "Confirm whether the applicant added or opted out of nominee registration.",
-    fields: (app) => [
-      ["Nominee preference", app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app)],
-      ["Nominees added", Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees.length : 0],
-    ],
-    evidence: () => [],
-  },
+  // {
+  //   id: "nomineeChoice",
+  //   kycIndex: 7,
+  //   title: "Nominee Choice",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm whether the applicant added or opted out of nominee registration.",
+  //   fields: (app) => [
+  //     ["Nominee preference", app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app)],
+  //     ["Nominees added", Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees.length : 0],
+  //   ],
+  //   evidence: () => [],
+  // },
   {
     id: "nomineeDetails",
     kycIndex: 8,
     title: "Nominee Details",
     evidenceTitle: "Nominee Identity Proof",
-    evidenceHint: "Check nominee name, relation, date of birth, and guardian details if nominee is a minor.",
+    evidenceHint: "Check nominee name, relation, date of birth, guardian details, and allocation.",
     fields: (app) => nomineeFields(app),
     evidence: (app) => nomineeEvidence(app),
   },
-  {
-    id: "nomineeAllocation",
-    kycIndex: 9,
-    title: "Nominee Allocation",
-    evidenceTitle: "",
-    evidenceHint: "Confirm nominee percentages add up correctly.",
-    fields: (app) => {
-      const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
-      const nominees = app.nomineeDetails?.nominees || [];
-      
-      let details = "";
-      if (Array.isArray(percentages) && percentages.length > 0 && Array.isArray(nominees) && nominees.length > 0) {
-        details = nominees.map((nom, i) => `Nominee ${i+1}: ${typeof percentages[i] === 'object' ? (percentages[i].percentage || percentages[i].allocation) : percentages[i]}%`).join(" | ");
-      } else {
-        details = formatList(percentages);
-      }
-      
-      return [
-        ["Allocation details", details],
-      ];
-    },
-    evidence: () => [],
-  },
+  // {
+  //   id: "nomineeAllocation",
+  //   kycIndex: 9,
+  //   title: "Nominee Allocation",
+  //   evidenceTitle: "",
+  //   evidenceHint: "Confirm nominee percentages add up correctly.",
+  //   fields: (app) => {
+  //     const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  //     const nominees = app.nomineeDetails?.nominees || [];
+  //     
+  //     let details = "";
+  //     if (Array.isArray(percentages) && percentages.length > 0 && Array.isArray(nominees) && nominees.length > 0) {
+  //       details = nominees.map((nom, i) => `Nominee ${i+1}: ${typeof percentages[i] === 'object' ? (percentages[i].percentage || percentages[i].allocation) : percentages[i]}%`).join(" | ");
+  //     } else {
+  //       details = formatList(percentages);
+  //     }
+  //     
+  //     return [
+  //       ["Allocation details", details],
+  //     ];
+  //   },
+  //   evidence: () => [],
+  // },
   {
     id: "bankVerification",
     kycIndex: 10,
@@ -217,11 +287,31 @@ const REVIEW_STEPS = [
     evidenceTitle: "Bank Account Proof",
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
-      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName, "bankDetails.beneficiaryName"],
-      ["Account number", app.bankDetails?.accountNumber, "bankDetails.accountNumber"],
-      ["IFSC", app.bankDetails?.ifsc, "bankDetails.ifsc"],
-      ["Bank name", app.bankDetails?.bankName, "bankDetails.bankName"],
-      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus],
+      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
+      ["Account number", app.bankDetails?.accountNumber || "N/A"],
+      ["IFSC", app.bankDetails?.ifsc || "N/A"],
+      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus || (app.bankDetails?.verified ? "Verified" : "Pending")],
+      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A"],
+      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
+      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A"],
+      ["Reenter account number", app.bankDetails?.accountNumber || "N/A"],
+      ["Micr1", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
+      // ["Bank add", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
+      // ["Reject reason bank", app.bankDetails?.rejectReason || app.ocrData?.bank?.rejectReason || "N/A"],
+      // ["Rejected by bank", app.bankDetails?.rejectedBy || app.ocrData?.bank?.rejectedBy || "N/A"],
+      // ["Rejected timestamp bank", app.bankDetails?.rejectedAt ? new Date(app.bankDetails.rejectedAt).toLocaleString() : app.ocrData?.bank?.rejectedAt || "N/A"],
+      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
+      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A"],
+      ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A"],
+      ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A"],
+      ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A"],
+      ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A"],
+      ["Bank attached pan", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
+      ["Bank attached aadhar", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : app.identityDetails?.uid ? `xxxxxxxx${app.identityDetails.uid.slice(-4)}` : "N/A"],
+      ["Name on pan", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
+      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
+      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
+      ["Bank Log", JSON.stringify(app.bankDetails || {})],
     ],
     evidence: (app) => [firstMedia(app.bankDetails?.proofPreview || app.bankDetails?.proofPath || app.bankDetails?.proof, "Bank Proof")].filter(Boolean),
   },
@@ -247,6 +337,10 @@ const REVIEW_STEPS = [
     fields: (app) => [
       ["Signature captured", app.signature ? "Yes" : "No"],
       ["Applicant", app.personalDetails?.fullName],
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+      ["Name as per kra", app.personalDetails?.fullName || "N/A"],
     ],
     evidence: (app) => {
       const panDocs = getAllPanDocuments(app);
@@ -283,6 +377,9 @@ const REVIEW_STEPS = [
       ["Face match score", app.faceMatchScore !== null && app.faceMatchScore !== undefined ? `${app.faceMatchScore}%` : ""],
       ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
       ["Applicant", app.personalDetails?.fullName],
+      ["Latitude", app.selfieDetails?.latitude || "N/A"],
+      ["Location", app.selfieDetails?.location || "N/A"],
+      ["Longitude", app.selfieDetails?.longitude || "N/A"],
     ],
     evidence: (app) => [
       firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
@@ -298,11 +395,27 @@ const REVIEW_STEPS = [
     evidenceHint: "Review the e-stamp assigned to this user.",
     readOnly: true,
     fields: (app) => [
-      ["Certificate No", app.user?.eStampAssigned?.certificateNo],
-      ["Serial No", app.user?.eStampAssigned?.serialNo],
+      ["Certificate No", app.user?.eStampAssigned?.certificateNo, "user.eStampAssigned.certificateNo"],
+      ["Serial No", app.user?.eStampAssigned?.serialNo, "user.eStampAssigned.serialNo"],
     ],
     evidence: (app) => [firstMedia(app.user?.eStampAssigned?.fileUrl, "Assigned E-Stamp")].filter(Boolean),
   },
+  {
+    id: "esignPreview",
+    kycIndex: 16,
+    title: "eSign",
+    evidenceTitle: "eSigned Document",
+    evidenceHint: "Review the e-signed application.",
+    fields: (app) => [
+      ["Email", app.personalDetails?.email || app.user?.email || "N/A", "personalDetails.email"],
+      ["Mobile", app.user?.phone || "N/A", "user.phone"],
+      ["Name", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
+      ["Ip", app.esignDetails?.ip || "N/A", "esignDetails.ip"],
+      ["Lat", app.esignDetails?.lat || "N/A", "esignDetails.lat"],
+      ["Lng", app.esignDetails?.lng || "N/A", "esignDetails.lng"],
+    ],
+    evidence: () => [],
+  }
 ];
 
 function PdfThumbnail({ src }) {
@@ -527,14 +640,32 @@ function nomineeSummary(app) {
 }
 
 function nomineeFields(app) {
+  const preference = app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app);
   const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
-  if (!nominees.length) return [["Nominee details", "No nominee details submitted"]];
-  return nominees.flatMap((nominee, index) => [
-    [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
-    [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
-    [`Nominee ${index + 1} DOB`, nominee.dob],
-    [`Nominee ${index + 1} guardian`, nominee.guardianName],
-  ]);
+  const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  
+  const baseFields = [
+    ["Nominee preference", preference],
+    ["Nominees added", nominees.length],
+  ];
+
+  if (!nominees.length) return [...baseFields, ["Nominee details", "No nominee details submitted"]];
+  
+  const detailedFields = nominees.flatMap((nominee, index) => {
+    let allocation = "N/A";
+    if (Array.isArray(percentages) && percentages[index] !== undefined) {
+      allocation = typeof percentages[index] === 'object' ? (percentages[index].percentage || percentages[index].allocation) : percentages[index];
+    }
+    return [
+      [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
+      [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
+      [`Nominee ${index + 1} DOB`, nominee.dob],
+      [`Nominee ${index + 1} guardian`, nominee.guardianName],
+      [`Nominee ${index + 1} allocation`, `${allocation}%`],
+    ];
+  });
+  
+  return [...baseFields, ...detailedFields];
 }
 
 function nomineeEvidence(app) {
