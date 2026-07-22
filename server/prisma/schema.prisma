@@ -32,7 +32,6 @@ model KycApplication {
   id                                   Int       @id @default(autoincrement())
   userId                               Int
   applicationId                        String    @unique
-  clientCode                           String?
   status                               String    @default("pending")
   currentStep                          Int       @default(0)
   personalDetails                      String?   @db.LongText
@@ -71,12 +70,14 @@ model KycApplication {
   assignedCrmAgentId                   Int?
   stepStatuses                         String?   @db.LongText
   isResubmitted                        Boolean   @default(false)
-  globeStatus                          String    @default("pending")
   globeRemarks                         String?   @db.LongText
   globeReviewedAt                      DateTime?
   globeReviewedBy                      Int?
+  globeStatus                          String    @default("pending")
   pushedToBackoffice                   Boolean   @default(false)
   pushedToBackofficeAt                 DateTime?
+  clientCode                           String?
+  esignDetails                         String?   @db.LongText
   User_KycApplication_assignedToToUser User?     @relation("KycApplication_assignedToToUser", fields: [assignedTo], references: [id])
   reviewer                             User?     @relation("ReviewedBy", fields: [reviewedBy], references: [id])
   user                                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -154,13 +155,12 @@ model EStamp {
   @@index([assignedTo], map: "EStamp_assignedTo_fkey")
 }
 
-
 model PdfTemplate {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  isActive    Boolean  @default(false)
-  basePdfUrl  String   @default("public/official_form.pdf")
-  fields      String   @db.LongText
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  isActive   Boolean  @default(false)
+  basePdfUrl String   @default("public/esigned.pdf")
+  fields     String   @db.LongText
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

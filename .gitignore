@@ -130,3 +130,4 @@ kyc_pages/
 auto_mapped_fields.json
 map_variables.js
 server/compile_log.txt
+server/temp.json

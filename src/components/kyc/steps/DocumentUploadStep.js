@@ -21,19 +21,27 @@ export default function DocumentUploadStep() {
     applicationId, setApplicationId, syncProgress
   } = useKYC();
   
+  // Helper to ensure relative URLs load from backend on port 5000
+  const getFullUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
   // Financial Proof State
   const [finType, setFinType] = useState(financialProof?.type || "");
-  const [finPreview, setFinPreview] = useState(financialProof?.filePreview || null);
+  const [finPreview, setFinPreview] = useState(getFullUrl(financialProof?.filePreview));
   const finInputRef = useRef(null);
 
   // Signature State
-  const [sigPreview, setSigPreview] = useState(signature?.filePreview || null);
+  const [sigPreview, setSigPreview] = useState(getFullUrl(signature?.filePreview));
   const [isCroppingSig, setIsCroppingSig] = useState(false);
   const [rawSigImage, setRawSigImage] = useState(null);
   const sigInputRef = useRef(null);
 
   // PAN Upload State
-  const [panPreview, setPanPreview] = useState(panUpload?.filePreview || null);
+  const [panPreview, setPanPreview] = useState(getFullUrl(panUpload?.filePreview));
   const [isCroppingPan, setIsCroppingPan] = useState(false);
   const [rawPanImage, setRawPanImage] = useState(null);
   const panInputRef = useRef(null);
@@ -42,7 +50,7 @@ export default function DocumentUploadStep() {
   const isSelfieDone = Boolean(selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined));
   const [selfiePhase, setSelfiePhase] = useState(isSelfieDone ? "done" : "intro"); // intro, processing, done
   const [matchScore, setMatchScore] = useState(selfie?.matchScore || null);
-  const [selfiePreviewUrl, setSelfiePreviewUrl] = useState(selfie?.preview || null);
+  const [selfiePreviewUrl, setSelfiePreviewUrl] = useState(getFullUrl(selfie?.preview));
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
 
@@ -50,19 +58,25 @@ export default function DocumentUploadStep() {
 
   // --- Sync from Context (for cross-device updates) ---
   useEffect(() => {
-    if (panUpload?.filePreview && panUpload.filePreview !== panPreview) {
-      setPanPreview(panUpload.filePreview);
+    if (panUpload?.filePreview) {
+      const full = getFullUrl(panUpload.filePreview);
+      if (full !== panPreview) setPanPreview(full);
     }
-    if (signature?.filePreview && signature.filePreview !== sigPreview) {
-      setSigPreview(signature.filePreview);
+    if (signature?.filePreview) {
+      const full = getFullUrl(signature.filePreview);
+      if (full !== sigPreview) setSigPreview(full);
     }
-    if (financialProof?.filePreview && financialProof.filePreview !== finPreview) {
-      setFinPreview(financialProof.filePreview);
+    if (financialProof?.filePreview) {
+      const full = getFullUrl(financialProof.filePreview);
+      if (full !== finPreview) setFinPreview(full);
       if (financialProof.type) setFinType(financialProof.type);
     }
     if (selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined)) {
       setSelfiePhase("done");
-      if (selfie.preview && selfie.preview !== selfiePreviewUrl) setSelfiePreviewUrl(selfie.preview);
+      if (selfie.preview) {
+        const full = getFullUrl(selfie.preview);
+        if (full !== selfiePreviewUrl) setSelfiePreviewUrl(full);
+      }
       if (selfie.matchScore !== undefined && selfie.matchScore !== matchScore) setMatchScore(selfie.matchScore);
     }
   }, [panUpload, signature, financialProof, selfie]);

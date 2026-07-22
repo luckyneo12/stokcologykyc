@@ -44,7 +44,6 @@ const SAFE_PATCH_KEYS = new Set([
   "submittedAt",
   "segments",
   "bsda",
-  "generatedPdfBase64",
 ]);
 
 const JSON_FIELD_KEYS = new Set([
@@ -70,7 +69,7 @@ const saveStepSchema = z.object({
   applicationId: z.string(),
   step: z.string().optional().nullable(),
   stepIndex: z.number().optional().nullable(),
-  data: z.any().optional().default({})
+  data: z.any().optional().default({}),
 });
 
 const submitSchema = z.object({
@@ -127,26 +126,45 @@ function serializeJsonFields(data) {
  * Performs a deep merge for nested objects.
  */
 function mergeJson(existing, patch, path = "") {
-  if (typeof existing === 'string') {
-    try { existing = JSON.parse(existing); } catch (e) { existing = {}; }
+  if (typeof existing === "string") {
+    try {
+      existing = JSON.parse(existing);
+    } catch (e) {
+      existing = {};
+    }
   }
-  if (typeof patch === 'string') {
-    try { patch = JSON.parse(patch); } catch (e) { patch = {}; }
+  if (typeof patch === "string") {
+    try {
+      patch = JSON.parse(patch);
+    } catch (e) {
+      patch = {};
+    }
   }
-  
-  if (!patch || (typeof patch === 'object' && Object.keys(patch).length === 0)) return existing || {};
-  if (!existing || (typeof existing === 'object' && Object.keys(existing).length === 0)) return patch;
+
+  if (!patch || (typeof patch === "object" && Object.keys(patch).length === 0))
+    return existing || {};
+  if (
+    !existing ||
+    (typeof existing === "object" && Object.keys(existing).length === 0)
+  )
+    return patch;
 
   const result = { ...existing };
-  
-  Object.keys(patch).forEach(key => {
+
+  Object.keys(patch).forEach((key) => {
     const val = patch[key];
     const oldVal = existing[key];
     const currentPath = path ? `${path}.${key}` : key;
 
     // 1. Recursive merge for nested objects (except arrays)
-    if (val && typeof val === 'object' && !Array.isArray(val) &&
-        oldVal && typeof oldVal === 'object' && !Array.isArray(oldVal)) {
+    if (
+      val &&
+      typeof val === "object" &&
+      !Array.isArray(val) &&
+      oldVal &&
+      typeof oldVal === "object" &&
+      !Array.isArray(oldVal)
+    ) {
       result[key] = mergeJson(oldVal, val, currentPath);
       return;
     }
@@ -154,8 +172,22 @@ function mergeJson(existing, patch, path = "") {
     // 2. Protection for meaningful values
     // If the new value is "empty" (null, undefined, or empty string)
     // but the old value was meaningful, we RETAIN the old value.
-    const isEmpty = val === null || val === undefined || (typeof val === "string" && val.trim() === "") || (typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length === 0);
-    const wasPopulated = oldVal !== null && oldVal !== undefined && oldVal !== "" && (!(typeof oldVal === 'object' && !Array.isArray(oldVal) && Object.keys(oldVal).length === 0));
+    const isEmpty =
+      val === null ||
+      val === undefined ||
+      (typeof val === "string" && val.trim() === "") ||
+      (typeof val === "object" &&
+        !Array.isArray(val) &&
+        Object.keys(val).length === 0);
+    const wasPopulated =
+      oldVal !== null &&
+      oldVal !== undefined &&
+      oldVal !== "" &&
+      !(
+        typeof oldVal === "object" &&
+        !Array.isArray(oldVal) &&
+        Object.keys(oldVal).length === 0
+      );
 
     if (isEmpty && wasPopulated) {
       // console.log(`[mergeJson] Protecting populated field: ${currentPath}`);
@@ -163,11 +195,25 @@ function mergeJson(existing, patch, path = "") {
     }
 
     // 3. Recursive merge for arrays of objects (match by index)
-    if (Array.isArray(val) && Array.isArray(oldVal) && val.length > 0 && oldVal.length > 0) {
+    if (
+      Array.isArray(val) &&
+      Array.isArray(oldVal) &&
+      val.length > 0 &&
+      oldVal.length > 0
+    ) {
       const mergedArray = [...oldVal];
       val.forEach((item, idx) => {
-        if (item && typeof item === 'object' && mergedArray[idx] && typeof mergedArray[idx] === 'object') {
-          mergedArray[idx] = mergeJson(mergedArray[idx], item, `${currentPath}[${idx}]`);
+        if (
+          item &&
+          typeof item === "object" &&
+          mergedArray[idx] &&
+          typeof mergedArray[idx] === "object"
+        ) {
+          mergedArray[idx] = mergeJson(
+            mergedArray[idx],
+            item,
+            `${currentPath}[${idx}]`,
+          );
         } else {
           mergedArray[idx] = item;
         }
@@ -177,7 +223,12 @@ function mergeJson(existing, patch, path = "") {
     }
 
     // 4. Special case for arrays: protect populated arrays from being emptied
-    if (Array.isArray(val) && val.length === 0 && Array.isArray(oldVal) && oldVal.length > 0) {
+    if (
+      Array.isArray(val) &&
+      val.length === 0 &&
+      Array.isArray(oldVal) &&
+      oldVal.length > 0
+    ) {
       console.log(`[mergeJson] Protecting populated array: ${currentPath}`);
       return;
     }
@@ -188,7 +239,6 @@ function mergeJson(existing, patch, path = "") {
 
   return result;
 }
-
 
 async function writeAuditLog({ userId, action, details, ipAddress }) {
   try {
@@ -210,26 +260,26 @@ const startKyc = async (req, res, next) => {
     // 1. Check for any application for this user
     const latestApp = await prisma.kycApplication.findFirst({
       where: { userId: req.user.id },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
     });
-    
+
     if (latestApp) {
       if (latestApp.status === "verified") {
         return res.status(400).json({
           success: false,
           error: "A verified account already exists for this mobile number.",
           code: "ALREADY_EXISTS",
-          applicationId: latestApp.applicationId
+          applicationId: latestApp.applicationId,
         });
       }
 
-      return res.json({ 
-        success: true, 
-        applicationId: latestApp.applicationId, 
+      return res.json({
+        success: true,
+        applicationId: latestApp.applicationId,
         id: latestApp.id,
         currentStep: latestApp.currentStep,
         status: latestApp.status,
-        isNew: false 
+        isNew: false,
       });
     }
 
@@ -242,7 +292,7 @@ const startKyc = async (req, res, next) => {
         status: "pending",
         currentStep: 1, // Start at Phone step as they just verified it to get here
         bsda: "opt-in",
-        segments: JSON.stringify({ equity: true, derivatives: false })
+        segments: JSON.stringify({ equity: true, derivatives: false }),
       },
     });
 
@@ -257,7 +307,12 @@ const startKyc = async (req, res, next) => {
     req.app.get("io")?.to("staff_room").emit("applications_updated");
     req.app.get("io")?.to(applicationId).emit("kyc_updated");
 
-    res.json({ success: true, applicationId: application.applicationId, id: application.id, isNew: true });
+    res.json({
+      success: true,
+      applicationId: application.applicationId,
+      id: application.id,
+      isNew: true,
+    });
   } catch (error) {
     next(error);
   }
@@ -286,10 +341,14 @@ const getMyApplication = async (req, res, next) => {
 const saveStep = async (req, res, next) => {
   try {
     const { applicationId, step, stepIndex, data } = req.body || {};
-    console.log(`[KYC SaveStep] App: ${applicationId}, Step: ${step}, Index: ${stepIndex}`);
-    
+    console.log(
+      `[KYC SaveStep] App: ${applicationId}, Step: ${step}, Index: ${stepIndex}`,
+    );
+
     if (!applicationId) {
-      return res.status(400).json({ success: false, error: "applicationId is required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "applicationId is required" });
     }
 
     const app = await prisma.kycApplication.findUnique({
@@ -297,7 +356,9 @@ const saveStep = async (req, res, next) => {
     });
 
     if (!app || app.userId !== req.user.id) {
-      return res.status(404).json({ success: false, error: "Application not found for this user" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Application not found for this user" });
     }
 
     const updateData = {};
@@ -313,17 +374,23 @@ const saveStep = async (req, res, next) => {
         continue;
       }
       if (JSON_FIELD_KEYS.has(key)) {
-        updateData[key] = serializeJsonField(mergeJson(parseJsonField(app[key], key === "documents" ? [] : {}), value));
+        updateData[key] = serializeJsonField(
+          mergeJson(
+            parseJsonField(app[key], key === "documents" ? [] : {}),
+            value,
+          ),
+        );
         continue;
       }
       updateData[key] = value;
     }
 
-    let candidateStep = stepIndex !== undefined ? parseInt(stepIndex) : STEP_INDEX[step];
-    
+    let candidateStep =
+      stepIndex !== undefined ? parseInt(stepIndex) : STEP_INDEX[step];
+
     if (!isNaN(candidateStep) && candidateStep !== null) {
       const safeStep = Math.max(0, Math.min(25, candidateStep));
-      
+
       // EMAIL VERIFICATION VALIDATION
       // Step 2 = email step (STEP_INDEX.email = 2)
       // Step 3 = pricing step (STEP_INDEX.pricing = 3)
@@ -331,39 +398,53 @@ const saveStep = async (req, res, next) => {
       const CURRENT_STEP = app.currentStep || 0;
       const isMovingFromEmailStep = CURRENT_STEP === 2;
       const isMovingToStep3OrBeyond = safeStep >= 3;
-      
+
       if (isMovingFromEmailStep && isMovingToStep3OrBeyond) {
         // User is trying to move from step 2 (email) to step 3+ (pricing or beyond)
         // Check if email is verified (i.e., email field is populated in personalDetails)
-        const personalDetails = parseJsonField(updateData.personalDetails || app.personalDetails, {});
+        const personalDetails = parseJsonField(
+          updateData.personalDetails || app.personalDetails,
+          {},
+        );
         const emailValue = personalDetails?.email || null;
-        
-        if (!emailValue || (typeof emailValue === 'string' && emailValue.trim() === '')) {
-          console.log(`[KYC SaveStep] Email verification incomplete - attempting to move from step ${CURRENT_STEP} to ${safeStep} for App: ${applicationId}`);
-          return res.status(400).json({ 
-            success: false, 
-            error: "Email verification required before proceeding" 
+
+        if (
+          !emailValue ||
+          (typeof emailValue === "string" && emailValue.trim() === "")
+        ) {
+          console.log(
+            `[KYC SaveStep] Email verification incomplete - attempting to move from step ${CURRENT_STEP} to ${safeStep} for App: ${applicationId}`,
+          );
+          return res.status(400).json({
+            success: false,
+            error: "Email verification required before proceeding",
           });
         }
-        
-        console.log(`[KYC SaveStep] Email verification complete (${emailValue}), allowing progression to step ${safeStep}`);
+
+        console.log(
+          `[KYC SaveStep] Email verification complete (${emailValue}), allowing progression to step ${safeStep}`,
+        );
       }
-      
-      // CRITICAL PROTECTION: Only allow moving backward if the user is an admin 
+
+      // CRITICAL PROTECTION: Only allow moving backward if the user is an admin
       // or if the status is not 'verified'/'under_review'.
-      // Actually, just a simple rule: don't let a client-side 'saveStep' decrease the step 
+      // Actually, just a simple rule: don't let a client-side 'saveStep' decrease the step
       // if it's already at 16, unless it's an admin.
       const isAttemptingBacktrack = safeStep < app.currentStep;
 
       if (isAttemptingBacktrack && req.user.role !== "admin") {
-        console.log(`[KYC SaveStep] Blocking backtrack from ${app.currentStep} to ${safeStep} for App: ${applicationId}`);
+        console.log(
+          `[KYC SaveStep] Blocking backtrack from ${app.currentStep} to ${safeStep} for App: ${applicationId}`,
+        );
         // We still save the DATA, but we don't update the currentStep
       } else {
         updateData.currentStep = safeStep;
       }
     }
 
-    console.log(`[KYC SaveStep] Saving ${Object.keys(updateData).length} fields for App: ${applicationId}`);
+    console.log(
+      `[KYC SaveStep] Saving ${Object.keys(updateData).length} fields for App: ${applicationId}`,
+    );
 
     try {
       // Auto-assign or unassign E-Stamp based on DDPI selection
@@ -371,32 +452,42 @@ const saveStep = async (req, res, next) => {
         const pd = parseJsonField(updateData.personalDetails);
         if (pd.ddpi === "Yes") {
           const existingStamp = await prisma.eStamp.findUnique({
-            where: { assignedTo: req.user.id }
+            where: { assignedTo: req.user.id },
           });
           if (!existingStamp) {
             const availableStamp = await prisma.eStamp.findFirst({
-              where: { status: "available" }
+              where: { status: "available" },
             });
             if (availableStamp) {
               await prisma.eStamp.update({
                 where: { id: availableStamp.id },
-                data: { status: "assigned", assignedTo: req.user.id }
+                data: { status: "assigned", assignedTo: req.user.id },
               });
-              console.log(`[E-Stamp] Auto-assigned ${availableStamp.certificateNo} to user ${req.user.id}`);
+              console.log(
+                `[E-Stamp] Auto-assigned ${availableStamp.certificateNo} to user ${req.user.id}`,
+              );
             } else {
-              console.warn(`[E-Stamp] No available e-stamps to assign to user ${req.user.id}`);
+              console.warn(
+                `[E-Stamp] No available e-stamps to assign to user ${req.user.id}`,
+              );
             }
           }
-        } else if (pd.ddpi === "No" || pd.ddpi === false || pd.ddpi === "false") {
+        } else if (
+          pd.ddpi === "No" ||
+          pd.ddpi === false ||
+          pd.ddpi === "false"
+        ) {
           const existingStamp = await prisma.eStamp.findUnique({
-            where: { assignedTo: req.user.id }
+            where: { assignedTo: req.user.id },
           });
           if (existingStamp) {
             await prisma.eStamp.update({
               where: { id: existingStamp.id },
-              data: { status: "available", assignedTo: null }
+              data: { status: "available", assignedTo: null },
             });
-            console.log(`[E-Stamp] Unassigned ${existingStamp.certificateNo} from user ${req.user.id} because DDPI is No`);
+            console.log(
+              `[E-Stamp] Unassigned ${existingStamp.certificateNo} from user ${req.user.id} because DDPI is No`,
+            );
           }
         }
       }
@@ -405,15 +496,17 @@ const saveStep = async (req, res, next) => {
       if (!app.clientCode && updateData.identityDetails) {
         const idDetails = parseJsonField(updateData.identityDetails);
         const panValue = idDetails?.pan || idDetails?.panNumber;
-        if (panValue && typeof panValue === 'string' && panValue.length >= 3) {
+        if (panValue && typeof panValue === "string" && panValue.length >= 3) {
           const prefix = panValue.substring(0, 3).toUpperCase();
           let uniqueClientCode = null;
           let attempts = 0;
           while (!uniqueClientCode && attempts < 10) {
-            const randomDigits = Math.floor(100 + Math.random() * 900).toString(); // 3 digits
+            const randomDigits = Math.floor(
+              100 + Math.random() * 900,
+            ).toString(); // 3 digits
             const candidate = prefix + randomDigits;
             const existing = await prisma.kycApplication.findFirst({
-              where: { clientCode: candidate }
+              where: { clientCode: candidate },
             });
             if (!existing) {
               uniqueClientCode = candidate;
@@ -422,7 +515,9 @@ const saveStep = async (req, res, next) => {
           }
           if (uniqueClientCode) {
             updateData.clientCode = uniqueClientCode;
-            console.log(`[KYC SaveStep] Generated unique clientCode ${uniqueClientCode} for App: ${applicationId}`);
+            console.log(
+              `[KYC SaveStep] Generated unique clientCode ${uniqueClientCode} for App: ${applicationId}`,
+            );
           }
         }
       }
@@ -434,7 +529,12 @@ const saveStep = async (req, res, next) => {
       console.log(`[KYC SaveStep] Success for App: ${applicationId}`);
     } catch (dbError) {
       console.error("[KYC SaveStep] Prisma Error:", dbError.message);
-      return res.status(500).json({ success: false, error: "Database update failed: " + dbError.message });
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error: "Database update failed: " + dbError.message,
+        });
     }
 
     await writeAuditLog({
@@ -466,12 +566,14 @@ const saveStep = async (req, res, next) => {
 };
 
 const uploadDocument = (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
-  
-  const finalPath = req.file.path && req.file.path.startsWith("http") 
-    ? req.file.path 
-    : `/uploads/${req.file.filename}`;
-    
+  if (!req.file)
+    return res.status(400).json({ success: false, error: "No file uploaded" });
+
+  const finalPath =
+    req.file.path && req.file.path.startsWith("http")
+      ? req.file.path
+      : `/uploads/${req.file.filename}`;
+
   res.json({
     success: true,
     path: finalPath,
@@ -482,10 +584,26 @@ const uploadDocument = (req, res) => {
 const ocrExtract = (req, res) => {
   const { documentType } = req.body || {};
   const mockData = {
-    pan: { name: "AMIT KUMAR MISHRA", dob: "04/08/1997", idNumber: "BOYPP7655B" },
-    aadhaar: { name: "Amit Kumar Mishra", dob: "04/08/1997", idNumber: "9876 5432 1098" },
-    passport: { name: "AMIT KUMAR MISHRA", dob: "04/08/1997", idNumber: "A1234567" },
-    dl: { name: "AMIT KUMAR MISHRA", dob: "04/08/1997", idNumber: "DL-0420110012345" },
+    pan: {
+      name: "AMIT KUMAR MISHRA",
+      dob: "04/08/1997",
+      idNumber: "BOYPP7655B",
+    },
+    aadhaar: {
+      name: "Amit Kumar Mishra",
+      dob: "04/08/1997",
+      idNumber: "9876 5432 1098",
+    },
+    passport: {
+      name: "AMIT KUMAR MISHRA",
+      dob: "04/08/1997",
+      idNumber: "A1234567",
+    },
+    dl: {
+      name: "AMIT KUMAR MISHRA",
+      dob: "04/08/1997",
+      idNumber: "DL-0420110012345",
+    },
   };
 
   setTimeout(() => {
@@ -503,28 +621,47 @@ const faceMatch = (req, res) => {
 const submitKyc = async (req, res, next) => {
   try {
     const { applicationId, data } = req.body || {};
-    
+
     if (!applicationId) {
-      return res.status(400).json({ success: false, error: "applicationId is required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "applicationId is required" });
     }
     const app = await prisma.kycApplication.findUnique({
       where: { applicationId },
     });
 
     if (!app || app.userId !== req.user.id) {
-      return res.status(404).json({ success: false, error: "Application not found for this user" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Application not found for this user" });
     }
 
     const clientId = "INS" + Math.floor(Math.random() * 90000000 + 10000000);
     const { buildNSDLPayload } = require("../utils/nsdlHelper");
     const nsdlPayload = buildNSDLPayload(data || {});
 
-    const mergedPersonalDetails = mergeJson(parseJsonField(app.personalDetails), data?.personalDetails);
-    const mergedIdentityDetails = mergeJson(parseJsonField(app.identityDetails), data?.identityDetails);
+    const mergedPersonalDetails = mergeJson(
+      parseJsonField(app.personalDetails),
+      data?.personalDetails,
+    );
+    const mergedIdentityDetails = mergeJson(
+      parseJsonField(app.identityDetails),
+      data?.identityDetails,
+    );
     const mergedAddress = mergeJson(parseJsonField(app.address), data?.address);
-    const mergedBankDetails = mergeJson(parseJsonField(app.bankDetails), data?.bankDetails);
-    const mergedNomineeDetails = mergeJson(parseJsonField(app.nomineeDetails), data?.nomineeDetails);
-    const mergedDocuments = mergeJson(parseJsonField(app.documents, []), data?.documents);
+    const mergedBankDetails = mergeJson(
+      parseJsonField(app.bankDetails),
+      data?.bankDetails,
+    );
+    const mergedNomineeDetails = mergeJson(
+      parseJsonField(app.nomineeDetails),
+      data?.nomineeDetails,
+    );
+    const mergedDocuments = mergeJson(
+      parseJsonField(app.documents, []),
+      data?.documents,
+    );
     const mergedOcrData = mergeJson(parseJsonField(app.ocrData), data?.ocrData);
 
     await prisma.kycApplication.update({
@@ -543,10 +680,11 @@ const submitKyc = async (req, res, next) => {
         nomineeDetails: mergedNomineeDetails,
         panUpload: data?.panUpload || parseJsonField(app.panUpload),
         signature: data?.signature || parseJsonField(app.signature),
-        financialProof: data?.financialProof || parseJsonField(app.financialProof),
+        financialProof:
+          data?.financialProof || parseJsonField(app.financialProof),
         selfieDetails: mergeJson(
           parseJsonField(app.selfieDetails),
-          data?.selfieDetails || (data?.selfie ? { ...data.selfie } : {})
+          data?.selfieDetails || (data?.selfie ? { ...data.selfie } : {}),
         ),
         selfie: data?.selfie?.preview || app.selfie,
         documents: mergedDocuments,
@@ -561,8 +699,10 @@ const submitKyc = async (req, res, next) => {
         },
         segments: data?.segments || parseJsonField(app.segments),
         bsda: data?.bsda || app.bsda,
-        nomineeAllocation: mergeJson(parseJsonField(app.nomineeAllocation), data?.nomineeAllocation),
-        generatedPdfBase64: data?.generatedPdfBase64 || app.generatedPdfBase64,
+        nomineeAllocation: mergeJson(
+          parseJsonField(app.nomineeAllocation),
+          data?.nomineeAllocation,
+        ),
       }),
     });
 
@@ -600,10 +740,14 @@ const getStatus = async (req, res, next) => {
     });
 
     if (!app || app.userId !== req.user.id) {
-      return res.status(404).json({ success: false, error: "Application not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Application not found" });
     }
 
-    console.log(`[KYC Status] Fetching for ${req.params.applicationId}. Current Step in DB: ${app.currentStep}, Status: ${app.status}`);
+    console.log(
+      `[KYC Status] Fetching for ${req.params.applicationId}. Current Step in DB: ${app.currentStep}, Status: ${app.status}`,
+    );
 
     const normalizedApp = normalizeApplication(app);
 
@@ -629,12 +773,18 @@ const getPincodeData = async (req, res) => {
     const response = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
     if (response.ok) {
       const data = await response.json();
-      if (data && data[0] && data[0].Status === "Success" && data[0].PostOffice && data[0].PostOffice.length > 0) {
+      if (
+        data &&
+        data[0] &&
+        data[0].Status === "Success" &&
+        data[0].PostOffice &&
+        data[0].PostOffice.length > 0
+      ) {
         const postOffice = data[0].PostOffice[0];
         return res.json({
           success: true,
           state: postOffice.State,
-          city: postOffice.District // District is typically used as City in this API
+          city: postOffice.District, // District is typically used as City in this API
         });
       }
     }
@@ -644,9 +794,9 @@ const getPincodeData = async (req, res) => {
 
   // Fallback map if API fails
   const pinMap = {
-    "4": { state: "Maharashtra", city: "Mumbai" },
-    "1": { state: "Delhi", city: "New Delhi" },
-    "5": { state: "Andhra Pradesh", city: "Hyderabad" },
+    4: { state: "Maharashtra", city: "Mumbai" },
+    1: { state: "Delhi", city: "New Delhi" },
+    5: { state: "Andhra Pradesh", city: "Hyderabad" },
   };
   const data = pinMap[pin[0]] || { state: "Unknown", city: "Unknown" };
   res.json({ success: true, ...data });
@@ -657,7 +807,9 @@ const getKycConfig = async (req, res) => {
     const { DEFAULT_STEPS } = require("../config/kycSteps");
     res.json({ success: true, steps: DEFAULT_STEPS });
   } catch (error) {
-    res.status(500).json({ success: false, error: "Failed to fetch KYC configuration" });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch KYC configuration" });
   }
 };
 
@@ -665,15 +817,22 @@ const downloadPdf = async (req, res, next) => {
   try {
     const app = await prisma.kycApplication.findUnique({
       where: { applicationId: req.params.applicationId },
+      include: { user: true },
     });
     if (!app || app.userId !== req.user.id) {
-      return res.status(404).json({ success: false, error: "Application not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Application not found" });
     }
 
     // Find the ESIGN document path
     let pdfPath = null;
     const documents = parseJsonField(app.documents, []);
-    const esignDoc = documents.find(doc => doc.type === "ESIGN" || (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")));
+    const esignDoc = [...documents].reverse().find(
+      (doc) =>
+        doc.type === "ESIGN" ||
+        (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")),
+    );
     if (esignDoc) {
       pdfPath = esignDoc.path;
     }
@@ -681,19 +840,31 @@ const downloadPdf = async (req, res, next) => {
     if (pdfPath) {
       const fullPath = require("path").join(__dirname, "../../", pdfPath);
       if (require("fs").existsSync(fullPath)) {
-        return res.download(fullPath, `KYC_Application_${app.applicationId}.pdf`);
+        return res.download(
+          fullPath,
+          `KYC_Application_${app.applicationId}.pdf`,
+        );
       }
     }
-    
-    // Fallback to generated (unsigned) PDF if eSign download hasn't finished yet
-    if (app.generatedPdfBase64) {
-       const buffer = Buffer.from(app.generatedPdfBase64, 'base64');
-       res.setHeader('Content-Type', 'application/pdf');
-       res.setHeader('Content-Disposition', `attachment; filename=KYC_Application_${app.applicationId}_unsigned.pdf`);
-       return res.send(buffer);
+
+    const { generateKycPdf } = require("../utils/pdfGenerator");
+    const dynamicPdfBase64 = await generateKycPdf(app);
+    if (dynamicPdfBase64) {
+      const buffer = Buffer.from(dynamicPdfBase64, "base64");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=KYC_Application_${app.applicationId}_unsigned.pdf`,
+      );
+      return res.send(buffer);
     }
 
-    return res.status(404).json({ success: false, error: "PDF not available yet. Please try again in a few seconds." });
+    return res
+      .status(404)
+      .json({
+        success: false,
+        error: "PDF not available yet. Please try again in a few seconds.",
+      });
   } catch (error) {
     next(error);
   }
@@ -702,28 +873,37 @@ const downloadPdf = async (req, res, next) => {
 const bypassEsign = async (req, res, next) => {
   try {
     const { pdfBase64, applicationId } = req.body;
-    
+
     if (!pdfBase64) {
-      return res.status(400).json({ success: false, error: "PDF data is required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "PDF data is required" });
     }
 
     const app = await prisma.kycApplication.findFirst({
       where: {
         userId: req.user.id,
         applicationId: applicationId || undefined,
-        status: { in: ["pending", "under_review", "on_hold"] }
+        status: { in: ["pending", "under_review", "on_hold"] },
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
     });
 
     if (!app) {
-      return res.status(404).json({ success: false, error: "Active application not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Active application not found" });
     }
 
     // Check if bypass is allowed
     const identityDetails = parseJsonField(app.identityDetails, {});
     if (!identityDetails.adminEsignBypass) {
-      return res.status(403).json({ success: false, error: "Bypass not authorized for this application" });
+      return res
+        .status(403)
+        .json({
+          success: false,
+          error: "Bypass not authorized for this application",
+        });
     }
 
     // Remove the bypass flag so it's a one-time thing
@@ -737,8 +917,8 @@ const bypassEsign = async (req, res, next) => {
         identityDetails: JSON.stringify(identityDetails),
         currentStep: 14,
         status: "under_review",
-        submittedAt: new Date()
-      }
+        submittedAt: new Date(),
+      },
     });
 
     await prisma.auditLog.create({
@@ -761,17 +941,39 @@ const previewPdf = async (req, res, next) => {
     const { generateKycPdf } = require("../utils/pdfGenerator");
     const app = await prisma.kycApplication.findFirst({
       where: { userId: req.user.id },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      include: { user: true },
     });
-    
+
     if (!app) {
-      return res.status(404).json({ success: false, error: "Active application not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Active application not found" });
     }
 
     // Merge latest frontend state with DB state
     const applicationData = { ...app, ...req.body };
-    const pdfBase64 = await generateKycPdf(applicationData);
     
+    // Preserve backend documents (like Digilocker PDFs) that the frontend might not have in its state
+    if (app.documents) {
+      try {
+        const backendDocs = typeof app.documents === 'string' ? JSON.parse(app.documents) : app.documents;
+        const frontendDocs = Array.isArray(req.body.documents) ? req.body.documents : [];
+        const mergedDocs = Array.isArray(backendDocs) ? [...backendDocs] : [];
+        
+        frontendDocs.forEach(fd => {
+          if (!mergedDocs.find(bd => bd.type === fd.type || bd.path === fd.path)) {
+            mergedDocs.push(fd);
+          }
+        });
+        applicationData.documents = JSON.stringify(mergedDocs);
+      } catch (e) {
+        console.error("Error merging documents for preview:", e);
+      }
+    }
+
+    const pdfBase64 = await generateKycPdf(applicationData);
+
     res.json({ success: true, pdfBase64 });
   } catch (error) {
     console.error("[KYC Preview] Error:", error);

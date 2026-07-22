@@ -497,7 +497,7 @@ export default function MakerCheckerDashboard() {
                               </button>
                               
                               {openMenuId === k.id && (
-                                <div className="premium-action-menu" style={{ right: colName === "Actions" ? 'auto' : 30, left: colName === "Actions" ? 0 : 'auto', top: "100%" }}>
+                                <div className="premium-action-menu" style={{ right: 'auto', left: 0, top: "100%" }}>
                                   <button onClick={() => { setOpenMenuId(null); router.push(`/admin/maker-checker/${k.id}`); }} className="premium-action-item">Verify</button>
                                   <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} className="premium-action-item">Continue Journey</button>
                                   <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} className="premium-action-item danger">Delete</button>

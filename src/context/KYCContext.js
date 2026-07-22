@@ -1,5 +1,12 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+} from "react";
 import { saveKycStep } from "@/utils/kycApi";
 import { io } from "socket.io-client";
 
@@ -13,43 +20,96 @@ const INITIAL_STATE = {
   otpVerified: false,
   emailVerified: false,
   panVerified: false,
-  personalDetails: { 
-    prefix: "", fatherName: "", motherName: "", gender: "", maritalStatus: "", 
-    education: "", annualIncome: "", experience: "", politicallyExposed: "No", 
-    pepType: "", pepComments: "", pepProofPreview: null,
-    occupation: "", isIndianCitizen: "Yes", taxResidencyOutside: "No", 
-    countryOfBirth: "", citizenship: "", 
-    taxResidence1: "", taxId1: "", 
-    taxResidence2: "", taxId2: "", 
-    taxResidence3: "", taxId3: "",
-    placeOfBirth: "", taxExempt: "No", taxExemptReason: "",
-    ddpi: "Yes", transferSecurities: true, pledgeSecurities: true, 
-    mfTransactions: true, tenderingShares: true, dis: "No", 
-    receiveCredits: "Yes", eStatement: "Yes", acceptPledgeInstructions: "No", 
-    receiveAnnualReports: "Yes", settlement: "Quarterly", smsAlert: "Yes", 
-    operatedThroughDDPI: "Yes", dob: "", fullName: "", email: "" 
+  personalDetails: {
+    prefix: "",
+    fatherName: "",
+    motherName: "",
+    gender: "",
+    maritalStatus: "",
+    education: "",
+    annualIncome: "",
+    experience: "",
+    politicallyExposed: "No",
+    pepType: "",
+    pepComments: "",
+    pepProofPreview: null,
+    occupation: "",
+    isIndianCitizen: "Yes",
+    taxResidencyOutside: "No",
+    countryOfBirth: "",
+    citizenship: "",
+    taxResidence1: "",
+    taxId1: "",
+    taxResidence2: "",
+    taxId2: "",
+    taxResidence3: "",
+    taxId3: "",
+    placeOfBirth: "",
+    taxExempt: "No",
+    taxExemptReason: "",
+    ddpi: "Yes",
+    transferSecurities: true,
+    pledgeSecurities: true,
+    mfTransactions: true,
+    tenderingShares: true,
+    dis: "No",
+    receiveCredits: "Yes",
+    eStatement: "Yes",
+    acceptPledgeInstructions: "No",
+    receiveAnnualReports: "Yes",
+    settlement: "Quarterly",
+    smsAlert: "Yes",
+    operatedThroughDDPI: "Yes",
+    dob: "",
+    fullName: "",
+    email: "",
   },
   identityMethod: "",
   identityDetails: { pan: "", aadhaar: "", passportNo: "", dlNo: "" },
   documents: { front: null, back: null, frontPreview: null, backPreview: null },
   ocrData: { name: "", dob: "", idNumber: "", extractedAt: null },
   selfie: { image: null, preview: null, livenessPass: false, matchScore: 0 },
-  address: { line1: "", line2: "", line3: "", city: "", state: "", pincode: "", country: "India", useAadhaar: false },
+  address: {
+    line1: "",
+    line2: "",
+    line3: "",
+    city: "",
+    state: "",
+    pincode: "",
+    country: "India",
+    useAadhaar: false,
+  },
   addressProof: null,
-  bankDetails: { accountNumber: "", bankName: "", ifsc: "", micr: "", accountType: "10" },
+  bankDetails: {
+    accountNumber: "",
+    bankName: "",
+    ifsc: "",
+    micr: "",
+    accountType: "10",
+  },
   financialProof: { type: "", filePreview: null },
   signature: { filePreview: null },
   panUpload: { filePreview: null },
-  nomineeDetails: { 
-    opted: "Yes", 
-    numberOfNominees: "1", 
+  nomineeDetails: {
+    opted: "Yes",
+    numberOfNominees: "1",
     nominees: [
-      { 
-        name: "", email: "", mobile: "", relation: "", dob: "", 
-        sameAddress: false, address: "", city: "", state: "", 
-        pincode: "", country: "India", proofType: "PAN CARD", proofNumber: "" 
-      }
-    ]
+      {
+        name: "",
+        email: "",
+        mobile: "",
+        relation: "",
+        dob: "",
+        sameAddress: false,
+        address: "",
+        city: "",
+        state: "",
+        pincode: "",
+        country: "India",
+        proofType: "PAN CARD",
+        proofNumber: "",
+      },
+    ],
   },
   nomineeAllocation: { percentages: [100] },
   consent: false,
@@ -78,7 +138,7 @@ const STEPS = [
   { id: "documentUpload", label: "Document Upload" },
   { id: "esignPreview", label: "eSign Preview" },
   { id: "aadhaarEsign", label: "Aadhaar eSign" },
-  { id: "finalCompletion", label: "Completion" }
+  { id: "finalCompletion", label: "Completion" },
 ];
 
 // Maps agent review step IDs → KYC user step indexes
@@ -123,13 +183,13 @@ function isKycStepApproved(kycStepIndex, stepStatuses, isResubmission) {
   if (isResubmission) {
     // If resubmitting, we skip everything UNLESS it is explicitly rejected.
     const hasRejection = reviewStepsForIndex.some(
-      (reviewId) => stepStatuses[reviewId]?.status === "rejected"
+      (reviewId) => stepStatuses[reviewId]?.status === "rejected",
     );
     return !hasRejection;
   } else {
     // Normal flow: only skip if explicitly approved
     return reviewStepsForIndex.every(
-      (reviewId) => stepStatuses[reviewId]?.status === "approved"
+      (reviewId) => stepStatuses[reviewId]?.status === "approved",
     );
   }
 }
@@ -139,7 +199,13 @@ const STEP_RELEVANT_KEYS = {
   phone: ["status"],
   email: ["status", "personalDetails"],
   pricing: ["segments", "bsda"],
-  pan: ["identityMethod", "identityDetails", "ocrData", "panVerified", "personalDetails"],
+  pan: [
+    "identityMethod",
+    "identityDetails",
+    "ocrData",
+    "panVerified",
+    "personalDetails",
+  ],
   digilocker: ["address", "personalDetails", "identityDetails"],
   details: ["personalDetails"],
   nomineeChoice: ["nomineeDetails"],
@@ -149,10 +215,24 @@ const STEP_RELEVANT_KEYS = {
   documentUpload: ["financialProof", "signature", "panUpload"],
   esignPreview: ["generatedPdfBase64"],
   aadhaarEsign: [
-    "status", "submittedAt", "nsdlResponse", "consent", 
-    "personalDetails", "identityMethod", "identityDetails", "ocrData", 
-    "address", "bankDetails", "segments", "bsda", 
-    "nomineeDetails", "nomineeAllocation", "panUpload", "signature", "financialProof", "selfieDetails", "generatedPdfBase64"
+    "status",
+    "submittedAt",
+    "nsdlResponse",
+    "consent",
+    "personalDetails",
+    "identityMethod",
+    "identityDetails",
+    "ocrData",
+    "address",
+    "bankDetails",
+    "segments",
+    "bsda",
+    "nomineeDetails",
+    "nomineeAllocation",
+    "panUpload",
+    "signature",
+    "financialProof",
+    "selfieDetails",
   ],
 };
 
@@ -166,7 +246,7 @@ const VERIFICATION_FINGERPRINTS = {
   // Step 4: PAN Verification — fingerprint is PAN + Name + DOB
   4: (state) => {
     if (!state.panVerified) return null;
-    return `${state.identityDetails?.pan || ''}|${state.personalDetails?.fullName || ''}|${state.personalDetails?.dob || ''}`;
+    return `${state.identityDetails?.pan || ""}|${state.personalDetails?.fullName || ""}|${state.personalDetails?.dob || ""}`;
   },
   // Step 5: DigiLocker — fingerprint is the aadhaar number (set after successful DigiLocker flow)
   5: (state) => {
@@ -176,7 +256,7 @@ const VERIFICATION_FINGERPRINTS = {
   // Step 10: Bank Verification — fingerprint is account number + IFSC (only if penny-drop succeeded)
   10: (state) => {
     if (!state.bankDetails?.accountHolderName) return null;
-    return `${state.bankDetails.accountNumber || ''}|${state.bankDetails.ifsc || ''}`;
+    return `${state.bankDetails.accountNumber || ""}|${state.bankDetails.ifsc || ""}`;
   },
 };
 
@@ -206,7 +286,10 @@ export function KYCProvider({ children }) {
         }
       } else {
         const text = await response.text();
-        console.warn("[KYC Context] Expected JSON step config but got text", text.substring(0, 50));
+        console.warn(
+          "[KYC Context] Expected JSON step config but got text",
+          text.substring(0, 50),
+        );
       }
     } catch (error) {
       console.warn("[KYC Context] Failed to fetch step config, using defaults");
@@ -220,242 +303,372 @@ export function KYCProvider({ children }) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.currentStep !== undefined) {
-           setState(prev => ({ ...prev, ...parsed }));
+          setState((prev) => ({ ...prev, ...parsed }));
         }
       }
     } catch (e) {
-      console.warn("[KYC Context] Failed to restore progress from session storage", e);
+      console.warn(
+        "[KYC Context] Failed to restore progress from session storage",
+        e,
+      );
     }
-    
+
     fetchSteps();
   }, [fetchSteps]);
 
   const addToast = useCallback((message, type = "info") => {
-    setToasts(prev => {
+    setToasts((prev) => {
       // Prevent duplicate messages within a short window
-      if (prev.length > 0 && prev[prev.length - 1].message === message) return prev;
-      
+      if (prev.length > 0 && prev[prev.length - 1].message === message)
+        return prev;
+
       const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const next = [...prev, { id, message, type }];
-      setTimeout(() => setToasts(curr => curr.filter(t => t.id !== id)), 4000);
+      setTimeout(
+        () => setToasts((curr) => curr.filter((t) => t.id !== id)),
+        4000,
+      );
       return next;
     });
   }, []);
 
-  const refreshProgress = useCallback(async (appId, authToken, isPolling = false) => {
-    // Ensure we have an applicationId and token (check both storage types)
-    const activeAppId = appId || (typeof window !== "undefined" ? (sessionStorage.getItem("kycApplicationId") || localStorage.getItem("kycApplicationId")) : null);
-    const activeToken = authToken || (typeof window !== "undefined" ? (sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || localStorage.getItem("token")) : null);
+  const refreshProgress = useCallback(
+    async (appId, authToken, isPolling = false) => {
+      // Ensure we have an applicationId and token (check both storage types)
+      const activeAppId =
+        appId ||
+        (typeof window !== "undefined"
+          ? sessionStorage.getItem("kycApplicationId") ||
+            localStorage.getItem("kycApplicationId")
+          : null);
+      const activeToken =
+        authToken ||
+        (typeof window !== "undefined"
+          ? sessionStorage.getItem("kycToken") ||
+            localStorage.getItem("kycToken") ||
+            localStorage.getItem("token")
+          : null);
 
-    if (!activeAppId || !activeToken) {
-      if (!isPolling) {
-        console.log("[KYC Sync] No active application ID or token found. Skipping refresh.");
-        setState(prev => ({ ...prev, isRestoring: false }));
-      }
-      return null;
-    }
-
-    if (!isPolling) {
-      setState(prev => ({ ...prev, isRestoring: true }));
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/kyc/status/${activeAppId}`, {
-        headers: { "Authorization": `Bearer ${activeToken}` }
-      });
-
-      // Handle Deleted Application or Invalid Session
-      if (response.status === 404 || response.status === 401) {
-        console.warn(`[KYC Sync] ${response.status === 404 ? "Application Deleted" : "Session Expired"}. Cleaning up...`);
-        if (typeof window !== "undefined") {
-          sessionStorage.removeItem("kycApplicationId");
-          sessionStorage.removeItem("kycToken");
-          sessionStorage.removeItem("kyc-progress");
-          localStorage.removeItem("kycApplicationId");
-          localStorage.removeItem("kycToken");
+      if (!activeAppId || !activeToken) {
+        if (!isPolling) {
+          console.log(
+            "[KYC Sync] No active application ID or token found. Skipping refresh.",
+          );
+          setState((prev) => ({ ...prev, isRestoring: false }));
         }
-        setState(INITIAL_STATE);
         return null;
       }
 
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const data = await response.json();
-        if (data.success && data.application) {
-          const app = data.application;
-          
-          const isInitialLoad = !isPolling;
-          const adminJustMoved = app.reviewedAt && app.reviewedAt !== lastSyncedReviewedAt.current;
+      if (!isPolling) {
+        setState((prev) => ({ ...prev, isRestoring: true }));
+      }
 
-          // Dynamically compute the starting step for rejected applications
-          if ((isInitialLoad || adminJustMoved) && app.status === "pending" && app.stepStatuses) {
-            const rejectedEntries = Object.entries(REVIEW_STEP_TO_KYC_INDEX)
-              .filter(([reviewId]) => app.stepStatuses[reviewId]?.status === "rejected")
-              .map(([, idx]) => idx);
-              
-            if (rejectedEntries.length > 0) {
-              app.currentStep = Math.min(...rejectedEntries);
-            }
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/kyc/status/${activeAppId}`,
+          {
+            headers: { Authorization: `Bearer ${activeToken}` },
+          },
+        );
+
+        // Handle Deleted Application or Invalid Session
+        if (response.status === 404 || response.status === 401) {
+          console.warn(
+            `[KYC Sync] ${response.status === 404 ? "Application Deleted" : "Session Expired"}. Cleaning up...`,
+          );
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem("kycApplicationId");
+            sessionStorage.removeItem("kycToken");
+            sessionStorage.removeItem("kyc-progress");
+            localStorage.removeItem("kycApplicationId");
+            localStorage.removeItem("kycToken");
           }
-          
-          setHasSynced(true);
-          setState(prev => {
-            // Detect if anything critical actually changed
-            const stepChanged = app.currentStep !== prev.currentStep;
-            const statusChanged = app.status !== prev.status;
-            const adminMoved = app.reviewedAt && app.reviewedAt !== lastSyncedReviewedAt.current;
-            
-            if (!stepChanged && !statusChanged && !adminMoved && isPolling) return prev;
+          setState(INITIAL_STATE);
+          return null;
+        }
 
-            const updateSessionStorage = (nextState) => {
-              try { sessionStorage.setItem("kyc-progress", JSON.stringify(nextState)); } catch(e) {}
-              return nextState;
-            };
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await response.json();
+          if (data.success && data.application) {
+            const app = data.application;
 
-            // 1. ABSOLUTE ADMIN OVERRIDE: If Admin explicitly moved the user, we always trust the server
-            if (adminMoved) {
-              console.log(`[KYC Sync] Admin Override Detected! Moving to Step: ${app.currentStep} and syncing all data.`);
-              lastSyncedReviewedAt.current = app.reviewedAt;
-              return updateSessionStorage({
-                ...prev,
-                applicationId: app.applicationId,
-                currentStep: app.currentStep,
-                status: app.status,
-                rejectionReason: app.rejectionReason !== undefined ? app.rejectionReason : prev.rejectionReason,
-                submittedAt: app.submittedAt !== undefined ? app.submittedAt : prev.submittedAt,
-                isResubmitted: app.isResubmitted !== undefined ? app.isResubmitted : prev.isResubmitted,
-                personalDetails: { ...prev.personalDetails, ...(app.personalDetails || {}) },
-                identityDetails: { ...prev.identityDetails, ...(app.identityDetails || {}) },
-                address: { ...prev.address, ...(app.address || {}) },
-                bankDetails: { ...prev.bankDetails, ...(app.bankDetails || {}) },
-                ocrData: { ...prev.ocrData, ...(app.ocrData || {}) },
-                selfie: { ...prev.selfie, ...(app.selfieDetails || {}) },
-                signature: { ...prev.signature, ...(app.signature || {}) },
-                panUpload: { ...prev.panUpload, ...(app.panUpload || {}) },
-                financialProof: { ...prev.financialProof, ...(app.financialProof || {}) },
-                segments: app.segments || prev.segments,
-                bsda: app.bsda || prev.bsda,
-                nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
-                nomineeAllocation: app.nomineeAllocation || prev.nomineeAllocation,
-                generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
-                stepStatuses: app.stepStatuses || prev.stepStatuses,
-              });
+            const isInitialLoad = !isPolling;
+            const adminJustMoved =
+              app.reviewedAt && app.reviewedAt !== lastSyncedReviewedAt.current;
+
+            // Dynamically compute the starting step for rejected applications
+            if (
+              (isInitialLoad || adminJustMoved) &&
+              app.status === "pending" &&
+              app.stepStatuses
+            ) {
+              const rejectedEntries = Object.entries(REVIEW_STEP_TO_KYC_INDEX)
+                .filter(
+                  ([reviewId]) =>
+                    app.stepStatuses[reviewId]?.status === "rejected",
+                )
+                .map(([, idx]) => idx);
+
+              if (rejectedEntries.length > 0) {
+                app.currentStep = Math.min(...rejectedEntries);
+              }
             }
 
-            // 2. INITIAL LOAD / REFRESH: Always trust server on first load (isPolling is false)
-            if (!isPolling) {
-              lastSyncedReviewedAt.current = app.reviewedAt; // Initialize the marker
-              return updateSessionStorage({
-                ...prev,
-                applicationId: app.applicationId,
-                currentStep: app.currentStep,
-                status: app.status,
-                rejectionReason: app.rejectionReason !== undefined ? app.rejectionReason : prev.rejectionReason,
-                submittedAt: app.submittedAt !== undefined ? app.submittedAt : prev.submittedAt,
-                isResubmitted: app.isResubmitted !== undefined ? app.isResubmitted : prev.isResubmitted,
-                isRestoring: false,
-                otpVerified: app.currentStep > 1 ? true : prev.otpVerified,
-                emailVerified: app.currentStep > 2 ? true : prev.emailVerified,
-                panVerified: app.currentStep > 4 ? true : prev.panVerified,
-                personalDetails: { ...prev.personalDetails, ...(app.personalDetails || {}) },
-                identityDetails: { ...prev.identityDetails, ...(app.identityDetails || {}) },
-                address: { ...prev.address, ...(app.address || {}) },
-                bankDetails: { ...prev.bankDetails, ...(app.bankDetails || {}) },
-                ocrData: { ...prev.ocrData, ...(app.ocrData || {}) },
-                selfie: { ...prev.selfie, ...(app.selfieDetails || {}) },
-                signature: { ...prev.signature, ...(app.signature || {}) },
-                panUpload: { ...prev.panUpload, ...(app.panUpload || {}) },
-                financialProof: { ...prev.financialProof, ...(app.financialProof || {}) },
-                segments: app.segments || prev.segments,
-                bsda: app.bsda || prev.bsda,
-                nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
-                nomineeAllocation: app.nomineeAllocation || prev.nomineeAllocation,
-                generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
-                stepStatuses: app.stepStatuses || prev.stepStatuses,
-              });
-            }
+            setHasSynced(true);
+            setState((prev) => {
+              // Detect if anything critical actually changed
+              const stepChanged = app.currentStep !== prev.currentStep;
+              const statusChanged = app.status !== prev.status;
+              const adminMoved =
+                app.reviewedAt &&
+                app.reviewedAt !== lastSyncedReviewedAt.current;
 
-            // 3. BACKGROUND POLLING LOGIC:
-            // - If server moved FORWARD (e.g. user moving in another tab), follow it.
-            // - If server reports OLDER step (race condition), IGNORE IT (don't yank back).
-            if (isPolling) {
-              const serverIsNewerAdminChange = app.reviewedAt && 
-                (!lastSyncedReviewedAt.current || new Date(app.reviewedAt).getTime() > new Date(lastSyncedReviewedAt.current).getTime());
+              if (!stepChanged && !statusChanged && !adminMoved && isPolling)
+                return prev;
 
-              const isAlreadyCompleted = app.currentStep >= 14;
-              const shouldForward = (app.currentStep > prev.currentStep) && !isAlreadyCompleted;
+              const updateSessionStorage = (nextState) => {
+                try {
+                  sessionStorage.setItem(
+                    "kyc-progress",
+                    JSON.stringify(nextState),
+                  );
+                } catch (e) {}
+                return nextState;
+              };
 
-              if (shouldForward || statusChanged || serverIsNewerAdminChange) {
-                const reason = shouldForward ? "Server is ahead" : 
-                               statusChanged ? "Status changed" : 
-                               "Admin moved step/status";
-                
-                console.log(`[KYC Sync] Following server (${reason}). New Step: ${app.currentStep}, Status: ${app.status}`);
-                
-                if (serverIsNewerAdminChange) {
-                  lastSyncedReviewedAt.current = app.reviewedAt;
-                }
-                
-                // Defensive merge even on background sync
-                return updateSessionStorage({ 
-                  ...prev, 
+              // 1. ABSOLUTE ADMIN OVERRIDE: If Admin explicitly moved the user, we always trust the server
+              if (adminMoved) {
+                console.log(
+                  `[KYC Sync] Admin Override Detected! Moving to Step: ${app.currentStep} and syncing all data.`,
+                );
+                lastSyncedReviewedAt.current = app.reviewedAt;
+                return updateSessionStorage({
+                  ...prev,
                   applicationId: app.applicationId,
-                  currentStep: app.currentStep, 
+                  currentStep: app.currentStep,
                   status: app.status,
-                  rejectionReason: app.rejectionReason !== undefined ? app.rejectionReason : prev.rejectionReason,
-                  submittedAt: app.submittedAt !== undefined ? app.submittedAt : prev.submittedAt,
-                  isResubmitted: app.isResubmitted !== undefined ? app.isResubmitted : prev.isResubmitted,
-                  personalDetails: { ...prev.personalDetails, ...(app.personalDetails || {}) },
-                  identityDetails: { ...prev.identityDetails, ...(app.identityDetails || {}) },
+                  rejectionReason:
+                    app.rejectionReason !== undefined
+                      ? app.rejectionReason
+                      : prev.rejectionReason,
+                  submittedAt:
+                    app.submittedAt !== undefined
+                      ? app.submittedAt
+                      : prev.submittedAt,
+                  isResubmitted:
+                    app.isResubmitted !== undefined
+                      ? app.isResubmitted
+                      : prev.isResubmitted,
+                  personalDetails: {
+                    ...prev.personalDetails,
+                    ...(app.personalDetails || {}),
+                  },
+                  identityDetails: {
+                    ...prev.identityDetails,
+                    ...(app.identityDetails || {}),
+                  },
                   address: { ...prev.address, ...(app.address || {}) },
-                  bankDetails: { ...prev.bankDetails, ...(app.bankDetails || {}) },
+                  bankDetails: {
+                    ...prev.bankDetails,
+                    ...(app.bankDetails || {}),
+                  },
                   ocrData: { ...prev.ocrData, ...(app.ocrData || {}) },
                   selfie: { ...prev.selfie, ...(app.selfieDetails || {}) },
                   signature: { ...prev.signature, ...(app.signature || {}) },
                   panUpload: { ...prev.panUpload, ...(app.panUpload || {}) },
-                  financialProof: { ...prev.financialProof, ...(app.financialProof || {}) },
+                  financialProof: {
+                    ...prev.financialProof,
+                    ...(app.financialProof || {}),
+                  },
                   segments: app.segments || prev.segments,
                   bsda: app.bsda || prev.bsda,
                   nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
-                  nomineeAllocation: app.nomineeAllocation || prev.nomineeAllocation,
-                  generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
+                  nomineeAllocation:
+                    app.nomineeAllocation || prev.nomineeAllocation,
                   stepStatuses: app.stepStatuses || prev.stepStatuses,
                 });
               }
-              
-              // If server is behind and no admin change, stay where we are (no yank back)
-              return prev;
-            }
 
-            return prev;
-          });
-          return app;
+              // 2. INITIAL LOAD / REFRESH: Always trust server on first load (isPolling is false)
+              if (!isPolling) {
+                lastSyncedReviewedAt.current = app.reviewedAt; // Initialize the marker
+                return updateSessionStorage({
+                  ...prev,
+                  applicationId: app.applicationId,
+                  currentStep: app.currentStep,
+                  status: app.status,
+                  rejectionReason:
+                    app.rejectionReason !== undefined
+                      ? app.rejectionReason
+                      : prev.rejectionReason,
+                  submittedAt:
+                    app.submittedAt !== undefined
+                      ? app.submittedAt
+                      : prev.submittedAt,
+                  isResubmitted:
+                    app.isResubmitted !== undefined
+                      ? app.isResubmitted
+                      : prev.isResubmitted,
+                  isRestoring: false,
+                  otpVerified: app.currentStep > 1 ? true : prev.otpVerified,
+                  emailVerified:
+                    app.currentStep > 2 ? true : prev.emailVerified,
+                  panVerified: app.currentStep > 4 ? true : prev.panVerified,
+                  personalDetails: {
+                    ...prev.personalDetails,
+                    ...(app.personalDetails || {}),
+                  },
+                  identityDetails: {
+                    ...prev.identityDetails,
+                    ...(app.identityDetails || {}),
+                  },
+                  address: { ...prev.address, ...(app.address || {}) },
+                  bankDetails: {
+                    ...prev.bankDetails,
+                    ...(app.bankDetails || {}),
+                  },
+                  ocrData: { ...prev.ocrData, ...(app.ocrData || {}) },
+                  selfie: { ...prev.selfie, ...(app.selfieDetails || {}) },
+                  signature: { ...prev.signature, ...(app.signature || {}) },
+                  panUpload: { ...prev.panUpload, ...(app.panUpload || {}) },
+                  financialProof: {
+                    ...prev.financialProof,
+                    ...(app.financialProof || {}),
+                  },
+                  segments: app.segments || prev.segments,
+                  bsda: app.bsda || prev.bsda,
+                  nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
+                  nomineeAllocation:
+                    app.nomineeAllocation || prev.nomineeAllocation,
+                  stepStatuses: app.stepStatuses || prev.stepStatuses,
+                });
+              }
+
+              // 3. BACKGROUND POLLING LOGIC:
+              // - If server moved FORWARD (e.g. user moving in another tab), follow it.
+              // - If server reports OLDER step (race condition), IGNORE IT (don't yank back).
+              if (isPolling) {
+                const serverIsNewerAdminChange =
+                  app.reviewedAt &&
+                  (!lastSyncedReviewedAt.current ||
+                    new Date(app.reviewedAt).getTime() >
+                      new Date(lastSyncedReviewedAt.current).getTime());
+
+                const isAlreadyCompleted = app.currentStep >= 14;
+                const shouldForward =
+                  app.currentStep > prev.currentStep && !isAlreadyCompleted;
+
+                if (
+                  shouldForward ||
+                  statusChanged ||
+                  serverIsNewerAdminChange
+                ) {
+                  const reason = shouldForward
+                    ? "Server is ahead"
+                    : statusChanged
+                      ? "Status changed"
+                      : "Admin moved step/status";
+
+                  console.log(
+                    `[KYC Sync] Following server (${reason}). New Step: ${app.currentStep}, Status: ${app.status}`,
+                  );
+
+                  if (serverIsNewerAdminChange) {
+                    lastSyncedReviewedAt.current = app.reviewedAt;
+                  }
+
+                  // Defensive merge even on background sync
+                  return updateSessionStorage({
+                    ...prev,
+                    applicationId: app.applicationId,
+                    currentStep: app.currentStep,
+                    status: app.status,
+                    rejectionReason:
+                      app.rejectionReason !== undefined
+                        ? app.rejectionReason
+                        : prev.rejectionReason,
+                    submittedAt:
+                      app.submittedAt !== undefined
+                        ? app.submittedAt
+                        : prev.submittedAt,
+                    isResubmitted:
+                      app.isResubmitted !== undefined
+                        ? app.isResubmitted
+                        : prev.isResubmitted,
+                    personalDetails: {
+                      ...prev.personalDetails,
+                      ...(app.personalDetails || {}),
+                    },
+                    identityDetails: {
+                      ...prev.identityDetails,
+                      ...(app.identityDetails || {}),
+                    },
+                    address: { ...prev.address, ...(app.address || {}) },
+                    bankDetails: {
+                      ...prev.bankDetails,
+                      ...(app.bankDetails || {}),
+                    },
+                    ocrData: { ...prev.ocrData, ...(app.ocrData || {}) },
+                    selfie: { ...prev.selfie, ...(app.selfieDetails || {}) },
+                    signature: { ...prev.signature, ...(app.signature || {}) },
+                    panUpload: { ...prev.panUpload, ...(app.panUpload || {}) },
+                    financialProof: {
+                      ...prev.financialProof,
+                      ...(app.financialProof || {}),
+                    },
+                    segments: app.segments || prev.segments,
+                    bsda: app.bsda || prev.bsda,
+                    nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
+                    nomineeAllocation:
+                      app.nomineeAllocation || prev.nomineeAllocation,
+                    stepStatuses: app.stepStatuses || prev.stepStatuses,
+                  });
+                }
+
+                // If server is behind and no admin change, stay where we are (no yank back)
+                return prev;
+              }
+
+              return prev;
+            });
+            return app;
+          }
+        }
+      } catch (error) {
+        if (!isPolling) {
+          console.warn("[KYC Sync] Failed to sync with server:", error.message);
+          setState((prev) => ({ ...prev, isRestoring: false }));
+          // If we can't reach the server, we haven't synced, so stay hasSynced = false
+        }
+      } finally {
+        if (!isPolling) {
+          // Ensure restoration flag is eventually cleared
+          setTimeout(
+            () => setState((prev) => ({ ...prev, isRestoring: false })),
+            100,
+          );
         }
       }
-    } catch (error) {
-      if (!isPolling) {
-        console.warn("[KYC Sync] Failed to sync with server:", error.message);
-        setState(prev => ({ ...prev, isRestoring: false }));
-        // If we can't reach the server, we haven't synced, so stay hasSynced = false
-      }
-    } finally {
-      if (!isPolling) {
-        // Ensure restoration flag is eventually cleared
-        setTimeout(() => setState(prev => ({ ...prev, isRestoring: false })), 100);
-      }
-    }
-    return null;
-  }, []);
-  
+      return null;
+    },
+    [],
+  );
+
   // Real-time updates via Socket.IO (replaces background polling)
   useEffect(() => {
-    const activeAppId = state.applicationId || (typeof window !== "undefined" ? sessionStorage.getItem("kycApplicationId") : null);
-    const activeToken = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
-    
+    const activeAppId =
+      state.applicationId ||
+      (typeof window !== "undefined"
+        ? sessionStorage.getItem("kycApplicationId")
+        : null);
+    const activeToken =
+      sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+
     if (!activeAppId || !activeToken) return;
-    
+
     const socket = io(API_BASE_URL, {
-      withCredentials: true
+      withCredentials: true,
     });
 
     socket.on("connect", () => {
@@ -476,55 +689,66 @@ export function KYCProvider({ children }) {
 
   useEffect(() => {
     const savedTheme = sessionStorage.getItem("kyc-theme");
-    if (savedTheme) { setTheme(savedTheme); document.documentElement.setAttribute("data-theme", savedTheme); }
-    
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.setAttribute("data-theme", savedTheme);
+    }
+
     if (typeof window === "undefined") return;
 
     // Only restore from sessionStorage to ensure new tabs start fresh at Phone Verification
     const savedApplicationId = sessionStorage.getItem("kycApplicationId");
-    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token");
+    const token =
+      sessionStorage.getItem("kycToken") ||
+      sessionStorage.getItem("adminToken") ||
+      sessionStorage.getItem("token");
 
     const urlParams = new URLSearchParams(window.location.search);
-    const magicToken = urlParams.get('token');
-    
+    const magicToken = urlParams.get("token");
+
     if (magicToken) {
       sessionStorage.setItem("kycToken", magicToken);
       window.history.replaceState({}, document.title, window.location.pathname);
-      
+
       // Fetch /api/kyc/me to get the application id
       fetch(`${API_BASE_URL}/api/kyc/me`, {
-        headers: { Authorization: `Bearer ${magicToken}` }
+        headers: { Authorization: `Bearer ${magicToken}` },
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.application) {
-           sessionStorage.setItem("kycApplicationId", data.application.applicationId);
-           refreshProgress(data.application.applicationId, magicToken);
-        } else {
-           setHasSynced(true);
-           setState(prev => ({ ...prev, isRestoring: false }));
-        }
-      })
-      .catch(err => {
-         console.warn("[KYC Init] Failed to verify magic token:", err);
-         setHasSynced(true);
-         setState(prev => ({ ...prev, isRestoring: false }));
-      });
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.application) {
+            sessionStorage.setItem(
+              "kycApplicationId",
+              data.application.applicationId,
+            );
+            refreshProgress(data.application.applicationId, magicToken);
+          } else {
+            setHasSynced(true);
+            setState((prev) => ({ ...prev, isRestoring: false }));
+          }
+        })
+        .catch((err) => {
+          console.warn("[KYC Init] Failed to verify magic token:", err);
+          setHasSynced(true);
+          setState((prev) => ({ ...prev, isRestoring: false }));
+        });
       return;
     }
 
     if (savedApplicationId && token) {
-      console.log(`[KYC Init] Found tab session for ${savedApplicationId}. Refreshing...`);
+      console.log(
+        `[KYC Init] Found tab session for ${savedApplicationId}. Refreshing...`,
+      );
       refreshProgress(savedApplicationId, token);
     } else {
       // No active tab session, stop the restoring spinner
       setHasSynced(true);
-      setState(prev => ({ ...prev, isRestoring: false }));
+      setState((prev) => ({ ...prev, isRestoring: false }));
     }
   }, [refreshProgress]);
 
   const toggleTheme = useCallback(() => {
-    setTheme(prev => {
+    setTheme((prev) => {
       const next = prev === "light" ? "dark" : "light";
       document.documentElement.setAttribute("data-theme", next);
       sessionStorage.setItem("kyc-theme", next);
@@ -533,10 +757,12 @@ export function KYCProvider({ children }) {
   }, []);
 
   const updateState = useCallback((updates) => {
-    setState(prev => {
+    setState((prev) => {
       const next = { ...prev, ...updates };
       // Avoid updating state if nothing changed (prevents render loops)
-      const isEqual = Object.keys(updates).every(key => prev[key] === updates[key]);
+      const isEqual = Object.keys(updates).every(
+        (key) => prev[key] === updates[key],
+      );
       if (isEqual) return prev;
       try {
         sessionStorage.setItem("kyc-progress", JSON.stringify(next));
@@ -548,88 +774,96 @@ export function KYCProvider({ children }) {
   }, []);
 
   const updateNested = useCallback((key, updates) => {
-    setState(prev => {
+    setState((prev) => {
       const next = { ...prev, [key]: { ...prev[key], ...updates } };
       try {
         sessionStorage.setItem("kyc-progress", JSON.stringify(next));
-      } catch(e) {
+      } catch (e) {
         console.warn("[KYC Context] sessionStorage update failed:", e.message);
       }
       return next;
     });
   }, []);
 
-  const getBackendPayload = useCallback((snapshot, forceKeysOrStepId = null) => {
-    const currentSteps = steps.length > 0 ? steps : STEPS;
-    let relevantKeys = [];
+  const getBackendPayload = useCallback(
+    (snapshot, forceKeysOrStepId = null) => {
+      const currentSteps = steps.length > 0 ? steps : STEPS;
+      let relevantKeys = [];
 
-    if (Array.isArray(forceKeysOrStepId)) {
-      relevantKeys = forceKeysOrStepId;
-    } else if (typeof forceKeysOrStepId === "string") {
-      relevantKeys = STEP_RELEVANT_KEYS[forceKeysOrStepId] || [];
-    } else {
-      const stepId = currentSteps[snapshot.currentStep]?.id;
-      relevantKeys = STEP_RELEVANT_KEYS[stepId] || [];
-    }
-    
-    const payload = {
-      currentStep: snapshot.currentStep,
-      status: snapshot.status || "pending",
-    };
-
-    // Helper to conditionally add key to payload if it's relevant
-    const addIfRelevant = (key, transform) => {
-      if (relevantKeys.includes(key)) {
-        payload[key] = transform ? transform(snapshot[key]) : snapshot[key];
+      if (Array.isArray(forceKeysOrStepId)) {
+        relevantKeys = forceKeysOrStepId;
+      } else if (typeof forceKeysOrStepId === "string") {
+        relevantKeys = STEP_RELEVANT_KEYS[forceKeysOrStepId] || [];
+      } else {
+        const stepId = currentSteps[snapshot.currentStep]?.id;
+        relevantKeys = STEP_RELEVANT_KEYS[stepId] || [];
       }
-    };
 
-    addIfRelevant("personalDetails");
-    addIfRelevant("identityMethod");
-    addIfRelevant("identityDetails");
-    addIfRelevant("ocrData");
-    addIfRelevant("address");
-    addIfRelevant("bankDetails");
-    addIfRelevant("segments");
-    addIfRelevant("bsda");
-    addIfRelevant("nomineeAllocation");
-    addIfRelevant("consent");
-    addIfRelevant("submittedAt");
-    addIfRelevant("generatedPdfBase64");
-    addIfRelevant("esignPreview");
-    
-    if (relevantKeys.includes("nomineeDetails")) {
-      payload.nomineeDetails = snapshot.nomineeDetails?.opted === "No" 
-        ? { ...snapshot.nomineeDetails, nominees: [] } 
-        : {
-            ...snapshot.nomineeDetails,
-            nominees: (snapshot.nomineeDetails?.nominees || []).map(nom => {
-              const { proofFile, ...serializableNominee } = nom;
-              return serializableNominee;
-            })
-          };
-    }
+      const payload = {
+        currentStep: snapshot.currentStep,
+        status: snapshot.status || "pending",
+      };
 
-    if (relevantKeys.includes("panUpload")) {
-      payload.panUpload = snapshot.panUpload ? { ...snapshot.panUpload, file: undefined } : snapshot.panUpload;
-    }
-    if (relevantKeys.includes("signature")) {
-      payload.signature = snapshot.signature ? { ...snapshot.signature, file: undefined } : snapshot.signature;
-    }
-    if (relevantKeys.includes("financialProof")) {
-      payload.financialProof = snapshot.financialProof ? { ...snapshot.financialProof, file: undefined } : snapshot.financialProof;
-    }
-    if (relevantKeys.includes("selfieDetails")) {
-      payload.selfieDetails = snapshot.selfie;
-    }
-    if (relevantKeys.includes("generatedPdfBase64")) {
-      payload.generatedPdfBase64 = snapshot.generatedPdfBase64;
-    }
+      // Helper to conditionally add key to payload if it's relevant
+      const addIfRelevant = (key, transform) => {
+        if (relevantKeys.includes(key)) {
+          payload[key] = transform ? transform(snapshot[key]) : snapshot[key];
+        }
+      };
 
-    // Removed the payload.documents boolean flags to prevent overwriting the backend array
+      addIfRelevant("personalDetails");
+      addIfRelevant("identityMethod");
+      addIfRelevant("identityDetails");
+      addIfRelevant("ocrData");
+      addIfRelevant("address");
+      addIfRelevant("bankDetails");
+      addIfRelevant("segments");
+      addIfRelevant("bsda");
+      addIfRelevant("nomineeAllocation");
+      addIfRelevant("consent");
+      addIfRelevant("submittedAt");
+      addIfRelevant("esignPreview");
 
-    return payload;
-  }, [steps]);
+      if (relevantKeys.includes("nomineeDetails")) {
+        payload.nomineeDetails =
+          snapshot.nomineeDetails?.opted === "No"
+            ? { ...snapshot.nomineeDetails, nominees: [] }
+            : {
+                ...snapshot.nomineeDetails,
+                nominees: (snapshot.nomineeDetails?.nominees || []).map(
+                  (nom) => {
+                    const { proofFile, ...serializableNominee } = nom;
+                    return serializableNominee;
+                  },
+                ),
+              };
+      }
+
+      if (relevantKeys.includes("panUpload")) {
+        payload.panUpload = snapshot.panUpload
+          ? { ...snapshot.panUpload, file: undefined }
+          : snapshot.panUpload;
+      }
+      if (relevantKeys.includes("signature")) {
+        payload.signature = snapshot.signature
+          ? { ...snapshot.signature, file: undefined }
+          : snapshot.signature;
+      }
+      if (relevantKeys.includes("financialProof")) {
+        payload.financialProof = snapshot.financialProof
+          ? { ...snapshot.financialProof, file: undefined }
+          : snapshot.financialProof;
+      }
+      if (relevantKeys.includes("selfieDetails")) {
+        payload.selfieDetails = snapshot.selfie;
+      }
+
+      // Removed the payload.documents boolean flags to prevent overwriting the backend array
+
+      return payload;
+    },
+    [steps],
+  );
 
   // Use a ref to always have access to latest state in async callbacks
   const stateRef = useRef(state);
@@ -637,39 +871,53 @@ export function KYCProvider({ children }) {
     stateRef.current = state;
   }, [state]);
 
-  const persistStepToBackend = useCallback(async (partialSnapshot, showToastOnError = false, forceStepId = null) => {
-    if (typeof window === "undefined") return false;
-    
-    // Merge partial snapshot with latest state for a complete picture
-    const snapshot = { ...stateRef.current, ...partialSnapshot };
-    
-    const applicationId = snapshot.applicationId || sessionStorage.getItem("kycApplicationId");
-    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token");
-    if (!applicationId || !token) return false;
+  const persistStepToBackend = useCallback(
+    async (partialSnapshot, showToastOnError = false, forceStepId = null) => {
+      if (typeof window === "undefined") return false;
 
-    const currentSteps = steps.length > 0 ? steps : STEPS;
-    const stepId = forceStepId || currentSteps[snapshot.currentStep]?.id;
-    if (!stepId) return false;
+      // Merge partial snapshot with latest state for a complete picture
+      const snapshot = { ...stateRef.current, ...partialSnapshot };
 
-    console.log(`[KYC Context] Persisting Step: ${stepId} (Index: ${snapshot.currentStep})`);
+      const applicationId =
+        snapshot.applicationId || sessionStorage.getItem("kycApplicationId");
+      const token =
+        sessionStorage.getItem("kycToken") ||
+        sessionStorage.getItem("adminToken") ||
+        sessionStorage.getItem("token");
+      if (!applicationId || !token) return false;
 
-    try {
-      await saveKycStep({
-        applicationId,
-        step: stepId,
-        stepIndex: snapshot.currentStep,
-        data: getBackendPayload(snapshot, forceStepId || (partialSnapshot ? Object.keys(partialSnapshot) : null)),
-      });
-      return true;
-    } catch (error) {
-      console.warn("[KYC Sync] save-step failed:", error?.message || error);
-      if (showToastOnError) {
-        const errorMsg = error?.message || "Failed to sync progress. Please try again.";
-        addToast(errorMsg, "error");
+      const currentSteps = steps.length > 0 ? steps : STEPS;
+      const stepId = forceStepId || currentSteps[snapshot.currentStep]?.id;
+      if (!stepId) return false;
+
+      console.log(
+        `[KYC Context] Persisting Step: ${stepId} (Index: ${snapshot.currentStep})`,
+      );
+
+      try {
+        await saveKycStep({
+          applicationId,
+          step: stepId,
+          stepIndex: snapshot.currentStep,
+          data: getBackendPayload(
+            snapshot,
+            forceStepId ||
+              (partialSnapshot ? Object.keys(partialSnapshot) : null),
+          ),
+        });
+        return true;
+      } catch (error) {
+        console.warn("[KYC Sync] save-step failed:", error?.message || error);
+        if (showToastOnError) {
+          const errorMsg =
+            error?.message || "Failed to sync progress. Please try again.";
+          addToast(errorMsg, "error");
+        }
+        return false;
       }
-      return false;
-    }
-  }, [getBackendPayload, addToast, steps]);
+    },
+    [getBackendPayload, addToast, steps],
+  );
 
   /**
    * Records that a step has been verified with a specific data fingerprint.
@@ -677,13 +925,13 @@ export function KYCProvider({ children }) {
    */
   const markStepVerified = useCallback((stepIndex, fingerprint) => {
     if (!fingerprint) return;
-    setState(prev => {
+    setState((prev) => {
       const next = {
         ...prev,
         verifiedSteps: {
           ...prev.verifiedSteps,
-          [stepIndex]: { fingerprint }
-        }
+          [stepIndex]: { fingerprint },
+        },
       };
       try {
         sessionStorage.setItem("kyc-progress", JSON.stringify(next));
@@ -692,160 +940,250 @@ export function KYCProvider({ children }) {
       }
       return next;
     });
-    console.log(`[KYC Context] Step ${stepIndex} marked as verified with fingerprint: ${fingerprint}`);
+    console.log(
+      `[KYC Context] Step ${stepIndex} marked as verified with fingerprint: ${fingerprint}`,
+    );
   }, []);
 
+  const nextStep = useCallback(
+    async (updates) => {
+      const now = Date.now();
+      if (now - lastClientStepChange.current < 800) {
+        console.warn(
+          "[KYC Context] nextStep blocked (double-click protection)",
+        );
+        return;
+      }
+      lastClientStepChange.current = now;
 
-  const nextStep = useCallback(async (updates) => {
-    const now = Date.now();
-    if (now - lastClientStepChange.current < 800) {
-      console.warn("[KYC Context] nextStep blocked (double-click protection)");
-      return;
-    }
-    lastClientStepChange.current = now;
+      // Sync with the step we are LEAVING to ensure its data is saved
+      const currentSteps = steps.length > 0 ? steps : STEPS;
+      const currentPrev = stateRef.current;
+      const currentStepId = currentSteps[currentPrev.currentStep]?.id;
 
-    // Sync with the step we are LEAVING to ensure its data is saved
-    const currentSteps = steps.length > 0 ? steps : STEPS;
-    const currentPrev = stateRef.current;
-    const currentStepId = currentSteps[currentPrev.currentStep]?.id;
-    
-    const base = updates ? { ...currentPrev, ...updates } : currentPrev;
-    let nextStepIndex = Math.min(base.currentStep + 1, currentSteps.length - 1);
+      const base = updates ? { ...currentPrev, ...updates } : currentPrev;
+      let nextStepIndex = Math.min(
+        base.currentStep + 1,
+        currentSteps.length - 1,
+      );
 
-    // MODIFICATION MODE: Skip approved steps (but never skip step 12+ i.e. eSign)
-    const hasStepStatuses = base.stepStatuses && Object.keys(base.stepStatuses).length > 0;
-    const hasAnyRejected = hasStepStatuses && Object.values(base.stepStatuses).some(s => s?.status === "rejected");
-    const isResubmission = !!base.rejectionReason || !!base.submittedAt || !!base.isResubmitted || hasAnyRejected;
-    if (hasStepStatuses) {
-      while (nextStepIndex < currentSteps.length - 1 && isKycStepApproved(nextStepIndex, base.stepStatuses, isResubmission)) {
-        console.log(`[KYC Context] Skipping approved step ${nextStepIndex} (${currentSteps[nextStepIndex]?.id})`);
+      // MODIFICATION MODE: Skip approved steps (but never skip step 12+ i.e. eSign)
+      const hasStepStatuses =
+        base.stepStatuses && Object.keys(base.stepStatuses).length > 0;
+      const hasAnyRejected =
+        hasStepStatuses &&
+        Object.values(base.stepStatuses).some((s) => s?.status === "rejected");
+      const isResubmission =
+        !!base.rejectionReason ||
+        !!base.submittedAt ||
+        !!base.isResubmitted ||
+        hasAnyRejected;
+      if (hasStepStatuses) {
+        while (
+          nextStepIndex < currentSteps.length - 1 &&
+          isKycStepApproved(nextStepIndex, base.stepStatuses, isResubmission)
+        ) {
+          console.log(
+            `[KYC Context] Skipping approved step ${nextStepIndex} (${currentSteps[nextStepIndex]?.id})`,
+          );
+          nextStepIndex++;
+        }
+      }
+
+      // AUTO-SKIP VERIFIED API STEPS: If the user is moving forward through a step
+      // that was already verified (PAN, DigiLocker, Bank) and the data hasn't changed,
+      // skip it automatically so the user doesn't have to click "Continue" on each one.
+      while (
+        nextStepIndex < currentSteps.length - 1 &&
+        VERIFICATION_FINGERPRINTS[nextStepIndex]
+      ) {
+        const fpFn = VERIFICATION_FINGERPRINTS[nextStepIndex];
+        const currentFp = fpFn(base);
+        if (!currentFp) break; // Step not verified at all — stop here
+
+        const savedFp = base.verifiedSteps?.[nextStepIndex]?.fingerprint;
+        if (savedFp && currentFp !== savedFp) break; // Data CHANGED since verification — must re-verify
+
+        // Either fingerprint matches, or no saved fingerprint but step IS verified
+        // (e.g., server-restored session, admin-moved user, pre-existing session)
+        console.log(
+          `[KYC Context] Auto-skipping verified step ${nextStepIndex} (${currentSteps[nextStepIndex]?.id}) — ${savedFp ? "fingerprint matches" : "auto-populated from verified state"}`,
+        );
+
+        // Auto-populate fingerprint if missing (so future changes can be detected)
+        if (!savedFp) {
+          base.verifiedSteps = {
+            ...(base.verifiedSteps || {}),
+            [nextStepIndex]: { fingerprint: currentFp },
+          };
+        }
         nextStepIndex++;
       }
-    }
 
-    // AUTO-SKIP VERIFIED API STEPS: If the user is moving forward through a step
-    // that was already verified (PAN, DigiLocker, Bank) and the data hasn't changed,
-    // skip it automatically so the user doesn't have to click "Continue" on each one.
-    while (nextStepIndex < currentSteps.length - 1 && VERIFICATION_FINGERPRINTS[nextStepIndex]) {
-      const fpFn = VERIFICATION_FINGERPRINTS[nextStepIndex];
-      const currentFp = fpFn(base);
-      if (!currentFp) break; // Step not verified at all — stop here
+      // We must pass the NEXT step index so the backend updates the user's progress bookmark
+      const computedNextState = { ...base, currentStep: nextStepIndex };
 
-      const savedFp = base.verifiedSteps?.[nextStepIndex]?.fingerprint;
-      if (savedFp && currentFp !== savedFp) break; // Data CHANGED since verification — must re-verify
+      // Await saving to backend BEFORE we advance state
+      const success = await persistStepToBackend(
+        computedNextState,
+        true,
+        currentStepId,
+      );
 
-      // Either fingerprint matches, or no saved fingerprint but step IS verified
-      // (e.g., server-restored session, admin-moved user, pre-existing session)
-      console.log(`[KYC Context] Auto-skipping verified step ${nextStepIndex} (${currentSteps[nextStepIndex]?.id}) — ${savedFp ? 'fingerprint matches' : 'auto-populated from verified state'}`);
-      
-      // Auto-populate fingerprint if missing (so future changes can be detected)
-      if (!savedFp) {
-        base.verifiedSteps = { ...(base.verifiedSteps || {}), [nextStepIndex]: { fingerprint: currentFp } };
+      // If saving failed (e.g., server offline), ABORT advancing to prevent data loss
+      if (!success) {
+        console.error(
+          "[KYC Context] nextStep aborted due to backend sync failure.",
+        );
+        return;
       }
-      nextStepIndex++;
-    }
-    
-    // We must pass the NEXT step index so the backend updates the user's progress bookmark
-    const computedNextState = { ...base, currentStep: nextStepIndex }; 
 
-    // Await saving to backend BEFORE we advance state
-    const success = await persistStepToBackend(computedNextState, true, currentStepId);
-    
-    // If saving failed (e.g., server offline), ABORT advancing to prevent data loss
-    if (!success) {
-      console.error("[KYC Context] nextStep aborted due to backend sync failure.");
-      return; 
-    }
-    
-    setState(prev => {
-      const freshBase = updates ? { ...prev, ...updates } : prev;
-      let freshNextStepIndex = Math.min(freshBase.currentStep + 1, currentSteps.length - 1);
-      
-      const hasStepStatuses = freshBase.stepStatuses && Object.keys(freshBase.stepStatuses).length > 0;
-      const hasAnyRejected = hasStepStatuses && Object.values(freshBase.stepStatuses).some(s => s?.status === "rejected");
-      const isResubmissionState = !!freshBase.rejectionReason || !!freshBase.submittedAt || !!freshBase.isResubmitted || hasAnyRejected;
-      if (hasStepStatuses) {
-        while (freshNextStepIndex < currentSteps.length - 1 && isKycStepApproved(freshNextStepIndex, freshBase.stepStatuses, isResubmissionState)) {
-          console.log(`[KYC Context] Skipping approved step ${freshNextStepIndex} (${currentSteps[freshNextStepIndex]?.id}) during state update`);
+      setState((prev) => {
+        const freshBase = updates ? { ...prev, ...updates } : prev;
+        let freshNextStepIndex = Math.min(
+          freshBase.currentStep + 1,
+          currentSteps.length - 1,
+        );
+
+        const hasStepStatuses =
+          freshBase.stepStatuses &&
+          Object.keys(freshBase.stepStatuses).length > 0;
+        const hasAnyRejected =
+          hasStepStatuses &&
+          Object.values(freshBase.stepStatuses).some(
+            (s) => s?.status === "rejected",
+          );
+        const isResubmissionState =
+          !!freshBase.rejectionReason ||
+          !!freshBase.submittedAt ||
+          !!freshBase.isResubmitted ||
+          hasAnyRejected;
+        if (hasStepStatuses) {
+          while (
+            freshNextStepIndex < currentSteps.length - 1 &&
+            isKycStepApproved(
+              freshNextStepIndex,
+              freshBase.stepStatuses,
+              isResubmissionState,
+            )
+          ) {
+            console.log(
+              `[KYC Context] Skipping approved step ${freshNextStepIndex} (${currentSteps[freshNextStepIndex]?.id}) during state update`,
+            );
+            freshNextStepIndex++;
+          }
+        }
+
+        // AUTO-SKIP VERIFIED API STEPS (mirror of the pre-persist logic above)
+        while (
+          freshNextStepIndex < currentSteps.length - 1 &&
+          VERIFICATION_FINGERPRINTS[freshNextStepIndex]
+        ) {
+          const fpFn = VERIFICATION_FINGERPRINTS[freshNextStepIndex];
+          const currentFp = fpFn(freshBase);
+          if (!currentFp) break; // Step not verified
+
+          const savedFp =
+            freshBase.verifiedSteps?.[freshNextStepIndex]?.fingerprint;
+          if (savedFp && currentFp !== savedFp) break; // Data changed
+
+          console.log(
+            `[KYC Context] Auto-skipping verified step ${freshNextStepIndex} (${currentSteps[freshNextStepIndex]?.id}) during state update`,
+          );
+
+          // Auto-populate fingerprint if missing
+          if (!savedFp) {
+            freshBase.verifiedSteps = {
+              ...(freshBase.verifiedSteps || {}),
+              [freshNextStepIndex]: { fingerprint: currentFp },
+            };
+          }
           freshNextStepIndex++;
         }
-      }
 
-      // AUTO-SKIP VERIFIED API STEPS (mirror of the pre-persist logic above)
-      while (freshNextStepIndex < currentSteps.length - 1 && VERIFICATION_FINGERPRINTS[freshNextStepIndex]) {
-        const fpFn = VERIFICATION_FINGERPRINTS[freshNextStepIndex];
-        const currentFp = fpFn(freshBase);
-        if (!currentFp) break; // Step not verified
+        const stateToReturn = { ...freshBase, currentStep: freshNextStepIndex };
 
-        const savedFp = freshBase.verifiedSteps?.[freshNextStepIndex]?.fingerprint;
-        if (savedFp && currentFp !== savedFp) break; // Data changed
-
-        console.log(`[KYC Context] Auto-skipping verified step ${freshNextStepIndex} (${currentSteps[freshNextStepIndex]?.id}) during state update`);
-        
-        // Auto-populate fingerprint if missing
-        if (!savedFp) {
-          freshBase.verifiedSteps = { ...(freshBase.verifiedSteps || {}), [freshNextStepIndex]: { fingerprint: currentFp } };
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(
+            "kyc-progress",
+            JSON.stringify({
+              currentStep: freshNextStepIndex,
+              status: stateToReturn.status,
+            }),
+          );
         }
-        freshNextStepIndex++;
-      }
-      
-      const stateToReturn = { ...freshBase, currentStep: freshNextStepIndex };
-      
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("kyc-progress", JSON.stringify({ currentStep: freshNextStepIndex, status: stateToReturn.status }));
-      }
-      return stateToReturn;
-    });
-  }, [persistStepToBackend, steps]);
+        return stateToReturn;
+      });
+    },
+    [persistStepToBackend, steps],
+  );
 
   const prevStep = useCallback(() => {
     lastClientStepChange.current = Date.now();
-    
+
     const currentPrev = stateRef.current;
     const nextStepIndex = Math.max(currentPrev.currentStep - 1, 0);
     const computedNextState = { ...currentPrev, currentStep: nextStepIndex };
 
-    setState(prev => {
+    setState((prev) => {
       const freshNextStepIndex = Math.max(prev.currentStep - 1, 0);
       const stateToReturn = { ...prev, currentStep: freshNextStepIndex };
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("kyc-progress", JSON.stringify({ currentStep: freshNextStepIndex, status: stateToReturn.status }));
+        sessionStorage.setItem(
+          "kyc-progress",
+          JSON.stringify({
+            currentStep: freshNextStepIndex,
+            status: stateToReturn.status,
+          }),
+        );
       }
       return stateToReturn;
     });
-    
+
     persistStepToBackend(computedNextState, true);
   }, [persistStepToBackend]);
 
-  const goToStep = useCallback((step, updates) => {
-    lastClientStepChange.current = Date.now();
-    
-    // Safety check - bounds
-    if (step < 0) return;
-    
-    setState(prev => {
-      const freshBase = updates ? { ...prev, ...updates } : prev;
-      if (step >= 1) freshBase.otpVerified = true;
-      if (step >= 3) freshBase.emailVerified = true;
-      if (step >= 5) freshBase.panVerified = true;
-      
-      const computedNextState = { ...freshBase, currentStep: step };
-      
-      // We only auto-sync to backend when the step explicitly changes
-      if (step !== prev.currentStep && hasSynced) {
-        console.log(`[KYC Sync] Persisting transition to Step ${step}`);
-        persistStepToBackend(computedNextState, true);
-      }
+  const goToStep = useCallback(
+    (step, updates) => {
+      lastClientStepChange.current = Date.now();
 
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("kyc-progress", JSON.stringify({ currentStep: step, status: computedNextState.status }));
-        if (computedNextState.applicationId) {
-          sessionStorage.setItem("kycApplicationId", computedNextState.applicationId);
+      // Safety check - bounds
+      if (step < 0) return;
+
+      setState((prev) => {
+        const freshBase = updates ? { ...prev, ...updates } : prev;
+        if (step >= 1) freshBase.otpVerified = true;
+        if (step >= 3) freshBase.emailVerified = true;
+        if (step >= 5) freshBase.panVerified = true;
+
+        const computedNextState = { ...freshBase, currentStep: step };
+
+        // We only auto-sync to backend when the step explicitly changes
+        if (step !== prev.currentStep && hasSynced) {
+          console.log(`[KYC Sync] Persisting transition to Step ${step}`);
+          persistStepToBackend(computedNextState, true);
         }
-      }
-      return computedNextState;
-    });
-  }, [hasSynced, persistStepToBackend]);
+
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(
+            "kyc-progress",
+            JSON.stringify({
+              currentStep: step,
+              status: computedNextState.status,
+            }),
+          );
+          if (computedNextState.applicationId) {
+            sessionStorage.setItem(
+              "kycApplicationId",
+              computedNextState.applicationId,
+            );
+          }
+        }
+        return computedNextState;
+      });
+    },
+    [hasSynced, persistStepToBackend],
+  );
 
   const resetKYC = useCallback(() => {
     setState(INITIAL_STATE);
@@ -859,7 +1197,7 @@ export function KYCProvider({ children }) {
   }, []);
 
   const setApplicationId = useCallback((applicationId) => {
-    setState(prev => ({ ...prev, applicationId: applicationId || "" }));
+    setState((prev) => ({ ...prev, applicationId: applicationId || "" }));
     if (typeof window !== "undefined" && applicationId) {
       sessionStorage.setItem("kycApplicationId", applicationId);
       localStorage.setItem("kycApplicationId", applicationId);
@@ -867,7 +1205,28 @@ export function KYCProvider({ children }) {
   }, []);
 
   return (
-    <KYCContext.Provider value={{ ...state, theme, toasts, steps: steps.length > 0 ? steps : STEPS, STEPS, updateState, updateNested, nextStep, prevStep, goToStep, addToast, toggleTheme, resetKYC, setApplicationId, syncProgress: persistStepToBackend, refreshProgress, getBackendPayload, markStepVerified }}>
+    <KYCContext.Provider
+      value={{
+        ...state,
+        theme,
+        toasts,
+        steps: steps.length > 0 ? steps : STEPS,
+        STEPS,
+        updateState,
+        updateNested,
+        nextStep,
+        prevStep,
+        goToStep,
+        addToast,
+        toggleTheme,
+        resetKYC,
+        setApplicationId,
+        syncProgress: persistStepToBackend,
+        refreshProgress,
+        getBackendPayload,
+        markStepVerified,
+      }}
+    >
       {children}
     </KYCContext.Provider>
   );

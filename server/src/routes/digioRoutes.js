@@ -16,7 +16,9 @@ const digioClient = require("../services/digioClient");
 
 const router = express.Router();
 
-router.get("/test", (req, res) => res.json({ message: "Digio Router is working" }));
+router.get("/test", (req, res) =>
+  res.json({ message: "Digio Router is working" }),
+);
 
 const CREATE_REQUEST_SCHEMA = z.object({
   type: z.enum([
@@ -71,7 +73,7 @@ function generateApplicationId() {
 function resolveCustomerIdentifier(user) {
   // Prioritize mobile for DigiLocker login experience
   if (user?.phone) {
-    const cleanPhone = user.phone.replace(/\D/g, '').slice(-10);
+    const cleanPhone = user.phone.replace(/\D/g, "").slice(-10);
     if (/^[6-9]\d{9}$/.test(cleanPhone)) return cleanPhone;
   }
   if (user?.email) return user.email;
@@ -97,7 +99,7 @@ async function getOrCreateDraftApplication({ userId, applicationId }) {
   if (applicationId) {
     const existing = await prisma.kycApplication.findUnique({
       where: { applicationId },
-      include: { user: true }
+      include: { user: true },
     });
     if (!existing || existing.userId !== userId) return null;
     return existing;
@@ -109,7 +111,7 @@ async function getOrCreateDraftApplication({ userId, applicationId }) {
       status: { in: ["pending", "under_review", "on_hold"] },
     },
     orderBy: { createdAt: "desc" },
-    include: { user: true }
+    include: { user: true },
   });
 
   if (existing) return existing;
@@ -137,20 +139,40 @@ function mergeJson(existing, patch) {
 
   const result = { ...existingObj };
 
-  Object.keys(patchObj).forEach(key => {
+  Object.keys(patchObj).forEach((key) => {
     const val = patchObj[key];
     const oldVal = existingObj[key];
 
     // Recursive merge for nested objects (except arrays)
-    if (val && typeof val === 'object' && !Array.isArray(val) &&
-        oldVal && typeof oldVal === 'object' && !Array.isArray(oldVal)) {
+    if (
+      val &&
+      typeof val === "object" &&
+      !Array.isArray(val) &&
+      oldVal &&
+      typeof oldVal === "object" &&
+      !Array.isArray(oldVal)
+    ) {
       result[key] = mergeJson(oldVal, val);
       return;
     }
 
     // Protection: if the new value is empty but the old value was populated, keep old
-    const isEmpty = val === null || val === undefined || (typeof val === 'string' && val.trim() === '') || (typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length === 0);
-    const wasPopulated = oldVal !== null && oldVal !== undefined && oldVal !== '' && (!(typeof oldVal === 'object' && !Array.isArray(oldVal) && Object.keys(oldVal).length === 0));
+    const isEmpty =
+      val === null ||
+      val === undefined ||
+      (typeof val === "string" && val.trim() === "") ||
+      (typeof val === "object" &&
+        !Array.isArray(val) &&
+        Object.keys(val).length === 0);
+    const wasPopulated =
+      oldVal !== null &&
+      oldVal !== undefined &&
+      oldVal !== "" &&
+      !(
+        typeof oldVal === "object" &&
+        !Array.isArray(oldVal) &&
+        Object.keys(oldVal).length === 0
+      );
 
     if (isEmpty && wasPopulated) {
       return; // Protect the existing populated value
@@ -231,7 +253,11 @@ function cleanPdfText(value, fallback = "N/A") {
       return fallback;
     }
   }
-  return String(value).replace(/[^\x20-\x7E]/g, " ").trim() || fallback;
+  return (
+    String(value)
+      .replace(/[^\x20-\x7E]/g, " ")
+      .trim() || fallback
+  );
 }
 
 function maskAadhaar(value) {
@@ -243,9 +269,14 @@ function maskAadhaar(value) {
 function findDigilockerExecutionRequestId(digioResponse) {
   if (!digioResponse || typeof digioResponse !== "object") return null;
 
-  const actions = Array.isArray(digioResponse.actions) ? digioResponse.actions : [];
+  const actions = Array.isArray(digioResponse.actions)
+    ? digioResponse.actions
+    : [];
   for (const action of actions) {
-    if (String(action?.type || "").toLowerCase() === "digilocker" && action.execution_request_id) {
+    if (
+      String(action?.type || "").toLowerCase() === "digilocker" &&
+      action.execution_request_id
+    ) {
       return action.execution_request_id;
     }
   }
@@ -262,11 +293,23 @@ function findDigilockerExecutionRequestId(digioResponse) {
 
 function detectMediaExtension(buffer, contentType = "") {
   const content = String(contentType).toLowerCase();
-  if (content.includes("pdf") || buffer.slice(0, 4).toString() === "%PDF") return "pdf";
-  if (content.includes("zip") || (buffer[0] === 0x50 && buffer[1] === 0x4b)) return "zip";
-  if (content.includes("xml") || buffer.slice(0, 5).toString().startsWith("<?xml")) return "xml";
-  if (content.includes("png") || (buffer[0] === 0x89 && buffer[1] === 0x50)) return "png";
-  if (content.includes("jpeg") || content.includes("jpg") || (buffer[0] === 0xff && buffer[1] === 0xd8)) return "jpg";
+  if (content.includes("pdf") || buffer.slice(0, 4).toString() === "%PDF")
+    return "pdf";
+  if (content.includes("zip") || (buffer[0] === 0x50 && buffer[1] === 0x4b))
+    return "zip";
+  if (
+    content.includes("xml") ||
+    buffer.slice(0, 5).toString().startsWith("<?xml")
+  )
+    return "xml";
+  if (content.includes("png") || (buffer[0] === 0x89 && buffer[1] === 0x50))
+    return "png";
+  if (
+    content.includes("jpeg") ||
+    content.includes("jpg") ||
+    (buffer[0] === 0xff && buffer[1] === 0xd8)
+  )
+    return "jpg";
   return "bin";
 }
 
@@ -284,12 +327,23 @@ function getDocumentBucket(doc) {
   const label = String(doc?.label || "").toUpperCase();
   const docPath = String(doc?.path || "").toLowerCase();
 
-  const pathIsPan = /digilocker_pan|_pan_issued|(^|[/_])pan([/_]|\.)/i.test(docPath);
-  const pathIsAadhaar = /digilocker_aadhaar|_aadhaar_issued|aadhaar|aadhar|uid/i.test(docPath);
+  const pathIsPan = /digilocker_pan|_pan_issued|(^|[/_])pan([/_]|\.)/i.test(
+    docPath,
+  );
+  const pathIsAadhaar =
+    /digilocker_aadhaar|_aadhaar_issued|aadhaar|aadhar|uid/i.test(docPath);
 
-  if (type === "PHOTO" || (/\.(png|jpe?g|webp)$/i.test(docPath) && !pathIsPan)) return "PHOTO";
-  if (pathIsPan || (type.includes("PAN") && !type.includes("AADHAAR"))) return "PAN";
-  if (pathIsAadhaar || type.includes("AADHAAR") || type.includes("AADHAR") || type.includes("UID") || label.includes("AADHAAR")) {
+  if (type === "PHOTO" || (/\.(png|jpe?g|webp)$/i.test(docPath) && !pathIsPan))
+    return "PHOTO";
+  if (pathIsPan || (type.includes("PAN") && !type.includes("AADHAAR")))
+    return "PAN";
+  if (
+    pathIsAadhaar ||
+    type.includes("AADHAAR") ||
+    type.includes("AADHAR") ||
+    type.includes("UID") ||
+    label.includes("AADHAAR")
+  ) {
     return "AADHAAR";
   }
   return `FILE:${docPath}`;
@@ -307,7 +361,10 @@ function dedupeApplicationDocuments(documents) {
 
     const bucket = getDocumentBucket(doc);
     const existing = bestByBucket.get(bucket);
-    if (!existing || documentPriorityScore(doc) > documentPriorityScore(existing)) {
+    if (
+      !existing ||
+      documentPriorityScore(doc) > documentPriorityScore(existing)
+    ) {
       bestByBucket.set(bucket, doc);
     }
   }
@@ -316,27 +373,48 @@ function dedupeApplicationDocuments(documents) {
 }
 
 function hasDocumentBucket(documents, bucket) {
-  return dedupeApplicationDocuments(documents).some((doc) => getDocumentBucket(doc) === bucket);
+  return dedupeApplicationDocuments(documents).some(
+    (doc) => getDocumentBucket(doc) === bucket,
+  );
 }
 
-async function downloadDigilockerIssuedDocuments({ executionRequestId, requestId, uploadsDir, addSavedDocument, existingDocuments = [] }) {
+async function downloadDigilockerIssuedDocuments({
+  executionRequestId,
+  requestId,
+  uploadsDir,
+  addSavedDocument,
+  existingDocuments = [],
+}) {
   if (!executionRequestId) return;
 
   const docTypes = ["AADHAAR", "PAN"];
 
   for (const docType of docTypes) {
-    const existingBest = dedupeApplicationDocuments(existingDocuments).find(d => getDocumentBucket(d) === docType);
+    const existingBest = dedupeApplicationDocuments(existingDocuments).find(
+      (d) => getDocumentBucket(d) === docType,
+    );
     if (existingBest && existingBest.issued) {
-      console.log(`[Digio] Skipping media download for ${docType} — already stored and issued`);
+      console.log(
+        `[Digio] Skipping media download for ${docType} — already stored and issued`,
+      );
       continue;
     }
     try {
-      console.log(`[Digio] Downloading DigiLocker media ${docType} for ${executionRequestId}`);
-      const response = await digioClient.downloadKycMedia(executionRequestId, { docType, xml: false, base64: false });
+      console.log(
+        `[Digio] Downloading DigiLocker media ${docType} for ${executionRequestId}`,
+      );
+      const response = await digioClient.downloadKycMedia(executionRequestId, {
+        docType,
+        xml: false,
+        base64: false,
+      });
       const buffer = Buffer.from(response.data || []);
       if (!buffer.length) continue;
 
-      const extension = detectMediaExtension(buffer, response.headers?.["content-type"] || "");
+      const extension = detectMediaExtension(
+        buffer,
+        response.headers?.["content-type"] || "",
+      );
       const filename = `digilocker_${docType.toLowerCase()}_issued_${requestId}_${Date.now()}.${extension}`;
       fs.writeFileSync(path.join(uploadsDir, filename), buffer);
 
@@ -350,9 +428,14 @@ async function downloadDigilockerIssuedDocuments({ executionRequestId, requestId
     } catch (error) {
       const status = error.response?.status;
       const message = error.response?.data
-        ? (Buffer.isBuffer(error.response.data) ? error.response.data.toString("utf8").slice(0, 200) : JSON.stringify(error.response.data))
+        ? Buffer.isBuffer(error.response.data)
+          ? error.response.data.toString("utf8").slice(0, 200)
+          : JSON.stringify(error.response.data)
         : error.message;
-      console.warn(`[Digio] Media download failed for ${docType} (${status || "n/a"}):`, message);
+      console.warn(
+        `[Digio] Media download failed for ${docType} (${status || "n/a"}):`,
+        message,
+      );
     }
   }
 }
@@ -373,10 +456,33 @@ function wrapText(text, maxChars = 54) {
   return lines.length ? lines : ["N/A"];
 }
 
-function drawVerificationRow(page, { x, y, width, label, value, font, boldFont, height = 24 }) {
-  page.drawRectangle({ x, y: y - height, width, height, borderColor: rgb(0.55, 0.55, 0.55), borderWidth: 0.7 });
-  page.drawRectangle({ x, y: y - height, width: 132, height, color: rgb(0.94, 0.95, 0.95), borderColor: rgb(0.55, 0.55, 0.55), borderWidth: 0.7 });
-  page.drawText(cleanPdfText(label), { x: x + 7, y: y - 15, size: 8, font: boldFont });
+function drawVerificationRow(
+  page,
+  { x, y, width, label, value, font, boldFont, height = 24 },
+) {
+  page.drawRectangle({
+    x,
+    y: y - height,
+    width,
+    height,
+    borderColor: rgb(0.55, 0.55, 0.55),
+    borderWidth: 0.7,
+  });
+  page.drawRectangle({
+    x,
+    y: y - height,
+    width: 132,
+    height,
+    color: rgb(0.94, 0.95, 0.95),
+    borderColor: rgb(0.55, 0.55, 0.55),
+    borderWidth: 0.7,
+  });
+  page.drawText(cleanPdfText(label), {
+    x: x + 7,
+    y: y - 15,
+    size: 8,
+    font: boldFont,
+  });
   const lines = wrapText(value, 52).slice(0, 2);
   lines.forEach((line, idx) => {
     page.drawText(line, { x: x + 140, y: y - 15 - idx * 10, size: 8, font });
@@ -404,11 +510,20 @@ async function embedPhotoInPdfPage(pdfDoc, page, photoPath) {
       height: dims.height,
     });
   } catch (error) {
-    console.warn("[Digio] Could not embed Aadhaar photo in verification PDF:", error.message);
+    console.warn(
+      "[Digio] Could not embed Aadhaar photo in verification PDF:",
+      error.message,
+    );
   }
 }
 
-async function createDigilockerAadhaarPdf({ filePath, identityDetails, personalDetails, address, photoPath }) {
+async function createDigilockerAadhaarPdf({
+  filePath,
+  identityDetails,
+  personalDetails,
+  address,
+  photoPath,
+}) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595, 842]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -416,17 +531,47 @@ async function createDigilockerAadhaarPdf({ filePath, identityDetails, personalD
   const width = page.getWidth();
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
 
-  page.drawText("DigiLocker verified e-Aadhaar", { x: 192, y: 770, size: 14, font: boldFont });
-  page.drawText("This document is generated from DigiLocker verified Aadhaar data fetched through Digio.", { x: 78, y: 752, size: 7, font });
-  page.drawText("XML verified", { x: 470, y: 720, size: 9, font: boldFont, color: rgb(0, 0.5, 0.18) });
-  page.drawRectangle({ x: 452, y: 708, width: 52, height: 52, borderColor: rgb(0, 0.55, 0.2), borderWidth: 1 });
-  page.drawText("OK", { x: 469, y: 727, size: 14, font: boldFont, color: rgb(0, 0.55, 0.2) });
+  page.drawText("DigiLocker verified e-Aadhaar", {
+    x: 192,
+    y: 770,
+    size: 14,
+    font: boldFont,
+  });
+  page.drawText(
+    "This document is generated from DigiLocker verified Aadhaar data fetched through Digio.",
+    { x: 78, y: 752, size: 7, font },
+  );
+  page.drawText("XML verified", {
+    x: 470,
+    y: 720,
+    size: 9,
+    font: boldFont,
+    color: rgb(0, 0.5, 0.18),
+  });
+  page.drawRectangle({
+    x: 452,
+    y: 708,
+    width: 52,
+    height: 52,
+    borderColor: rgb(0, 0.55, 0.2),
+    borderWidth: 1,
+  });
+  page.drawText("OK", {
+    x: 469,
+    y: 727,
+    size: 14,
+    font: boldFont,
+    color: rgb(0, 0.55, 0.2),
+  });
 
   const tableX = 34;
   const tableW = width - 68;
   let y = 720;
   const rows = [
-    ["Document type", "e-Aadhaar generated from DigiLocker verified Aadhaar XML"],
+    [
+      "Document type",
+      "e-Aadhaar generated from DigiLocker verified Aadhaar XML",
+    ],
     ["Generation date", now],
     ["Masked Aadhaar number", maskAadhaar(identityDetails.aadhaar)],
     ["Name", personalDetails.fullName],
@@ -436,7 +581,15 @@ async function createDigilockerAadhaarPdf({ filePath, identityDetails, personalD
   ];
 
   rows.forEach(([label, value]) => {
-    drawVerificationRow(page, { x: tableX, y, width: tableW, label, value, font, boldFont });
+    drawVerificationRow(page, {
+      x: tableX,
+      y,
+      width: tableW,
+      label,
+      value,
+      font,
+      boldFont,
+    });
     y -= 24;
   });
 
@@ -447,26 +600,93 @@ async function createDigilockerAadhaarPdf({ filePath, identityDetails, personalD
     address.city,
     address.state,
     address.pincode,
-  ].filter(Boolean).join(", ");
-  drawVerificationRow(page, { x: tableX, y, width: tableW, label: "Address", value: addressValue, font, boldFont, height: 58 });
+  ]
+    .filter(Boolean)
+    .join(", ");
+  drawVerificationRow(page, {
+    x: tableX,
+    y,
+    width: tableW,
+    label: "Address",
+    value: addressValue,
+    font,
+    boldFont,
+    height: 58,
+  });
   y -= 58;
-  drawVerificationRow(page, { x: tableX, y, width: tableW / 2, label: "City / District", value: address.city, font, boldFont });
-  drawVerificationRow(page, { x: tableX + tableW / 2, y, width: tableW / 2, label: "Pin Code", value: address.pincode, font, boldFont });
+  drawVerificationRow(page, {
+    x: tableX,
+    y,
+    width: tableW / 2,
+    label: "City / District",
+    value: address.city,
+    font,
+    boldFont,
+  });
+  drawVerificationRow(page, {
+    x: tableX + tableW / 2,
+    y,
+    width: tableW / 2,
+    label: "Pin Code",
+    value: address.pincode,
+    font,
+    boldFont,
+  });
   y -= 24;
-  drawVerificationRow(page, { x: tableX, y, width: tableW / 2, label: "State", value: address.state, font, boldFont });
-  drawVerificationRow(page, { x: tableX + tableW / 2, y, width: tableW / 2, label: "Country", value: address.country || "India", font, boldFont });
+  drawVerificationRow(page, {
+    x: tableX,
+    y,
+    width: tableW / 2,
+    label: "State",
+    value: address.state,
+    font,
+    boldFont,
+  });
+  drawVerificationRow(page, {
+    x: tableX + tableW / 2,
+    y,
+    width: tableW / 2,
+    label: "Country",
+    value: address.country || "India",
+    font,
+    boldFont,
+  });
 
-  page.drawRectangle({ x: 400, y: 520, width: 105, height: 130, borderColor: rgb(0.65, 0.65, 0.65), borderWidth: 1, color: rgb(0.92, 0.94, 0.96) });
+  page.drawRectangle({
+    x: 400,
+    y: 520,
+    width: 105,
+    height: 130,
+    borderColor: rgb(0.65, 0.65, 0.65),
+    borderWidth: 1,
+    color: rgb(0.92, 0.94, 0.96),
+  });
   await embedPhotoInPdfPage(pdfDoc, page, photoPath);
   if (!photoPath) {
-    page.drawText("PHOTO", { x: 434, y: 582, size: 10, font: boldFont, color: rgb(0.45, 0.45, 0.45) });
+    page.drawText("PHOTO", {
+      x: 434,
+      y: 582,
+      size: 10,
+      font: boldFont,
+      color: rgb(0.45, 0.45, 0.45),
+    });
   }
-  page.drawText("www.digio.in | For Limited Circulation | CONFIDENTIAL", { x: 185, y: 60, size: 7, font, color: rgb(0, 0.2, 0.8) });
+  page.drawText("www.digio.in | For Limited Circulation | CONFIDENTIAL", {
+    x: 185,
+    y: 60,
+    size: 7,
+    font,
+    color: rgb(0, 0.2, 0.8),
+  });
 
   fs.writeFileSync(filePath, await pdfDoc.save());
 }
 
-async function createDigilockerPanPdf({ filePath, identityDetails, personalDetails }) {
+async function createDigilockerPanPdf({
+  filePath,
+  identityDetails,
+  personalDetails,
+}) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595, 842]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -476,9 +696,27 @@ async function createDigilockerPanPdf({ filePath, identityDetails, personalDetai
   const tableW = 404;
   let y = 725;
 
-  page.drawText("Income Tax Department", { x: 222, y: 774, size: 16, font: boldFont });
-  page.drawText("PAN VERIFICATION RECORD", { x: 218, y: 738, size: 11, font: boldFont });
-  page.drawRectangle({ x, y: 728, width: tableW, height: 22, color: rgb(0.94, 0.95, 0.95), borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.7 });
+  page.drawText("Income Tax Department", {
+    x: 222,
+    y: 774,
+    size: 16,
+    font: boldFont,
+  });
+  page.drawText("PAN VERIFICATION RECORD", {
+    x: 218,
+    y: 738,
+    size: 11,
+    font: boldFont,
+  });
+  page.drawRectangle({
+    x,
+    y: 728,
+    width: tableW,
+    height: 22,
+    color: rgb(0.94, 0.95, 0.95),
+    borderColor: rgb(0.7, 0.7, 0.7),
+    borderWidth: 0.7,
+  });
 
   const rows = [
     ["Permanent Account Number", identityDetails.pan],
@@ -489,35 +727,81 @@ async function createDigilockerPanPdf({ filePath, identityDetails, personalDetai
   ];
 
   rows.forEach(([label, value]) => {
-    drawVerificationRow(page, { x, y, width: tableW, label: label.toUpperCase(), value, font, boldFont, height: 30 });
+    drawVerificationRow(page, {
+      x,
+      y,
+      width: tableW,
+      label: label.toUpperCase(),
+      value,
+      font,
+      boldFont,
+      height: 30,
+    });
     y -= 30;
   });
 
-  page.drawRectangle({ x: 105, y: 490, width: 75, height: 75, borderColor: rgb(0.15, 0.15, 0.15), borderWidth: 1 });
+  page.drawRectangle({
+    x: 105,
+    y: 490,
+    width: 75,
+    height: 75,
+    borderColor: rgb(0.15, 0.15, 0.15),
+    borderWidth: 1,
+  });
   page.drawText("QR", { x: 132, y: 524, size: 16, font: boldFont });
-  page.drawText("Digitally signed by DigiLocker", { x: 326, y: 530, size: 8, font });
+  page.drawText("Digitally signed by DigiLocker", {
+    x: 326,
+    y: 530,
+    size: 8,
+    font,
+  });
   page.drawText(`Date: ${now}`, { x: 326, y: 516, size: 8, font });
-  page.drawText("Verified", { x: 446, y: 520, size: 12, font: boldFont, color: rgb(0, 0.55, 0.2) });
-  page.drawRectangle({ x: 96, y: 430, width: tableW, height: 45, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.7 });
+  page.drawText("Verified", {
+    x: 446,
+    y: 520,
+    size: 12,
+    font: boldFont,
+    color: rgb(0, 0.55, 0.2),
+  });
+  page.drawRectangle({
+    x: 96,
+    y: 430,
+    width: tableW,
+    height: 45,
+    borderColor: rgb(0.7, 0.7, 0.7),
+    borderWidth: 0.7,
+  });
   page.drawText("Note:", { x: 106, y: 460, size: 7, font: boldFont });
-  page.drawText("1. This PAN data is accessed using DigiLocker.", { x: 125, y: 460, size: 7, font });
-  page.drawText("2. This is digitally verified document valid as per IT Act.", { x: 125, y: 448, size: 7, font });
+  page.drawText("1. This PAN data is accessed using DigiLocker.", {
+    x: 125,
+    y: 460,
+    size: 7,
+    font,
+  });
+  page.drawText("2. This is digitally verified document valid as per IT Act.", {
+    x: 125,
+    y: 448,
+    size: 7,
+    font,
+  });
 
   fs.writeFileSync(filePath, await pdfDoc.save());
 }
 
 router.post("/create-request", auth, async (req, res) => {
   const body = req.body || {};
-  
+
   // Basic manual validation for robustness
   if (!body.type) {
-    return res.status(400).json({ success: false, error: "Request type is required" });
+    return res
+      .status(400)
+      .json({ success: false, error: "Request type is required" });
   }
 
   const payload = {
     type: body.type,
     data: body.data || {},
-    applicationId: body.applicationId
+    applicationId: body.applicationId,
   };
 
   const { type, data, applicationId } = payload;
@@ -531,15 +815,19 @@ router.post("/create-request", auth, async (req, res) => {
   }
 
   try {
-    console.log(`[Digio Route] Create Request Type: ${type}, ApplicationId: ${applicationId}`);
-    
+    console.log(
+      `[Digio Route] Create Request Type: ${type}, ApplicationId: ${applicationId}`,
+    );
+
     const application = await getOrCreateDraftApplication({
       userId: req.user.id,
       applicationId,
     });
 
     if (!application) {
-      console.warn(`[Digio Route] Application not found for UserID: ${req.user.id}`);
+      console.warn(
+        `[Digio Route] Application not found for UserID: ${req.user.id}`,
+      );
       return res.status(404).json({
         success: false,
         error: "Application not found for this user",
@@ -554,7 +842,7 @@ router.post("/create-request", auth, async (req, res) => {
             customerIdentifier,
             data.pan,
             data.dob,
-            application.personalDetails?.fullName || req.user.name
+            application.personalDetails?.fullName || req.user.name,
           );
           break;
         case "DIGILOCKER":
@@ -562,33 +850,49 @@ router.post("/create-request", auth, async (req, res) => {
             customerIdentifier,
             data?.aadhaar,
             data?.documentTypes || ["AADHAAR", "PAN"],
-            application.personalDetails?.fullName || req.user.name
+            application.personalDetails?.fullName || req.user.name,
           );
           break;
         case "BANK_VERIFICATION":
-          result = await bankService.createRequest(customerIdentifier, data.accountNumber, data.ifsc);
+          result = await bankService.createRequest(
+            customerIdentifier,
+            data.accountNumber,
+            data.ifsc,
+          );
           break;
         case "SELFIE":
         case "LIVENESS":
           result = await selfieService.createRequest(
-            customerIdentifier, 
-            application.personalDetails?.fullName || req.user.name
+            customerIdentifier,
+            application.personalDetails?.fullName || req.user.name,
           );
           break;
         case "ESIGN":
           // We pass the entire application object so the service can generate the 55-page PDF locally
-          result = await esignService.createRequest(customerIdentifier, data?.aadhaar, application);
+          result = await esignService.createRequest(
+            customerIdentifier,
+            data?.aadhaar,
+            application,
+          );
           break;
         default:
-          return res.status(400).json({ success: false, error: "Invalid request type" });
+          return res
+            .status(400)
+            .json({ success: false, error: "Invalid request type" });
       }
     } catch (serviceError) {
-      console.error(`[Digio Route] Service ${type} failed:`, serviceError.message);
-      throw serviceError; 
+      console.error(
+        `[Digio Route] Service ${type} failed:`,
+        serviceError.message,
+      );
+      throw serviceError;
     }
 
     if (!result || !result.id) {
-      console.error(`[Digio Route] Service ${type} returned empty result or no ID:`, result);
+      console.error(
+        `[Digio Route] Service ${type} returned empty result or no ID:`,
+        result,
+      );
       throw new Error(`Failed to initialize Digio ${type} request`);
     }
 
@@ -602,20 +906,26 @@ router.post("/create-request", auth, async (req, res) => {
     let nextEsignDetails = parseJsonField(application.esignDetails, {});
     if (type === "ESIGN") {
       nextEsignDetails = mergeJson(nextEsignDetails, {
-        ip: req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'],
+        ip:
+          req.ip ||
+          req.connection?.remoteAddress ||
+          req.headers["x-forwarded-for"],
         lat: data?.lat || nextEsignDetails?.lat,
         lng: data?.lng || nextEsignDetails?.lng,
         name: application.personalDetails?.fullName || req.user.name,
         email: application.personalDetails?.email || req.user.email,
         phone: application.user?.phone || req.user.phone,
-        status: "requested"
+        status: "requested",
       });
     }
 
     let nextSelfieDetails = parseJsonField(application.selfieDetails, {});
     if (type === "SELFIE" || type === "LIVENESS") {
       nextSelfieDetails = mergeJson(nextSelfieDetails, {
-        ip: req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'],
+        ip:
+          req.ip ||
+          req.connection?.remoteAddress ||
+          req.headers["x-forwarded-for"],
         lat: data?.lat || nextSelfieDetails?.lat,
         lng: data?.lng || nextSelfieDetails?.lng,
       });
@@ -639,15 +949,25 @@ router.post("/create-request", auth, async (req, res) => {
 
     await prisma.kycApplication.update({
       where: { id: application.id },
-      data: serializeJsonFields({
-        currentStep: Math.max(application.currentStep || 0, nextStep),
-        identityDetails: nextIdentityDetails,
-        personalDetails: nextPersonalDetails,
-        ocrData: nextOcrData,
-        ...(type === "ESIGN" ? { esignDetails: nextEsignDetails } : {}),
-        ...((type === "SELFIE" || type === "LIVENESS") ? { selfieDetails: nextSelfieDetails } : {}),
-        ...(type === "ESIGN" && result.pdfBase64 ? { generatedPdfBase64: result.pdfBase64 } : {}),
-      }, ["identityDetails", "personalDetails", "ocrData", "esignDetails", "selfieDetails"]),
+      data: serializeJsonFields(
+        {
+          currentStep: Math.max(application.currentStep || 0, nextStep),
+          identityDetails: nextIdentityDetails,
+          personalDetails: nextPersonalDetails,
+          ocrData: nextOcrData,
+          ...(type === "ESIGN" ? { esignDetails: nextEsignDetails } : {}),
+          ...(type === "SELFIE" || type === "LIVENESS"
+            ? { selfieDetails: nextSelfieDetails }
+            : {}),
+        },
+        [
+          "identityDetails",
+          "personalDetails",
+          "ocrData",
+          "esignDetails",
+          "selfieDetails",
+        ],
+      ),
     });
 
     await writeAuditLog({
@@ -675,7 +995,10 @@ router.post("/create-request", auth, async (req, res) => {
     });
   } catch (error) {
     const digioError = error.response?.data;
-    console.error(`[Digio Route] Error in /create-request [${type}]:`, digioError || error.message);
+    console.error(
+      `[Digio Route] Error in /create-request [${type}]:`,
+      digioError || error.message,
+    );
 
     await writeAuditLog({
       userId: req.user?.id,
@@ -690,7 +1013,10 @@ router.post("/create-request", auth, async (req, res) => {
 
     return res.status(error.response?.status || 500).json({
       success: false,
-      error: digioError?.message || error.message || "Failed to create Digio request",
+      error:
+        digioError?.message ||
+        error.message ||
+        "Failed to create Digio request",
       details: digioError?.details || error.message,
       code: digioError?.code || "INTERNAL_ERROR",
     });
@@ -699,16 +1025,18 @@ router.post("/create-request", auth, async (req, res) => {
 
 router.post("/verify-pan", auth, async (req, res) => {
   const body = req.body || {};
-  
+
   if (!body.pan || !body.fullName || !body.dob) {
-    return res.status(400).json({ success: false, error: "PAN, Full Name, and DOB are required" });
+    return res
+      .status(400)
+      .json({ success: false, error: "PAN, Full Name, and DOB are required" });
   }
 
   const payload = {
     pan: body.pan,
     fullName: body.fullName,
     dob: body.dob,
-    applicationId: body.applicationId
+    applicationId: body.applicationId,
   };
 
   const { pan, fullName, dob, applicationId } = payload;
@@ -734,11 +1062,12 @@ router.post("/verify-pan", auth, async (req, res) => {
         AND JSON_EXTRACT(identityDetails, '$.pan') = ${pan.toUpperCase()}
         LIMIT 1
       `;
-      
+
       if (existingApps && existingApps.length > 0) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "This PAN number is already linked to another account. Please use a different PAN or contact support." 
+        return res.status(400).json({
+          success: false,
+          error:
+            "This PAN number is already linked to another account. Please use a different PAN or contact support.",
         });
       }
     } catch (dbError) {
@@ -757,7 +1086,13 @@ router.post("/verify-pan", auth, async (req, res) => {
 
       const nextPersonalDetails = mergeJson(application.personalDetails, {
         dob,
-        fatherName: result.data?.father_name || result.data?.parent_name || result.data?.fathers_name || result.data?.fatherName || result.data?.relative_name || application.personalDetails?.fatherName,
+        fatherName:
+          result.data?.father_name ||
+          result.data?.parent_name ||
+          result.data?.fathers_name ||
+          result.data?.fatherName ||
+          result.data?.relative_name ||
+          application.personalDetails?.fatherName,
       });
 
       const nextOcrData = mergeJson(application.ocrData, {
@@ -770,12 +1105,18 @@ router.post("/verify-pan", auth, async (req, res) => {
 
       await prisma.kycApplication.update({
         where: { id: application.id },
-        data: serializeJsonFields({
-          currentStep: Math.max(application.currentStep || 0, STEP_BY_REQUEST_TYPE.PAN_VERIFICATION),
-          identityDetails: nextIdentityDetails,
-          personalDetails: nextPersonalDetails,
-          ocrData: nextOcrData,
-        }, ["identityDetails", "personalDetails", "ocrData"]),
+        data: serializeJsonFields(
+          {
+            currentStep: Math.max(
+              application.currentStep || 0,
+              STEP_BY_REQUEST_TYPE.PAN_VERIFICATION,
+            ),
+            identityDetails: nextIdentityDetails,
+            personalDetails: nextPersonalDetails,
+            ocrData: nextOcrData,
+          },
+          ["identityDetails", "personalDetails", "ocrData"],
+        ),
       });
 
       await writeAuditLog({
@@ -791,7 +1132,6 @@ router.post("/verify-pan", auth, async (req, res) => {
     }
 
     return res.json(result);
-
   } catch (error) {
     console.error("Direct PAN Verification Route Error:", error.message);
     return res.status(500).json({
@@ -803,9 +1143,14 @@ router.post("/verify-pan", auth, async (req, res) => {
 
 router.post("/verify-nominee-proof", auth, async (req, res) => {
   const { proofType, proofNumber, fullName, dob } = req.body || {};
-  
+
   if (!proofType || !proofNumber || !fullName || !dob) {
-    return res.status(400).json({ success: false, error: "Proof Type, Number, Full Name, and DOB are required" });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        error: "Proof Type, Number, Full Name, and DOB are required",
+      });
   }
 
   try {
@@ -817,12 +1162,19 @@ router.post("/verify-nominee-proof", auth, async (req, res) => {
       // Since Digio Aadhaar verification requires OTP, we do a basic valid-format simulation here
       // Real-world scenario would require either a separate Digilocker flow or a basic ID search API
       if (/^[0-9]{12}$/.test(proofNumber)) {
-        return res.json({ success: true, data: { status: "VALID", name: fullName } });
+        return res.json({
+          success: true,
+          data: { status: "VALID", name: fullName },
+        });
       } else {
-        return res.status(400).json({ success: false, error: "Invalid Aadhaar format" });
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid Aadhaar format" });
       }
     } else {
-      return res.status(400).json({ success: false, error: "Unsupported proof type" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Unsupported proof type" });
     }
   } catch (error) {
     console.error("Nominee Proof Verification Route Error:", error.message);
@@ -840,7 +1192,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
   const payload = {
     requestId: requestId,
     applicationId: body.applicationId,
-    type: body.type
+    type: body.type,
   };
 
   try {
@@ -849,7 +1201,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       console.log(`[Digio Route] Fetching Document Details for ${requestId}`);
       digioResponse = await esignService.getRequestDetails(requestId);
     } else {
-      console.log(`[Digio Route] Fetching KYC Request Response for ${requestId}`);
+      console.log(
+        `[Digio Route] Fetching KYC Request Response for ${requestId}`,
+      );
       digioResponse = await digioClient.getKycRequestResponse(requestId);
     }
 
@@ -866,23 +1220,30 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
     }
 
     // Sanitize actions to remove heavy base64 strings before storing in DB
-    const sanitizedActions = digioResponse.actions ? JSON.parse(JSON.stringify(digioResponse.actions)) : null;
+    const sanitizedActions = digioResponse.actions
+      ? JSON.parse(JSON.stringify(digioResponse.actions))
+      : null;
     if (sanitizedActions) {
       for (const action of sanitizedActions) {
         if (action.details) {
-          if (action.details.image) action.details.image = '[BASE64_EXTRACTED]';
-          if (action.details.photo) action.details.photo = '[BASE64_EXTRACTED]';
-          if (action.details.image_data) action.details.image_data = '[BASE64_EXTRACTED]';
-          if (action.details.file_data) action.details.file_data = '[BASE64_EXTRACTED]';
-          
+          if (action.details.image) action.details.image = "[BASE64_EXTRACTED]";
+          if (action.details.photo) action.details.photo = "[BASE64_EXTRACTED]";
+          if (action.details.image_data)
+            action.details.image_data = "[BASE64_EXTRACTED]";
+          if (action.details.file_data)
+            action.details.file_data = "[BASE64_EXTRACTED]";
+
           for (const key of Object.keys(action.details)) {
-            if (action.details[key] && typeof action.details[key] === 'object') {
+            if (
+              action.details[key] &&
+              typeof action.details[key] === "object"
+            ) {
               const nested = action.details[key];
-              if (nested.image) nested.image = '[BASE64_EXTRACTED]';
-              if (nested.photo) nested.photo = '[BASE64_EXTRACTED]';
-              if (nested.image_data) nested.image_data = '[BASE64_EXTRACTED]';
-              if (nested.file_data) nested.file_data = '[BASE64_EXTRACTED]';
-              if (nested.pdf_data) nested.pdf_data = '[BASE64_EXTRACTED]';
+              if (nested.image) nested.image = "[BASE64_EXTRACTED]";
+              if (nested.photo) nested.photo = "[BASE64_EXTRACTED]";
+              if (nested.image_data) nested.image_data = "[BASE64_EXTRACTED]";
+              if (nested.file_data) nested.file_data = "[BASE64_EXTRACTED]";
+              if (nested.pdf_data) nested.pdf_data = "[BASE64_EXTRACTED]";
             }
           }
         }
@@ -921,7 +1282,16 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       }
       if (typeof value !== "object") return null;
 
-      const preferredKeys = ["pan", "pan_no", "pan_number", "panNo", "id_no", "id_number", "number", "document_number"];
+      const preferredKeys = [
+        "pan",
+        "pan_no",
+        "pan_number",
+        "panNo",
+        "id_no",
+        "id_number",
+        "number",
+        "document_number",
+      ];
       for (const key of preferredKeys) {
         const found = extractPanNumber(value[key]);
         if (found) return found;
@@ -941,12 +1311,23 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         const digits = trimmed.replace(/\D/g, "");
         if (digits.length === 12) return digits;
         // Digio/DigiLocker masked id e.g. xxxxxxxx3134
-        if (/^[xX*]{4,}\d{4}$/i.test(trimmed.replace(/\s/g, ""))) return trimmed.replace(/\s/g, "");
+        if (/^[xX*]{4,}\d{4}$/i.test(trimmed.replace(/\s/g, "")))
+          return trimmed.replace(/\s/g, "");
         if (/[xX*]/i.test(trimmed) && digits.length >= 4) return trimmed;
       }
       if (typeof value !== "object") return null;
 
-      const preferredKeys = ["aadhaar_no", "aadhar_no", "aadhaar", "aadhar", "uid", "id_no", "id_number", "number", "document_number"];
+      const preferredKeys = [
+        "aadhaar_no",
+        "aadhar_no",
+        "aadhaar",
+        "aadhar",
+        "uid",
+        "id_no",
+        "id_number",
+        "number",
+        "document_number",
+      ];
       for (const key of preferredKeys) {
         const found = extractAadhaarNumber(value[key]);
         if (found) return found;
@@ -964,22 +1345,29 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
     let nextAddress = parseJsonField(application.address, {});
 
     // Scan for Identity
-    const extractedAadhaar = extractAadhaarNumber(findValue(digioResponse, "aadhaar_no"))
-      || extractAadhaarNumber(findValue(digioResponse, "aadhaar"))
-      || extractAadhaarNumber(findValue(digioResponse, "aadhar"))
-      || extractAadhaarNumber(findValue(digioResponse, "id_number"))
-      || extractAadhaarNumber(findValue(digioResponse, "id_no"));
-    const extractedPan = extractPanNumber(findValue(digioResponse, "pan"))
-      || extractPanNumber(findValue(digioResponse, "pan_no"))
-      || extractPanNumber(findValue(digioResponse, "pan_number"))
-      || extractPanNumber(findValue(digioResponse, "panNo"))
-      || extractPanNumber(digioResponse);
-    const extractedName = findValue(digioResponse, "name") || findValue(digioResponse, "full_name");
-    const extractedDob = findValue(digioResponse, "dob") || findValue(digioResponse, "date_of_birth");
+    const extractedAadhaar =
+      extractAadhaarNumber(findValue(digioResponse, "aadhaar_no")) ||
+      extractAadhaarNumber(findValue(digioResponse, "aadhaar")) ||
+      extractAadhaarNumber(findValue(digioResponse, "aadhar")) ||
+      extractAadhaarNumber(findValue(digioResponse, "id_number")) ||
+      extractAadhaarNumber(findValue(digioResponse, "id_no"));
+    const extractedPan =
+      extractPanNumber(findValue(digioResponse, "pan")) ||
+      extractPanNumber(findValue(digioResponse, "pan_no")) ||
+      extractPanNumber(findValue(digioResponse, "pan_number")) ||
+      extractPanNumber(findValue(digioResponse, "panNo")) ||
+      extractPanNumber(digioResponse);
+    const extractedName =
+      findValue(digioResponse, "name") || findValue(digioResponse, "full_name");
+    const extractedDob =
+      findValue(digioResponse, "dob") ||
+      findValue(digioResponse, "date_of_birth");
     const extractedGender = findValue(digioResponse, "gender");
 
     const digilockerActions = Array.isArray(digioResponse.actions)
-      ? digioResponse.actions.filter((action) => String(action?.type || "").toLowerCase() === "digilocker")
+      ? digioResponse.actions.filter(
+          (action) => String(action?.type || "").toLowerCase() === "digilocker",
+        )
       : [];
 
     for (const action of digilockerActions) {
@@ -990,7 +1378,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         nextIdentityDetails.aadhaar = String(aadhaarDetails.id_number).trim();
       }
       if (panDetails?.id_number) {
-        nextIdentityDetails.pan = extractPanNumber(panDetails.id_number) || String(panDetails.id_number).trim().toUpperCase();
+        nextIdentityDetails.pan =
+          extractPanNumber(panDetails.id_number) ||
+          String(panDetails.id_number).trim().toUpperCase();
       }
       if (aadhaarDetails?.name) {
         nextIdentityDetails.aadhaarName = aadhaarDetails.name;
@@ -999,70 +1389,113 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       if (panDetails?.name) {
         nextIdentityDetails.panName = panDetails.name;
       }
-      if (aadhaarDetails?.dob && !extractedDob) nextPersonalDetails.dob = aadhaarDetails.dob;
-      if (aadhaarDetails?.gender && !extractedGender) nextPersonalDetails.gender = aadhaarDetails.gender;
+      if (aadhaarDetails?.dob && !extractedDob)
+        nextPersonalDetails.dob = aadhaarDetails.dob;
+      if (aadhaarDetails?.gender && !extractedGender)
+        nextPersonalDetails.gender = aadhaarDetails.gender;
       if (aadhaarDetails?.father_name && !nextPersonalDetails.fatherName) {
-        nextPersonalDetails.fatherName = String(aadhaarDetails.father_name).replace(/^(S\/O|W\/O|D\/O|C\/O)[:\s]+/i, "").trim();
+        nextPersonalDetails.fatherName = String(aadhaarDetails.father_name)
+          .replace(/^(S\/O|W\/O|D\/O|C\/O)[:\s]+/i, "")
+          .trim();
       }
     }
 
-    if (extractedAadhaar && !nextIdentityDetails.aadhaar) nextIdentityDetails.aadhaar = extractedAadhaar;
-    if (extractedPan && !nextIdentityDetails.pan) nextIdentityDetails.pan = extractedPan;
+    if (extractedAadhaar && !nextIdentityDetails.aadhaar)
+      nextIdentityDetails.aadhaar = extractedAadhaar;
+    if (extractedPan && !nextIdentityDetails.pan)
+      nextIdentityDetails.pan = extractedPan;
     if (extractedName) {
       nextPersonalDetails.fullName = extractedName;
-      if (payload.type === "PAN_VERIFICATION" || findValue(digioResponse, "pan_no")) {
-        if (!nextIdentityDetails.panName) nextIdentityDetails.panName = extractedName;
+      if (
+        payload.type === "PAN_VERIFICATION" ||
+        findValue(digioResponse, "pan_no")
+      ) {
+        if (!nextIdentityDetails.panName)
+          nextIdentityDetails.panName = extractedName;
       } else {
-        if (!nextIdentityDetails.aadhaarName) nextIdentityDetails.aadhaarName = extractedName;
+        if (!nextIdentityDetails.aadhaarName)
+          nextIdentityDetails.aadhaarName = extractedName;
       }
     }
     if (extractedDob) nextPersonalDetails.dob = extractedDob;
     if (extractedGender) nextPersonalDetails.gender = extractedGender;
 
     // Scan for Father/Spouse Name (Care Of)
-    const relativeName = findValue(digioResponse, "father_name") || findValue(digioResponse, "spouse_name") || findValue(digioResponse, "care_of") || findValue(digioResponse, "relative_name") || findValue(digioResponse, "co");
-    
+    const relativeName =
+      findValue(digioResponse, "father_name") ||
+      findValue(digioResponse, "spouse_name") ||
+      findValue(digioResponse, "care_of") ||
+      findValue(digioResponse, "relative_name") ||
+      findValue(digioResponse, "co");
+
     if (relativeName) {
       console.log(`[Digio Extraction] Found relative name: ${relativeName}`);
       // Clean prefix if present (S/O: Binod Kumar -> Binod Kumar, D/O BINOD -> BINOD)
-      const cleanRelative = relativeName.replace(/^(S\/O|W\/O|D\/O|C\/O|CO|SO|CARE OF)[:\s]+/i, "").trim();
+      const cleanRelative = relativeName
+        .replace(/^(S\/O|W\/O|D\/O|C\/O|CO|SO|CARE OF)[:\s]+/i, "")
+        .trim();
       nextPersonalDetails.fatherName = cleanRelative;
       console.log(`[Digio Extraction] Cleaned Father Name: ${cleanRelative}`);
     } else {
       // Try extracting from house/address if it starts with S/O
-      const houseField = findValue(digioResponse, "house_no") || findValue(digioResponse, "house");
-      if (houseField && /^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+/i.test(houseField)) {
-        const match = houseField.match(/^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+([^,]+)/i);
+      const houseField =
+        findValue(digioResponse, "house_no") ||
+        findValue(digioResponse, "house");
+      if (
+        houseField &&
+        /^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+/i.test(houseField)
+      ) {
+        const match = houseField.match(
+          /^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+([^,]+)/i,
+        );
         if (match && match[2]) {
           nextPersonalDetails.fatherName = match[2].trim();
-          console.log(`[Digio Extraction] Extracted Father Name from house field: ${nextPersonalDetails.fatherName}`);
+          console.log(
+            `[Digio Extraction] Extracted Father Name from house field: ${nextPersonalDetails.fatherName}`,
+          );
         }
       }
     }
 
     // Scan for Address (Deep Component Search)
-    const house = findValue(digioResponse, "house_no") || findValue(digioResponse, "house");
+    const house =
+      findValue(digioResponse, "house_no") || findValue(digioResponse, "house");
     const street = findValue(digioResponse, "street");
     const landmark = findValue(digioResponse, "landmark");
-    const loc = findValue(digioResponse, "loc") || findValue(digioResponse, "location");
-    const vtc = findValue(digioResponse, "vtc") || findValue(digioResponse, "city") || findValue(digioResponse, "district_or_city");
-    const dist = findValue(digioResponse, "dist") || findValue(digioResponse, "district") || findValue(digioResponse, "district_or_city");
+    const loc =
+      findValue(digioResponse, "loc") || findValue(digioResponse, "location");
+    const vtc =
+      findValue(digioResponse, "vtc") ||
+      findValue(digioResponse, "city") ||
+      findValue(digioResponse, "district_or_city");
+    const dist =
+      findValue(digioResponse, "dist") ||
+      findValue(digioResponse, "district") ||
+      findValue(digioResponse, "district_or_city");
     const state = findValue(digioResponse, "state");
-    const pc = findValue(digioResponse, "pc") || findValue(digioResponse, "pincode");
+    const pc =
+      findValue(digioResponse, "pc") || findValue(digioResponse, "pincode");
 
     // Reconstruct Line 1 from pieces with cleaning
     const cleanPrefix = (str) => {
       if (!str || typeof str !== "string") return str;
       // Remove S/O:, W/O:, D/O:, C/O: and everything up to the first comma or space if it looks like a name
-      return str.replace(/^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+[^,]+,?\s*/i, "").trim();
+      return str
+        .replace(/^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+[^,]+,?\s*/i, "")
+        .trim();
     };
 
-    const addressParts = [cleanPrefix(house), street, landmark, loc].filter(Boolean);
+    const addressParts = [cleanPrefix(house), street, landmark, loc].filter(
+      Boolean,
+    );
     if (addressParts.length > 0) {
       nextAddress.line1 = addressParts.join(", ");
     } else {
-      const fullAddr = findValue(digioResponse, "address_information") || findValue(digioResponse, "address");
-      if (typeof fullAddr === "string") nextAddress.line1 = cleanPrefix(fullAddr);
+      const fullAddr =
+        findValue(digioResponse, "address_information") ||
+        findValue(digioResponse, "address");
+      if (typeof fullAddr === "string")
+        nextAddress.line1 = cleanPrefix(fullAddr);
       else if (fullAddr && typeof fullAddr === "object") {
         const rawAddr = fullAddr.address || fullAddr.line1 || nextAddress.line1;
         nextAddress.line1 = cleanPrefix(rawAddr);
@@ -1077,16 +1510,36 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
     const previousDocuments = parseJsonField(application.documents, []);
     let savedDocumentPaths = [];
     const uploadsDir = path.join(__dirname, "../../uploads");
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    if (!fs.existsSync(uploadsDir))
+      fs.mkdirSync(uploadsDir, { recursive: true });
 
     const inferDocumentType = (...parts) => {
-      const haystack = parts.filter(Boolean).map((part) => {
-        if (typeof part === "string") return part;
-        try { return JSON.stringify(part); } catch { return ""; }
-      }).join(" ").toUpperCase();
+      const haystack = parts
+        .filter(Boolean)
+        .map((part) => {
+          if (typeof part === "string") return part;
+          try {
+            return JSON.stringify(part);
+          } catch {
+            return "";
+          }
+        })
+        .join(" ")
+        .toUpperCase();
 
-      if (haystack.includes("PHOTO") || haystack.includes("SELFIE") || haystack.includes("PORTRAIT") || haystack.includes("FACE")) return "PHOTO";
-      if (haystack.includes("AADHAAR") || haystack.includes("AADHAR") || haystack.includes("UID")) return "AADHAAR";
+      if (
+        haystack.includes("PHOTO") ||
+        haystack.includes("SELFIE") ||
+        haystack.includes("PORTRAIT") ||
+        haystack.includes("FACE")
+      )
+        return "PHOTO";
+      if (
+        haystack.includes("AADHAAR") ||
+        haystack.includes("AADHAR") ||
+        haystack.includes("UID")
+      )
+        return "AADHAAR";
       if (haystack.includes("PAN")) return "PAN";
       if (haystack.includes("DRIVING") || haystack.includes("DL")) return "DL";
       if (haystack.includes("SIGN")) return "SIGN";
@@ -1096,31 +1549,56 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
     const isDocumentBase64 = (value) => {
       if (!value || typeof value !== "string") return false;
       if (value === "[BASE64_EXTRACTED]") return false;
-      const clean = value.replace(/^data:(image|application)\/[a-z0-9.+-]+;base64,/i, "").trim();
+      const clean = value
+        .replace(/^data:(image|application)\/[a-z0-9.+-]+;base64,/i, "")
+        .trim();
       if (clean.length < 100) return false;
-      if (clean.startsWith("JVBERi") || clean.startsWith("/9j/") || clean.startsWith("iVBORw")) return true;
+      if (
+        clean.startsWith("JVBERi") ||
+        clean.startsWith("/9j/") ||
+        clean.startsWith("iVBORw")
+      )
+        return true;
       return /^[A-Za-z0-9+/=\r\n]+$/.test(clean.slice(0, 160));
     };
 
     const saveBase64Document = (base64Data, label, documentType) => {
       if (isDocumentBase64(base64Data)) {
         try {
-          const isPdf = base64Data.includes('application/pdf') || base64Data.startsWith('data:application/pdf') || base64Data.startsWith('JVBERi') || base64Data.includes('JVBERi');
-          const ext = isPdf ? 'pdf' : 'png';
-          const safeLabel = String(label || "document").replace(/[^a-z0-9_-]+/gi, "_").slice(0, 80);
+          const isPdf =
+            base64Data.includes("application/pdf") ||
+            base64Data.startsWith("data:application/pdf") ||
+            base64Data.startsWith("JVBERi") ||
+            base64Data.includes("JVBERi");
+          const ext = isPdf ? "pdf" : "png";
+          const safeLabel = String(label || "document")
+            .replace(/[^a-z0-9_-]+/gi, "_")
+            .slice(0, 80);
           const filename = `extracted_${safeLabel}_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
-          const cleanBase64 = base64Data.replace(/^data:(image|application)\/[a-z0-9.+-]+;base64,/i, "");
-          fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(cleanBase64, 'base64'));
-          console.log(`[Digio] Successfully extracted document: ${documentType || label} as ${ext}`);
+          const cleanBase64 = base64Data.replace(
+            /^data:(image|application)\/[a-z0-9.+-]+;base64,/i,
+            "",
+          );
+          fs.writeFileSync(
+            path.join(uploadsDir, filename),
+            Buffer.from(cleanBase64, "base64"),
+          );
+          console.log(
+            `[Digio] Successfully extracted document: ${documentType || label} as ${ext}`,
+          );
           const inferredType = documentType || inferDocumentType(label);
-          const resolvedType = !isPdf && inferredType === "AADHAAR" ? "PHOTO" : inferredType;
+          const resolvedType =
+            !isPdf && inferredType === "AADHAAR" ? "PHOTO" : inferredType;
           return {
             path: `/uploads/${filename}`,
             type: resolvedType,
             label,
           };
         } catch (e) {
-          console.error(`[Digio] Failed to save extracted document ${label}:`, e.message);
+          console.error(
+            `[Digio] Failed to save extracted document ${label}:`,
+            e.message,
+          );
         }
       }
       return null;
@@ -1128,7 +1606,8 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     const addSavedDocument = (document) => {
       if (!document?.path) return;
-      if (savedDocumentPaths.some((saved) => saved.path === document.path)) return;
+      if (savedDocumentPaths.some((saved) => saved.path === document.path))
+        return;
       savedDocumentPaths.push(document);
     };
 
@@ -1148,7 +1627,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       if (!obj || typeof obj !== "object") return;
 
       if (Array.isArray(obj)) {
-        obj.forEach((item, index) => scanForDigilockerDocuments(item, [...context, String(index)]));
+        obj.forEach((item, index) =>
+          scanForDigilockerDocuments(item, [...context, String(index)]),
+        );
         return;
       }
 
@@ -1164,12 +1645,18 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         obj.document_name,
         obj.documentName,
         obj.title,
-        obj.label
+        obj.label,
       );
 
       for (const key of documentDataKeys) {
         if (isDocumentBase64(obj[key])) {
-          addSavedDocument(saveBase64Document(obj[key], [...context, localType, key].join("_"), localType));
+          addSavedDocument(
+            saveBase64Document(
+              obj[key],
+              [...context, localType, key].join("_"),
+              localType,
+            ),
+          );
         }
       }
 
@@ -1177,7 +1664,13 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         if (documentDataKeys.includes(key)) continue;
         if (typeof val === "string" && isDocumentBase64(val)) {
           const docType = inferDocumentType(...context, key, obj);
-          addSavedDocument(saveBase64Document(val, [...context, docType, key].join("_"), docType));
+          addSavedDocument(
+            saveBase64Document(
+              val,
+              [...context, docType, key].join("_"),
+              docType,
+            ),
+          );
         } else if (val && typeof val === "object") {
           scanForDigilockerDocuments(val, [...context, key]);
         }
@@ -1189,7 +1682,8 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     // Download issued DigiLocker PDFs via Digio Media API (execution_request_id / RID)
     if (payload.type === "DIGILOCKER" || payload.type === "PAN_VERIFICATION") {
-      const executionRequestId = findDigilockerExecutionRequestId(digioResponse);
+      const executionRequestId =
+        findDigilockerExecutionRequestId(digioResponse);
       if (executionRequestId) {
         await downloadDigilockerIssuedDocuments({
           executionRequestId,
@@ -1199,7 +1693,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
           existingDocuments: [...previousDocuments, ...savedDocumentPaths],
         });
       } else {
-        console.warn(`[Digio] No execution_request_id found for media download on request ${requestId}`);
+        console.warn(
+          `[Digio] No execution_request_id found for media download on request ${requestId}`,
+        );
       }
     }
 
@@ -1214,29 +1710,43 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         }
 
         if (downloadResponse && downloadResponse.data) {
-          const contentType = String(downloadResponse.headers?.["content-type"] || "").toLowerCase();
+          const contentType = String(
+            downloadResponse.headers?.["content-type"] || "",
+          ).toLowerCase();
           const buffer = Buffer.from(downloadResponse.data);
-          const isPdf = payload.type === "ESIGN" || contentType.includes("pdf") || buffer.slice(0, 4).toString() === "%PDF";
+          const isPdf =
+            payload.type === "ESIGN" ||
+            contentType.includes("pdf") ||
+            buffer.slice(0, 4).toString() === "%PDF";
           const extension = isPdf ? "pdf" : "png";
           const filename = `digio_${requestId}_${Date.now()}.${extension}`;
           const filePath = path.join(uploadsDir, filename);
           fs.writeFileSync(filePath, buffer);
-          savedDocumentPaths.push({ path: `/uploads/${filename}`, type: payload.type || "DIGILOCKER_DOCUMENT", label: "download" });
+          savedDocumentPaths.push({
+            path: `/uploads/${filename}`,
+            type: payload.type || "DIGILOCKER_DOCUMENT",
+            label: "download",
+          });
         }
       } catch (downloadError) {
-        console.warn(`[Digio] Document download skipped or failed for ${requestId}:`, downloadError.message);
+        console.warn(
+          `[Digio] Document download skipped or failed for ${requestId}:`,
+          downloadError.message,
+        );
       }
     }
 
-    const hasPdfForType = (type) => savedDocumentPaths.some((doc) => {
-      const docType = String(doc.type || "").toUpperCase();
-      const docPath = String(doc.path || "").toLowerCase();
-      return docType.includes(type) && docPath.endsWith(".pdf");
-    });
-    const aadhaarPhotoPath = savedDocumentPaths.find((doc) => {
-      const docPath = String(doc.path || "").toLowerCase();
-      return doc.type === "PHOTO" || /\.(png|jpe?g|webp)$/i.test(docPath);
-    })?.path || null;
+    const hasPdfForType = (type) =>
+      savedDocumentPaths.some((doc) => {
+        const docType = String(doc.type || "").toUpperCase();
+        const docPath = String(doc.path || "").toLowerCase();
+        return docType.includes(type) && docPath.endsWith(".pdf");
+      });
+    const aadhaarPhotoPath =
+      savedDocumentPaths.find((doc) => {
+        const docPath = String(doc.path || "").toLowerCase();
+        return doc.type === "PHOTO" || /\.(png|jpe?g|webp)$/i.test(docPath);
+      })?.path || null;
 
     const addGeneratedVerificationPdf = async (type) => {
       const filename = `digilocker_${type.toLowerCase()}_${requestId}_${Date.now()}.pdf`;
@@ -1266,11 +1776,19 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       });
     };
 
-    if ((payload.type === "DIGILOCKER" || payload.type === "PAN_VERIFICATION") && nextIdentityDetails.aadhaar && !hasPdfForType("AADHAAR")) {
+    if (
+      (payload.type === "DIGILOCKER" || payload.type === "PAN_VERIFICATION") &&
+      nextIdentityDetails.aadhaar &&
+      !hasPdfForType("AADHAAR")
+    ) {
       await addGeneratedVerificationPdf("AADHAAR");
     }
 
-    if ((payload.type === "DIGILOCKER" || payload.type === "PAN_VERIFICATION") && nextIdentityDetails.pan && !hasPdfForType("PAN")) {
+    if (
+      (payload.type === "DIGILOCKER" || payload.type === "PAN_VERIFICATION") &&
+      nextIdentityDetails.pan &&
+      !hasPdfForType("PAN")
+    ) {
       await addGeneratedVerificationPdf("PAN");
     }
 
@@ -1279,17 +1797,49 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
     const extractedFaceScore = extractFaceScoreFromDigioResponse(digioResponse);
     const extractMediaFromDigio = (response) => {
       const media = { image: null, video: null };
-      const isUrl = (value) => typeof value === "string" && /^https?:\/\//i.test(value);
-      const isUploadPath = (value) => typeof value === "string" && value.startsWith("/uploads/");
+      const isUrl = (value) =>
+        typeof value === "string" && /^https?:\/\//i.test(value);
+      const isUploadPath = (value) =>
+        typeof value === "string" && value.startsWith("/uploads/");
       const isMediaRef = (value) => isUrl(value) || isUploadPath(value);
-      const imageKeys = ["image", "image_url", "imageUrl", "photo", "selfie", "selfie_url", "selfieUrl", "preview"];
-      const videoKeys = ["video", "video_url", "videoUrl", "recording", "recording_url", "recordingUrl", "video_preview", "videoPreview"];
+      const imageKeys = [
+        "image",
+        "image_url",
+        "imageUrl",
+        "photo",
+        "selfie",
+        "selfie_url",
+        "selfieUrl",
+        "preview",
+      ];
+      const videoKeys = [
+        "video",
+        "video_url",
+        "videoUrl",
+        "recording",
+        "recording_url",
+        "recordingUrl",
+        "video_preview",
+        "videoPreview",
+      ];
 
       const scan = (obj) => {
         if (!obj || typeof obj !== "object") return;
         for (const [key, val] of Object.entries(obj)) {
-          if (!media.image && typeof val === "string" && imageKeys.includes(key) && isMediaRef(val)) media.image = val;
-          if (!media.video && typeof val === "string" && videoKeys.includes(key) && isMediaRef(val)) media.video = val;
+          if (
+            !media.image &&
+            typeof val === "string" &&
+            imageKeys.includes(key) &&
+            isMediaRef(val)
+          )
+            media.image = val;
+          if (
+            !media.video &&
+            typeof val === "string" &&
+            videoKeys.includes(key) &&
+            isMediaRef(val)
+          )
+            media.video = val;
           if (val && typeof val === "object") scan(val);
         }
       };
@@ -1297,11 +1847,16 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       scan(response);
       return media;
     };
-    const selfieActions = Array.isArray(digioResponse.actions) ? digioResponse.actions.filter(a => ["selfie", "liveness"].includes(String(a?.type || "").toLowerCase())) : [];
-    const isExplicitSelfiePayload = payload.type === "SELFIE" || payload.type === "LIVENESS";
+    const selfieActions = Array.isArray(digioResponse.actions)
+      ? digioResponse.actions.filter((a) =>
+          ["selfie", "liveness"].includes(String(a?.type || "").toLowerCase()),
+        )
+      : [];
+    const isExplicitSelfiePayload =
+      payload.type === "SELFIE" || payload.type === "LIVENESS";
     const mediaSource = isExplicitSelfiePayload ? digioResponse : selfieActions;
     const extractedMedia = extractMediaFromDigio(mediaSource);
-    
+
     // Explicitly attempt to download selfie file if action contains file_id
     let downloadedSelfiePath = null;
     if (selfieActions && selfieActions.length > 0) {
@@ -1309,18 +1864,28 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         const mediaId = action.file_id || action.execution_request_id;
         if (mediaId && !downloadedSelfiePath) {
           try {
-            console.log(`[Digio Extraction] Downloading selfie using media_id: ${mediaId}`);
+            console.log(
+              `[Digio Extraction] Downloading selfie using media_id: ${mediaId}`,
+            );
             const response = await digioClient.downloadKycMedia(mediaId);
             const mediaBuffer = response.data;
-            if (mediaBuffer && (mediaBuffer.byteLength > 0 || mediaBuffer.length > 0)) {
+            if (
+              mediaBuffer &&
+              (mediaBuffer.byteLength > 0 || mediaBuffer.length > 0)
+            ) {
               const fileName = `selfie_${application.applicationId}_${Date.now()}.jpg`;
               const filePath = path.join(__dirname, "../../uploads", fileName);
               fs.writeFileSync(filePath, Buffer.from(mediaBuffer));
               downloadedSelfiePath = `/uploads/${fileName}`;
-              console.log(`[Digio Extraction] Saved downloaded selfie to ${downloadedSelfiePath}`);
+              console.log(
+                `[Digio Extraction] Saved downloaded selfie to ${downloadedSelfiePath}`,
+              );
             }
           } catch (err) {
-            console.error(`[Digio Extraction] Failed to download selfie media_id ${mediaId}:`, err.message);
+            console.error(
+              `[Digio Extraction] Failed to download selfie media_id ${mediaId}:`,
+              err.message,
+            );
           }
         }
       }
@@ -1337,7 +1902,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       ...(doc.issued ? { issued: true } : {}),
       ...(doc.generated ? { generated: true } : {}),
     }));
-    
+
     if (downloadedSelfiePath) {
       incomingDocuments.push({
         type: "PHOTO",
@@ -1345,33 +1910,52 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         path: downloadedSelfiePath,
         uploadedAt: new Date().toISOString(),
         requestId,
-        source: "DIGILOCKER"
+        source: "DIGILOCKER",
       });
     }
 
-    const newDocuments = dedupeApplicationDocuments([...previousDocuments, ...incomingDocuments]);
+    const newDocuments = dedupeApplicationDocuments([
+      ...previousDocuments,
+      ...incomingDocuments,
+    ]);
 
-    const selfieDocPath = savedDocumentPaths.find((doc) => doc.type === "PHOTO")?.path || downloadedSelfiePath || null;
-    const isSelfieDataPresent = isExplicitSelfiePayload || selfieActions.length > 0;
-    const liveSelfieDoc = savedDocumentPaths.find(doc => 
-      doc.type === "PHOTO" && (
-        String(doc.label).toLowerCase().includes("file_base64") || 
-        String(doc.label).toLowerCase().includes("selfie") ||
-        isExplicitSelfiePayload
-      )
-    ) || (downloadedSelfiePath ? { path: downloadedSelfiePath } : null);
-    
+    const selfieDocPath =
+      savedDocumentPaths.find((doc) => doc.type === "PHOTO")?.path ||
+      downloadedSelfiePath ||
+      null;
+    const isSelfieDataPresent =
+      isExplicitSelfiePayload || selfieActions.length > 0;
+    const liveSelfieDoc =
+      savedDocumentPaths.find(
+        (doc) =>
+          doc.type === "PHOTO" &&
+          (String(doc.label).toLowerCase().includes("file_base64") ||
+            String(doc.label).toLowerCase().includes("selfie") ||
+            isExplicitSelfiePayload),
+      ) || (downloadedSelfiePath ? { path: downloadedSelfiePath } : null);
+
     const safeSelfieDocPath = liveSelfieDoc ? liveSelfieDoc.path : null;
-    const hasSelfieData = isSelfieDataPresent && (safeSelfieDocPath || extractedMedia.image || extractedMedia.video || extractedFaceScore !== null);
+    const hasSelfieData =
+      isSelfieDataPresent &&
+      (safeSelfieDocPath ||
+        extractedMedia.image ||
+        extractedMedia.video ||
+        extractedFaceScore !== null);
 
     if (hasSelfieData) {
       nextSelfieDetails = {
         ...nextSelfieDetails,
-        preview: safeSelfieDocPath || extractedMedia.image || nextSelfieDetails.preview || null,
+        preview:
+          safeSelfieDocPath ||
+          extractedMedia.image ||
+          nextSelfieDetails.preview ||
+          null,
         ...(extractedMedia.video ? { videoPath: extractedMedia.video } : {}),
         extractedAt: new Date().toISOString(),
         requestId,
-        ...(extractedFaceScore !== null ? { matchScore: extractedFaceScore } : {}),
+        ...(extractedFaceScore !== null
+          ? { matchScore: extractedFaceScore }
+          : {}),
       };
     } else if (extractedFaceScore !== null) {
       nextSelfieDetails.matchScore = extractedFaceScore;
@@ -1379,20 +1963,38 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     await prisma.kycApplication.update({
       where: { id: application.id },
-      data: serializeJsonFields({
-        status: "under_review",
-        ocrData: nextOcrData,
-        identityDetails: nextIdentityDetails,
-        personalDetails: nextPersonalDetails,
-        address: nextAddress,
-        documents: newDocuments,
-        selfieDetails: nextSelfieDetails,
-        ...(hasSelfieData ? {
-          ...((safeSelfieDocPath || extractedMedia.image) ? { selfie: safeSelfieDocPath || extractedMedia.image } : {}),
-          ...(extractedFaceScore !== null ? { faceMatchScore: extractedFaceScore } : {}),
-        } : (extractedFaceScore !== null ? { faceMatchScore: extractedFaceScore } : {})),
-        currentStep: Math.max(application.currentStep, 4)
-      }, ["ocrData", "identityDetails", "personalDetails", "address", "documents", "selfieDetails"]),
+      data: serializeJsonFields(
+        {
+          status: "under_review",
+          ocrData: nextOcrData,
+          identityDetails: nextIdentityDetails,
+          personalDetails: nextPersonalDetails,
+          address: nextAddress,
+          documents: newDocuments,
+          selfieDetails: nextSelfieDetails,
+          ...(hasSelfieData
+            ? {
+                ...(safeSelfieDocPath || extractedMedia.image
+                  ? { selfie: safeSelfieDocPath || extractedMedia.image }
+                  : {}),
+                ...(extractedFaceScore !== null
+                  ? { faceMatchScore: extractedFaceScore }
+                  : {}),
+              }
+            : extractedFaceScore !== null
+              ? { faceMatchScore: extractedFaceScore }
+              : {}),
+          currentStep: Math.max(application.currentStep, 4),
+        },
+        [
+          "ocrData",
+          "identityDetails",
+          "personalDetails",
+          "address",
+          "documents",
+          "selfieDetails",
+        ],
+      ),
     });
 
     await writeAuditLog({
@@ -1406,8 +2008,8 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         extractedFields: {
           aadhaar: !!nextIdentityDetails.aadhaar,
           pan: !!nextIdentityDetails.pan,
-          name: !!nextPersonalDetails.fullName
-        }
+          name: !!nextPersonalDetails.fullName,
+        },
       },
       ipAddress: req.ip,
     });
@@ -1437,10 +2039,13 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 });
 
 router.post("/verify-bank", auth, async (req, res) => {
-  const { accountNumber, ifsc, beneficiaryName, applicationId } = req.body || {};
-  
+  const { accountNumber, ifsc, beneficiaryName, applicationId } =
+    req.body || {};
+
   if (!accountNumber || !ifsc) {
-    return res.status(400).json({ success: false, error: "Account number and IFSC are required" });
+    return res
+      .status(400)
+      .json({ success: false, error: "Account number and IFSC are required" });
   }
 
   try {
@@ -1450,11 +2055,17 @@ router.post("/verify-bank", auth, async (req, res) => {
     });
 
     if (!application) {
-      return res.status(404).json({ success: false, error: "Application not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Application not found" });
     }
 
     // Call Bank Service (v4 Penny Drop)
-    const result = await bankService.verifyAccount(accountNumber, ifsc, beneficiaryName || application.personalDetails?.fullName);
+    const result = await bankService.verifyAccount(
+      accountNumber,
+      ifsc,
+      beneficiaryName || application.personalDetails?.fullName,
+    );
 
     if (result.verified) {
       // Fetch branch details using IFSC to populate address/city
@@ -1462,7 +2073,12 @@ router.post("/verify-bank", auth, async (req, res) => {
       try {
         if (ifsc) {
           const ifscRes = await bankService.verifyIfsc(ifsc);
-          branchDetails = ifscRes?.data || ifscRes?.result || ifscRes?.details || ifscRes || {};
+          branchDetails =
+            ifscRes?.data ||
+            ifscRes?.result ||
+            ifscRes?.details ||
+            ifscRes ||
+            {};
         }
       } catch (e) {
         console.warn("IFSC lookup failed during bank verification:", e.message);
@@ -1472,51 +2088,77 @@ router.post("/verify-bank", auth, async (req, res) => {
       const nextBankDetails = mergeJson(application.bankDetails, {
         accountNumber,
         ifsc,
-        bankName: result.bank_name || result.bank || branchDetails.bank_name || application.bankDetails?.bankName,
-        micr: result.micr || branchDetails.micr || application.bankDetails?.micr,
+        bankName:
+          result.bank_name ||
+          result.bank ||
+          branchDetails.bank_name ||
+          application.bankDetails?.bankName,
+        micr:
+          result.micr || branchDetails.micr || application.bankDetails?.micr,
         accountHolderName: result.beneficiary_name_with_bank || beneficiaryName,
         verified: true,
         verifiedAt: result.verified_at,
         bankRequestId: result.id,
         method: "PENNY_DROP",
-        name_match_score: result.name_match_score || result.name_match_score_percentage || null,
+        name_match_score:
+          result.name_match_score || result.name_match_score_percentage || null,
         name_match: result.name_match || null,
-        address: branchDetails.address || branchDetails.bank_address || branchDetails.branch || application.bankDetails?.address,
+        address:
+          branchDetails.address ||
+          branchDetails.bank_address ||
+          branchDetails.branch ||
+          application.bankDetails?.address,
         city: branchDetails.city || application.bankDetails?.city,
         state: branchDetails.state || application.bankDetails?.state,
         district: branchDetails.district || application.bankDetails?.district,
-        pincode: branchDetails.pin || branchDetails.pincode || branchDetails.pin_code || application.bankDetails?.pincode
+        pincode:
+          branchDetails.pin ||
+          branchDetails.pincode ||
+          branchDetails.pin_code ||
+          application.bankDetails?.pincode,
       });
 
       await prisma.kycApplication.update({
         where: { id: application.id },
-        data: serializeJsonFields({
-          bankDetails: nextBankDetails,
-          currentStep: Math.max(application.currentStep || 0, 11) // Bank step is 11
-        }, ["bankDetails"])
+        data: serializeJsonFields(
+          {
+            bankDetails: nextBankDetails,
+            currentStep: Math.max(application.currentStep || 0, 11), // Bank step is 11
+          },
+          ["bankDetails"],
+        ),
       });
 
       await writeAuditLog({
         userId: req.user.id,
         action: "bank_verified_directly",
-        details: { applicationId: application.applicationId, status: "success" },
+        details: {
+          applicationId: application.applicationId,
+          status: "success",
+        },
         ipAddress: req.ip,
       });
     }
 
     return res.json({ success: result.verified, data: result });
-
   } catch (error) {
     console.error("Bank Verification Route Error:", error.message);
-    return res.status(500).json({ success: false, error: error.message || "Bank verification failed" });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        error: error.message || "Bank verification failed",
+      });
   }
 });
 
 router.post("/face-match", auth, async (req, res) => {
   const { selfie, applicationId } = req.body || {};
-  
+
   if (!selfie) {
-    return res.status(400).json({ success: false, error: "Selfie image is required" });
+    return res
+      .status(400)
+      .json({ success: false, error: "Selfie image is required" });
   }
 
   try {
@@ -1526,7 +2168,9 @@ router.post("/face-match", auth, async (req, res) => {
     });
 
     if (!application) {
-      return res.status(404).json({ success: false, error: "Application not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Application not found" });
     }
 
     // 1. Find the Aadhaar photo in documents
@@ -1535,18 +2179,22 @@ router.post("/face-match", auth, async (req, res) => {
       const docPath = String(d.path || "").toLowerCase();
       const docType = String(d.type || "").toUpperCase();
       if (docPath.endsWith(".pdf")) return false;
-      return docType === "PHOTO"
-        || /\.(png|jpe?g|webp)$/i.test(docPath)
-        || (docType.includes("AADHAAR") && !docPath.endsWith(".pdf"));
+      return (
+        docType === "PHOTO" ||
+        /\.(png|jpe?g|webp)$/i.test(docPath) ||
+        (docType.includes("AADHAAR") && !docPath.endsWith(".pdf"))
+      );
     });
-    
+
     if (!aadhaarDoc || !aadhaarDoc.path) {
-      console.warn("[FaceMatch] No Aadhaar photo found for comparison. Falling back to high confidence mock for demo.");
+      console.warn(
+        "[FaceMatch] No Aadhaar photo found for comparison. Falling back to high confidence mock for demo.",
+      );
       // If no Aadhaar photo, we can't do a real match. Fallback to a realistic mock score.
       const mockScore = 85 + Math.floor(Math.random() * 10);
       await prisma.kycApplication.update({
         where: { id: application.id },
-        data: { faceMatchScore: mockScore }
+        data: { faceMatchScore: mockScore },
       });
       return res.json({ success: true, score: mockScore, isMock: true });
     }
@@ -1559,13 +2207,15 @@ router.post("/face-match", auth, async (req, res) => {
       aadhaarBase64 = aadhaarBuffer.toString("base64");
     } catch (e) {
       console.error("[FaceMatch] Failed to read Aadhaar photo:", e.message);
-      return res.status(500).json({ success: false, error: "Failed to read Aadhaar photo" });
+      return res
+        .status(500)
+        .json({ success: false, error: "Failed to read Aadhaar photo" });
     }
 
     // 3. Call Digio Face Match API
     const cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
     const result = await selfieService.faceMatch(aadhaarBase64, cleanSelfie);
-    
+
     // Digio returns similarity as 0-1, convert to percentage
     const score = Math.round((result.similarity || 0.9) * 100);
 
@@ -1573,59 +2223,81 @@ router.post("/face-match", auth, async (req, res) => {
     let savedSelfiePath = null;
     try {
       const uploadsDir = path.join(__dirname, "../../uploads");
-      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-      
+      if (!fs.existsSync(uploadsDir))
+        fs.mkdirSync(uploadsDir, { recursive: true });
+
       const filename = `live_selfie_${application.applicationId}_${Date.now()}.jpg`;
-      fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(cleanSelfie, 'base64'));
+      fs.writeFileSync(
+        path.join(uploadsDir, filename),
+        Buffer.from(cleanSelfie, "base64"),
+      );
       savedSelfiePath = `/uploads/${filename}`;
       console.log(`[FaceMatch] Live selfie saved to: ${savedSelfiePath}`);
     } catch (saveError) {
-      console.error("[FaceMatch] Failed to save live selfie:", saveError.message);
+      console.error(
+        "[FaceMatch] Failed to save live selfie:",
+        saveError.message,
+      );
     }
 
     // 5. Update Database with score and the captured image
     await prisma.kycApplication.update({
       where: { id: application.id },
-      data: serializeJsonFields({ 
-        faceMatchScore: score,
-        ...(savedSelfiePath ? {
-          selfie: savedSelfiePath, // Update root field for easier access
-          selfieDetails: {
-            ...parseJsonField(application.selfieDetails, {}),
-            preview: savedSelfiePath,
-            matchScore: score,
-            source: "IPV_LIVE_CAPTURE",
-            updatedAt: new Date().toISOString()
-          }
-        } : {})
-      }, ["selfieDetails"])
+      data: serializeJsonFields(
+        {
+          faceMatchScore: score,
+          ...(savedSelfiePath
+            ? {
+                selfie: savedSelfiePath, // Update root field for easier access
+                selfieDetails: {
+                  ...parseJsonField(application.selfieDetails, {}),
+                  preview: savedSelfiePath,
+                  matchScore: score,
+                  source: "IPV_LIVE_CAPTURE",
+                  updatedAt: new Date().toISOString(),
+                },
+              }
+            : {}),
+        },
+        ["selfieDetails"],
+      ),
     });
 
     await writeAuditLog({
       userId: req.user.id,
       action: "face_match_performed",
-      details: { 
-        applicationId: application.applicationId, 
-        score, 
+      details: {
+        applicationId: application.applicationId,
+        score,
         status: "success",
-        selfieSaved: !!savedSelfiePath
+        selfieSaved: !!savedSelfiePath,
       },
       ipAddress: req.ip,
     });
 
     return res.json({ success: true, score, selfiePath: savedSelfiePath });
-
   } catch (error) {
-    console.error("[FaceMatch] Route Error:", error.response?.data || error.message);
+    console.error(
+      "[FaceMatch] Route Error:",
+      error.response?.data || error.message,
+    );
     // If API fails (e.g. invalid face), fallback to a safe mock for UX
-    const fallbackScore = 92; 
-    return res.json({ success: true, score: fallbackScore, isMock: true, error: "API Failure" });
+    const fallbackScore = 92;
+    return res.json({
+      success: true,
+      score: fallbackScore,
+      isMock: true,
+      error: "API Failure",
+    });
   }
 });
 
 router.post("/verify-ifsc", auth, async (req, res) => {
   const { ifscCode } = req.body || {};
-  if (!ifscCode) return res.status(400).json({ success: false, error: "IFSC code is required" });
+  if (!ifscCode)
+    return res
+      .status(400)
+      .json({ success: false, error: "IFSC code is required" });
 
   try {
     const result = await bankService.verifyIfsc(ifscCode);
@@ -1637,22 +2309,24 @@ router.post("/verify-ifsc", auth, async (req, res) => {
       const fbResponse = await fetch(`https://ifsc.razorpay.com/${ifscCode}`);
       if (fbResponse.ok) {
         const data = await fbResponse.json();
-        return res.json({ 
-          success: true, 
-          data: { 
-            bank: data.BANK, 
-            branch: data.BRANCH, 
-            city: data.CITY, 
-            state: data.STATE, 
-            micr: data.MICR 
-          } 
+        return res.json({
+          success: true,
+          data: {
+            bank: data.BANK,
+            branch: data.BRANCH,
+            city: data.CITY,
+            state: data.STATE,
+            micr: data.MICR,
+          },
         });
       }
     } catch (f) {
       console.error("[IFSC] Fallback also failed");
     }
-    
-    return res.status(500).json({ success: false, error: "Failed to verify IFSC" });
+
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to verify IFSC" });
   }
 });
 
@@ -1685,15 +2359,21 @@ async function ensureDigilockerVerificationDocuments(application) {
 
   const digioBucket = ocrData?.digio?.DIGILOCKER || {};
   const requestId = digioBucket.requestId;
-  const executionRequestId = findDigilockerExecutionRequestId(digioBucket) || findDigilockerExecutionRequestId({ actions: digioBucket.actions });
+  const executionRequestId =
+    findDigilockerExecutionRequestId(digioBucket) ||
+    findDigilockerExecutionRequestId({ actions: digioBucket.actions });
 
-  const digilockerActions = Array.isArray(digioBucket.actions) ? digioBucket.actions : [];
+  const digilockerActions = Array.isArray(digioBucket.actions)
+    ? digioBucket.actions
+    : [];
   for (const action of digilockerActions) {
     if (action?.details?.aadhaar?.id_number && !identityDetails.aadhaar) {
       identityDetails.aadhaar = String(action.details.aadhaar.id_number).trim();
     }
     if (action?.details?.pan?.id_number && !identityDetails.pan) {
-      identityDetails.pan = String(action.details.pan.id_number).trim().toUpperCase();
+      identityDetails.pan = String(action.details.pan.id_number)
+        .trim()
+        .toUpperCase();
     }
   }
 
@@ -1731,15 +2411,19 @@ async function ensureDigilockerVerificationDocuments(application) {
   const originalDocuments = parseJsonField(application.documents, []);
   documents = dedupeApplicationDocuments(documents);
 
-  const needsAadhaarPdf = identityDetails.aadhaar && !hasDocumentBucket(documents, "AADHAAR");
-  const needsPanPdf = identityDetails.pan && !hasDocumentBucket(documents, "PAN");
+  const needsAadhaarPdf =
+    identityDetails.aadhaar && !hasDocumentBucket(documents, "AADHAAR");
+  const needsPanPdf =
+    identityDetails.pan && !hasDocumentBucket(documents, "PAN");
   const identityPatched = JSON.stringify(identityDetails) !== identitySnapshot;
-  const documentsNeedCleanup = JSON.stringify(documents) !== JSON.stringify(originalDocuments);
+  const documentsNeedCleanup =
+    JSON.stringify(documents) !== JSON.stringify(originalDocuments);
 
-  const aadhaarPhotoPath = documents.find((doc) => {
-    const docPath = String(doc?.path || "").toLowerCase();
-    return doc?.type === "PHOTO" || /\.(png|jpe?g|webp)$/i.test(docPath);
-  })?.path || null;
+  const aadhaarPhotoPath =
+    documents.find((doc) => {
+      const docPath = String(doc?.path || "").toLowerCase();
+      return doc?.type === "PHOTO" || /\.(png|jpe?g|webp)$/i.test(docPath);
+    })?.path || null;
 
   if (needsAadhaarPdf) {
     const filename = `digilocker_aadhaar_${application.applicationId || application.id}_${Date.now()}.pdf`;
@@ -1762,7 +2446,11 @@ async function ensureDigilockerVerificationDocuments(application) {
   if (needsPanPdf) {
     const filename = `digilocker_pan_${application.applicationId || application.id}_${Date.now()}.pdf`;
     const filePath = path.join(uploadsDir, filename);
-    await createDigilockerPanPdf({ filePath, identityDetails, personalDetails });
+    await createDigilockerPanPdf({
+      filePath,
+      identityDetails,
+      personalDetails,
+    });
     addSavedDocument({
       type: "PAN",
       label: "DigiLocker PAN Verification PDF",
@@ -1774,7 +2462,12 @@ async function ensureDigilockerVerificationDocuments(application) {
   documents = dedupeApplicationDocuments(documents);
 
   const updatePayload = {};
-  if (documentsNeedCleanup || savedPaths.length > 0 || needsAadhaarPdf || needsPanPdf) {
+  if (
+    documentsNeedCleanup ||
+    savedPaths.length > 0 ||
+    needsAadhaarPdf ||
+    needsPanPdf
+  ) {
     updatePayload.documents = documents;
   }
   if (identityPatched) {
@@ -1792,18 +2485,27 @@ async function ensureDigilockerVerificationDocuments(application) {
 }
 
 router.post("/mask-aadhaar", auth, async (req, res) => {
-  const { data, data_content_type = "PNG", file_name = "aadhaar.png", consent = "yes" } = req.body;
+  const {
+    data,
+    data_content_type = "PNG",
+    file_name = "aadhaar.png",
+    consent = "yes",
+  } = req.body;
 
   if (!data) {
-    return res.status(400).json({ success: false, error: "Base64 image data is required" });
+    return res
+      .status(400)
+      .json({ success: false, error: "Base64 image data is required" });
   }
 
   try {
     const reference_id = `MASK-${Date.now()}`;
     const unique_request_id = `REQ-${Date.now()}`;
-    
+
     // Clean base64 prefix if present
-    const base64Data = data.includes("base64,") ? data.split("base64,")[1] : data;
+    const base64Data = data.includes("base64,")
+      ? data.split("base64,")[1]
+      : data;
 
     const payload = {
       reference_id,
@@ -1813,10 +2515,12 @@ router.post("/mask-aadhaar", auth, async (req, res) => {
       data_content_type,
       is_validate: false,
       consent,
-      mask_qr: false
+      mask_qr: false,
     };
 
-    console.log(`[Digio Route] Masking Aadhaar for User: ${req.user.id}, ReqID: ${unique_request_id}`);
+    console.log(
+      `[Digio Route] Masking Aadhaar for User: ${req.user.id}, ReqID: ${unique_request_id}`,
+    );
     const response = await digioClient.maskAadhaarImage(payload);
 
     if (response && response.masked_output) {
@@ -1833,11 +2537,16 @@ router.post("/mask-aadhaar", auth, async (req, res) => {
         details: response.details,
       });
     } else {
-      throw new Error(response.error_message || "Masking failed with no output");
+      throw new Error(
+        response.error_message || "Masking failed with no output",
+      );
     }
   } catch (error) {
-    console.error("[Digio Route] Masking error:", error.response?.data || error.message);
-    
+    console.error(
+      "[Digio Route] Masking error:",
+      error.response?.data || error.message,
+    );
+
     await writeAuditLog({
       userId: req.user.id,
       action: "aadhaar_mask_failed",
@@ -1847,10 +2556,14 @@ router.post("/mask-aadhaar", auth, async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      error: error.response?.data?.error_message || error.message || "Failed to mask Aadhaar image",
+      error:
+        error.response?.data?.error_message ||
+        error.message ||
+        "Failed to mask Aadhaar image",
     });
   }
 });
 
 module.exports = router;
-module.exports.ensureDigilockerVerificationDocuments = ensureDigilockerVerificationDocuments;
+module.exports.ensureDigilockerVerificationDocuments =
+  ensureDigilockerVerificationDocuments;

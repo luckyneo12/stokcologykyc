@@ -8,7 +8,7 @@
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Colors - Light Theme */
-  --wise-green: #8b5cf6; /* Repurposed as Premium Violet Accent */
+  --wise-green: #7d34eb; /* Repurposed as Premium Violet Accent */
   --wise-green-hover: #7c3aed;
   --wise-dark-green: #4c1d95;
   --wise-green-alpha: rgba(139, 92, 246, 0.15);
@@ -51,7 +51,7 @@
   --bg-elevated: rgba(15, 15, 15, 0.9);
   --bg-sticky: #050505;
 
-  --wise-green: #9d4edd; /* Glowy dark neon violet */
+  --wise-green: #7d34eb; /* Glowy dark neon violet */
   --wise-dark-green: #c77dff;
   --wise-green-hover: #e0aaff;
   --wise-green-alpha: rgba(157, 78, 221, 0.2);

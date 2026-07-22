@@ -156,9 +156,7 @@ const REVIEW_STEPS = [
       ["Dobmatch1", app.identityDetails?.dob || app.personalDetails?.dob || "N/A"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER"],
       ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
-      ["Reject reason personal details", app.personalDetails?.rejectReason || "N/A"],
-      ["Rejected by personal details", app.personalDetails?.rejectedBy || "N/A"],
-      ["Rejected timestamp personal details", app.personalDetails?.rejectedAt ? new Date(app.personalDetails.rejectedAt).toLocaleString() : "N/A"],
+
       ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
       ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
       ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
@@ -170,7 +168,7 @@ const REVIEW_STEPS = [
       ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["State code", app.address?.state || "N/A"],
-      ["Clientcode", app.applicationId || "N/A"],
+      ["Clientcode", app.clientCode || "N/A"],
       ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
       ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
       ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
@@ -632,15 +630,52 @@ function openInNewTab(src) {
 }
 
 function FieldGrid({ fields }) {
-  const rows = fields.filter(([, value]) => value !== undefined && value !== null && value !== "");
+  const rows = fields.filter(([, value]) => {
+    if (value === undefined || value === null || value === "") return false;
+    const str = String(value).trim();
+    if (str === "N/A" || str === "--select--") return false;
+    return true;
+  });
   if (!rows.length) {
     return <div style={{ color: "var(--text-muted)", fontWeight: 700 }}>No submitted values for this step yet.</div>;
   }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-      {rows.map(([label, value]) => {
+      {rows.map(([label, value], i) => {
         const isShiny = label === "Certificate No" || label === "Serial No";
         const isCert = label === "Certificate No";
+        const isDivider = typeof label === "string" && label.startsWith("---");
+
+        if (isDivider) {
+          const headerText = label.replace(/-/g, "").trim();
+          return (
+            <div key={label + i} style={{
+              gridColumn: "1 / -1",
+              marginTop: 12,
+              marginBottom: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 16
+            }}>
+              <div style={{
+                fontSize: "0.75rem",
+                fontWeight: 900,
+                color: "var(--text-primary)",
+                letterSpacing: "1px",
+                textTransform: "uppercase",
+                whiteSpace: "nowrap"
+              }}>
+                {headerText}
+              </div>
+              <div style={{
+                flex: 1,
+                height: "2px",
+                background: "linear-gradient(90deg, rgba(16, 185, 129, 0.7), transparent)",
+                boxShadow: "0 0 8px rgba(16, 185, 129, 0.5)"
+              }} />
+            </div>
+          );
+        }
         
         return (
           <div key={label} style={{ 
@@ -862,7 +897,15 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   const [activeTab, setActiveTab] = useState(step.tabs ? step.tabs[0].id : null);
 
   const evidence = step.evidence(app, activeTab);
-  const fields = step.fields(app, activeTab);
+  const rawFields = step.fields(app, activeTab);
+  const fields = [...rawFields];
+  if (isRejected && info?.reason) {
+    fields.push(
+      [`--- REJECTION DETAILS ---`, " "],
+      [`Reject Reason ${step.title}`, info.reason],
+      [`Rejected Timestamp ${step.title}`, info.reviewedAt ? new Date(info.reviewedAt).toLocaleString() : "N/A"]
+    );
+  }
 
   return (
     <div className="card" style={{ padding: 24, borderRadius: 12, marginBottom: 20, border: isApproved ? "2px solid #dcfce7" : isRejected ? "2px solid #fee2e2" : "1px solid var(--border-color)", background: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.03)", transition: "all 0.3s ease" }}>

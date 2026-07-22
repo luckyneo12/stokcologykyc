@@ -95,7 +95,6 @@ const REVIEW_STEPS = [
         ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
         ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
         ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
-        ["Name match score", panMatchData.name_match_score ? `${panMatchData.name_match_score}%` : "N/A"],
       ];
     },
     evidence: (app) => [firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document")].filter(Boolean),
@@ -125,7 +124,6 @@ const REVIEW_STEPS = [
           ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y"],
           ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N"],
           ["Name status", panMatchData.name_match || panMatchData.name_as_per_pan_match ? "Y" : "N"],
-          ["Name match score", panMatchData.name_match_score ? `${panMatchData.name_match_score}%` : "N/A"],
           ["Pan status", panMatchData.status === "VALID" || panMatchData.status === "valid" || app.identityDetails?.panVerified ? "True" : "False"],
         ];
       }
@@ -199,9 +197,7 @@ const REVIEW_STEPS = [
       ["Dobmatch1", app.identityDetails?.dob || app.personalDetails?.dob || "N/A"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER"],
       ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
-      ["Reject reason personal details", app.personalDetails?.rejectReason || "N/A"],
-      ["Rejected by personal details", app.personalDetails?.rejectedBy || "N/A"],
-      ["Rejected timestamp personal details", app.personalDetails?.rejectedAt ? new Date(app.personalDetails.rejectedAt).toLocaleString() : "N/A"],
+
       ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
       ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
       ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
@@ -213,7 +209,7 @@ const REVIEW_STEPS = [
       ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["State code", app.address?.state || "N/A"],
-      ["Clientcode", app.applicationId || "N/A"],
+      ["Clientcode", app.clientCode || "N/A"],
       ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
       ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
       ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
@@ -656,13 +652,27 @@ function nomineeFields(app) {
     if (Array.isArray(percentages) && percentages[index] !== undefined) {
       allocation = typeof percentages[index] === 'object' ? (percentages[index].percentage || percentages[index].allocation) : percentages[index];
     }
-    return [
+    const fields = [
+      [`--- NOMINEE ${index + 1} ---`, " "],
       [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
       [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
       [`Nominee ${index + 1} DOB`, nominee.dob],
-      [`Nominee ${index + 1} guardian`, nominee.guardianName],
       [`Nominee ${index + 1} allocation`, `${allocation}%`],
     ];
+    if (nominee.guardianName) {
+      fields.push(
+        [`--- GUARDIAN FOR NOMINEE ${index + 1} ---`, " "],
+        [`Guardian ${index + 1} name`, nominee.guardianName],
+        [`Guardian ${index + 1} DOB`, nominee.guardianDob],
+        [`Guardian ${index + 1} relation`, nominee.guardianRelation],
+        [`Guardian ${index + 1} mobile`, nominee.guardianMobile],
+        [`Guardian ${index + 1} email`, nominee.guardianEmail],
+        [`Guardian ${index + 1} address`, [nominee.guardianAddress, nominee.guardianCity, nominee.guardianState, nominee.guardianPincode].filter(Boolean).join(", ")],
+        [`Guardian ${index + 1} proof type`, nominee.guardianProofType],
+        [`Guardian ${index + 1} proof number`, nominee.guardianProofNumber]
+      );
+    }
+    return fields;
   });
   
   return [...baseFields, ...detailedFields];
@@ -727,12 +737,45 @@ function FieldGrid({ fields }) {
   }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-      {rows.map(([label, value]) => {
+      {rows.map(([label, value], i) => {
         const isShiny = label === "Certificate No" || label === "Serial No";
         const isCert = label === "Certificate No";
+        const isDivider = label.startsWith("---");
         
+        if (isDivider) {
+          const headerText = label.replace(/-/g, "").trim();
+          return (
+            <div key={label + i} style={{
+              gridColumn: "1 / -1",
+              marginTop: i === 0 ? 0 : 16,
+              marginBottom: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 16
+            }}>
+              <div style={{
+                fontSize: "0.85rem",
+                fontWeight: 900,
+                color: "var(--text-primary)",
+                letterSpacing: "0.5px",
+                textTransform: "uppercase",
+                whiteSpace: "nowrap"
+              }}>
+                {headerText}
+              </div>
+              <div style={{
+                flex: 1,
+                height: "2px",
+                background: "linear-gradient(90deg, rgba(16, 185, 129, 0.7), transparent)",
+                borderRadius: "2px",
+                boxShadow: "0 0 8px rgba(16, 185, 129, 0.5)"
+              }} />
+            </div>
+          );
+        }
+
         return (
-          <div key={label} style={{ 
+          <div key={label + i} style={{ 
             padding: 14, 
             border: "1px solid var(--border-color)", 
             borderRadius: 8, 
@@ -749,28 +792,28 @@ function FieldGrid({ fields }) {
               whiteSpace: isCert ? "nowrap" : "normal",
               overflowX: isCert ? "auto" : "visible"
             }}>
-              {label === "Segments" && typeof value === "string" ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                  {value.split(",").map(seg => seg.trim()).filter(Boolean).map(seg => (
-                    <span key={seg} style={{ 
-                      padding: "6px 14px", 
-                      background: "linear-gradient(135deg, #059669 0%, #047857 100%)", 
-                      color: "var(--bg-primary)", 
-                      borderRadius: 999, 
-                      fontSize: "0.75rem", 
-                      fontWeight: 900, 
-                      textTransform: "uppercase", 
-                      letterSpacing: 0.5,
-                      boxShadow: "0 4px 24px rgba(0,0,0,0.02)" 
-                    }}>
-                      {seg}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                String(value)
-              )}
-            </div>
+                {label === "Segments" && typeof value === "string" ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                    {value.split(",").map(seg => seg.trim()).filter(Boolean).map(seg => (
+                      <span key={seg} style={{ 
+                        padding: "6px 14px", 
+                        background: "linear-gradient(135deg, #059669 0%, #047857 100%)", 
+                        color: "var(--bg-primary)", 
+                        borderRadius: 999, 
+                        fontSize: "0.75rem", 
+                        fontWeight: 900, 
+                        textTransform: "uppercase", 
+                        letterSpacing: 0.5,
+                        boxShadow: "0 4px 24px rgba(0,0,0,0.02)" 
+                      }}>
+                        {seg}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  String(value)
+                )}
+              </div>
           </div>
         );
       })}
@@ -1688,7 +1731,21 @@ export default function AgentReview() {
                   {isExpanded && (
                     <div style={{ padding: "10px 16px", background: "var(--bg-secondary)" }}>
                       {(step.tabs || [{ id: null, label: null }]).map((tab, tabIndex) => {
-                        const tabFields = step.fields(app, tab.id).filter(([, value]) => value !== undefined && value !== null && value !== "");
+                        const tabFields = step.fields(app, tab.id).filter(([, value]) => {
+                          if (value === undefined || value === null || value === "") return false;
+                          const str = String(value).trim();
+                          if (str === "N/A" || str === "--select--") return false;
+                          return true;
+                        });
+                        
+                        if (isRejected && statuses[step.id]?.reason && (!step.tabs || tabIndex === step.tabs.length - 1)) {
+                          tabFields.push(
+                            [`--- REJECTION DETAILS ---`, " "],
+                            [`Reject Reason ${step.title}`, statuses[step.id].reason],
+                            [`Rejected Timestamp ${step.title}`, statuses[step.id].reviewedAt ? new Date(statuses[step.id].reviewedAt).toLocaleString() : "N/A"]
+                          );
+                        }
+
                         if (tabFields.length === 0) {
                           if (step.tabs) return null;
                           return <div key="empty" style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>No details available.</div>;
@@ -1702,11 +1759,46 @@ export default function AgentReview() {
                             )}
                             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                               {tabFields.map(([label, value, jsonPath]) => {
+                                const isDivider = label.startsWith("---");
+                                if (isDivider) {
+                                  const headerText = label.replace(/-/g, "").trim();
+                                  return (
+                                    <div key={label} style={{
+                                      marginTop: 12,
+                                      marginBottom: 4,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 16
+                                    }}>
+                                      <div style={{
+                                        fontSize: "0.75rem",
+                                        fontWeight: 900,
+                                        color: "var(--text-primary)",
+                                        letterSpacing: "1px",
+                                        textTransform: "uppercase",
+                                        whiteSpace: "nowrap"
+                                      }}>
+                                        {headerText}
+                                      </div>
+                                      <div style={{
+                                        flex: 1,
+                                        height: "2px",
+                                        background: "linear-gradient(90deg, rgba(16, 185, 129, 0.7), transparent)",
+                                        boxShadow: "0 0 8px rgba(16, 185, 129, 0.5)"
+                                      }} />
+                                    </div>
+                                  );
+                                }
+
                                 const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
                                 return (
-                                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                  <div key={label} style={{ 
+                                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
+                                    padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
+                                    border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                                  }}>
                                     <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>{label}</div>
+                                      <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                                       {editingField === jsonPath && jsonPath ? (
                                         <input 
                                           autoFocus

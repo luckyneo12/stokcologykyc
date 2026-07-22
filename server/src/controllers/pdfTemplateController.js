@@ -322,29 +322,84 @@ const convertToHtml = async (req, res) => {
 
 // Known KYC variable labels and their mapping to variable keys
 const KNOWN_LABELS = [
+  // Core Identity & Contact
   { patterns: ['application', 'app id', 'application no', 'application number'], variable: 'applicationId', name: 'Application ID', type: 'text' },
   { patterns: ['full name', 'name of applicant', 'applicant name', 'name'], variable: 'fullName', name: 'Full Name', type: 'text' },
   { patterns: ['father', 'spouse', "father's name", 'father/spouse', 'father name'], variable: 'fatherName', name: 'Father/Spouse Name', type: 'text' },
   { patterns: ['mother', "mother's name", 'mother name'], variable: 'motherName', name: "Mother's Name", type: 'text' },
   { patterns: ['gender', 'sex'], variable: 'gender', name: 'Gender', type: 'text' },
   { patterns: ['date of birth', 'dob', 'birth date', 'd.o.b'], variable: 'dob', name: 'Date of Birth', type: 'text' },
-  { patterns: ['nationality'], variable: 'nationality', name: 'Nationality', type: 'text' },
-  { patterns: ['marital', 'marital status'], variable: 'maritalStatus', name: 'Marital Status', type: 'text' },
-  { patterns: ['occupation', 'profession'], variable: 'occupation', name: 'Occupation', type: 'text' },
-  { patterns: ['annual income', 'income', 'gross annual income'], variable: 'annualIncome', name: 'Annual Income', type: 'text' },
   { patterns: ['pan', 'pan no', 'pan number', 'permanent account'], variable: 'pan', name: 'PAN Number', type: 'text' },
   { patterns: ['aadhaar', 'aadhar', 'uid', 'aadhaar no', 'aadhaar number'], variable: 'aadhaar', name: 'Aadhaar Number', type: 'text' },
   { patterns: ['phone', 'mobile', 'contact no', 'mobile no', 'tel'], variable: 'phone', name: 'Phone', type: 'text' },
   { patterns: ['email', 'e-mail', 'email id', 'email address'], variable: 'email', name: 'Email Address', type: 'text' },
+  
+  // Regulatory & Profile Details
+  { patterns: ['prefix', 'mr', 'mrs', 'ms', 'salutation'], variable: 'prefix', name: 'Prefix', type: 'text' },
+  { patterns: ['nationality'], variable: 'nationality', name: 'Nationality', type: 'text' },
+  { patterns: ['marital', 'marital status'], variable: 'maritalStatus', name: 'Marital Status', type: 'text' },
+  { patterns: ['occupation', 'profession'], variable: 'occupation', name: 'Occupation', type: 'text' },
+  { patterns: ['annual income', 'income', 'gross annual income'], variable: 'annualIncome', name: 'Annual Income', type: 'text' },
+  { patterns: ['experience', 'trading experience'], variable: 'experience', name: 'Trading Experience', type: 'text' },
+  { patterns: ['politically exposed', 'pep'], variable: 'politicallyExposed', name: 'Politically Exposed (PEP)', type: 'text' },
+  { patterns: ['pep type'], variable: 'pepType', name: 'PEP Type', type: 'text' },
+  { patterns: ['indian citizen', 'citizen of india'], variable: 'isIndianCitizen', name: 'Indian Citizen', type: 'text' },
+  { patterns: ['tax residency outside', 'tax resident outside'], variable: 'taxResidencyOutside', name: 'Tax Resident Outside India', type: 'text' },
+  { patterns: ['ddpi', 'ddpi choice'], variable: 'ddpi', name: 'DDPI Choice', type: 'text' },
+  
+  // Regulatory Declarations
+  { patterns: ['dis', 'delivery instruction slip'], variable: 'dis', name: 'DIS Preference', type: 'text' },
+  { patterns: ['receive credits automatically', 'receive credits'], variable: 'receiveCredits', name: 'Receive Credits Automatically', type: 'text' },
+  { patterns: ['e-statement', 'estatement', 'statement preference'], variable: 'eStatement', name: 'E-Statement Preference', type: 'text' },
+  { patterns: ['accept pledge', 'pledge instructions'], variable: 'acceptPledgeInstructions', name: 'Accept Pledge Instructions', type: 'text' },
+  { patterns: ['annual reports', 'agm'], variable: 'receiveAnnualReports', name: 'Receive Annual Reports', type: 'text' },
+  { patterns: ['settlement', 'account settlement'], variable: 'settlement', name: 'Account Settlement', type: 'text' },
+  { patterns: ['sms alert', 'sms facility'], variable: 'smsAlert', name: 'SMS Alert Facility', type: 'text' },
+  { patterns: ['operated through ddpi'], variable: 'operatedThroughDDPI', name: 'Operated Through DDPI', type: 'text' },
+  
+  // Segments & Pricing
+  { patterns: ['bsda', 'bsda preference'], variable: 'bsda', name: 'BSDA Preference', type: 'text' },
+  { patterns: ['equity', 'cash segment', 'mutual funds'], variable: 'segments.equity', name: 'Segment - Equity', type: 'text' },
+  { patterns: ['derivatives', 'f&o', 'fao'], variable: 'segments.derivatives', name: 'Segment - Derivatives', type: 'text' },
+  
+  // Permanent Address
   { patterns: ['address', 'correspondence address', 'residential address', 'address line'], variable: 'addressLine1', name: 'Address Line 1', type: 'text' },
   { patterns: ['city', 'town'], variable: 'city', name: 'City', type: 'text' },
   { patterns: ['state', 'province'], variable: 'state', name: 'State', type: 'text' },
   { patterns: ['pin', 'pincode', 'pin code', 'zip', 'postal'], variable: 'pincode', name: 'Pincode', type: 'text' },
+  { patterns: ['full address', 'complete address'], variable: 'address.fullAddress', name: 'Full Address', type: 'text' },
+
+  // Bank Details
   { patterns: ['bank name', 'name of bank'], variable: 'bankName', name: 'Bank Name', type: 'text' },
   { patterns: ['account', 'account no', 'account number', 'a/c no'], variable: 'accountNumber', name: 'Account Number', type: 'text' },
   { patterns: ['ifsc', 'ifsc code', 'micr'], variable: 'ifsc', name: 'IFSC Code', type: 'text' },
+  { patterns: ['account type', 'type of account'], variable: 'accountType', name: 'Account Type', type: 'text' },
+
+  // Nominee Details
+  { patterns: ['nominee name', 'name of nominee'], variable: 'nomineeDetails.nominees[0].name', name: 'Nominee Name', type: 'text' },
+  { patterns: ['nominee relation', 'relationship with nominee'], variable: 'nomineeDetails.nominees[0].relation', name: 'Nominee Relation', type: 'text' },
+  { patterns: ['allocation', 'percentage of allocation'], variable: 'nomineeAllocation.percentages[0]', name: 'Nominee Allocation %', type: 'text' },
+  { patterns: ['nominee dob', 'nominee date of birth'], variable: 'nomineeDetails.nominees[0].dob', name: 'Nominee DOB', type: 'text' },
+  { patterns: ['nominee mobile', 'nominee phone'], variable: 'nomineeDetails.nominees[0].mobile', name: 'Nominee Mobile', type: 'text' },
+  { patterns: ['nominee email'], variable: 'nomineeDetails.nominees[0].email', name: 'Nominee Email', type: 'text' },
+  { patterns: ['nominee address'], variable: 'nomineeDetails.nominees[0].address', name: 'Nominee Address', type: 'text' },
+  { patterns: ['nominee proof type', 'nominee id proof'], variable: 'nomineeDetails.nominees[0].proofType', name: 'Nominee Proof Type', type: 'text' },
+  { patterns: ['nominee proof number', 'nominee id number'], variable: 'nomineeDetails.nominees[0].proofNumber', name: 'Nominee Proof Number', type: 'text' },
+
+  // Documents, Biometrics, Audit Trail
+  { patterns: ['latitude', 'geo latitude'], variable: 'geo.latitude', name: 'Latitude', type: 'text' },
+  { patterns: ['longitude', 'geo longitude'], variable: 'geo.longitude', name: 'Longitude', type: 'text' },
+  { patterns: ['geo address', 'execution address'], variable: 'geo.address', name: 'Geo Location Address', type: 'text' },
+  { patterns: ['timestamp', 'execution time', 'date of execution'], variable: 'updatedAt', name: 'Execution Timestamp', type: 'text' },
   { patterns: ['signature', 'sign here'], variable: 'signature', name: 'Signature', type: 'image' },
   { patterns: ['photograph', 'photo', 'passport photo', 'selfie'], variable: 'selfie', name: 'Selfie', type: 'image' },
+  { patterns: ['pan image', 'pan copy'], variable: 'panImage', name: 'PAN Image', type: 'image' },
+  { patterns: ['aadhaar image', 'aadhaar copy'], variable: 'aadhaarImage', name: 'Aadhaar Image', type: 'image' },
+  { patterns: ['bank proof', 'cancelled cheque'], variable: 'bankProof', name: 'Bank Proof', type: 'image' },
+  { patterns: ['income proof', 'financial proof'], variable: 'incomeProof', name: 'Income Proof', type: 'image' },
+  { patterns: ['address proof'], variable: 'addressProof', name: 'Address Proof', type: 'image' },
+  { patterns: ['pep proof'], variable: 'pepProof', name: 'PEP Proof', type: 'image' },
+  { patterns: ['nominee proof image'], variable: 'nomineeProof', name: 'Nominee Proof Image', type: 'image' },
 ];
 
 const analyzePdfPage = async (req, res) => {

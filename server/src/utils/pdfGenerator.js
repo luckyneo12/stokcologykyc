@@ -17,7 +17,76 @@ function getVariableValue(variableName, appData) {
   switch(variableName) {
     case 'applicationId': return appData.applicationId;
     case 'status': return appData.status;
+    case 'formNo': return appData.applicationId;
+    case 'clientCode': return appData.clientCode || '';
+    case 'openingDate': return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
+    case 'ipvDate': {
+      const ocrData = safeJsonParse(appData.ocrData) || {};
+      const selfieDate = ocrData?.digio?.SELFIE?.createdAt || ocrData?.digio?.LIVENESS?.createdAt;
+      if (selfieDate) {
+        return new Date(selfieDate).toLocaleDateString('en-GB');
+      }
+      return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
+    }
+    case 'alwaysTrueOvd': return true;
+    case 'isContactRelationSelf': return true;
+    case 'isContactRelationSpouse': return false;
+    case 'isContactRelationChildren': return false;
+    case 'isContactRelationParents': return false;
+    case 'isSmsFacilityYes': return true;
+    case 'isSmsFacilityNo': return false;
+    
+    // Standing Instructions
+    case 'isContractNoteElectronic': return true;
+    case 'isContractNotePhysical': return false;
+    case 'isSettlementMonthly': { const d = safeJsonParse(appData.declarations) || {}; return d.settlement === 'Monthly'; }
+    case 'isSettlementQuarterly': { const d = safeJsonParse(appData.declarations) || {}; return d.settlement !== 'Monthly'; } // Default Quarterly
+    case 'isInternetTradingYes': return true;
+    case 'isInternetTradingNo': return false;
+    case 'isStdDocsElectronic': return true;
+    case 'isStdDocsPhysical': return false;
+    case 'isDigitallySignedYes': return true;
+    case 'isDigitallySignedNo': return false;
+    case 'isTaxResidencyOtherYes': { const d = safeJsonParse(appData.declarations) || {}; return d.taxResidencyOutside === 'Yes'; }
+    case 'isTaxResidencyOtherNo': { const d = safeJsonParse(appData.declarations) || {}; return d.taxResidencyOutside !== 'Yes'; }
+    
+    // Segments
+    case 'isSegmentCash': { const s = safeJsonParse(appData.segments) || {}; return s.equity !== false; }
+    case 'isSegmentFnO': { const s = safeJsonParse(appData.segments) || {}; return !!s.derivatives; }
+    case 'isSegmentCurrency': { const s = safeJsonParse(appData.segments) || {}; return !!s.currency || !!s.derivatives; }
+    case 'isSegmentDebt': { const s = safeJsonParse(appData.segments) || {}; return !!s.debt; }
+    case 'isSegmentCommodity': { const s = safeJsonParse(appData.segments) || {}; return !!s.commodity; }
+    
+    // Page 8 Checkboxes
+    case 'isPanChecked': return !!iDetails.pan;
+    case 'isPhotoChecked': return !!appData.selfieDetails;
+    case 'isAadhaarPoiChecked': return !!iDetails.aadhaar;
+    case 'isAadhaarPoaChecked': return !!iDetails.aadhaar;
+    case 'isPennyDropChecked': return !!bDetails.verified || !!bDetails.accountNumber;
+    case 'isIncomeItrChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('itr');
+    case 'isIncomeSalaryChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('salary');
+    case 'isIncomeNetworthChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('networth');
+    case 'isIncomeDematChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('demat');
+    case 'isIncomeBankChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('bank');
+    case 'isIncomeAnnualChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('annual');
+    case 'isIncomeSelfDecChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('self');
+    case 'isIncomeOthersChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('other');
+    case 'isNriClientChecked': {
+      const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
+      const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
+      return (!isIndian || isTaxOutside);
+    }
+    
     case 'plan': return safeJsonParse(appData.pricingPlan)?.name || 'Standard';
+    case 'isNewKyc': return !appData.isResubmitted;
+    case 'isModificationKyc': return !!appData.isResubmitted;
+    case 'isPoiAadhaar': return appData.identityMethod === 'aadhaar' || !!iDetails.aadhaar;
+    case 'isPoiPassport': return appData.identityMethod === 'passport' || !!iDetails.passportNo;
+    case 'isPoiDrivingLicense': return appData.identityMethod === 'dl' || !!iDetails.dlNo;
+    case 'isPoiVoterId': return appData.identityMethod === 'voter' || !!iDetails.voterId;
+    case 'isPoiPan': return appData.identityMethod === 'pan' || !!iDetails.pan;
+    case 'date': return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
+    case 'place': return safeJsonParse(appData.geoDetails)?.address?.split(',')[0] || aDetails.city || '';
     case 'fullName': return pDetails.fullName;
     case 'fatherName': return pDetails.fatherName;
     case 'motherName': return pDetails.motherName;
@@ -27,23 +96,210 @@ function getVariableValue(variableName, appData) {
     case 'aadhaar': return iDetails.aadhaar;
     case 'maritalStatus': return pDetails.maritalStatus;
     case 'occupation': return pDetails.occupation;
+    case 'education': return pDetails.education;
+    case 'static.emailBelongsToSelf': return 'Self';
+    case 'static.mobileBelongsToSelf': return 'Self';
+    case 'static.yes': return 'Yes';
+    case 'static.no': return 'No';
+    case 'static.true': return true;
+    case 'static.false': return false;
+    case 'esign': {
+      const name = pDetails.fullName || 'User';
+      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
+      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      return `Digitally Signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+    }
+    case 'isOccGovt': return String(pDetails.occupation || '').toLowerCase().includes('govt');
+    case 'isOccPublic': return String(pDetails.occupation || '').toLowerCase().includes('public');
+    case 'isOccAgri': return String(pDetails.occupation || '').toLowerCase().includes('agri');
+    case 'isOccProf': return String(pDetails.occupation || '').toLowerCase().includes('professional');
+    case 'isOccBus': return String(pDetails.occupation || '').toLowerCase().includes('business');
+    case 'isOccHousewife': return String(pDetails.occupation || '').toLowerCase().includes('housewife');
+    case 'isOccPrivate': return String(pDetails.occupation || '').toLowerCase().includes('private');
+    case 'isOccRetired': return String(pDetails.occupation || '').toLowerCase().includes('retired');
+    case 'isOccStudent': return String(pDetails.occupation || '').toLowerCase().includes('student');
+    case 'isOccOthers': return String(pDetails.occupation || '').toLowerCase().includes('other');
     case 'annualIncome': return pDetails.incomeRange || pDetails.annualIncome;
+    case 'isIncomeBelow1Lac': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('below 1') || i.includes('<1'); }
+    case 'isIncome1To5Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('1-5') || i.includes('1 to 5'); }
+    case 'isIncome5To10Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('5-10') || i.includes('5 to 10'); }
+    case 'isIncome10To25Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('10-25') || i.includes('10 to 25'); }
+    case 'isIncomeAbove25Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('>25') || i.includes('above 25') || i.includes('more than 25'); }
     case 'nationality': return pDetails.nationality || 'Indian';
-    case 'residentialStatus': return pDetails.residentialStatus || 'Resident Individual';
+    case 'residentialStatus': {
+      const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
+      const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
+      if (!isIndian || isTaxOutside) {
+        return 'Non Resident Indian';
+      }
+      return 'Resident Individual';
+    }
+    case 'isResidentIndividual': {
+      const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
+      const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
+      return isIndian && !isTaxOutside;
+    }
+    case 'isNonResidentIndian': {
+      const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
+      const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
+      return !isIndian || isTaxOutside;
+    }
     case 'email': return appData.email || pDetails.email || appData.user?.email;
     case 'phone': return appData.phone || pDetails.phone || appData.user?.phone;
+    case 'mobile': return appData.mobile || pDetails.mobile || appData.user?.mobile || appData.user?.phone;
     case 'addressLine1': return aDetails.line1;
     case 'addressLine2': return aDetails.line2;
+    case 'landmark': return aDetails.landmark || '';
     case 'city': return aDetails.city;
+    case 'district': return aDetails.district || aDetails.city;
     case 'state': return aDetails.state;
+    case 'country': return aDetails.country || 'India';
     case 'pincode': return aDetails.pincode;
+    case 'isAddrTypeResBus': return (aDetails.addressType || 'Residential') === 'Residential/Business';
+    case 'isAddrTypeRes': return (aDetails.addressType || 'Residential') === 'Residential';
+    case 'isAddrTypeBus': return aDetails.addressType === 'Business';
+    case 'isAddrTypeRegOff': return aDetails.addressType === 'Registered Office';
+    case 'isAddrTypeUnspec': return aDetails.addressType === 'Unspecified';
     case 'fullAddress': 
       const addr = `${aDetails.line1 || ''}, ${aDetails.line2 || ''}, ${aDetails.city || ''}, ${aDetails.state || ''} - ${aDetails.pincode || ''}`;
       return addr.replace(/^[,\s]+|[,\s]+$/g, '');
     case 'bankName': return bDetails.bankName;
+    case 'branchName': return bDetails.branchName || '';
+    case 'bankAddress': return bDetails.bankAddress || bDetails.address || '';
     case 'accountNumber': return bDetails.accountNumber;
     case 'ifsc': return bDetails.ifsc;
+    case 'micr': return bDetails.micr || '';
     case 'accountType': return bDetails.accountType || 'Savings';
+    
+    // New variables
+    case 'prefix': return pDetails.prefix || pDetails.title;
+    case 'experience': return pDetails.experience || pDetails.tradingExperience;
+    case 'politicallyExposed': { const p = String(pDetails.politicallyExposed || '').toLowerCase(); return (p === 'yes' || p === 'true') ? 'Yes' : 'No'; }
+    case 'pepText': { const p = String(pDetails.politicallyExposed || '').toLowerCase(); return (p === 'yes' || p === 'true') ? 'Yes' : 'No'; }
+    case 'isPepYes': { const p = String(pDetails.politicallyExposed || '').toLowerCase(); return p === 'yes' || p === 'true'; }
+    case 'isPepNo': { const p = String(pDetails.politicallyExposed || '').toLowerCase(); return p === 'no' || p === 'false' || p === ''; }
+    case 'pepType': return pDetails.pepType;
+    case 'isIndianCitizen': return pDetails.isIndianCitizen;
+    case 'taxResidencyOutside': return pDetails.taxResidencyOutside;
+    case 'ddpi': return pDetails.ddpi || appData.ddpi;
+    
+    // Declarations
+    case 'dis': { const d = safeJsonParse(appData.declarations) || {}; return d.dis || appData.dis; }
+    case 'receiveCredits': { const d = safeJsonParse(appData.declarations) || {}; return d.receiveCredits; }
+    case 'eStatement': { const d = safeJsonParse(appData.declarations) || {}; return d.eStatement; }
+    case 'acceptPledgeInstructions': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions; }
+    case 'receiveAnnualReports': { const d = safeJsonParse(appData.declarations) || {}; return d.receiveAnnualReports; }
+    case 'settlement': { const d = safeJsonParse(appData.declarations) || {}; return d.settlement; }
+    case 'smsAlert': { const d = safeJsonParse(appData.declarations) || {}; return d.smsAlert; }
+    case 'operatedThroughDDPI': { const d = safeJsonParse(appData.declarations) || {}; return d.operatedThroughDDPI; }
+    
+    // Segments
+    case 'bsda': return appData.bsda;
+    case 'segments.equity': { const s = safeJsonParse(appData.segments) || {}; return s.equity ? 'Yes' : 'No'; }
+    case 'segments.derivatives': { const s = safeJsonParse(appData.segments) || {}; return s.derivatives ? 'Yes' : 'No'; }
+    
+    // Nominee
+    case 'nomineeDetails.nominees[0].name': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.name; }
+    case 'nomineeDetails.nominees[0].relation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.relation; }
+    case 'nomineeAllocation.percentages[0]': { const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[0] || a.nominees?.[0]?.percentage; }
+    case 'nomineeDetails.nominees[0].dob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.dob; }
+    case 'nomineeDetails.nominees[0].mobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.mobile; }
+    case 'nomineeDetails.nominees[0].email': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.email; }
+    case 'nomineeDetails.nominees[0].address': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.address; }
+    case 'nomineeDetails.nominees[0].proofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.proofType; }
+    case 'nomineeDetails.nominees[0].proofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.proofNumber; }
+    case 'nomineeDetails.nominees[0].guardianName': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianName; }
+    case 'nomineeDetails.nominees[0].guardianRelation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianRelation; }
+    case 'nomineeDetails.nominees[0].city': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.city; }
+    case 'nomineeDetails.nominees[0].state': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.state; }
+    case 'nomineeDetails.nominees[0].pincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.pincode; }
+    case 'nomineeDetails.nominees[0].country': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.country; }
+    case 'nomineeDetails.nominees[0].guardianDob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianDob; }
+    case 'nomineeDetails.nominees[0].guardianMobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianMobile; }
+    case 'nomineeDetails.nominees[0].guardianEmail': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianEmail; }
+    case 'nomineeDetails.nominees[0].guardianAddress': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianAddress; }
+    case 'nomineeDetails.nominees[0].guardianCity': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianCity; }
+    case 'nomineeDetails.nominees[0].guardianState': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianState; }
+    case 'nomineeDetails.nominees[0].guardianPincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianPincode; }
+    case 'nomineeDetails.nominees[0].guardianCountry': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianCountry; }
+    case 'nomineeDetails.nominees[0].guardianProofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianProofType; }
+    case 'nomineeDetails.nominees[0].guardianProofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianProofNumber; }
+    
+    // Nominee 2
+    case 'nomineeDetails.nominees[1].name': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.name; }
+    case 'nomineeDetails.nominees[1].relation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.relation; }
+    case 'nomineeAllocation.percentages[1]': { const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[1] || a.nominees?.[1]?.percentage; }
+    case 'nomineeDetails.nominees[1].dob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.dob; }
+    case 'nomineeDetails.nominees[1].mobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.mobile; }
+    case 'nomineeDetails.nominees[1].email': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.email; }
+    case 'nomineeDetails.nominees[1].address': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.address; }
+    case 'nomineeDetails.nominees[1].city': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.city; }
+    case 'nomineeDetails.nominees[1].state': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.state; }
+    case 'nomineeDetails.nominees[1].pincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.pincode; }
+    case 'nomineeDetails.nominees[1].country': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.country; }
+    case 'nomineeDetails.nominees[1].proofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.proofType; }
+    case 'nomineeDetails.nominees[1].proofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.proofNumber; }
+    case 'nomineeDetails.nominees[1].guardianName': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianName; }
+    case 'nomineeDetails.nominees[1].guardianRelation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianRelation; }
+    case 'nomineeDetails.nominees[1].guardianDob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianDob; }
+    case 'nomineeDetails.nominees[1].guardianMobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianMobile; }
+    case 'nomineeDetails.nominees[1].guardianEmail': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianEmail; }
+    case 'nomineeDetails.nominees[1].guardianAddress': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianAddress; }
+    case 'nomineeDetails.nominees[1].guardianCity': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianCity; }
+    case 'nomineeDetails.nominees[1].guardianState': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianState; }
+    case 'nomineeDetails.nominees[1].guardianPincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianPincode; }
+    case 'nomineeDetails.nominees[1].guardianCountry': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianCountry; }
+    case 'nomineeDetails.nominees[1].guardianProofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianProofType; }
+    case 'nomineeDetails.nominees[1].guardianProofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianProofNumber; }
+    
+    // Nominee 3
+    case 'nomineeDetails.nominees[2].name': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.name; }
+    case 'nomineeDetails.nominees[2].relation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.relation; }
+    case 'nomineeAllocation.percentages[2]': { const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[2] || a.nominees?.[2]?.percentage; }
+    case 'nomineeDetails.nominees[2].dob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.dob; }
+    case 'nomineeDetails.nominees[2].mobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.mobile; }
+    case 'nomineeDetails.nominees[2].email': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.email; }
+    case 'nomineeDetails.nominees[2].address': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.address; }
+    case 'nomineeDetails.nominees[2].city': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.city; }
+    case 'nomineeDetails.nominees[2].state': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.state; }
+    case 'nomineeDetails.nominees[2].pincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.pincode; }
+    case 'nomineeDetails.nominees[2].country': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.country; }
+    case 'nomineeDetails.nominees[2].proofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.proofType; }
+    case 'nomineeDetails.nominees[2].proofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.proofNumber; }
+    case 'nomineeDetails.nominees[2].guardianName': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianName; }
+    case 'nomineeDetails.nominees[2].guardianRelation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianRelation; }
+    case 'nomineeDetails.nominees[2].guardianDob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianDob; }
+    case 'nomineeDetails.nominees[2].guardianMobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianMobile; }
+    case 'nomineeDetails.nominees[2].guardianEmail': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianEmail; }
+    case 'nomineeDetails.nominees[2].guardianAddress': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianAddress; }
+    case 'nomineeDetails.nominees[2].guardianCity': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianCity; }
+    case 'nomineeDetails.nominees[2].guardianState': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianState; }
+    case 'nomineeDetails.nominees[2].guardianPincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianPincode; }
+    case 'nomineeDetails.nominees[2].guardianCountry': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianCountry; }
+    case 'nomineeDetails.nominees[2].guardianProofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianProofType; }
+    case 'nomineeDetails.nominees[2].guardianProofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianProofNumber; }
+    
+    case 'isNomineeOptOut': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.opted === 'No'; }
+    case 'isNomineeOptIn': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.opted === 'Yes' && n.nominees && n.nominees.length > 0; }
+    
+    // Audit Trail & Application Details
+    case 'geo.latitude': { 
+      const selfie = safeJsonParse(appData.selfieDetails) || {};
+      const esign = safeJsonParse(appData.esignDetails) || {};
+      return selfie.lat || esign.lat || ''; 
+    }
+    case 'geo.longitude': { 
+      const selfie = safeJsonParse(appData.selfieDetails) || {};
+      const esign = safeJsonParse(appData.esignDetails) || {};
+      return selfie.lng || esign.lng || ''; 
+    }
+    case 'geo.address': { const g = safeJsonParse(appData.geoDetails) || {}; return g.address; }
+    case 'updatedAt': return appData.updatedAt ? new Date(appData.updatedAt).toLocaleString() : '';
+    case 'ipAddress': return appData.ipAddress;
+    case 'deviceType': return appData.deviceType;
+    case 'riskCategory': return appData.riskCategory;
+    case 'riskScore': return appData.riskScore;
+    
     default: return '';
   }
 }
@@ -79,7 +335,7 @@ async function generateKycPdf(applicationData) {
       where: { isActive: true }
     });
 
-    let officialPdfPath = path.join(__dirname, '../../../public/official_form.pdf');
+    let officialPdfPath = path.join(__dirname, '../../../public/esigned.pdf');
     if (activeTemplate && activeTemplate.basePdfUrl) {
       // Strip leading slash to prevent path.join from treating it as an absolute path
       const safeRelPath = activeTemplate.basePdfUrl.replace(/^\/+/, '');
@@ -89,21 +345,21 @@ async function generateKycPdf(applicationData) {
 
     if (!fs.existsSync(officialPdfPath)) {
       const fallbacks = [
-        path.join(__dirname, '../../../public/official_form.pdf'),
-        path.join(__dirname, '../../../public_html/official_form.pdf'),
-        path.join(__dirname, '../../public/official_form.pdf'),
-        path.join(__dirname, '../../official_form.pdf'),
-        path.join(process.cwd(), 'public/official_form.pdf'),
-        path.join(process.cwd(), 'official_form.pdf'),
-        path.join(process.cwd(), '../public/official_form.pdf'),
-        path.join(__dirname, '../../../../public/official_form.pdf')
+        path.join(__dirname, '../../../public/esigned.pdf'),
+        path.join(__dirname, '../../../public_html/esigned.pdf'),
+        path.join(__dirname, '../../public/esigned.pdf'),
+        path.join(__dirname, '../../esigned.pdf'),
+        path.join(process.cwd(), 'public/esigned.pdf'),
+        path.join(process.cwd(), 'esigned.pdf'),
+        path.join(process.cwd(), '../public/esigned.pdf'),
+        path.join(__dirname, '../../../../public/esigned.pdf')
       ];
       
       // Let's dynamically find it by walking up
       let currentDir = __dirname;
       for (let i = 0; i < 5; i++) {
-        fallbacks.push(path.join(currentDir, 'public/official_form.pdf'));
-        fallbacks.push(path.join(currentDir, 'official_form.pdf'));
+        fallbacks.push(path.join(currentDir, 'public/esigned.pdf'));
+        fallbacks.push(path.join(currentDir, 'esigned.pdf'));
         currentDir = path.join(currentDir, '..');
       }
 
@@ -149,24 +405,50 @@ async function generateKycPdf(applicationData) {
         // We will assume frontend sends y from top, so we do height - y.
         const yPos = height - field.y; 
 
-        if (['selfie', 'signature', 'esign', 'panImage', 'aadhaarImage'].includes(field.variable)) {
+        const imageVariables = [
+          'selfie', 'signature', 'panImage', 'aadhaarImage', 
+          'bankProof', 'incomeProof', 'pepProof', 'nomineeProof', 'addressProof', 'panDocument'
+        ];
+
+        if (imageVariables.includes(field.variable)) {
           let imgRelPath = null;
           if (field.variable === 'selfie') {
-            imgRelPath = parsedSelfieDetails.filePreview || parsedSelfieDetails.path || parsedSelfieDetails.preview || applicationData.selfie?.preview;
+            imgRelPath = (typeof parsedSelfieDetails === 'string' ? parsedSelfieDetails : (parsedSelfieDetails.filePreview || parsedSelfieDetails.path || parsedSelfieDetails.preview)) 
+                         || (typeof applicationData.selfie === 'string' ? applicationData.selfie : applicationData.selfie?.preview);
           } else if (field.variable === 'signature') {
-            imgRelPath = parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview;
+            imgRelPath = typeof parsedSignature === 'string' ? parsedSignature : (parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview);
           } else if (field.variable === 'esign') {
             const esignDoc = parsedDocuments.find(d => d.type === 'ESIGN');
-            if (esignDoc) imgRelPath = esignDoc.path;
+            if (esignDoc) {
+              imgRelPath = 'data:image/png;base64,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';
+            } else {
+              imgRelPath = null;
+            }
           } else if (field.variable === 'panImage') {
-            imgRelPath = parsedPanUpload?.filePreview || parsedPanUpload?.path || parsedPanUpload?.preview;
+            imgRelPath = typeof parsedPanUpload === 'string' ? parsedPanUpload : (parsedPanUpload?.filePreview || parsedPanUpload?.path || parsedPanUpload?.preview);
             if (!imgRelPath) {
               const panDoc = parsedDocuments.find(d => d.path && /digilocker_pan|_pan_issued|(^|[\/_])pan([\/_]|\.)/i.test(d.path));
               if (panDoc) imgRelPath = panDoc.path;
             }
+          } else if (field.variable === 'panDocument') {
+            const panDoc = [...parsedDocuments].reverse().find(d => d.type === 'PAN') 
+                        || [...parsedDocuments].reverse().find(d => d.path && /digilocker_pan|_pan_issued/i.test(d.path));
+            if (panDoc) imgRelPath = panDoc.path;
           } else if (field.variable === 'aadhaarImage') {
-            const aadhaarDoc = parsedDocuments.find(d => d.path && /digilocker_aadhaar|_aadhaar_issued|aadhaar|aadhar|uid/i.test(d.path));
+            const aadhaarDoc = [...parsedDocuments].reverse().find(d => d.type === 'AADHAAR') 
+                            || [...parsedDocuments].reverse().find(d => d.path && d.type !== 'PHOTO' && /digilocker_aadhaar|_aadhaar_issued|aadhaar|aadhar|uid/i.test(d.path));
             if (aadhaarDoc) imgRelPath = aadhaarDoc.path;
+          } else if (field.variable === 'bankProof') {
+            imgRelPath = typeof parsedBankDetails === 'string' ? parsedBankDetails : (parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof);
+          } else if (field.variable === 'incomeProof') {
+            imgRelPath = typeof parsedFinancialProof === 'string' ? parsedFinancialProof : (parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview);
+          } else if (field.variable === 'pepProof') {
+            imgRelPath = typeof parsedPersonalDetails === 'string' ? parsedPersonalDetails : (parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview);
+          } else if (field.variable === 'nomineeProof') {
+            imgRelPath = typeof parsedNomineeDetails === 'string' ? parsedNomineeDetails : (parsedNomineeDetails?.nominees?.[0]?.proofPath || parsedNomineeDetails?.nominees?.[0]?.proofPreview || parsedNomineeDetails?.nominees?.[0]?.preview);
+          } else if (field.variable === 'addressProof') {
+            const addrDoc = parsedDocuments.find(d => d.path && /address_proof|driving_license|voter|passport/i.test(d.path));
+            if (addrDoc) imgRelPath = addrDoc.path;
           }
 
           if (imgRelPath) {
@@ -182,11 +464,14 @@ async function generateKycPdf(applicationData) {
               } else {
                 const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
                 const imgPath = path.join(__dirname, '../../', cleanPath);
+                console.log(`[PDF Gen] Checking imgPath: ${imgPath}`);
                 if (fs.existsSync(imgPath)) {
                   imgBytes = fs.readFileSync(imgPath);
                   const lowerPath = imgPath.toLowerCase();
                   isPng = lowerPath.endsWith('.png');
                   isPdf = lowerPath.endsWith('.pdf');
+                } else {
+                  console.error(`[PDF Gen] Img not found at path: ${imgPath}`);
                 }
               }
 
@@ -195,7 +480,7 @@ async function generateKycPdf(applicationData) {
                 const h = field.height || 100;
 
                 if (isPdf) {
-                  const [embeddedPage] = await pdfDoc.embedPdf(imgBytes);
+                  const [embeddedPage] = await pdfDoc.embedPdf(imgBytes, [0]);
                   page.drawPage(embeddedPage, { x: field.x, y: yPos - h, width: w, height: h });
                 } else if (isPng) {
                   const image = await pdfDoc.embedPng(imgBytes);
@@ -205,7 +490,7 @@ async function generateKycPdf(applicationData) {
                   page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
                 }
               }
-            } catch(e) { console.error("[PDF Gen] Img embed fail:", e.message); }
+            } catch(e) { console.error("[PDF Gen] Img embed fail for", field.variable, ":", e.message); }
           }
         } else if (field.type === 'checkbox') {
           const val = getVariableValue(field.variable, applicationData);
@@ -214,10 +499,10 @@ async function generateKycPdf(applicationData) {
             : !!val; // if no match value, act as boolean flag
             
           if (isMatch) {
-            page.drawText('4', { // '4' in ZapfDingbats is a check mark
-              x: field.x,
-              y: yPos - (field.fontSize || 14),
-              size: (field.fontSize || 14) + 4,
+            page.drawText('\u2713', { // Check mark in ZapfDingbats
+              x: field.x + 2,
+              y: yPos - (field.height || 20) + 2,
+              size: (field.height || 20) - 2,
               font: dingbats,
               color: rgb(0, 0, 0)
             });
@@ -233,21 +518,25 @@ async function generateKycPdf(applicationData) {
             let fontSize = field.fontSize || 12; 
             
             const getLines = (text, size, maxW) => {
-              const words = text.split(' ');
-              const lines = [];
-              let currentLine = words[0];
-              for (let i = 1; i < words.length; i++) {
-                const word = words[i];
-                const testLine = currentLine + ' ' + word;
-                if (font.widthOfTextAtSize(testLine, size) > maxW) {
-                  lines.push(currentLine);
-                  currentLine = word;
-                } else {
-                  currentLine = testLine;
+              const cleanText = text.replace(/\r/g, '');
+              const paragraphs = cleanText.split('\n');
+              const allLines = [];
+              for (const p of paragraphs) {
+                const words = p.split(' ');
+                let currentLine = words[0] || '';
+                for (let i = 1; i < words.length; i++) {
+                  const word = words[i];
+                  const testLine = currentLine ? currentLine + ' ' + word : word;
+                  if (font.widthOfTextAtSize(testLine, size) > maxW) {
+                    allLines.push(currentLine);
+                    currentLine = word;
+                  } else {
+                    currentLine = testLine;
+                  }
                 }
+                allLines.push(currentLine);
               }
-              lines.push(currentLine);
-              return lines;
+              return allLines;
             };
 
             let lines = getLines(textStr, fontSize, boxWidth - 4);

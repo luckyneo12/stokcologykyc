@@ -278,7 +278,7 @@ class BackofficeService {
   }
 
   async fetchExistingClientDetail(clientCode, clientType = "A") {
-    const url = `${BACKOFFICE_BASE_URL}/Masters/GetOrionEKYCDetail/Get?Code=${encodeURIComponent(clientCode)}&ClientType=${encodeURIComponent(clientType)}`;
+    const url = `${BACKOFFICE_BASE_URL}/GetOrionEKYCDetail/Get?Code=${encodeURIComponent(clientCode)}&ClientType=${encodeURIComponent(clientType)}`;
     const response = await axios.get(url, {
       headers: await this.requestHeaders(),
       timeout: 20000,
@@ -321,8 +321,8 @@ class BackofficeService {
     const existingKyc = existingKycArray[0] || {};
     const existingAddress = arrayFromBackoffice(existing.AddressDetail, "AddressDetail")[0] || {};
     const existingContact = arrayFromBackoffice(existing.ContactDetail, "ContactDetail")[0] || {};
-    const existingBank = Array.isArray(existing.BankDetail) ? existing.BankDetail[0] : existing.BankDetail?.BankDetail || {};
-    const existingBackoffice = Array.isArray(existing.BackOfficeDetail) ? existing.BackOfficeDetail[0] : existing.BackOfficeDetail?.BackOfficeDetail || {};
+    const existingBank = (Array.isArray(existing.BankDetail) ? existing.BankDetail[0] : existing.BankDetail?.BankDetail) || {};
+    const existingBackoffice = (Array.isArray(existing.BackOfficeDetail) ? existing.BackOfficeDetail[0] : existing.BackOfficeDetail?.BackOfficeDetail) || {};
     const addressLines = buildAddressLines(address);
     const nomineeOptFlag = mapNomineeOptFlag(nomineeDetails);
     const phoneValue = pickFirst(personalDetails.phone, application.user?.phone, existingContact.ContactNo, existingKyc.MobileNo);
