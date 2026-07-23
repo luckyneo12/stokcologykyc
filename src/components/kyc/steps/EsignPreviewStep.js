@@ -4,7 +4,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Logo from "../Logo";
 
 export default function EsignPreviewStep() {
-  const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents } = useKYC();
+  const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents, preGeneratedPdf } = useKYC();
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -32,23 +32,31 @@ export default function EsignPreviewStep() {
       setLoading(true);
       setError(null);
 
-      const token = typeof window !== "undefined" ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || localStorage.getItem("token")) : "";
+      let pdfBase64 = preGeneratedPdf;
+
+      if (!pdfBase64) {
+        console.log("[EsignPreview] No pre-generated PDF found, generating now...");
+        const token = typeof window !== "undefined" ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || localStorage.getItem("token")) : "";
+        
+        const res = await fetch(`${API_URL}/api/kyc/preview-pdf`, {
+          method: 'POST',
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            personalDetails, identityDetails, address, bankDetails, nomineeDetails, ocrData, selfieDetails, documents, panUpload, financialProof
+          })
+        });
+        
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || "Failed to generate PDF");
+        pdfBase64 = data.pdfBase64;
+      } else {
+        console.log("[EsignPreview] Using instantly loaded pre-generated PDF!");
+      }
       
-      const res = await fetch(`${API_URL}/api/kyc/preview-pdf`, {
-        method: 'POST',
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          personalDetails, identityDetails, address, bankDetails, nomineeDetails, ocrData, selfieDetails, documents, panUpload, financialProof
-        })
-      });
-      
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to generate PDF");
-      
-      const byteCharacters = atob(data.pdfBase64);
+      const byteCharacters = atob(pdfBase64);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -77,7 +85,7 @@ export default function EsignPreviewStep() {
         borderRadius: "32px", 
         border: "1.5px solid var(--border-color)", 
         overflow: "hidden", 
-        minHeight: "70vh", 
+        minHeight: "max(70vh, 500px)", 
         position: "relative",
         boxShadow: "0 20px 40px rgba(0,0,0,0.1)"
       }}>
@@ -106,8 +114,8 @@ export default function EsignPreviewStep() {
 
         {pdfUrl && (
           <iframe 
-            src={`${pdfUrl}#toolbar=0`} 
-            style={{ width: "100%", height: "70vh", border: "none" }} 
+            src={`${pdfUrl}#toolbar=0&view=FitH`} 
+            style={{ width: "100%", height: "70vh", minHeight: "500px", border: "none" }} 
             title="KYC Preview" 
           />
         )}

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useKYC } from "@/context/KYCContext";
 import PhoneStep from "./steps/PhoneStep";
@@ -31,6 +31,8 @@ export default function KYCJourney() {
   const progressStep = isResubmission ? TOTAL_STEPS : currentStep;
 
   const [mounted, setMounted] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const sidebarRef = useRef(null);
 
   useEffect(() => {
     setMounted(true);
@@ -57,6 +59,16 @@ export default function KYCJourney() {
     }
   }, [currentStep, mounted, steps, STEPS]);
 
+  const handleMouseMove = (e) => {
+    if (sidebarRef.current) {
+      const rect = sidebarRef.current.getBoundingClientRect();
+      setMousePos({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
+    }
+  };
+
   if (!mounted || isRestoring) {
     return (
       <div style={{ 
@@ -64,10 +76,9 @@ export default function KYCJourney() {
         alignItems: "center", justifyContent: "center", gap: 20,
         background: "var(--bg-primary)" 
       }}>
-        <Logo width={180} />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
           <div className="spinner" style={{ width: 40, height: 40, border: "3px solid var(--border-color)", borderTopColor: "var(--wise-green)", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-          <p className="text-body-bold" style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Resuming your application...</p>
+          <p className="text-body-bold" style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Loading...</p>
         </div>
         <style dangerouslySetInnerHTML={{ __html: `
           @keyframes spin { to { transform: rotate(360deg); } }
@@ -78,51 +89,132 @@ export default function KYCJourney() {
 
   return (
     <main className="portal-container">
-      {/* LEFT SIDE: Branding & Progress Sidebar / TOP NAVBAR on Mobile */}
-      <aside className="portal-sidebar">
-        {/* Background Bull Graphic - Centered Watermark */}
-        <div className="bull-graphic" style={{ 
-          position: "absolute", 
-          top: "50%", 
-          left: "50%", 
-          transform: "translate(-50%, -50%)", 
-          opacity: 0.04, 
-          pointerEvents: "none",
-          width: "100%",
-          display: "flex",
-          justifyContent: "center"
-        }}>
-           <Logo variant="bull" width={500} height={500} />
-        </div>
+      {/* LEFT SIDE: Interactive Beautiful Sidebar */}
+      <aside 
+        className="portal-sidebar" 
+        ref={sidebarRef}
+        onMouseMove={handleMouseMove}
+      >
+        {/* Interactive Spotlight Element */}
+        <div 
+          className="spotlight-effect"
+          style={{
+            position: 'absolute',
+            top: mousePos.y,
+            left: mousePos.x,
+            transform: 'translate(-50%, -50%)',
+            width: '600px',
+            height: '600px',
+            background: 'radial-gradient(circle, rgba(159, 232, 112, 0.15) 0%, rgba(0,0,0,0) 60%)',
+            pointerEvents: 'none',
+            transition: 'opacity 0.3s ease',
+            zIndex: 1,
+            opacity: mounted ? 1 : 0,
+          }}
+        />
 
-        <div className="sidebar-header">
-          <div className="logo-section">
-            <Logo width={130} height={38} className="mb-0" />
+        {/* Ambient background particles/blobs for extra visual appeal */}
+        <div className="ambient-blob blob-1" />
+        <div className="ambient-blob blob-2" />
+
+        <div className="sidebar-header" style={{ position: 'relative', zIndex: 2 }}>
+          {/* Logo Section */}
+          <div className="logo-section logo-section-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '20px' }}>
+            <Logo width={180} height={180} className="mb-2 logo-img" />
+            <h1 style={{ 
+              fontSize: '1.25rem', 
+              fontWeight: '900', 
+              letterSpacing: '1.5px', 
+              color: '#ffffff', 
+              textTransform: 'uppercase',
+              textShadow: '0 2px 10px rgba(0,0,0,0.2)',
+              marginTop: '8px',
+              textAlign: 'center'
+            }}>
+              Stockology Securities
+            </h1>
+            <div className="accent-line" style={{ width: '40px', height: '3px', background: 'var(--wise-green)', borderRadius: '2px', marginTop: '12px' }}></div>
           </div>
           
           {currentStep > 0 && (
-            <div className="progress-section" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              {/* Desktop-only Stage Name */}
-              <div className="desktop-only" style={{ marginBottom: 16 }}>
-                <span style={{ fontSize: "0.65rem", fontWeight: 900, color: "rgba(255,255,255,0.4)", letterSpacing: "1.5px", textTransform: "uppercase" }}>CURRENT STAGE</span>
-                <h3 style={{ color: "white", fontSize: "1.25rem", marginTop: 4, fontWeight: 800, letterSpacing: "-0.3px" }}>
+            <div className="progress-section glass-progress">
+              {/* Sleek Interactive Step Indicator */}
+              <div 
+                className="step-indicator-wrapper"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  cursor: 'pointer',
+                  marginBottom: '28px',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  const circle = e.currentTarget.children[0];
+                  circle.style.transform = 'scale(1.15) rotate(5deg)';
+                  circle.style.boxShadow = '0 0 20px rgba(159,232,112,0.8)';
+                  e.currentTarget.children[1].style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  const circle = e.currentTarget.children[0];
+                  circle.style.transform = 'scale(1) rotate(0deg)';
+                  circle.style.boxShadow = '0 0 10px rgba(159,232,112,0.4)';
+                  e.currentTarget.children[1].style.color = 'rgba(255,255,255,0.5)';
+                }}
+              >
+                <div 
+                  className="step-circle"
+                  style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: 'var(--wise-green)',
+                  color: 'var(--wise-dark-green)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: '900',
+                  fontSize: '1rem',
+                  boxShadow: '0 0 10px rgba(159,232,112,0.4)',
+                  transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                }}>
+                  {currentStep}
+                </div>
+                <span style={{
+                  color: 'rgba(255,255,255,0.5)',
+                  fontWeight: '700',
+                  fontSize: '0.85rem',
+                  letterSpacing: '2px',
+                  textTransform: 'uppercase',
+                  transition: 'color 0.3s ease'
+                }}>
+                  Out of {TOTAL_STEPS}
+                </span>
+              </div>
+
+              <div className="desktop-only" style={{ marginBottom: 24 }}>
+                <span className="stage-badge">CURRENT STAGE</span>
+                <h3 className="stage-title text-glow">
                    {steps[currentStep]?.label || "Processing"}
                 </h3>
               </div>
 
-              <div className="progress-bar-container" style={{ width: "100%" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, whiteSpace: "nowrap" }}>
-                   <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--wise-green)", opacity: 0.9 }}>PROGRESS</span>
-                   <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "white" }}>{Math.round((progressStep/TOTAL_STEPS)*100)}%</span>
+              <div className="progress-bar-container mobile-progress-line">
+                <div className="progress-stats desktop-only">
+                   <span className="progress-label">PROGRESS</span>
+                   <span className="progress-percent">{Math.round((progressStep/TOTAL_STEPS)*100)}%</span>
                 </div>
-                <div style={{ width: "100%", height: 5, background: "rgba(255,255,255,0.12)", borderRadius: 10, overflow: "hidden" }}>
-                  <div style={{ width: `${(progressStep/TOTAL_STEPS)*100}%`, height: "100%", background: "var(--wise-green)", transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)" }}></div>
+                <div className="progress-track">
+                  <div 
+                    className="progress-fill glow-effect" 
+                    style={{ width: `${(progressStep/TOTAL_STEPS)*100}%` }}
+                  />
                 </div>
               </div>
             </div>
           )}
 
-          <div className="theme-toggle-section" style={{ display: "flex", alignItems: "center" }}>
+          <div className="theme-toggle-section" style={{ display: "flex", alignItems: "center", marginTop: 'auto' }}>
             <ThemeToggle />
           </div>
         </div>
@@ -130,7 +222,7 @@ export default function KYCJourney() {
 
       {/* RIGHT SIDE: Main Journey Content */}
       <div className="portal-content">
-        <div className="w-full" style={{ position: "relative" }}>
+        <div className="w-full" style={{ position: "relative", zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           {currentStep === 1 && <PhoneStep />}
           {currentStep === 2 && <EmailStep />}
           {currentStep === 3 && <PricingStep />}
@@ -147,9 +239,9 @@ export default function KYCJourney() {
           {currentStep === 14 && <FinalCompletionStep />}
         </div>
         
-        {/* Abstract shapes moved to the right side background */}
-        <div style={{ position: "fixed", top: "-10%", right: "-10%", width: "40vw", height: "40vw", background: "rgba(159, 232, 112, 0.03)", filter: "blur(100px)", borderRadius: "50%", zIndex: -1 }} />
-        <div style={{ position: "fixed", bottom: "-10%", right: "10%", width: "30vw", height: "30vw", background: "rgba(0, 145, 255, 0.02)", filter: "blur(100px)", borderRadius: "50%", zIndex: -1 }} />
+        {/* Abstract shapes moved to the right side background for the content area */}
+        <div className="content-bg-shape shape-1" />
+        <div className="content-bg-shape shape-2" />
       </div>
     </main>
   );

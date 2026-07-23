@@ -50,15 +50,18 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
           justifyContent: "space-between",
           alignItems: "center",
           opacity: disabled ? 0.6 : 1,
-          padding: "0 12px",
-          height: "40px",
+          padding: "0 16px",
+          height: "46px",
+          minHeight: "46px",
           background: "var(--input-bg)",
-          borderRadius: "10px",
+          borderRadius: "12px",
+          borderWidth: "1.5px",
+          borderStyle: "solid",
           outline: "none",
           transition: "all 0.2s"
         }}
       >
-        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.78rem", fontWeight: 700 }}>
+        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.95rem", fontWeight: 700 }}>
           {value || placeholder}
         </span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", opacity: 0.5 }}>
@@ -69,9 +72,10 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
       {isOpen && (
         <div style={{ 
           position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1000, 
-          background: "var(--bg-elevated)", border: "1px solid var(--border-color)", 
-          borderRadius: "12px", marginTop: "4px", boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
-          maxHeight: "180px", overflowY: "auto", padding: "4px"
+          background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)", 
+          borderRadius: "12px", marginTop: "4px", 
+          boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.1)",
+          maxHeight: "220px", overflowY: "auto", padding: "6px"
         }}>
           {options.map((opt) => (
             <div 
@@ -90,12 +94,12 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
                 }
               }}
               style={{ 
-                padding: "6px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700,
+                padding: "10px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700,
                 background: value === opt ? "var(--wise-green)" : "transparent",
                 color: value === opt ? "var(--wise-dark-green)" : "var(--text-primary)",
                 transition: "all 0.2s", marginBottom: "1px"
               }}
-              onMouseOver={e => { if (value !== opt) e.currentTarget.style.background = "var(--btn-secondary-bg)"; }}
+              onMouseOver={e => { if (value !== opt) e.currentTarget.style.background = "rgba(159, 232, 112, 0.15)"; }}
               onMouseOut={e => { if (value !== opt) e.currentTarget.style.background = "transparent"; }}
             >
               {opt}
@@ -110,10 +114,10 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 const InputGroup = ({ label, children, mandatory, style = {} }) => (
   <div style={{ display: "flex", flexDirection: "column", width: "100%", marginBottom: "14px", ...style }}>
     <div style={{ 
-      fontSize: "0.68rem", 
+      fontSize: "0.85rem", 
       color: "var(--text-primary)", 
       fontWeight: 700, 
-      marginBottom: "4px", 
+      marginBottom: "8px", 
       lineHeight: "1.2",
       minHeight: "32px",
       display: "flex",
@@ -131,13 +135,17 @@ const InputGroup = ({ label, children, mandatory, style = {} }) => (
 );
 
 const COMMON_INPUT_STYLE = {
-  height: "40px",
-  borderRadius: "10px",
-  fontSize: "0.78rem",
-  padding: "0 12px",
+  height: "46px",
+  minHeight: "46px",
+  borderRadius: "12px",
+  fontSize: "0.95rem",
+  padding: "0 16px",
   background: "var(--input-bg)",
   color: "var(--text-primary)",
-  border: "1.5px solid var(--border-color)",
+  borderWidth: "1.5px",
+  borderStyle: "solid",
+  borderColor: "var(--border-color)",
+  boxShadow: "none",
   width: "100%",
   outline: "none"
 };
@@ -309,19 +317,13 @@ export default function DetailsStep() {
   };
 
   return (
-    <div className="container-lg" style={{ paddingTop: "2vh", paddingBottom: "4vh" }}>
+    <div className="container-lg" style={{ paddingTop: "2vh", paddingBottom: "4vh", maxWidth: "800px", margin: "0 auto", paddingLeft: "24px", paddingRight: "24px" }}>
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
         <h1 className="text-section" style={{ fontSize: "1.6rem", fontWeight: 900, letterSpacing: "-0.5px" }}>Personal Details</h1>
         <p style={{ color: "var(--text-secondary)", marginTop: "4px", fontSize: "0.85rem", fontWeight: 600 }}>Please provide your background information for regulatory compliance.</p>
       </div>
 
-      <div className="card animate-slide-up" style={{ 
-        padding: "24px 32px", 
-        borderRadius: "24px", 
-        border: "1.2px solid var(--border-color)", 
-        background: "var(--bg-card)",
-        boxShadow: "none"
-      }}>
+      <div className="animate-slide-up">
 
         <div className="form-grid">
 
@@ -611,9 +613,14 @@ export default function DetailsStep() {
           )}
 
           {!showMore && (
-            <div style={{ gridColumn: "1 / -1", textAlign: "center", margin: "24px 0" }}>
-              <button type="button" onClick={() => setShowMore(true)} style={{ background: "transparent", border: "2px dashed var(--border-color)", color: "var(--text-secondary)", padding: "12px 32px", fontSize: "0.9rem", fontWeight: 800, borderRadius: "100px", cursor: "pointer", transition: "all 0.2s" }}>
-                Show More Options ▼
+            <div style={{ gridColumn: "1 / -1", textAlign: "center", margin: "32px auto 16px auto", maxWidth: "400px", width: "100%" }}>
+              <button type="button" className="btn btn-sm" onClick={() => setShowMore(true)} style={{ 
+                background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "0.95rem", fontWeight: 800, 
+                padding: "14px 36px", border: "1.5px solid rgba(159, 232, 112, 0.4)", borderRadius: "100px", 
+                boxShadow: "0 10px 30px rgba(159, 232, 112, 0.2), 0 0 20px rgba(159, 232, 112, 0.15)", 
+                cursor: "pointer", transition: "all 0.3s ease", width: "100%"
+              }}>
+                Show additional options ▼
               </button>
             </div>
           )}
@@ -708,19 +715,24 @@ export default function DetailsStep() {
                 <CustomSelect value={form.operatedThroughDDPI} options={["Yes", "No"]} disabled onChange={() => {}} />
               </InputGroup>
 
-              <div style={{ gridColumn: "1 / -1", textAlign: "center", margin: "24px 0" }}>
-                <button type="button" onClick={() => setShowMore(false)} style={{ background: "transparent", border: "2px dashed var(--border-color)", color: "var(--text-secondary)", padding: "12px 32px", fontSize: "0.9rem", fontWeight: 800, borderRadius: "100px", cursor: "pointer" }}>
-                  Show Less Options ▲
+              <div style={{ gridColumn: "1 / -1", textAlign: "center", margin: "32px auto 16px auto", maxWidth: "400px", width: "100%" }}>
+                <button type="button" className="btn btn-sm" onClick={() => setShowMore(false)} style={{ 
+                  background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: "0.95rem", fontWeight: 800, 
+                  padding: "14px 36px", border: "1.5px solid rgba(159, 232, 112, 0.4)", borderRadius: "100px", 
+                  boxShadow: "0 10px 30px rgba(159, 232, 112, 0.2), 0 0 20px rgba(159, 232, 112, 0.15)", 
+                  cursor: "pointer", transition: "all 0.3s ease", width: "100%"
+                }}>
+                  Hide additional options ▲
                 </button>
               </div>
             </>
           )}
 
           <div style={{ gridColumn: "1 / -1", marginTop: 32, display: "flex", flexDirection: "column", gap: 12, maxWidth: "400px", marginLeft: "auto", marginRight: "auto", width: "100%" }}>
-            <button className="btn btn-primary" onClick={handleNext} style={{ background: "var(--wise-green)", color: "var(--wise-dark-green)", borderRadius: "16px", height: "54px", fontSize: "1.1rem", fontWeight: 900 }}>
+            <button className="btn btn-primary" onClick={handleNext}>
               Continue
             </button>
-            <button className="btn btn-secondary" onClick={prevStep} style={{ borderRadius: "16px", height: "54px", fontSize: "1.1rem", fontWeight: 900 }}>
+            <button className="btn btn-secondary" onClick={prevStep}>
               Back
             </button>
           </div>

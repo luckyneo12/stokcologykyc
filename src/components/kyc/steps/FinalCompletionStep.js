@@ -60,9 +60,10 @@ export default function FinalCompletionStep() {
     }}>
       <div className="card animate-slide-up text-center">
         
-        {/* Title */}
-        <h1 className="text-section" style={{ marginBottom: 24 }}>
-          All set!
+        {/* Success Banner */}
+        <div style={{ fontSize: '4.5rem', marginBottom: 16 }}>✅</div>
+        <h1 className="text-section" style={{ marginBottom: 24, fontSize: "2.2rem", color: "var(--wise-dark-green)" }}>
+          e-Sign Successful!
         </h1>
 
         {/* Description */}

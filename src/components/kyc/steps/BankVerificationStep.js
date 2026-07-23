@@ -1,8 +1,82 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useKYC } from "@/context/KYCContext";
 import Logo from "../Logo";
 import { Eye, EyeOff } from "lucide-react";
+
+const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={dropdownRef} style={{ position: "relative", width: "100%" }}>
+      <div 
+        tabIndex={disabled ? -1 : 0}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setIsOpen(!isOpen); } 
+          else if (e.key === "Escape") { setIsOpen(false); }
+        }}
+        className="input-field"
+        style={{ 
+          cursor: disabled ? "not-allowed" : "pointer",
+          borderColor: error ? "var(--wise-danger)" : isOpen ? "var(--wise-green)" : "var(--border-color)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          opacity: disabled ? 0.6 : 1, padding: "0 16px"
+        }}
+      >
+        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.85rem", fontWeight: 700 }}>
+          {value || placeholder}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", opacity: 0.5 }}>
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+      
+      {isOpen && (
+        <div style={{ 
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1000, 
+          background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)", 
+          borderRadius: "12px", marginTop: "4px", 
+          boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.1)",
+          maxHeight: "220px", overflowY: "auto", padding: "6px"
+        }}>
+          {options.map((opt) => (
+            <div 
+              key={opt} tabIndex={0}
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChange(opt); setIsOpen(false); } 
+                else if (e.key === "Escape") { setIsOpen(false); }
+              }}
+              style={{ 
+                padding: "10px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700,
+                background: value === opt ? "var(--wise-green)" : "transparent",
+                color: value === opt ? "var(--wise-dark-green)" : "var(--text-primary)",
+                transition: "all 0.2s", marginBottom: "1px"
+              }}
+              onMouseOver={e => { if (value !== opt) e.currentTarget.style.background = "rgba(159, 232, 112, 0.15)"; }}
+              onMouseOut={e => { if (value !== opt) e.currentTarget.style.background = "transparent"; }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
 
@@ -231,15 +305,12 @@ export default function BankVerificationStep() {
               <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 600, marginBottom: "8px", display: "block" }}>
                 Want to continue with <span style={{ color: "var(--wise-danger)" }}>*</span>
               </label>
-              <select 
+              <CustomSelect 
                 value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className="input-field"
-                style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }}
-              >
-                <option value="">--Select--</option>
-                <option value="Manual Data Entry">Manual Data Entry</option>
-              </select>
+                onChange={setMethod}
+                options={["Manual Data Entry"]}
+                placeholder="--Select--"
+              />
             </div>
              <button 
                onClick={() => nomineeDetails.opted === 'No' ? goToStep(currentStep - 3) : prevStep()} 
@@ -301,16 +372,18 @@ export default function BankVerificationStep() {
               <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
                 Account Type <span style={{ color: "var(--wise-danger)" }}>*</span>
               </label>
-              <select 
-                value={form.accountType} 
-                onChange={e => update("accountType", e.target.value)} 
-                className="input-field"
-                style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }}
-              >
-                <option value="">Choose</option>
-                <option value="Saving Account">Saving Account</option>
-                <option value="Current Account">Current Account</option>
-              </select>
+              <CustomSelect 
+                value={
+                  form.accountType === "10" || form.accountType === 10 ? "Saving Account" : 
+                  form.accountType === "11" || form.accountType === 11 ? "Current Account" : 
+                  (form.accountType === "Savings" ? "Saving Account" : 
+                   form.accountType === "Current" ? "Current Account" : form.accountType)
+                }
+                onChange={val => update("accountType", val)}
+                options={["Saving Account", "Current Account"]}
+                placeholder="--Select--"
+                disabled={!!bankDetails.accountType}
+              />
             </div>
 
             <div style={{ marginBottom: "20px" }}>

@@ -22,9 +22,6 @@ export default function WelcomeStep() {
         alignItems: "center" 
       }}>
         <div className="animate-slide-up" style={{ animationDelay: "0.1s" }}>
-          <div style={{ marginBottom: "32px" }}>
-            <Logo width={180} height={60} />
-          </div>
           <h1 className="text-mega" style={{ marginBottom: "24px", color: "var(--text-primary)" }}>
             The future of <span style={{ color: "var(--wise-green)" }}>onboarding</span> is here.
           </h1>

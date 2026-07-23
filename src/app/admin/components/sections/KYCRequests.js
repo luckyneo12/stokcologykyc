@@ -353,14 +353,14 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
 
       {/* Table */}
       <div className="admin-table-container">
-        <div ref={scrollRef} style={{ overflowX: "auto" }}>
+        <div ref={scrollRef} style={{ overflowX: "auto", minHeight: kycs.length < 4 ? "300px" : "auto" }}>
           <table className="admin-table">
             <thead><tr>
               <th><input type="checkbox" onChange={e => setBulk(e.target.checked ? kycs.map(k => k.id) : [])} checked={bulk.length === kycs.length && kycs.length > 0} /></th>
               {["KYC ID", "Client Code", "Number", "Name", "Step", "Admin Status", "Globe Status", "Date", "Actions"].map(h => <th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {kycs.map((k) => (
+              {kycs.map((k, index) => (
                 <tr key={k.id}>
                   <td><input type="checkbox" checked={bulk.includes(k.id)} onChange={() => toggleBulk(k.id)} /></td>
                   <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>
@@ -415,7 +415,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                       </button>
                       
                       {openMenuId === k.id && (
-                        <div className="premium-action-menu" style={{ right: 30, top: 0 }}>
+                        <div className="premium-action-menu" style={{ right: 30, top: (index >= 3 && index >= kycs.length - 4) ? "auto" : 0, bottom: (index >= 3 && index >= kycs.length - 4) ? 0 : "auto" }}>
                           <button onClick={() => { setOpenMenuId(null); router.push(`/admin/application/${k.id}`); }} className="premium-action-item">Verify</button>
                           <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} className="premium-action-item">Continue Journey</button>
                           <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} className="premium-action-item danger">Delete</button>

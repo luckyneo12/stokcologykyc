@@ -103,8 +103,14 @@ export default function PanStep() {
   return (
     <div className="container-sm" style={{ paddingTop: "2vh", paddingBottom: "4vh", maxWidth: "480px" }}>
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
-        <h1 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-0.5px", color: "var(--text-primary)" }}>PAN Verification</h1>
-        <p className="text-body" style={{ color: "var(--text-secondary)", marginTop: "12px", fontWeight: 600 }}>Enter your details exactly as they appear on your PAN card.</p>
+        <h1 style={{ 
+          fontSize: "clamp(2.2rem, 9vw, 3.2rem)", fontWeight: 900, letterSpacing: "-1px", 
+          background: "linear-gradient(135deg, #054d28 0%, #163300 40%, #9fe870 100%)",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          textShadow: "0 10px 30px rgba(159, 232, 112, 0.15)",
+          whiteSpace: "nowrap"
+        }}>PAN Verification</h1>
+        <p style={{ fontSize: "clamp(0.85rem, 3vw, 1rem)", color: "var(--text-secondary)", marginTop: "12px", fontWeight: 600 }}>Enter your details exactly as they appear on your PAN card.</p>
       </div>
 
       <div className="card animate-slide-up" style={{ 
@@ -187,7 +193,7 @@ export default function PanStep() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <button 
             type="button" 
-            className="btn-primary" 
+            className="btn btn-primary" 
             disabled={loading || digioLoading || pan.length < 10 || !dob || !fullName} 
             onClick={isAlreadyVerified ? () => nextStep() : handleVerify}
             style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
@@ -197,7 +203,7 @@ export default function PanStep() {
           
           <button 
             type="button" 
-            className="btn-secondary" 
+            className="btn btn-secondary" 
             onClick={prevStep} 
             style={{ height: "56px", borderRadius: "16px", fontWeight: 700, background: "var(--bg-card)", border: "1.5px solid var(--border-color)", color: "var(--text-primary)" }}
           >

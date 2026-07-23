@@ -266,6 +266,30 @@ export function KYCProvider({ children }) {
   const [state, setState] = useState(INITIAL_STATE);
   const [theme, setTheme] = useState("light");
   const [toasts, setToasts] = useState([]);
+  const [preGeneratedPdf, setPreGeneratedPdf] = useState(null);
+
+  const preGeneratePdf = useCallback(async (currentState = state) => {
+    try {
+      const token = typeof window !== "undefined" ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || localStorage.getItem("token")) : "";
+      
+      const res = await fetch(`${API_BASE_URL}/api/kyc/preview-pdf`, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(currentState)
+      });
+      
+      const data = await res.json();
+      if (data.success && data.pdfBase64) {
+        setPreGeneratedPdf(data.pdfBase64);
+        console.log("[KYC Context] Pre-generated PDF loaded in background.");
+      }
+    } catch (err) {
+      console.warn("[KYC Context] Background PDF pre-generation failed:", err);
+    }
+  }, [state]);
 
   const lastClientStepChange = useRef(0);
   const lastSyncedReviewedAt = useRef(null);
@@ -757,6 +781,7 @@ export function KYCProvider({ children }) {
   }, []);
 
   const updateState = useCallback((updates) => {
+    setPreGeneratedPdf(null); // Clear cached PDF if data changes
     setState((prev) => {
       const next = { ...prev, ...updates };
       // Avoid updating state if nothing changed (prevents render loops)
@@ -774,6 +799,7 @@ export function KYCProvider({ children }) {
   }, []);
 
   const updateNested = useCallback((key, updates) => {
+    setPreGeneratedPdf(null); // Clear cached PDF if data changes
     setState((prev) => {
       const next = { ...prev, [key]: { ...prev[key], ...updates } };
       try {
@@ -1225,6 +1251,8 @@ export function KYCProvider({ children }) {
         refreshProgress,
         getBackendPayload,
         markStepVerified,
+        preGeneratedPdf,
+        preGeneratePdf,
       }}
     >
       {children}

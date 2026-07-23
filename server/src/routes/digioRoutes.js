@@ -1942,6 +1942,37 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         extractedMedia.video ||
         extractedFaceScore !== null);
 
+    // --- LIVENESS CHECK INJECTION ---
+    if (hasSelfieData && isExplicitSelfiePayload) {
+      let livenessBuffer = null;
+      if (safeSelfieDocPath) {
+        try {
+          const absolutePath = path.join(__dirname, "../../", safeSelfieDocPath.replace(/^[\/\\]/, ""));
+          livenessBuffer = fs.readFileSync(absolutePath);
+        } catch (e) {
+          console.error("[Digio Liveness] Failed to read selfie file:", e.message);
+        }
+      } else if (extractedMedia.image) {
+        const base64Data = extractedMedia.image.replace(/^data:image\/[a-z]+;base64,/, "");
+        livenessBuffer = Buffer.from(base64Data, "base64");
+      }
+
+      if (livenessBuffer) {
+        try {
+          console.log("[Digio Liveness] Running liveness check via Server-Side API...");
+          const livenessResult = await digioClient.checkPassiveLiveness(livenessBuffer, requestId);
+          if (livenessResult.result === "FAIL" || livenessResult.result === "UNKNOWN") {
+            const errorMsg = Array.isArray(livenessResult.errors) ? livenessResult.errors.join(", ") : "Liveness Check Failed";
+            return res.status(400).json({ success: false, error: "Selfie rejected: " + errorMsg });
+          }
+          console.log("[Digio Liveness] Check passed. Score:", livenessResult.score);
+        } catch (livenessError) {
+          console.error("[Digio Liveness Error]:", livenessError.message);
+          return res.status(400).json({ success: false, error: "Liveness Check Failed. Please try again." });
+        }
+      }
+    }
+
     if (hasSelfieData) {
       nextSelfieDetails = {
         ...nextSelfieDetails,

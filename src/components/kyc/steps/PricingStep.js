@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useKYC } from "@/context/KYCContext";
 import { ZapIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon } from "../Icons";
 import Logo from "../Logo";
@@ -107,140 +108,108 @@ export default function PricingStep() {
             </span>
           </div>
           
-          <div className="form-grid-2" style={{ gap: 12 }}>
-            <div 
-              onClick={() => toggleSegment("equity")}
-              style={{ 
-                padding: "16px", borderRadius: "16px", border: "1px solid var(--border-color)",
-                background: "rgba(159, 232, 112, 0.08)",
-                borderColor: "var(--wise-green)",
-                cursor: "default", transition: "all 0.2s ease", display: "flex", flexDirection: "column", gap: 12, alignItems: "center", textAlign: "center",
-                opacity: 0.9
-              }}
-            >
-              <div style={{ 
-                width: 20, height: 20, borderRadius: "5px", border: "2px solid var(--border-color)",
-                background: selectedSegments.equity ? "var(--wise-green)" : "transparent",
-                borderColor: selectedSegments.equity ? "var(--wise-green)" : "var(--border-color)",
-                display: "flex", alignItems: "center", justifyContent: "center"
-              }}>
-                {selectedSegments.equity && <CheckCircleIcon size={14} style={{ color: "var(--wise-dark-green)" }} />}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div className="segment-card selected locked">
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <div className="flex items-center gap-sm" style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 800, fontSize: "1.1rem" }}>Equity</span>
+                  <span style={{ fontSize: "0.7rem", background: "var(--wise-green)", color: "var(--wise-dark-green)", padding: "2px 8px", borderRadius: "100px", fontWeight: 800, letterSpacing: "0.5px" }}>MANDATORY</span>
+                </div>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.4 }}>Cash, Intraday, and Mutual Funds</div>
               </div>
-              <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>Equity</span>
+              <CheckCircleIcon size={24} style={{ color: "var(--wise-dark-green)" }} />
             </div>
 
             <div 
+              className={`segment-card ${selectedSegments.derivatives ? 'selected' : ''}`}
               onClick={() => toggleSegment("derivatives")}
-              style={{ 
-                padding: "16px", borderRadius: "16px", border: "1px solid var(--border-color)",
-                background: selectedSegments.derivatives ? "rgba(159, 232, 112, 0.08)" : "var(--bg-secondary)",
-                borderColor: selectedSegments.derivatives ? "var(--wise-green)" : "transparent",
-                cursor: "pointer", transition: "all 0.2s ease", display: "flex", flexDirection: "column", gap: 12, alignItems: "center", textAlign: "center"
-              }}
-              className="hover-scale"
             >
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <div className="flex items-center gap-sm" style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 800, fontSize: "1.1rem" }}>Derivatives</span>
+                </div>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.4 }}>F&O, Currency, and Commodity</div>
+              </div>
               <div style={{ 
-                width: 20, height: 20, borderRadius: "5px", border: "2px solid var(--border-color)",
+                width: 24, height: 24, borderRadius: "50%", border: "2px solid var(--border-color)",
                 background: selectedSegments.derivatives ? "var(--wise-green)" : "transparent",
                 borderColor: selectedSegments.derivatives ? "var(--wise-green)" : "var(--border-color)",
                 display: "flex", alignItems: "center", justifyContent: "center"
               }}>
-                {selectedSegments.derivatives && <CheckCircleIcon size={14} style={{ color: "var(--wise-dark-green)" }} />}
-              </div>
-              <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>Derivatives</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="form-grid-2" style={{ gap: 16, marginBottom: 28 }}>
-          {/* Brokerage Plan Row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button 
-              className="btn btn-secondary" 
-              onClick={() => { 
-                setShowBrokerageModal(true); 
-                setBrokerageOpened(true);
-              }} 
-              style={{ flex: 1, padding: "12px", fontSize: "0.85rem", borderRadius: "10px", justifyContent: "center" }}
-            >
-              Brokerage Plan
-            </button>
-            <div 
-              onClick={(e) => {
-                e.stopPropagation();
-                setBrokerageAccepted(!brokerageAccepted);
-              }}
-              style={{ 
-                width: 38, height: 38, borderRadius: "10px", background: "var(--bg-secondary)", 
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer",
-                border: brokerageAccepted ? "2px solid var(--wise-green)" : "1px solid var(--border-color)",
-                transition: "all 0.2s ease",
-                position: "relative",
-                flexShrink: 0
-              }}
-            >
-              <div style={{ 
-                width: 16, height: 16, borderRadius: 4, border: "2px solid var(--border-color)",
-                background: brokerageAccepted ? "var(--wise-green)" : "transparent",
-                borderColor: brokerageAccepted ? "var(--wise-green)" : "var(--border-color)",
-                display: "flex", alignItems: "center", justifyContent: "center"
-              }}>
-                {brokerageAccepted && <CheckCircleIcon size={12} style={{ color: "var(--wise-dark-green)" }} />}
-              </div>
-            </div>
-          </div>
-
-          {/* DP Tariff Row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button 
-              className="btn btn-secondary" 
-              onClick={() => { 
-                setShowTariffModal(true); 
-                setTariffOpened(true);
-              }} 
-              style={{ flex: 1, padding: "12px", fontSize: "0.85rem", borderRadius: "10px", justifyContent: "center" }}
-            >
-              DP Tariff Sheet
-            </button>
-            <div 
-              onClick={(e) => {
-                e.stopPropagation();
-                setTariffAccepted(!tariffAccepted);
-              }}
-              style={{ 
-                width: 38, height: 38, borderRadius: "10px", background: "var(--bg-secondary)", 
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer",
-                border: tariffAccepted ? "2px solid var(--wise-green)" : "1px solid var(--border-color)",
-                transition: "all 0.2s ease",
-                position: "relative",
-                flexShrink: 0
-              }}
-            >
-              <div style={{ 
-                width: 16, height: 16, borderRadius: 4, border: "2px solid var(--border-color)",
-                background: tariffAccepted ? "var(--wise-green)" : "transparent",
-                borderColor: tariffAccepted ? "var(--wise-green)" : "var(--border-color)",
-                display: "flex", alignItems: "center", justifyContent: "center"
-              }}>
-                {tariffAccepted && <CheckCircleIcon size={12} style={{ color: "var(--wise-dark-green)" }} />}
+                {selectedSegments.derivatives && <CheckCircleIcon size={16} style={{ color: "var(--wise-dark-green)" }} />}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="input-group" style={{ marginBottom: 32 }}>
-          <label className="text-body-bold" style={{ display: "block", marginBottom: 10, fontSize: "0.9rem" }}>Continue with BSDA?</label>
-          <select 
-            className="input-field" 
-            style={{ height: "54px", fontSize: "0.95rem", fontWeight: 600, borderRadius: "12px" }}
-            value={bsdaPreference}
-            onChange={(e) => setBsdaPreference(e.target.value)}
+        <div style={{ marginBottom: 32 }}>
+          <label className="text-body-bold" style={{ display: "block", marginBottom: 16, fontSize: "0.95rem" }}>Required Documents</label>
+          
+          <div 
+            className={`action-row ${brokerageAccepted ? 'accepted' : ''}`}
+            onClick={() => { setShowBrokerageModal(true); setBrokerageOpened(true); }}
+            style={{ cursor: "pointer" }}
           >
-            <option value="opt-in">Opt-in</option>
-            <option value="opt-out">Opt-out</option>
-          </select>
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: 4 }}>Brokerage Plan</div>
+              <div style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                View Document <ArrowRightIcon size={14} />
+              </div>
+            </div>
+            <div 
+              onClick={(e) => { e.stopPropagation(); setBrokerageAccepted(!brokerageAccepted); }}
+              style={{ 
+                width: 32, height: 32, borderRadius: "8px", background: "var(--bg-secondary)", 
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                border: brokerageAccepted ? "2px solid var(--wise-green)" : "2px solid var(--border-color)",
+                transition: "all 0.2s ease"
+              }}
+            >
+              {brokerageAccepted && <CheckCircleIcon size={18} style={{ color: "var(--wise-dark-green)" }} />}
+            </div>
+          </div>
+
+          <div 
+            className={`action-row ${tariffAccepted ? 'accepted' : ''}`}
+            onClick={() => { setShowTariffModal(true); setTariffOpened(true); }}
+            style={{ cursor: "pointer" }}
+          >
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: 4 }}>DP Tariff Sheet</div>
+              <div style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                View Document <ArrowRightIcon size={14} />
+              </div>
+            </div>
+            <div 
+              onClick={(e) => { e.stopPropagation(); setTariffAccepted(!tariffAccepted); }}
+              style={{ 
+                width: 32, height: 32, borderRadius: "8px", background: "var(--bg-secondary)", 
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                border: tariffAccepted ? "2px solid var(--wise-green)" : "2px solid var(--border-color)",
+                transition: "all 0.2s ease"
+              }}
+            >
+              {tariffAccepted && <CheckCircleIcon size={18} style={{ color: "var(--wise-dark-green)" }} />}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 40 }}>
+          <label className="text-body-bold" style={{ display: "block", marginBottom: 12, fontSize: "0.95rem" }}>Continue with BSDA?</label>
+          <div className="segmented-control">
+            <button 
+              className={`segment-btn ${bsdaPreference === 'opt-in' ? 'active' : ''}`}
+              onClick={() => setBsdaPreference('opt-in')}
+            >
+              Opt-in
+            </button>
+            <button 
+              className={`segment-btn ${bsdaPreference === 'opt-out' ? 'active' : ''}`}
+              onClick={() => setBsdaPreference('opt-out')}
+            >
+              Opt-out
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-md">
@@ -268,18 +237,18 @@ export default function PricingStep() {
       </div>
 
       {/* Derivatives Modal */}
-      {showModal && (
+      {showModal && createPortal(
         <div style={{ 
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
           background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)",
-          zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+          zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", boxSizing: "border-box"
         }}>
-          <div className="glass-card animate-slide-up" style={{ maxWidth: 500, padding: 32, borderRadius: "12px" }}>
-            <h3 style={{ fontSize: "1.5rem", fontWeight: 500, marginBottom: 20, color: "var(--text-primary)" }}>Enable F&O / Currency / Commodity</h3>
+          <div className="glass-card animate-slide-up" style={{ width: "100%", maxWidth: 650, padding: "clamp(24px, 6vw, 32px)", borderRadius: "24px", display: "flex", flexDirection: "column", maxHeight: "90vh", overflowY: "auto", boxSizing: "border-box" }}>
+            <h3 style={{ fontSize: "clamp(1.1rem, 4vw, 1.4rem)", fontWeight: 800, marginBottom: "clamp(12px, 3vw, 16px)", color: "var(--text-primary)", lineHeight: 1.3 }}>Enable F&O / Currency / Commodity</h3>
             
-            <div style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: 24, lineHeight: 1.4 }}>
+            <div style={{ fontSize: "clamp(0.75rem, 2.8vw, 0.95rem)", color: "var(--text-secondary)", marginBottom: "clamp(16px, 4vw, 20px)", lineHeight: 1.4 }}>
               <p style={{ marginBottom: 12 }}>To enable F&O/Currency/Commodity, you need to provide one of the below proof. <strong style={{ color: "var(--text-primary)" }}>(ANY one is required)</strong></p>
-              <ol style={{ paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6, listStyleType: "decimal" }}>
+              <ol style={{ paddingLeft: "clamp(12px, 4vw, 16px)", margin: 0, display: "flex", flexDirection: "column", gap: 4, listStyleType: "decimal", fontWeight: 500 }}>
                 <li>Bank account statement of latest 6 months.</li>
                 <li>Salary Slip (latest 3 months).</li>
                 <li>Copy of Form 16.</li>
@@ -289,74 +258,83 @@ export default function PricingStep() {
               </ol>
             </div>
 
-            <h4 style={{ fontSize: "1.4rem", fontWeight: 500, marginBottom: 16, color: "var(--text-primary)" }}>RISK DISCLOSURES ON DERIVATIVES</h4>
-            <ul style={{ fontSize: "0.9rem", display: "flex", flexDirection: "column", gap: 12, listStyle: "none", color: "var(--text-secondary)", paddingLeft: 0, marginBottom: 32 }}>
-              <li style={{ display: "flex", gap: 8 }}><span>•</span> 9 out of 10 individual traders in equity Futures and Options Segment incurred net losses.</li>
-              <li style={{ display: "flex", gap: 8 }}><span>•</span> On average, loss makers registered net trading loss close to ₹ 50,000.</li>
-              <li style={{ display: "flex", gap: 8 }}><span>•</span> Loss makers expended an additional 28% of net trading losses as transaction costs.</li>
-              <li style={{ display: "flex", gap: 8 }}><span>•</span> Profit makers incurred between 15% to 50% of such profits as transaction cost.</li>
+            <h4 style={{ fontSize: "clamp(0.9rem, 3.5vw, 1.1rem)", fontWeight: 800, marginBottom: "clamp(10px, 2vw, 12px)", color: "var(--text-primary)" }}>RISK DISCLOSURES ON DERIVATIVES</h4>
+            <ul style={{ fontSize: "clamp(0.75rem, 2.8vw, 0.9rem)", margin: 0, display: "flex", flexDirection: "column", gap: 6, listStyle: "none", color: "var(--text-secondary)", paddingLeft: 0, marginBottom: "clamp(20px, 5vw, 24px)", fontWeight: 500, lineHeight: 1.4 }}>
+              <li style={{ display: "flex", gap: 8 }}><span style={{ color: "var(--wise-green)", fontSize: "clamp(0.9rem, 3vw, 1.2rem)" }}>•</span> 9 out of 10 individual traders in equity Futures and Options Segment incurred net losses.</li>
+              <li style={{ display: "flex", gap: 8 }}><span style={{ color: "var(--wise-green)", fontSize: "clamp(0.9rem, 3vw, 1.2rem)" }}>•</span> On average, loss makers registered net trading loss close to ₹ 50,000.</li>
+              <li style={{ display: "flex", gap: 8 }}><span style={{ color: "var(--wise-green)", fontSize: "clamp(0.9rem, 3vw, 1.2rem)" }}>•</span> Loss makers expended an additional 28% of net trading losses as transaction costs.</li>
+              <li style={{ display: "flex", gap: 8 }}><span style={{ color: "var(--wise-green)", fontSize: "clamp(0.9rem, 3vw, 1.2rem)" }}>•</span> Profit makers incurred between 15% to 50% of such profits as transaction cost.</li>
             </ul>
 
             <div className="flex justify-center">
-              <button className="btn" onClick={() => setShowModal(false)} style={{ background: "var(--text-primary)", color: "var(--bg-primary)", padding: "10px 40px", borderRadius: "6px", fontWeight: 600 }}>
+              <button className="btn btn-primary" onClick={() => setShowModal(false)} style={{ width: "100%", padding: "16px", borderRadius: "12px", fontSize: "1rem" }}>
                 OK
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Brokerage Plan Modal */}
-      {showBrokerageModal && (
+      {showBrokerageModal && createPortal(
         <div style={{ 
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
           background: "rgba(0,0,0,0.6)", backdropFilter: "blur(12px)",
-          zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+          zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20
         }}>
-          <div className="glass-card animate-slide-up" style={{ width: "100%", maxWidth: 500, padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "var(--wise-green)", color: "var(--wise-dark-green)", padding: "20px", textAlign: "center", fontWeight: 800, fontSize: "1.1rem" }}>
-              Select Brokerage Plan
+          <div className="glass-card animate-slide-up" style={{ width: "100%", maxWidth: 450, padding: 0, borderRadius: "24px", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "24px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card)" }}>
+              <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800, color: "var(--text-primary)" }}>Select Brokerage Plan</h3>
+              <button 
+                onClick={() => setShowBrokerageModal(false)} 
+                style={{ background: "none", border: "none", fontSize: "1.8rem", cursor: "pointer", color: "var(--text-secondary)", lineHeight: 1 }}
+              >
+                &times;
+              </button>
             </div>
-            <div style={{ padding: "32px" }}>
-              <div style={{ border: "1px solid var(--border-color)", borderRadius: 16, overflow: "hidden" }}>
-                <div style={{ background: "var(--bg-secondary)", padding: "12px", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--border-color)" }}>
+            
+            <div style={{ padding: "24px", background: "var(--bg-primary)" }}>
+              <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: "16px", overflow: "hidden", marginBottom: "24px", boxShadow: "0 4px 12px rgba(0,0,0,0.02)" }}>
+                <div style={{ background: "var(--bg-secondary)", padding: "16px", textAlign: "center", fontWeight: 800, borderBottom: "1px solid var(--border-color)", fontSize: "0.95rem" }}>
                   Tariff Plan
                 </div>
-                <div style={{ padding: 20 }}>
+                <div style={{ padding: "0 20px" }}>
                   {[
                     { label: "Equity Delivery", value: "0.30%" },
                     { label: "Equity Intra Day", value: "0.03%" },
                     { label: "Equity Futures", value: "0.03%" },
                     { label: "Futures Option", value: "50/per lot" }
                   ].map((item, idx) => (
-                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: idx === 3 ? 24 : 16 }}>
-                      <span className="text-body" style={{ fontWeight: 500 }}>{item.label}</span>
-                      <span className="text-body-bold" style={{ color: theme === "dark" ? "var(--wise-green)" : "var(--wise-dark-green)" }}>{item.value}</span>
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "16px 0", borderBottom: idx === 3 ? "none" : "1px solid var(--border-color)" }}>
+                      <span className="text-body" style={{ fontWeight: 600 }}>{item.label}</span>
+                      <span className="text-body-bold" style={{ color: "var(--wise-green)", fontWeight: 800 }}>{item.value}</span>
                     </div>
                   ))}
-                  <button className="btn btn-primary" onClick={() => setShowBrokerageModal(false)} style={{ width: "100%", borderRadius: "100px" }}>
-                    Select Plan
-                  </button>
                 </div>
               </div>
+              <button className="btn btn-primary" onClick={() => setShowBrokerageModal(false)} style={{ width: "100%", padding: "16px", borderRadius: "12px", fontSize: "1rem" }}>
+                Accept & Continue
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* DP Tariff Modal */}
-      {showTariffModal && (
+      {showTariffModal && createPortal(
         <div style={{ 
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
           background: "rgba(0,0,0,0.6)", backdropFilter: "blur(12px)",
-          zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+          zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20
         }}>
           <div className="glass-card animate-slide-up" style={{ 
-            width: "100%", maxWidth: 800, height: "80vh", borderRadius: "16px",
+            width: "100%", maxWidth: 800, height: "85vh", borderRadius: "24px", padding: 0,
             display: "flex", flexDirection: "column", overflow: "hidden"
           }}>
-            <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card)" }}>
-              <h3 style={{ margin: 0, fontSize: "1.1rem" }}>DP Tariff Sheet</h3>
+            <div style={{ padding: "24px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card)" }}>
+              <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800, color: "var(--text-primary)" }}>DP Tariff Sheet</h3>
               <button 
                 onClick={() => setShowTariffModal(false)} 
                 style={{ background: "none", border: "none", fontSize: "1.8rem", cursor: "pointer", color: "var(--text-secondary)", lineHeight: 1 }}
@@ -364,24 +342,29 @@ export default function PricingStep() {
                 &times;
               </button>
             </div>
-            <div style={{ flex: 1, background: "#f0f2f5" }}>
-              <iframe 
-                src="/schedule_of_charges.pdf" 
-                style={{ width: "100%", height: "100%", border: "none" }} 
-                title="DP Tariff Sheet PDF"
-              />
+            
+            <div style={{ flex: 1, background: "var(--bg-primary)", padding: "24px" }}>
+              <div style={{ height: "100%", border: "1px solid var(--border-color)", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.02)" }}>
+                <iframe 
+                  src="/schedule_of_charges.pdf" 
+                  style={{ width: "100%", height: "100%", border: "none", display: "block" }} 
+                  title="DP Tariff Sheet PDF"
+                />
+              </div>
             </div>
-            <div style={{ padding: "12px 24px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "center", background: "var(--bg-card)" }}>
+            
+            <div style={{ padding: "20px 24px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "center", background: "var(--bg-card)" }}>
               <button 
                 className="btn btn-primary" 
                 onClick={() => setShowTariffModal(false)} 
-                style={{ padding: "10px 60px", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600 }}
+                style={{ width: "100%", padding: "16px", borderRadius: "12px", fontSize: "1rem" }}
               >
-                OK
+                Accept & Continue
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

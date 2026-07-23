@@ -35,13 +35,11 @@ export default function NomineeChoiceStep() {
 
   return (
     <div className="container-sm" style={{ paddingTop: "6vh", paddingBottom: "6vh", maxWidth: 500 }}>
-      <div className="text-center animate-slide-up" style={{ marginBottom: 24 }}>
-        
-        <h1 className="text-section" style={{ fontSize: "2.2rem", marginBottom: 16 }}>Add Nominee</h1>
+      <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
+        <h1 className="text-section" style={{ fontSize: "2.2rem", marginBottom: 8 }}>Add Nominee</h1>
       </div>
 
       <div className="animate-slide-up" style={{ marginBottom: 32 }}>
-        <p className="text-body-bold" style={{ marginBottom: 16 }}>Add Nominee Details</p>
         <div style={{ display: "flex", gap: "20px" }}>
           <div 
             onClick={() => setOpted("Yes")}

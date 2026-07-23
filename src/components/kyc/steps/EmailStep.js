@@ -227,7 +227,7 @@ export default function EmailStep() {
               <span>CODE SENT TO {email}</span>
             </div>
             <div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setIsOtpMode(false)} style={{ color: "var(--wise-green)", fontWeight: 800, fontSize: "0.85rem" }}>Edit Email</button>
+              <button className="btn-pill" onClick={() => setIsOtpMode(false)}>Edit Email</button>
             </div>
           </div>
 
@@ -237,12 +237,10 @@ export default function EmailStep() {
                 key={`otp-input-${i}`} 
                 id={`otp-${i}`} 
                 type="tel" 
-                className="input-field" 
+                className="otp-input" 
                 style={{ 
-                  width: "38px", height: "46px", textAlign: "center", 
-                  fontSize: "1.1rem", fontWeight: 900, padding: 0,
-                  border: digit ? "2px solid var(--wise-green)" : "1px solid var(--border-color)",
-                  borderRadius: "8px"
+                  borderColor: digit ? "var(--wise-green)" : "rgba(0,0,0,0.1)",
+                  background: digit ? "#fff" : "var(--bg-card)"
                 }}
                 value={digit} 
                 onChange={e => handleOtpChange(i, e.target.value)} 

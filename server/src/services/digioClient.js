@@ -140,6 +140,37 @@ class DigioClient {
     // payload should include: reference_id, unique_request_id, data, file_name, data_content_type, is_validate, consent, mask_qr
     return this.post("v4/client/kyc/aadhaar/mask", payload);
   }
+
+  /**
+   * Passive Liveness Check API
+   * Ref: v3/client/kyc/analyze/file/liveness
+   * @param {Buffer} imageBuffer - Binary image buffer
+   * @param {string} requestId - Unique request ID for traceability
+   */
+  async checkPassiveLiveness(imageBuffer, requestId) {
+    const FormData = require("form-data");
+    const form = new FormData();
+    form.append("image", imageBuffer, { filename: "selfie.jpg", contentType: "image/jpeg" });
+    form.append("unique_request_id", requestId);
+
+    const fullUrl = `${this.http.defaults.baseURL}v3/client/kyc/analyze/file/liveness`;
+    console.log(`[Digio API Request] POST ${fullUrl} (Liveness Check)`);
+
+    try {
+      const response = await axios.post(fullUrl, form, {
+        headers: {
+          ...form.getHeaders(),
+          Authorization: `Basic ${this.auth}`
+        },
+        timeout: 30000
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || {};
+      console.error(`Digio API Error [Liveness Check]:`, JSON.stringify(errorData, null, 2) || error.message);
+      throw error;
+    }
+  }
 }
 
 module.exports = new DigioClient();

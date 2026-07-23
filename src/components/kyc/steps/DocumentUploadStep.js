@@ -14,11 +14,86 @@ const UploadIcon = () => (
   </svg>
 );
 
+const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={dropdownRef} style={{ position: "relative", width: "100%" }}>
+      <div 
+        tabIndex={disabled ? -1 : 0}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setIsOpen(!isOpen); } 
+          else if (e.key === "Escape") { setIsOpen(false); }
+        }}
+        className="input-field"
+        style={{ 
+          cursor: disabled ? "not-allowed" : "pointer",
+          borderColor: error ? "var(--wise-danger)" : isOpen ? "var(--wise-green)" : "var(--border-color)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          opacity: disabled ? 0.6 : 1, padding: "0 16px"
+        }}
+      >
+        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.85rem", fontWeight: 700 }}>
+          {value || placeholder}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", opacity: 0.5 }}>
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+      
+      {isOpen && (
+        <div style={{ 
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1000, 
+          background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)", 
+          borderRadius: "12px", marginTop: "4px", 
+          boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.1)",
+          maxHeight: "220px", overflowY: "auto", padding: "6px"
+        }}>
+          {options.map((opt) => (
+            <div 
+              key={opt} tabIndex={0}
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChange(opt); setIsOpen(false); } 
+                else if (e.key === "Escape") { setIsOpen(false); }
+              }}
+              style={{ 
+                padding: "10px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700,
+                background: value === opt ? "var(--wise-green)" : "transparent",
+                color: value === opt ? "var(--wise-dark-green)" : "var(--text-primary)",
+                transition: "all 0.2s", marginBottom: "1px"
+              }}
+              onMouseOver={e => { if (value !== opt) e.currentTarget.style.background = "rgba(159, 232, 112, 0.15)"; }}
+              onMouseOut={e => { if (value !== opt) e.currentTarget.style.background = "transparent"; }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function DocumentUploadStep() {
   const { 
     financialProof, signature, panUpload, selfie, personalDetails, 
     segments, updateState, nextStep, prevStep, addToast, 
-    applicationId, setApplicationId, syncProgress
+    applicationId, setApplicationId, syncProgress,
+    preGeneratePdf
   } = useKYC();
   
   // Helper to ensure relative URLs load from backend on port 5000
@@ -47,7 +122,7 @@ export default function DocumentUploadStep() {
   const panInputRef = useRef(null);
 
   // Selfie State
-  const isSelfieDone = Boolean(selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined));
+  const isSelfieDone = Boolean(selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0));
   const [selfiePhase, setSelfiePhase] = useState(isSelfieDone ? "done" : "intro"); // intro, processing, done
   const [matchScore, setMatchScore] = useState(selfie?.matchScore || null);
   const [selfiePreviewUrl, setSelfiePreviewUrl] = useState(getFullUrl(selfie?.preview));
@@ -71,7 +146,7 @@ export default function DocumentUploadStep() {
       if (full !== finPreview) setFinPreview(full);
       if (financialProof.type) setFinType(financialProof.type);
     }
-    if (selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined)) {
+    if (selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0)) {
       setSelfiePhase("done");
       if (selfie.preview) {
         const full = getFullUrl(selfie.preview);
@@ -408,7 +483,7 @@ export default function DocumentUploadStep() {
                       Start Selfie Capture
                     </button>
                     <button className="btn btn-secondary" onClick={() => setShowQR(true)} style={{ width: "100%", padding: "12px", borderRadius: "12px", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
-                      No Camera? Use Mobile
+                      Show QR
                     </button>
                   </div>
                 ) : (
@@ -470,18 +545,16 @@ export default function DocumentUploadStep() {
           
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <div style={{ marginBottom: "16px" }}>
-              <select 
-                value={finType} 
-                onChange={async (e) => {
-                  setFinType(e.target.value);
-                  updateState({ financialProof: { type: e.target.value, filePreview: finPreview } });
-                  await syncProgress({ financialProof: { type: e.target.value, filePreview: finPreview } }, false, "documentUpload");
+              <CustomSelect 
+                value={finType}
+                onChange={async (val) => {
+                  setFinType(val);
+                  updateState({ financialProof: { type: val, filePreview: finPreview } });
+                  await syncProgress({ financialProof: { type: val, filePreview: finPreview } }, false, "documentUpload");
                 }}
-                style={{ width: "100%", height: "48px", borderRadius: "12px", border: "1px solid var(--border-color)", background: "var(--input-bg)", color: "var(--text-primary)", padding: "0 12px", fontSize: "0.9rem", outline: "none" }}
-              >
-                <option value="">-- Select Income Proof Type --</option>
-                {finOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              </select>
+                options={finOptions}
+                placeholder="-- Select Income Proof Type --"
+              />
             </div>
 
             <input type="file" ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />

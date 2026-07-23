@@ -465,7 +465,7 @@ export default function MakerCheckerDashboard() {
 
               {/* Table */}
               <div className="admin-table-container">
-                <div ref={scrollRef} style={{ overflowX: "auto" }}>
+                <div ref={scrollRef} style={{ overflowX: "auto", minHeight: kycs.length < 4 ? "300px" : "auto" }}>
                   <table className="admin-table">
                     <thead><tr>
                       {ALL_COLUMNS.filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h)).map(h => <th key={h} style={getStickyStyle(h, true)}>{h}</th>)}
@@ -497,7 +497,7 @@ export default function MakerCheckerDashboard() {
                               </button>
                               
                               {openMenuId === k.id && (
-                                <div className="premium-action-menu" style={{ right: 'auto', left: 0, top: "100%" }}>
+                                <div className="premium-action-menu" style={{ right: 'auto', left: 0, top: (index >= 3 && index >= kycs.length - 4) ? "auto" : "100%", bottom: (index >= 3 && index >= kycs.length - 4) ? "100%" : "auto" }}>
                                   <button onClick={() => { setOpenMenuId(null); router.push(`/admin/maker-checker/${k.id}`); }} className="premium-action-item">Verify</button>
                                   <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} className="premium-action-item">Continue Journey</button>
                                   <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} className="premium-action-item danger">Delete</button>

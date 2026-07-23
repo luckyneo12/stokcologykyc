@@ -89,7 +89,7 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
                 color: value === opt ? "var(--wise-dark-green)" : "var(--text-primary)",
                 transition: "all 0.2s", marginBottom: "2px"
               }}
-              onMouseOver={e => { if (value !== opt) e.currentTarget.style.background = "var(--btn-secondary-bg)"; }}
+              onMouseOver={e => { if (value !== opt) e.currentTarget.style.background = "rgba(159, 232, 112, 0.15)"; }}
               onMouseOut={e => { if (value !== opt) e.currentTarget.style.background = "transparent"; }}
             >
               {opt}
@@ -278,6 +278,20 @@ export default function NomineeStep() {
         });
       }
 
+      // Email validation (Real-time clear)
+      if (field === "email" || field === "guardianEmail") {
+        const errKey = `${idx}-${field}`;
+        setErrors(prevErr => {
+          const newErrors = { ...prevErr };
+          if (newErrors[errKey] && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalValue)) {
+            delete newErrors[errKey];
+          } else if (!finalValue) {
+            delete newErrors[errKey];
+          }
+          return newErrors;
+        });
+      }
+
       // Real-time validation for nominee matching user's name and dob
       if (field === "name" || field === "dob") {
         const errKey = `${idx}-nameDob`;
@@ -354,6 +368,11 @@ export default function NomineeStep() {
       if (value && value.length !== 10 && !newErrors[errKey]) {
         newErrors[errKey] = "Mobile number must be exactly 10 digits";
         setErrors(newErrors);
+      }
+    }
+    if (field === "email" || field === "guardianEmail") {
+      if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        setErrors(prevErr => ({ ...prevErr, [`${idx}-${field}`]: "Please enter a valid email address" }));
       }
     }
   };
@@ -569,16 +588,13 @@ export default function NomineeStep() {
   };
 
   return (
-    <div className="container-lg" style={{ paddingTop: "2vh", paddingBottom: "4vh" }}>
+    <div className="container-lg" style={{ paddingTop: "2vh", paddingBottom: "4vh", maxWidth: "800px", margin: "0 auto", paddingLeft: "24px", paddingRight: "24px" }}>
       <div className="text-center animate-slide-up" style={{ marginBottom: 48 }}>
         <h1 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-1px" }}>Add Nominee Details</h1>
         <p style={{ color: "var(--text-secondary)", marginTop: "8px", fontWeight: 600 }}>Specify who should receive the assets in your account</p>
       </div>
 
-      <div className="card animate-slide-up" style={{ 
-        padding: "40px", borderRadius: "32px", border: "1.5px solid var(--border-color)", 
-        background: "var(--bg-card)", boxShadow: "none"
-      }}>
+      <div className="animate-slide-up">
         
         {nominees.map((nom, idx) => (
           <div key={idx} style={{ 
@@ -615,7 +631,9 @@ export default function NomineeStep() {
               {/* Column 1 */}
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Name *</label>
+                  <div style={{ height: "24px", display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Name *</label>
+                  </div>
                   <input 
                     className="input-field" 
                     placeholder="Enter your name" 
@@ -631,11 +649,17 @@ export default function NomineeStep() {
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Email</label>
                   <input 
+                    type="email"
                     className="input-field" 
                     placeholder="Enter nominee email" 
                     value={nom.email || ""} 
                     onChange={e => updateNominee(idx, "email", e.target.value)}
+                    onBlur={e => handleBlur(idx, "email", e.target.value)}
+                    style={{ borderColor: errors[`${idx}-email`] ? "var(--wise-danger)" : "var(--border-color)" }}
                   />
+                  {errors[`${idx}-email`] && (
+                    <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>{errors[`${idx}-email`]}</p>
+                  )}
                 </div>
 
                 <div style={{ marginBottom: "16px" }}>
@@ -680,37 +704,37 @@ export default function NomineeStep() {
 
               {/* Column 2 */}
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, opacity: 0.85 }}>
-                    Nominee Address {!nom.sameAddress && <span>*</span>}
-                  </label>
-                  <div 
-                    style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}
-                    onClick={() => {
-                      const newVal = !nom.sameAddress;
-                      if (newVal) {
-                        const updated = [...nominees];
-                        updated[idx] = {
-                          ...updated[idx], sameAddress: true,
-                          address: [userAddress?.line1, userAddress?.line2].filter(Boolean).join(", "),
-                          city: userAddress?.city || "", state: userAddress?.state || "", pincode: userAddress?.pincode || "", country: userAddress?.country || "India"
-                        };
-                        setNominees(updated);
-                      } else { updateNominee(idx, "sameAddress", false); }
-                    }}
-                  >
-                    <div style={{ 
-                      width: "16px", height: "16px", borderRadius: "4px", border: "1.5px solid var(--wise-green)", 
-                      background: nom.sameAddress ? "var(--wise-green)" : "transparent", 
-                      display: "flex", alignItems: "center", justifyContent: "center"
-                    }}>
-                      {nom.sameAddress && <CheckIcon size={10} color="white" />}
-                    </div>
-                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-secondary)" }}>Same as mine</span>
-                  </div>
-                </div>
-
                 <div style={{ marginBottom: "16px" }}>
+                  <div style={{ height: "24px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, opacity: 0.85 }}>
+                      Nominee Address {!nom.sameAddress && <span>*</span>}
+                    </label>
+                    <div 
+                      style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}
+                      onClick={() => {
+                        const newVal = !nom.sameAddress;
+                        if (newVal) {
+                          const updated = [...nominees];
+                          updated[idx] = {
+                            ...updated[idx], sameAddress: true,
+                            address: [userAddress?.line1, userAddress?.line2].filter(Boolean).join(", "),
+                            city: userAddress?.city || "", state: userAddress?.state || "", pincode: userAddress?.pincode || "", country: userAddress?.country || "India"
+                          };
+                          setNominees(updated);
+                        } else { updateNominee(idx, "sameAddress", false); }
+                      }}
+                    >
+                      <div style={{ 
+                        width: "16px", height: "16px", borderRadius: "4px", border: "1.5px solid var(--wise-green)", 
+                        background: nom.sameAddress ? "var(--wise-green)" : "transparent", 
+                        display: "flex", alignItems: "center", justifyContent: "center"
+                      }}>
+                        {nom.sameAddress && <CheckIcon size={10} color="white" />}
+                      </div>
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-secondary)" }}>Same as mine</span>
+                    </div>
+                  </div>
+
                   <input 
                     className="input-field" 
                     placeholder="Address Line" 
@@ -772,7 +796,9 @@ export default function NomineeStep() {
               {/* Column 3 */}
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Select Nominee Proof Type *</label>
+                  <div style={{ height: "24px", display: "flex", alignItems: "center", marginBottom: "8px" }}>
+                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Select Nominee Proof Type *</label>
+                  </div>
                   <CustomSelect 
                     value={nom.proofType || "PAN CARD"}
                     options={["PAN CARD", "AADHAAR CARD"]}
@@ -917,45 +943,50 @@ export default function NomineeStep() {
                   <div style={{ marginBottom: "16px" }}>
                     <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Email *</label>
                     <input 
+                      type="email"
                       className="input-field" 
                       placeholder="Email" 
                       value={nom.guardianEmail || ""} 
                       onChange={e => updateNominee(idx, "guardianEmail", e.target.value)} 
+                      onBlur={e => handleBlur(idx, "guardianEmail", e.target.value)}
                       style={{ borderColor: errors[`${idx}-guardianEmail`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
-                  </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, opacity: 0.85 }}>
-                      Guardian Address {!nom.guardianSameAddress && <span>*</span>}
-                    </label>
-                    <div 
-                      style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}
-                      onClick={() => {
-                        const newVal = !nom.guardianSameAddress;
-                        if (newVal) {
-                          const updated = [...nominees];
-                          updated[idx] = {
-                            ...updated[idx], guardianSameAddress: true,
-                            guardianAddress: [userAddress?.line1, userAddress?.line2].filter(Boolean).join(", "),
-                            guardianCity: userAddress?.city || "", guardianState: userAddress?.state || "", guardianPincode: userAddress?.pincode || "", guardianCountry: userAddress?.country || "India"
-                          };
-                          setNominees(updated);
-                        } else { updateNominee(idx, "guardianSameAddress", false); }
-                      }}
-                    >
-                      <div style={{ 
-                        width: "16px", height: "16px", borderRadius: "4px", border: "1.5px solid var(--wise-green)", 
-                        background: nom.guardianSameAddress ? "var(--wise-green)" : "transparent", 
-                        display: "flex", alignItems: "center", justifyContent: "center"
-                      }}>
-                        {nom.guardianSameAddress && <CheckIcon size={10} color="white" />}
-                      </div>
-                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-secondary)" }}>Same as mine</span>
-                    </div>
+                    {errors[`${idx}-guardianEmail`] && (
+                      <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>{errors[`${idx}-guardianEmail`]}</p>
+                    )}
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, opacity: 0.85 }}>
+                        Guardian Address {!nom.guardianSameAddress && <span>*</span>}
+                      </label>
+                      <div 
+                        style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}
+                        onClick={() => {
+                          const newVal = !nom.guardianSameAddress;
+                          if (newVal) {
+                            const updated = [...nominees];
+                            updated[idx] = {
+                              ...updated[idx], guardianSameAddress: true,
+                              guardianAddress: [userAddress?.line1, userAddress?.line2].filter(Boolean).join(", "),
+                              guardianCity: userAddress?.city || "", guardianState: userAddress?.state || "", guardianPincode: userAddress?.pincode || "", guardianCountry: userAddress?.country || "India"
+                            };
+                            setNominees(updated);
+                          } else { updateNominee(idx, "guardianSameAddress", false); }
+                        }}
+                      >
+                        <div style={{ 
+                          width: "16px", height: "16px", borderRadius: "4px", border: "1.5px solid var(--wise-green)", 
+                          background: nom.guardianSameAddress ? "var(--wise-green)" : "transparent", 
+                          display: "flex", alignItems: "center", justifyContent: "center"
+                        }}>
+                          {nom.guardianSameAddress && <CheckIcon size={10} color="white" />}
+                        </div>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-secondary)" }}>Same as mine</span>
+                      </div>
+                    </div>
+
                     <input 
                       className="input-field" 
                       placeholder="Address" 
@@ -1103,18 +1134,19 @@ export default function NomineeStep() {
         ))}
 
         {nominees.length < 3 && (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: "20px" }}>
+          <div style={{ display: "flex", flexDirection: "column", maxWidth: "480px", marginLeft: "auto", marginRight: "auto", width: "100%", marginTop: "32px" }}>
             <button 
               onClick={addNominee}
               style={{ 
-                padding: "14px 32px", borderRadius: "100px", fontSize: "1rem", fontWeight: 800,
-                border: "2px dashed var(--border-color)", background: "transparent", color: "var(--text-secondary)",
-                cursor: "pointer", display: "flex", alignItems: "center", gap: "10px", transition: "all 0.2s"
+                height: "64px", width: "100%", borderRadius: "20px", fontSize: "1.2rem", fontWeight: 900,
+                border: "1.5px solid rgba(159, 232, 112, 0.4)", background: "var(--bg-elevated)", color: "var(--text-primary)",
+                boxShadow: "0 10px 30px rgba(159, 232, 112, 0.2), 0 0 20px rgba(159, 232, 112, 0.15)",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", transition: "all 0.3s ease"
               }}
-              onMouseOver={e => e.currentTarget.style.borderColor = "var(--wise-green)"}
-              onMouseOut={e => e.currentTarget.style.borderColor = "var(--border-color)"}
+              onMouseOver={e => e.currentTarget.style.transform = "scale(1.02)"}
+              onMouseOut={e => e.currentTarget.style.transform = "scale(1)"}
             >
-              <span style={{ fontSize: "1.2rem" }}>+</span> Add Another Nominee
+              <span style={{ fontSize: "1.6rem" }}>+</span> Add Another Nominee
             </button>
           </div>
         )}

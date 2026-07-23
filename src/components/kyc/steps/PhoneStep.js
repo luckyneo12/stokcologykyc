@@ -189,11 +189,11 @@ export default function PhoneStep() {
         {/* Phone Input Section */}
         <div style={{ marginBottom: isOtpMode ? 20 : 28, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}>
           <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.9rem" }}>Mobile Number</label>
-          <div style={{ position: "relative" }}>
-            <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontWeight: 800, color: "var(--text-muted)", fontSize: "1rem" }}>+91</span>
+          <div className="input-field" style={{ position: "relative", display: "flex", alignItems: "baseline", paddingLeft: "16px", paddingRight: isOtpMode ? "60px" : "24px", cursor: isOtpMode ? "default" : "text" }}>
+            <span style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "1.1rem", marginRight: "8px", pointerEvents: "none" }}>+91</span>
             <input 
-              type="tel" className="input-field" placeholder="00000 00000" 
-              style={{ paddingLeft: "56px", paddingRight: isOtpMode ? "60px" : "24px", fontWeight: 700 }}
+              type="tel" placeholder="00000 00000" 
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontWeight: 700, fontSize: "1.1rem", color: "var(--text-primary)", padding: 0, height: "100%" }}
               value={phoneNumber} onChange={handlePhoneChange} onBlur={handlePhoneBlur} maxLength={10}
               onKeyDown={(e) => e.key === "Enter" && phoneNumber.length === 10 && !isOtpMode && handleSendOtp()}
               readOnly={isOtpMode}
@@ -299,7 +299,7 @@ export default function PhoneStep() {
               <span>CODE SENT TO +91 {phoneNumber}</span>
             </div>
             <div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setIsOtpMode(false)} style={{ color: "var(--wise-green)", fontWeight: 800, fontSize: "0.85rem" }}>Edit Number</button>
+              <button className="btn-pill" onClick={() => setIsOtpMode(false)}>Edit Number</button>
             </div>
           </div>
 
@@ -309,12 +309,10 @@ export default function PhoneStep() {
                 key={`otp-input-${i}`} 
                 id={`otp-${i}`} 
                 type="tel" 
-                className="input-field" 
+                className="otp-input" 
                 style={{ 
-                  width: "38px", height: "46px", textAlign: "center", 
-                  fontSize: "1.1rem", fontWeight: 900, padding: 0,
-                  border: digit ? "2px solid var(--wise-green)" : "1px solid var(--border-color)",
-                  borderRadius: "8px"
+                  borderColor: digit ? "var(--wise-green)" : "rgba(0,0,0,0.1)",
+                  background: digit ? "#fff" : "var(--bg-card)"
                 }}
                 value={digit} 
                 onChange={e => handleOtpChange(i, e.target.value)} 

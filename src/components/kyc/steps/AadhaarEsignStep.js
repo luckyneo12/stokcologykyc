@@ -49,7 +49,6 @@ export default function AadhaarEsignStep() {
       }
       
       updateState({ status: "under_review", submittedAt: new Date().toISOString() });
-      setPhase("done");
       addToast("Document eSigned successfully!", "success");
       nextStep();
     } catch (error) {
@@ -152,16 +151,11 @@ export default function AadhaarEsignStep() {
 
   return (
     <div className="container-sm" style={{ paddingTop: "8vh", paddingBottom: "8vh", maxWidth: "600px" }}>
-      <div className="text-center animate-slide-up" style={{ marginBottom: 40 }}>
-        <Logo width={160} height={50} style={{ marginBottom: 32, marginInline: "auto" }} />
-        <h1 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-0.5px", color: "var(--text-primary)" }}>Final Step</h1>
-      </div>
+
 
       {(phase === "intro" || phase === "failed") && (
         <div className="card animate-slide-up" style={{ padding: "48px", textAlign: "center", borderRadius: "32px", border: phase === "failed" ? "2px solid var(--wise-danger)" : "1.5px solid var(--border-color)", background: "var(--bg-card)" }}>
-          <div style={{ fontSize: '4.5rem', marginBottom: 24, filter: "drop-shadow(0 10px 20px rgba(0,0,0,0.1))" }}>
-            {phase === "failed" ? "⚠️" : "✍️"}
-          </div>
+
           <h2 className="text-section" style={{ marginBottom: 16, fontSize: "1.8rem" }}>
             {phase === "failed" ? "Sign Attempt Interrupted" : "Sign Application Form"}
           </h2>
@@ -198,16 +192,6 @@ export default function AadhaarEsignStep() {
         </div>
       )}
 
-      {phase === "done" && (
-        <div className="card animate-scale-in" style={{ padding: "64px 40px", textAlign: "center", borderRadius: "32px", background: "var(--bg-card)", border: "1.5px solid var(--wise-green)" }}>
-          <div style={{ fontSize: '5rem', marginBottom: 24 }}>🎉</div>
-          <h2 className="text-section" style={{ marginBottom: 16, fontSize: "2rem" }}>Submission Successful!</h2>
-          <p className="text-body" style={{ marginBottom: 40, fontWeight: 600, color: "var(--text-secondary)" }}>
-            Your signed application is being processed. You will be redirected to the dashboard in a moment.
-          </p>
-          <div className="loader" style={{ margin: '0 auto', width: "32px", height: "32px", border: "3px solid var(--border-color)", borderTop: "3px solid var(--wise-green)" }}></div>
-        </div>
-      )}
     </div>
   );
 }
