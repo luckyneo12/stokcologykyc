@@ -152,7 +152,6 @@ export default function IdentityStep() {
         <button 
           className="btn-primary" 
           onClick={handleSubmit} 
-          disabled={!selected} 
           style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}
         >
           Continue <ArrowRightIcon size={20} />

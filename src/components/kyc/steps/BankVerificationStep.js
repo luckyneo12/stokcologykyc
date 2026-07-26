@@ -97,7 +97,7 @@ export default function BankVerificationStep() {
     city: bankDetails.city || "",
     district: bankDetails.district || "",
     state: bankDetails.state || "",
-    confirmAccountNumber: ""
+    confirmAccountNumber: bankDetails.accountNumber || ""
   });
   const [showAccountNumber, setShowAccountNumber] = useState(false);
 
@@ -199,7 +199,7 @@ export default function BankVerificationStep() {
             city: bankDetails.city || prev.city,
             district: bankDetails.district || prev.district,
             state: bankDetails.state || prev.state,
-            confirmAccountNumber: prev.confirmAccountNumber
+            confirmAccountNumber: bankDetails.accountNumber || prev.confirmAccountNumber
           };
         }
         return prev;
@@ -253,13 +253,21 @@ export default function BankVerificationStep() {
 
       if (result.success) {
         setVerificationState("idle");
-        addToast("Bank details verified successfully", "success");
-        if (result.data.beneficiary_name_with_bank) {
-          update("accountHolderName", result.data.beneficiary_name_with_bank);
+        const accountHolder = result.data.beneficiary_name_with_bank || form.accountHolderName;
+
+        if (result.nameMismatch) {
+          addToast("Name mismatch, penny drop not verified. Proceeding to upload bank proof.", "warning");
+          // Proceed, but keep verified: false so they have to upload proof later
+          update("accountHolderName", accountHolder);
+          markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
+          nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: false } });
+        } else {
+          addToast("Bank details verified successfully", "success");
+          update("accountHolderName", accountHolder);
+          // Record verification fingerprint so this step auto-skips on re-navigation
+          markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
+          nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: true } });
         }
-        // Record verification fingerprint so this step auto-skips on re-navigation
-        markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
-        nextStep({ bankDetails: { ...form, method, accountHolderName: result.data.beneficiary_name_with_bank || form.accountHolderName } });
       } else {
         setVerificationState("idle");
         addToast(result.error || "Bank verification failed", "error");

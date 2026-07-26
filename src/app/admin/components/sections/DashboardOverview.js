@@ -261,7 +261,7 @@ export default function DashboardOverview({ onNavigate }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 24, marginBottom: 32 }}>
         <StatCard label="Total Submissions" value={total} trend={getTrendIcon(trends.total)} trendValue={getTrendStr(trends.total)} icon={Users} color="#8b5cf6" onClick={() => onNavigate("kyc", { filter: "all" })} />
         <StatCard label="Verified" value={verified} trend={getTrendIcon(trends.verified)} trendValue={getTrendStr(trends.verified)} icon={CheckCircle} color="#10b981" onClick={() => onNavigate("kyc", { filter: "verified" })} />
-        <StatCard label="Pending Review" value={review} icon={Activity} color="#f59e0b" onClick={() => onNavigate("kyc", { filter: "under_review" })} />
+        <StatCard label="Pending Review" value={review} icon={Activity} color="#f59e0b" onClick={() => onNavigate("kyc", { filter: "pending" })} />
         <StatCard label="Rejected" value={rejected} trend={getTrendIcon(trends.rejected)} trendValue={getTrendStr(trends.rejected)} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "rejected" })} />
         <StatCard label="Globe Approved" value={globeApproved} icon={CheckCircle} color="#10b981" onClick={() => onNavigate("kyc", { filter: "globe_approved" })} />
         <StatCard label="Globe Rejected" value={globeRejected} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "globe_rejected" })} />

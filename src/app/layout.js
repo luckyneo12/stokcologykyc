@@ -6,6 +6,9 @@ export const metadata = {
   title: "SecureKYC — Instant Identity Verification",
   description: "Complete your KYC in minutes. Secure, compliant, and seamless identity verification for your financial journey.",
   keywords: ["KYC", "identity verification", "fintech", "demat account", "NSDL"],
+  icons: {
+    icon: '/stklogo.png',
+  }
 };
 
 export default function RootLayout({ children }) {

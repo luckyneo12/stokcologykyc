@@ -36,9 +36,17 @@ export default function EmailStep() {
   }, [isOtpMode, timer]);
 
   const handleSendOtp = async () => {
+    if (!email) {
+      addToast("Please enter email address", "error");
+      return;
+    }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       addToast("Please enter a valid email address", "error");
+      return;
+    }
+    if (!acceptedTerms) {
+      addToast("Please accept Terms & Conditions", "error");
       return;
     }
     
@@ -199,12 +207,11 @@ export default function EmailStep() {
           </div>
         </div>
 
-        {/* Action Button for Email */}
         <div style={{ display: isOtpMode ? "none" : "flex", gap: "16px" }}>
           <button className="btn btn-secondary" onClick={prevStep} style={{ flex: 1 }}>
             Back
           </button>
-          <button className="btn btn-primary" onClick={handleSendOtp} disabled={!email || !acceptedTerms || loading} style={{ flex: 1.5 }}>
+          <button className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ flex: 1.5 }}>
             {loading ? "Sending..." : "Send Code"}
           </button>
         </div>
@@ -253,7 +260,7 @@ export default function EmailStep() {
 
           <div className="flex gap-md">
             <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
-            <button className="btn btn-primary" onClick={verifyOtp} disabled={loading || otp.join("").length < 6} style={{ flex: 2, padding: "14px", fontSize: "1rem" }}>
+            <button className="btn btn-primary" onClick={verifyOtp} disabled={loading} style={{ flex: 2, padding: "14px", fontSize: "1rem" }}>
               {loading ? "Verifying..." : "Verify & Continue"}
             </button>
           </div>

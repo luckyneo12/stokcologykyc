@@ -90,7 +90,7 @@ export default function ReviewStep() {
               </p>
             </div>
 
-            <button className="btn btn-primary w-full" onClick={handleSubmit} disabled={!agreed || submitting} style={{ marginTop: 24, padding: "18px" }}>
+            <button className="btn btn-primary w-full" onClick={handleSubmit} disabled={submitting} style={{ marginTop: 24, padding: "18px" }}>
               {submitting ? "Securing Data..." : "Finalize & Submit"}
             </button>
             <button className="btn btn-ghost w-full" onClick={prevStep} style={{ marginTop: 12, fontSize: "0.9rem" }}>Go Back</button>

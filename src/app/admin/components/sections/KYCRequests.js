@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -47,8 +47,10 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
   const [employees, setEmployees] = useState([]);
 
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const scrollRef = useDragScroll();
 
@@ -56,6 +58,12 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
     const handleClickOutside = (e) => {
       if (!e.target.closest('.action-menu-container')) {
         setOpenMenuId(null);
+      }
+      if (!e.target.closest('.status-dropdown-container')) {
+        setOpenStatusMenuId(null);
+      }
+      if (!e.target.closest('.filter-dropdown-container')) {
+        setFilterOpen(false);
       }
     };
     document.addEventListener("click", handleClickOutside);
@@ -251,20 +259,29 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
     setPage(1);
   }, [filter, search]);
 
+  const fetchRef = useRef(fetchApplications);
+  useEffect(() => {
+    fetchRef.current = fetchApplications;
+  }, [fetchApplications]);
+
   useEffect(() => {
     const t = setTimeout(() => {
       fetchApplications();
-    }, 200);
-    
+    }, 500);
+    return () => clearTimeout(t);
+  }, [filter, search, page]);
+
+  useEffect(() => {
     const socket = io(API_BASE_URL, { withCredentials: true });
     socket.on("connect", () => socket.emit("join_staff"));
-    socket.on("applications_updated", () => fetchApplications(true));
+    socket.on("applications_updated", () => {
+      if (fetchRef.current) fetchRef.current(true);
+    });
     
     return () => {
-      clearTimeout(t);
       socket.disconnect();
     };
-  }, [filter, search, page]);
+  }, []);
 
   useEffect(() => {
     fetchEmployees();
@@ -336,11 +353,45 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
       {/* Controls */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <input className="admin-input" placeholder="Search by name or ID..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} />
-        <select className="admin-select" value={filter} onChange={e => setFilter(e.target.value)}>
-          {["all", "pending", "verified", "rejected", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
-            <option key={f} value={f}>{f.replace(/_/g, " ").toUpperCase()}</option>
-          ))}
-        </select>
+        <div className="filter-dropdown-container" style={{ position: "relative", width: "220px" }}>
+          <button 
+            onClick={() => setFilterOpen(!filterOpen)}
+            style={{ 
+              width: "100%", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", 
+              background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, 
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+              {filter === "all" ? "All Applications" : filter.replace(/_/g, " ").toUpperCase()}
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: filterOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          {filterOpen && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
+              {["all", "pending", "verified", "rejected", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
+                <div 
+                  key={f}
+                  onClick={() => { setFilter(f); setFilterOpen(false); }}
+                  style={{ 
+                    padding: "10px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: filter === f ? 700 : 500,
+                    color: filter === f ? "var(--wise-green)" : "var(--text-primary)",
+                    background: filter === f ? "rgba(48, 164, 108, 0.1)" : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    transition: "background 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => { if (filter !== f) e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                  onMouseLeave={(e) => { if (filter !== f) e.currentTarget.style.background = "transparent"; }}
+                >
+                  {f === "all" ? "All Applications" : f.replace(/_/g, " ").toUpperCase()}
+                  {filter === f && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {bulk.length > 0 && (
           <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
             <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{bulk.length} selected</span>
@@ -372,20 +423,47 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                   </td>
                   <td>
                     <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
-                      <select 
-                        className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
-                        value={k.status === 'under_review' ? 'pending' : k.status}
-                        onChange={(e) => {
-                          updateStatus(k.id, e.target.value);
-                          setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: e.target.value } : app));
-                        }}
-                        style={{ outline: "none", cursor: "pointer", appearance: "auto", border: "none" }}
-                      >
-                        <option value="pending">PENDING</option>
-                        <option value="verified">VERIFIED</option>
-                        <option value="rejected">REJECTED</option>
-                        <option value="on_hold">ON HOLD</option>
-                      </select>
+                      <div className="status-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
+                        <div 
+                          onClick={() => setOpenStatusMenuId(openStatusMenuId === k.id ? null : k.id)}
+                          className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
+                          style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, border: "none" }}
+                        >
+                          {(k.status === 'under_review' ? 'pending' : k.status).replace("_", " ").toUpperCase()}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: openStatusMenuId === k.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                        {openStatusMenuId === k.id && (
+                          <div style={{ position: "absolute", top: (index >= kycs.length - 3 && kycs.length > 3) ? "auto" : "100%", bottom: (index >= kycs.length - 3 && kycs.length > 3) ? "100%" : "auto", marginTop: (index >= kycs.length - 3 && kycs.length > 3) ? 0 : 4, marginBottom: (index >= kycs.length - 3 && kycs.length > 3) ? 4 : 0, left: 0, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px", minWidth: "120px" }}>
+                            {[
+                              { value: "pending", label: "PENDING" },
+                              { value: "verified", label: "VERIFIED" },
+                              { value: "rejected", label: "REJECTED" },
+                              { value: "on_hold", label: "ON HOLD" }
+                            ].map(opt => (
+                              <div 
+                                key={opt.value}
+                                onClick={() => {
+                                  if ((k.status === 'under_review' ? 'pending' : k.status) !== opt.value) {
+                                    updateStatus(k.id, opt.value);
+                                    setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: opt.value } : app));
+                                  }
+                                  setOpenStatusMenuId(null);
+                                }}
+                                style={{ 
+                                  padding: "8px 12px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700, borderRadius: 6,
+                                  color: "var(--text-primary)", display: "flex", alignItems: "center", justifyContent: "space-between",
+                                  background: "transparent", transition: "background 0.2s"
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                              >
+                                {opt.label}
+                                {(k.status === 'under_review' ? 'pending' : k.status) === opt.value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       {k.isResubmitted && (
                         <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
                       )}

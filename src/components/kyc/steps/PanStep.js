@@ -194,7 +194,7 @@ export default function PanStep() {
           <button 
             type="button" 
             className="btn btn-primary" 
-            disabled={loading || digioLoading || pan.length < 10 || !dob || !fullName} 
+            disabled={loading || digioLoading} 
             onClick={isAlreadyVerified ? () => nextStep() : handleVerify}
             style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
           >

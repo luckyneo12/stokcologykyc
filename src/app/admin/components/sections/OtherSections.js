@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { MOCK_KYC } from "../../mockData";
 import { MOCK_RULES, MOCK_NOTIFICATIONS, MOCK_ROLES, MOCK_AUDIT_LOGS, DASHBOARD_STATS } from "../../mockData";
 import { API_BASE_URL } from "@/utils/apiConfig";
@@ -302,6 +302,18 @@ export function AuditLogs() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [expandedLogId, setExpandedLogId] = useState(null);
+  const [expandedActors, setExpandedActors] = useState({});
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.filter-dropdown-container')) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const loadLogs = async () => {
@@ -315,7 +327,7 @@ export function AuditLogs() {
           url.searchParams.set("search", search);
         }
         url.searchParams.append("page", page);
-        url.searchParams.append("limit", 20);
+        url.searchParams.append("limit", 100);
         
         const token = localStorage.getItem("adminToken");
         const response = await fetch(url, {
@@ -335,6 +347,7 @@ export function AuditLogs() {
               target: log.details?.applicationId || log.details?.requestId || log.targetId || "-",
               ip: log.ipAddress || "-",
               timestamp: new Date(log.timestamp).toLocaleString("en-IN"),
+              rawTimestamp: new Date(log.timestamp).getTime(),
               severity: (log.details?.severity || "info").toLowerCase(),
               rawDetails: log.details || "{}"
             }));
@@ -381,6 +394,20 @@ export function AuditLogs() {
 
   const filtered = filter === "all" ? logs : logs.filter(l => l.severity === filter);
 
+  const groupedLogs = useMemo(() => {
+    const groups = {};
+    filtered.forEach(l => {
+      if (!groups[l.actor]) {
+        groups[l.actor] = { actor: l.actor, logs: [], latestTime: l.rawTimestamp };
+      }
+      groups[l.actor].logs.push(l);
+      if (l.rawTimestamp > groups[l.actor].latestTime) {
+        groups[l.actor].latestTime = l.rawTimestamp;
+      }
+    });
+    return Object.values(groups).sort((a, b) => b.latestTime - a.latestTime);
+  }, [filtered]);
+
   return (
     <div className="admin-animate">
       <h1 className="admin-section-title">Audit Logs</h1>
@@ -393,11 +420,49 @@ export function AuditLogs() {
           value={search} 
           onChange={(e) => setSearch(e.target.value)} 
         />
-        <select className="admin-select" value={filter} onChange={e => setFilter(e.target.value)} style={{ width: 160 }}>
-          <option value="all">All Severity</option>
-          <option value="info">Info</option>
-          <option value="warning">Warning</option>
-        </select>
+        <div className="filter-dropdown-container" style={{ position: "relative", width: "180px" }}>
+          <button 
+            onClick={() => setFilterOpen(!filterOpen)}
+            style={{ 
+              width: "100%", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", 
+              background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, 
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+              {filter === "all" ? "All Severity" : filter.charAt(0).toUpperCase() + filter.slice(1)}
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: filterOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          {filterOpen && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
+              {[
+                { value: "all", label: "All Severity" },
+                { value: "info", label: "Info" },
+                { value: "warning", label: "Warning" }
+              ].map(f => (
+                <div 
+                  key={f.value}
+                  onClick={() => { setFilter(f.value); setFilterOpen(false); }}
+                  style={{ 
+                    padding: "10px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: filter === f.value ? 700 : 500,
+                    color: filter === f.value ? "var(--wise-green)" : "var(--text-primary)",
+                    background: filter === f.value ? "rgba(48, 164, 108, 0.1)" : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    transition: "background 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => { if (filter !== f.value) e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                  onMouseLeave={(e) => { if (filter !== f.value) e.currentTarget.style.background = "transparent"; }}
+                >
+                  {f.label}
+                  {filter === f.value && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <button onClick={handleExport} style={{ padding: "10px 20px", borderRadius: 12, border: "none", background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export CSV
@@ -407,32 +472,54 @@ export function AuditLogs() {
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table">
             <thead><tr>{["Log ID", "Action", "Actor", "Target", "IP Address", "Severity", "Timestamp", "Details"].map(h => <th key={h}>{h}</th>)}</tr></thead>
-            <tbody>{filtered.map(l => (
-              <React.Fragment key={l.id}>
-              <tr style={{ cursor: "pointer" }} onClick={() => setExpandedLogId(expandedLogId === l.id ? null : l.id)}>
-                <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--text-muted)" }}>{l.id}</td>
-                <td style={{ fontWeight: 700, fontSize: "0.88rem" }}>{l.action}</td>
-                <td style={{ fontSize: "0.85rem" }}>{l.actor}</td>
-                <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{l.target}</td>
-                <td style={{ fontSize: "0.82rem", fontFamily: "monospace", color: "var(--text-muted)" }}>{l.ip}</td>
-                <td><span className={`badge ${l.severity === "warning" ? "badge-pending" : "badge-verified"}`}>{l.severity}</span></td>
-                <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{l.timestamp}</td>
-                <td>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedLogId === l.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
-                </td>
-              </tr>
-              {expandedLogId === l.id && (
-                <tr>
-                  <td colSpan={8} style={{ padding: "16px 24px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 8 }}>Raw Log Payload</div>
-                    <pre style={{ margin: 0, padding: 16, background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, fontSize: "0.8rem", color: "var(--text-primary)", overflowX: "auto", fontFamily: "var(--font-mono)" }}>
-                      {JSON.stringify(JSON.parse(l.rawDetails || "{}"), null, 2)}
-                    </pre>
+            <tbody>{groupedLogs.map((group, index) => {
+              // Expand the first group by default if no state exists for it yet
+              const isExpanded = expandedActors[group.actor] !== undefined ? expandedActors[group.actor] : index === 0;
+
+              return (
+              <React.Fragment key={group.actor}>
+                <tr 
+                  style={{ background: "var(--bg-secondary)", borderTop: "2px solid var(--border-color)", cursor: "pointer" }}
+                  onClick={() => setExpandedActors(prev => ({ ...prev, [group.actor]: !isExpanded }))}
+                >
+                  <td colSpan={8} style={{ fontWeight: 800, padding: "12px 24px", color: "var(--wise-dark-green)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                      Actor: {group.actor} 
+                      <span style={{ fontSize: "0.75rem", background: "var(--border-color)", padding: "2px 8px", borderRadius: 99, marginLeft: 8 }}>
+                        {group.logs.length} actions
+                      </span>
+                    </div>
                   </td>
                 </tr>
-              )}
+                {isExpanded && group.logs.map(l => (
+                  <React.Fragment key={l.id}>
+                    <tr style={{ cursor: "pointer" }} onClick={() => setExpandedLogId(expandedLogId === l.id ? null : l.id)}>
+                      <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--text-muted)", paddingLeft: 40 }}>{l.id}</td>
+                      <td style={{ fontWeight: 700, fontSize: "0.88rem" }}>{l.action}</td>
+                      <td style={{ fontSize: "0.85rem", opacity: 0.5 }}>{l.actor}</td>
+                      <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{l.target}</td>
+                      <td style={{ fontSize: "0.82rem", fontFamily: "monospace", color: "var(--text-muted)" }}>{l.ip}</td>
+                      <td><span className={`badge ${l.severity === "warning" ? "badge-pending" : "badge-verified"}`}>{l.severity}</span></td>
+                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{l.timestamp}</td>
+                      <td>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedLogId === l.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                      </td>
+                    </tr>
+                    {expandedLogId === l.id && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: "16px 24px 16px 40px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)" }}>
+                          <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 8 }}>Raw Log Payload</div>
+                          <pre style={{ margin: 0, padding: 16, background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, fontSize: "0.8rem", color: "var(--text-primary)", overflowX: "auto", fontFamily: "var(--font-mono)" }}>
+                            {JSON.stringify(JSON.parse(l.rawDetails || "{}"), null, 2)}
+                          </pre>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
               </React.Fragment>
-            ))}</tbody>
+            )})}</tbody>
           </table>
         </div>
         <div style={{ padding: "14px 24px", borderTop: "1px solid var(--border-color)", fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

@@ -137,7 +137,64 @@ const sendRejectionEmail = async (email, name, rejectedSteps, modifyLink) => {
   }
 };
 
+const sendWelcomeEmail = async (email, name, pdfAttachment) => {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT),
+    secure: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  try {
+    const mailOptions = {
+      from: `"Stockology Securities" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: "Welcome to Stockology Securities!",
+      text: `Dear ${name || "Customer"},\n\nThank you for choosing Stockology Securities Private Limited! We are thrilled to welcome you to our platform.\n\nYour Demat account opening request has been successfully processed. You can download your finalized application document from your portal.\n\nWe look forward to partnering with you on your financial journey. If you have any questions or need assistance, our support team is always here to help.\n\nEmail: kyc@stockologysecurities.com\nCall Us: 0731-4258021\n\nHappy Trading!\nCustomer Support Team\nStockology Securities Private Limited`,
+      html: `
+        <div style="font-family: 'Times New Roman', Times, serif; color: #000; max-width: 800px; margin: 0 auto; padding: 20px;">
+          <div style="margin-bottom: 20px;">
+            <img src="https://res.cloudinary.com/dogfk2nyq/image/upload/v1777096537/stklogo_ofmddh.png" alt="Stockology logo" style="max-width: 150px; height: auto;" />
+          </div>
+          
+          <h2 style="color: #333; margin-top: 0;">Welcome to Stockology Securities!</h2>
+          <p style="font-size: 16px; margin-bottom: 20px;">Dear ${name || "Customer"},</p>
+          
+          <p style="font-size: 16px; margin-bottom: 15px;">Thank you for choosing <strong>Stockology Securities Private Limited</strong>! We are thrilled to welcome you to our platform.</p>
+          <p style="font-size: 16px; margin-bottom: 15px;">Your Demat account opening request has been successfully processed. You can download your finalized application document for your records directly from your KYC portal.</p>
+          <p style="font-size: 16px; margin-bottom: 30px;">We look forward to partnering with you on your financial journey. If you have any questions or need assistance, our support team is always here to help.</p>
+          
+          <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #007bff; margin-bottom: 30px;">
+            <p style="font-size: 16px; margin: 0 0 8px 0;"><strong>Support Contact:</strong></p>
+            <p style="font-size: 16px; margin: 0 0 8px 0;">Email: <a href="mailto:kyc@stockologysecurities.com" style="color: #0000ee; text-decoration: underline;">kyc@stockologysecurities.com</a></p>
+            <p style="font-size: 16px; margin: 0;">Call Us: 0731-4258021</p>
+          </div>
+          
+          <p style="font-size: 16px; margin-bottom: 8px;">Happy Trading!</p>
+          <p style="font-size: 16px; margin-bottom: 8px;">Customer Support Team</p>
+          <p style="font-size: 16px; margin-bottom: 0;">Stockology Securities Private Limited</p>
+        </div>
+      `,
+    };
+
+    if (pdfAttachment) {
+      mailOptions.attachments = [pdfAttachment];
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log("[EmailService] Welcome email sent: %s", info.messageId);
+    return true;
+  } catch (error) {
+    console.error("CRITICAL ERROR sending welcome email:", error.message);
+    throw new Error(`Email Service Error: ${error.message}`);
+  }
+};
+
 module.exports = {
   sendOtpEmail,
   sendRejectionEmail,
+  sendWelcomeEmail,
 };

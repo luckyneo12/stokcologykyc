@@ -36,7 +36,7 @@ const getAssignedApplications = async (req, res, next) => {
         { applicationId: { contains: q } },
         { user: { phone: { contains: q } } },
         { user: { email: { contains: q } } },
-        { personalDetails: { path: ["fullName"], string_contains: q } }
+        { personalDetails: { contains: q } }
       ];
     }
 
@@ -362,12 +362,14 @@ const requestModifications = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "No email found for this user. Cannot send rejection notification." });
     }
 
-    // Reset the application: set status to pending, but keep currentStep intact so the admin dashboard shows max progress
+    // Reset the application: set status to pending and move currentStep to the
+    // first rejected step so the user lands there on page load/refresh.
     await prisma.kycApplication.update({
       where: { applicationId: id },
       data: {
         status: "pending",
         isResubmitted: false,
+        currentStep: firstRejectedKycIndex,
       },
     });
 

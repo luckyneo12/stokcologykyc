@@ -421,23 +421,10 @@ export function KYCProvider({ children }) {
             const adminJustMoved =
               app.reviewedAt && app.reviewedAt !== lastSyncedReviewedAt.current;
 
-            // Dynamically compute the starting step for rejected applications
-            if (
-              (isInitialLoad || adminJustMoved) &&
-              app.status === "pending" &&
-              app.stepStatuses
-            ) {
-              const rejectedEntries = Object.entries(REVIEW_STEP_TO_KYC_INDEX)
-                .filter(
-                  ([reviewId]) =>
-                    app.stepStatuses[reviewId]?.status === "rejected",
-                )
-                .map(([, idx]) => idx);
-
-              if (rejectedEntries.length > 0) {
-                app.currentStep = Math.min(...rejectedEntries);
-              }
-            }
+            // Server now sets currentStep to the first rejected step when
+            // sending rejections. The nextStep function saves progress on each
+            // transition, so we trust the server's currentStep value on refresh
+            // instead of forcibly recalculating it every time.
 
             setHasSynced(true);
             setState((prev) => {
@@ -583,12 +570,20 @@ export function KYCProvider({ children }) {
                 const shouldForward =
                   app.currentStep > prev.currentStep && !isAlreadyCompleted;
 
-                if (
-                  shouldForward ||
+                // Navigation Cooldown to prevent race conditions during large uploads
+                const timeSinceLastNav = Date.now() - (lastClientStepChange.current || 0);
+                const isNavCooldown = timeSinceLastNav < 15000; // 15 seconds
+
+                if (shouldForward && isNavCooldown && !statusChanged && !serverIsNewerAdminChange) {
+                  console.log(
+                    `[KYC Sync] Ignoring server pull to Step: ${app.currentStep} due to 15s navigation cooldown.`
+                  );
+                } else if (
+                  (shouldForward && !isNavCooldown) ||
                   statusChanged ||
                   serverIsNewerAdminChange
                 ) {
-                  const reason = shouldForward
+                  const reason = (shouldForward && !isNavCooldown)
                     ? "Server is ahead"
                     : statusChanged
                       ? "Status changed"
@@ -733,6 +728,10 @@ export function KYCProvider({ children }) {
     if (magicToken) {
       sessionStorage.setItem("kycToken", magicToken);
       window.history.replaceState({}, document.title, window.location.pathname);
+
+      // Set restoring immediately so KYCJourney shows the loading spinner
+      // instead of flashing step 1 while we fetch the application
+      setState((prev) => ({ ...prev, isRestoring: true }));
 
       // Fetch /api/kyc/me to get the application id
       fetch(`${API_BASE_URL}/api/kyc/me`, {

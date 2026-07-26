@@ -181,10 +181,8 @@ export default function NomineeAllocationStep() {
           <button 
             className="btn btn-primary" 
             onClick={handleNext} 
-            disabled={!isValid}
             style={{ 
-              width: "100%", height: "56px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 900,
-              opacity: isValid ? 1 : 0.4, cursor: isValid ? "pointer" : "not-allowed"
+              width: "100%", height: "56px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 900
             }}
           >
             Submit

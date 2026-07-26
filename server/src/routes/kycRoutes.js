@@ -12,7 +12,8 @@ const {
   getPincodeData,
   downloadPdf,
   bypassEsign,
-  previewPdf
+  previewPdf,
+  sendWelcome
 } = require("../controllers/kycController");
 const { auth } = require("../middlewares/auth");
 const upload = require("../middlewares/upload");
@@ -45,5 +46,6 @@ router.get("/status/:applicationId", auth, getStatus);
 router.get("/download-pdf/:applicationId", auth, downloadPdf);
 router.get("/config", getKycConfig);
 router.get("/pincode/:pin", getPincodeData);
+router.post("/welcome-email", auth, sendWelcome);
 
 module.exports = router;

@@ -53,6 +53,10 @@ export default function PhoneStep() {
       addToast("Enter 10 digits", "error");
       return;
     }
+    if (!acceptedTerms) {
+      addToast("Please accept Terms & Conditions", "error");
+      return;
+    }
     try {
       setLoading(true);
       const apCode = sessionStorage.getItem('apCode') || undefined;
@@ -274,9 +278,8 @@ export default function PhoneStep() {
           </div>
         </div>
 
-        {/* Action Button for Phone - Uses display none for hydration safety */}
         <div style={{ display: isOtpMode ? "none" : "flex" }}>
-          <button className="btn btn-primary" onClick={handleSendOtp} disabled={loading || phoneNumber.length < 10 || !acceptedTerms} style={{ width: "100%" }}>
+          <button className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ width: "100%" }}>
             {loading ? "Sending..." : "Send Code"}
           </button>
         </div>
@@ -325,7 +328,7 @@ export default function PhoneStep() {
 
           <div className="flex gap-md">
             <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleVerifyOtp} disabled={loading || otp.join("").length < 6} style={{ flex: 2, padding: "14px", fontSize: "1rem" }}>
+            <button className="btn btn-primary" onClick={handleVerifyOtp} disabled={loading} style={{ flex: 2, padding: "14px", fontSize: "1rem" }}>
               {loading ? "Verifying..." : "Verify & Continue"}
             </button>
           </div>

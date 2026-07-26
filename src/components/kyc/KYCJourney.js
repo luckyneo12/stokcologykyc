@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useKYC } from "@/context/KYCContext";
 import PhoneStep from "./steps/PhoneStep";
 import EmailStep from "./steps/EmailStep";
@@ -21,8 +21,9 @@ import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 
 export default function KYCJourney() {
-  const { currentStep, steps, isRestoring, prevStep, STEPS, stepStatuses, rejectionReason, submittedAt, isResubmitted } = useKYC();
+  const { currentStep, steps, isRestoring, prevStep, STEPS, stepStatuses, rejectionReason, submittedAt, isResubmitted, goToStep } = useKYC();
   const router = useRouter();
+  const pathname = usePathname();
   const TOTAL_STEPS = (steps.length > 0 ? steps.length : STEPS.length) - 1;
 
   const hasStepStatuses = stepStatuses && Object.keys(stepStatuses).length > 0;
@@ -49,15 +50,34 @@ export default function KYCJourney() {
     if (mounted && currentStep >= 0) {
       const stepId = (steps.length > 0 ? steps : STEPS)[currentStep]?.id;
       if (stepId) {
-        const currentPath = window.location.pathname;
         const targetPath = stepId === "phone" ? "/" : `/${stepId}`;
         
-        if (currentPath !== targetPath) {
-          router.replace(targetPath, { scroll: false });
+        if (pathname !== targetPath) {
+          router.push(targetPath, { scroll: false });
         }
       }
     }
-  }, [currentStep, mounted, steps, STEPS]);
+  }, [currentStep, mounted, steps, STEPS, pathname, router]);
+
+  // Handle browser back/forward buttons to sync state with URL
+  useEffect(() => {
+    if (mounted) {
+      const activeSteps = steps.length > 0 ? steps : STEPS;
+      const stepIndexFromUrl = activeSteps.findIndex(s => {
+        const targetPath = s.id === "phone" ? "/" : `/${s.id}`;
+        return targetPath === pathname;
+      });
+
+      if (stepIndexFromUrl !== -1 && stepIndexFromUrl !== currentStep) {
+        const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || localStorage.getItem("token");
+        if (!token && stepIndexFromUrl > 0) {
+          router.replace("/");
+        } else {
+          goToStep(stepIndexFromUrl);
+        }
+      }
+    }
+  }, [pathname, mounted, steps, STEPS, currentStep, goToStep, router]);
 
   const handleMouseMove = (e) => {
     if (sidebarRef.current) {

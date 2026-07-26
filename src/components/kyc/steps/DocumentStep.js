@@ -109,7 +109,7 @@ export default function DocumentStep() {
         <button className="btn btn-secondary" onClick={prevStep} style={{ flex: 1, padding: "16px" }}>
           <ArrowLeftIcon size={20} /> Back
         </button>
-        <button className="btn btn-primary" onClick={handleNext} disabled={!frontPreview || extracting} style={{ flex: 2, padding: "16px" }}>
+        <button className="btn btn-primary" onClick={handleNext} disabled={extracting} style={{ flex: 2, padding: "16px" }}>
           Continue <ArrowRightIcon size={20} />
         </button>
       </div>

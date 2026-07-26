@@ -91,7 +91,7 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 export default function DocumentUploadStep() {
   const { 
     financialProof, signature, panUpload, selfie, personalDetails, 
-    segments, updateState, nextStep, prevStep, addToast, 
+    segments, bankDetails, updateState, nextStep, prevStep, addToast, 
     applicationId, setApplicationId, syncProgress,
     preGeneratePdf
   } = useKYC();
@@ -108,6 +108,11 @@ export default function DocumentUploadStep() {
   const [finType, setFinType] = useState(financialProof?.type || "");
   const [finPreview, setFinPreview] = useState(getFullUrl(financialProof?.filePreview));
   const finInputRef = useRef(null);
+
+  // Bank Proof State
+  const needsBankProof = bankDetails?.method === "PENNY_DROP" && bankDetails?.verified === false;
+  const [bankProofPreview, setBankProofPreview] = useState(getFullUrl(bankDetails?.proofPreview || bankDetails?.proof));
+  const bankProofInputRef = useRef(null);
 
   // Signature State
   const [sigPreview, setSigPreview] = useState(getFullUrl(signature?.filePreview));
@@ -145,6 +150,10 @@ export default function DocumentUploadStep() {
       const full = getFullUrl(financialProof.filePreview);
       if (full !== finPreview) setFinPreview(full);
       if (financialProof.type) setFinType(financialProof.type);
+    }
+    if (bankDetails?.proofPreview || bankDetails?.proof) {
+      const full = getFullUrl(bankDetails.proofPreview || bankDetails.proof);
+      if (full !== bankProofPreview) setBankProofPreview(full);
     }
     if (selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0)) {
       setSelfiePhase("done");
@@ -290,6 +299,26 @@ export default function DocumentUploadStep() {
     reader.readAsDataURL(file);
   };
 
+  const handleBankProofChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.match('image.*') && file.type !== 'application/pdf') {
+      addToast("Please upload an image or PDF for Bank Proof", "error");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) { addToast("File size too large (max 5MB)", "error"); return; }
+    
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      setBankProofPreview(event.target.result);
+      addToast("Bank proof attached", "success");
+      const updatedBankDetails = { ...(bankDetails || {}), proofPreview: event.target.result, proofType: "Bank Proof" };
+      updateState({ bankDetails: updatedBankDetails });
+      await syncProgress({ bankDetails: updatedBankDetails }, false, "documentUpload");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSigChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -335,6 +364,10 @@ export default function DocumentUploadStep() {
     }
     if (selfiePhase !== "done") {
       addToast("Please complete the Selfie Verification", "error");
+      return;
+    }
+    if (needsBankProof && !bankProofPreview) {
+      addToast("Name mismatch on bank account. Please upload a Bank Proof (Cancelled Cheque / Statement)", "error");
       return;
     }
     
@@ -529,6 +562,29 @@ export default function DocumentUploadStep() {
             )}
           </div>
         </div>
+
+        {/* Bank Proof Section (Conditional) */}
+        {needsBankProof && (
+          <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
+            <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ background: "var(--wise-danger)", color: "#fff", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>!</span>
+              Bank Proof Required <span style={{ color: "var(--wise-danger)" }}>*</span>
+            </h3>
+            <p style={{ fontSize: "0.85rem", color: "var(--wise-danger)", marginBottom: "16px", fontWeight: 600 }}>
+              The name on your bank account did not perfectly match your PAN. Please upload a cancelled cheque or bank statement.
+            </p>
+            
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <input type="file" ref={bankProofInputRef} onChange={handleBankProofChange} style={{ display: "none" }} accept="image/*,application/pdf" />
+              <button onClick={() => bankProofInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1px dashed var(--wise-danger)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+                <UploadIcon /> {bankProofPreview ? "Bank Proof Attached (Replace)" : "Upload Bank Proof"}
+              </button>
+              {bankProofPreview && (
+                <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--wise-green)", marginTop: "12px", fontWeight: 600 }}>✓ Bank Document Attached</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Financial Proof Section */}
         <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column", overflow: "visible" }}>

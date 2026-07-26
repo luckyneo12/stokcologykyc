@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const prisma = require("../config/db");
 const { z } = require("zod");
+const emailService = require("../services/emailService");
 
 const STEP_INDEX = {
   welcome: 0,
@@ -980,6 +981,78 @@ const previewPdf = async (req, res, next) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+const sendWelcome = async (req, res) => {
+  try {
+    const applicationId = req.user.applicationId;
+    
+    const app = await prisma.kYCApplication.findUnique({
+      where: { applicationId },
+    });
+
+    if (!app) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    const personalDetails = typeof app.personalDetails === "string" 
+      ? JSON.parse(app.personalDetails) 
+      : app.personalDetails || {};
+
+    const email = personalDetails.email;
+    const fullName = personalDetails.fullName || "";
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: "No email found in personal details" });
+    }
+
+    let pdfAttachment = null;
+    let pdfPath = null;
+    
+    // 1. Try to find an already saved ESIGN document
+    const documents = typeof app.documents === "string" 
+      ? JSON.parse(app.documents) 
+      : app.documents || [];
+      
+    const esignDoc = [...documents].reverse().find(
+      (doc) =>
+        doc.type === "ESIGN" ||
+        (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")),
+    );
+    
+    if (esignDoc && esignDoc.path) {
+      const fullPath = require("path").join(__dirname, "../../", esignDoc.path);
+      if (require("fs").existsSync(fullPath)) {
+        pdfAttachment = {
+          filename: `KYC_Application_${app.applicationId}.pdf`,
+          path: fullPath
+        };
+      }
+    }
+
+    // 2. If no saved file, generate the PDF dynamically
+    if (!pdfAttachment) {
+      try {
+        const { generateKycPdf } = require("../utils/pdfGenerator");
+        const dynamicPdfBase64 = await generateKycPdf(app);
+        if (dynamicPdfBase64) {
+          pdfAttachment = {
+            filename: `KYC_Application_${app.applicationId}_unsigned.pdf`,
+            content: Buffer.from(dynamicPdfBase64, "base64"),
+            contentType: "application/pdf"
+          };
+        }
+      } catch (err) {
+        console.error("Failed to generate fallback PDF for welcome email:", err);
+      }
+    }
+
+    await emailService.sendWelcomeEmail(email, fullName, pdfAttachment);
+    
+    res.json({ success: true, message: "Welcome email sent" });
+  } catch (error) {
+    console.error("[Send Welcome Email Error]:", error);
+    res.status(500).json({ success: false, error: "Failed to send welcome email" });
+  }
+};
 
 module.exports = {
   startKyc,
@@ -995,4 +1068,5 @@ module.exports = {
   downloadPdf,
   bypassEsign,
   previewPdf,
+  sendWelcome,
 };

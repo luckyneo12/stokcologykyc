@@ -27,6 +27,8 @@ const Icons = {
   addPage: <Icon d={<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></>}/>,
   deletePage: <Icon d={<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></>}/>,
   replace: <Icon d={<><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></>}/>,
+  alignLine: <Icon d={<><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></>} size={14}/>,
+  normalizeFont: <Icon d={<><path d="M4 7V4h16v3"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></>} size={14}/>,
 };
 
 // ─── Available Variables ──────────────────────────────────────────────
@@ -134,8 +136,10 @@ const BASE_VARIABLES = [
 
   // Segments
   { name: 'BSDA Preference', key: 'bsda', type: 'text', group: 'Segments' },
-  { name: 'Segment - Equity', key: 'segments.equity', type: 'text', group: 'Segments' },
-  { name: 'Segment - Derivatives', key: 'segments.derivatives', type: 'text', group: 'Segments' },
+  { name: 'Segment - Equity (Text)', key: 'segments.equity', type: 'text', group: 'Segments' },
+  { name: 'Segment - Derivatives (Text)', key: 'segments.derivatives', type: 'text', group: 'Segments' },
+  { name: 'Segment - Equity (Check)', key: 'isSegmentEquity', type: 'checkbox', group: 'Segments' },
+  { name: 'Segment - Derivatives (Check)', key: 'isSegmentDerivatives', type: 'checkbox', group: 'Segments' },
 
   // Identity & Contact
   { name: 'PAN Number', key: 'pan', type: 'text', group: 'Identity' },
@@ -593,6 +597,87 @@ export default function PdfBuilder() {
     setSelectedFieldId(newField.id);
     triggerAutoSave();
   }, [pushUndo, triggerAutoSave]);
+
+  // ─── Align Fields to Reference Line ─────────────────────────────
+  const [referenceFieldId, setReferenceFieldId] = useState(null);
+  const [alignSelectedIds, setAlignSelectedIds] = useState(new Set());
+
+  // Clear reference when page changes or reference field is deleted
+  useEffect(() => {
+    if (referenceFieldId) {
+      const refField = fields.find(f => f.id === referenceFieldId);
+      if (!refField || refField.page !== pageNum) {
+        setReferenceFieldId(null);
+        setAlignSelectedIds(new Set());
+      }
+    }
+  }, [pageNum, fields, referenceFieldId]);
+
+  const handleSetReference = useCallback((fieldId) => {
+    setReferenceFieldId(fieldId);
+    setAlignSelectedIds(new Set());
+  }, []);
+
+  const handleClearReference = useCallback(() => {
+    setReferenceFieldId(null);
+    setAlignSelectedIds(new Set());
+  }, []);
+
+  const handleToggleAlignField = useCallback((fieldId) => {
+    setAlignSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(fieldId)) next.delete(fieldId);
+      else next.add(fieldId);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAllForAlign = useCallback(() => {
+    const pageFields = fields.filter(f => f.page === pageNum && f.id !== referenceFieldId);
+    const allSelected = pageFields.every(f => alignSelectedIds.has(f.id));
+    if (allSelected) {
+      setAlignSelectedIds(new Set());
+    } else {
+      setAlignSelectedIds(new Set(pageFields.map(f => f.id)));
+    }
+  }, [fields, pageNum, referenceFieldId, alignSelectedIds]);
+
+  const handleAlignToReference = useCallback(() => {
+    if (!referenceFieldId || alignSelectedIds.size === 0) return;
+    const refField = fieldsRef.current.find(f => f.id === referenceFieldId);
+    if (!refField) return;
+    pushUndo(fieldsRef.current);
+
+    // Move all selected fields to the same X-position (same vertical column) as the reference field
+    setFields(prev => prev.map(f => {
+      if (!alignSelectedIds.has(f.id)) return f;
+      return { ...f, x: refField.x };
+    }));
+    triggerAutoSave();
+    // Clear selections after aligning
+    setAlignSelectedIds(new Set());
+    setReferenceFieldId(null);
+  }, [referenceFieldId, alignSelectedIds, pushUndo, triggerAutoSave]);
+
+  // Reference field object
+  const referenceField = useMemo(() => fields.find(f => f.id === referenceFieldId), [fields, referenceFieldId]);
+
+  // ─── Normalize Font Size for All Fields (user-specified size) ─────
+  const [normalizeFontSize, setNormalizeFontSize] = useState(10);
+  const handleNormalizeStyle = useCallback((fontSize) => {
+    const pageFields = fieldsRef.current.filter(f => f.page === pageNum);
+    if (pageFields.length === 0) return;
+    const size = parseFloat(fontSize);
+    if (!size || size < 1) return;
+    pushUndo(fieldsRef.current);
+
+    // Apply the user-specified font size to all variables on this page
+    setFields(prev => prev.map(f => {
+      if (f.page !== pageNum) return f;
+      return { ...f, fontSize: size };
+    }));
+    triggerAutoSave();
+  }, [pageNum, pushUndo, triggerAutoSave]);
 
   // ─── Custom Variable ──────────────────────────────────────────────
   const handleAddCustomVar = () => {
@@ -1062,6 +1147,104 @@ export default function PdfBuilder() {
         <div className="pdfb-right-header">
           <h4>Properties</h4>
         </div>
+
+        {/* ── Page-level Actions (always visible) ── */}
+        <div className="pdfb-page-actions">
+          <p className="pdfb-prop-section" style={{ borderTop: 'none', paddingTop: 0, margin: '0 0 8px 0' }}>Page Actions</p>
+
+          {/* ── Align to Reference ── */}
+          {!referenceFieldId ? (
+            <div className="pdfb-align-hint">
+              {Icons.alignLine}
+              <span>{selectedField ? 'Set selected variable as reference to align others' : 'Select a variable first, then set it as reference'}</span>
+              {selectedField && (
+                <button
+                  className="pdfb-tbtn primary"
+                  onClick={() => handleSetReference(selectedFieldId)}
+                  style={{ padding: '4px 10px', fontSize: '0.68rem', borderRadius: 6, marginLeft: 'auto', flexShrink: 0 }}
+                >
+                  Set Reference
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="pdfb-align-section">
+              <div className="pdfb-align-ref-badge">
+                <span className="pdfb-align-ref-label">Reference:</span>
+                <span className="pdfb-align-ref-name">{`{{${referenceField?.variable || '?'}}}`}</span>
+                <button className="pdfb-align-ref-clear" onClick={handleClearReference} title="Clear reference">✕</button>
+              </div>
+
+              <div className="pdfb-align-pick-header">
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Select variables to align:</span>
+                <button
+                  className="pdfb-tbtn"
+                  onClick={handleSelectAllForAlign}
+                  style={{ padding: '2px 6px', fontSize: '0.62rem' }}
+                >
+                  {fields.filter(f => f.page === pageNum && f.id !== referenceFieldId).every(f => alignSelectedIds.has(f.id)) ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+
+              <div className="pdfb-align-pick-list">
+                {fields.filter(f => f.page === pageNum && f.id !== referenceFieldId).map(f => (
+                  <label key={f.id} className={`pdfb-align-pick-item${alignSelectedIds.has(f.id) ? ' checked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={alignSelectedIds.has(f.id)}
+                      onChange={() => handleToggleAlignField(f.id)}
+                    />
+                    <span className={`pdfb-var-icon ${f.type}`} style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0 }}>
+                      {f.type === 'image' ? Icons.image : f.type === 'checkbox' ? Icons.check : Icons.text}
+                    </span>
+                    <span className="pdfb-align-pick-label">{f.type === 'checkbox' ? `✓ ${f.matchValue || f.variable}` : `{{${f.variable}}}`}</span>
+                  </label>
+                ))}
+              </div>
+
+              <button
+                className="pdfb-tbtn primary pdfb-page-action-btn"
+                onClick={handleAlignToReference}
+                disabled={alignSelectedIds.size === 0}
+                style={{ marginTop: 6 }}
+              >
+                {Icons.alignLine}
+                <span>Align to Reference ({alignSelectedIds.size})</span>
+              </button>
+            </div>
+          )}
+
+          {/* ── Normalize Font Size ── */}
+          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 10, marginTop: 6 }}>
+            <div className="pdfb-normalize-row">
+              <div className="pdfb-normalize-input-group">
+                {Icons.normalizeFont}
+                <input
+                  className="pdfb-prop-input"
+                  type="number"
+                  min="1"
+                  max="72"
+                  step="0.5"
+                  value={normalizeFontSize}
+                  onChange={e => setNormalizeFontSize(e.target.value)}
+                  placeholder="Size"
+                  style={{ flex: 1, fontSize: '0.72rem' }}
+                />
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700 }}>pt</span>
+              </div>
+              <button
+                className="pdfb-tbtn primary"
+                onClick={() => handleNormalizeStyle(normalizeFontSize)}
+                disabled={fields.filter(f => f.page === pageNum).length === 0}
+                title="Apply this font size to all variables on this page"
+                style={{ padding: '6px 12px', fontSize: '0.7rem', borderRadius: 6 }}
+              >
+                Apply All
+              </button>
+            </div>
+          </div>
+        </div>
+
         {selectedField ? (
           <div className="pdfb-props">
             <p className="pdfb-prop-section" style={{ borderTop: 'none', paddingTop: 0 }}>Variable</p>

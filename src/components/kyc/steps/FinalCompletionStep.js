@@ -23,6 +23,17 @@ export default function FinalCompletionStep() {
     try {
       const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+      // Fire off welcome email asynchronously (only once)
+      const emailSentKey = `welcome_email_sent_${applicationId}`;
+      if (!sessionStorage.getItem(emailSentKey)) {
+        fetch(`${API_BASE_URL}/api/kyc/welcome-email`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` }
+        }).catch(e => console.error("Failed to trigger welcome email", e));
+        sessionStorage.setItem(emailSentKey, "true");
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/kyc/download-pdf/${applicationId}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });

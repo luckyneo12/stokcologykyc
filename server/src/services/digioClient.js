@@ -19,7 +19,7 @@ class DigioClient {
     this.auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
     this.http = axios.create({
       baseURL: this.baseUrl,
-      timeout: 20000,
+      timeout: 60000,
       headers: {
         "Authorization": `Basic ${this.auth}`
       },
@@ -41,7 +41,7 @@ class DigioClient {
     
     this.http = axios.create({
       baseURL: this.baseUrl,
-      timeout: 20000,
+      timeout: 60000,
       headers: {
         "Authorization": `Basic ${this.auth}`
       },

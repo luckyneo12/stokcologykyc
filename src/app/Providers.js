@@ -1,5 +1,6 @@
 "use client";
 import { KYCProvider, useKYC } from "@/context/KYCContext";
+import { useEffect } from "react";
 
 function ToastContainer() {
   const { toasts } = useKYC();
@@ -20,11 +21,55 @@ function ToastContainer() {
     </div>
   );
 }
+import { usePathname } from "next/navigation";
+
+function AntiInspect() {
+  const { addToast } = useKYC();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    // Disable anti-inspect on the admin portal
+    if (pathname && pathname.startsWith('/admin')) {
+      return;
+    }
+
+    const showWarning = () => {
+      addToast("Ah being smart! We have an eye on you!!", "error");
+    };
+
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      showWarning();
+    };
+
+    const handleKeyDown = (e) => {
+      if (
+        e.key === 'F12' ||
+        (e.ctrlKey && e.shiftKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key)) ||
+        (e.ctrlKey && ['U', 'u'].includes(e.key))
+      ) {
+        e.preventDefault();
+        showWarning();
+      }
+    };
+
+    document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [addToast, pathname]);
+
+  return null;
+}
 
 export function Providers({ children }) {
   return (
     <KYCProvider>
       <ToastContainer />
+      <AntiInspect />
       {children}
     </KYCProvider>
   );

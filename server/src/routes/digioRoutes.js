@@ -2115,6 +2115,13 @@ router.post("/verify-bank", auth, async (req, res) => {
         console.warn("IFSC lookup failed during bank verification:", e.message);
       }
 
+      const panName = application.personalDetails?.fullName || beneficiaryName || "";
+      const bankNameFromDigio = result.beneficiary_name_with_bank || result.beneficiary_name || "";
+      const localMatchScore = getStringSimilarity(panName, bankNameFromDigio) * 100;
+      const digioMatchScore = parseFloat(result.name_match_score || result.name_match_score_percentage || 0);
+      const finalScore = Math.max(localMatchScore, digioMatchScore);
+      const isNameMatched = finalScore >= 90;
+
       // Update application state
       const nextBankDetails = mergeJson(application.bankDetails, {
         accountNumber,
@@ -2126,14 +2133,13 @@ router.post("/verify-bank", auth, async (req, res) => {
           application.bankDetails?.bankName,
         micr:
           result.micr || branchDetails.micr || application.bankDetails?.micr,
-        accountHolderName: result.beneficiary_name_with_bank || beneficiaryName,
-        verified: true,
+        accountHolderName: bankNameFromDigio,
+        verified: isNameMatched,
         verifiedAt: result.verified_at,
         bankRequestId: result.id,
         method: "PENNY_DROP",
-        name_match_score:
-          result.name_match_score || result.name_match_score_percentage || null,
-        name_match: result.name_match || null,
+        name_match_score: finalScore,
+        name_match: isNameMatched,
         address:
           branchDetails.address ||
           branchDetails.bank_address ||
@@ -2169,6 +2175,13 @@ router.post("/verify-bank", auth, async (req, res) => {
         },
         ipAddress: req.ip,
       });
+      
+      return res.json({
+        success: true,
+        verified: isNameMatched,
+        nameMismatch: !isNameMatched,
+        data: result,
+      });
     }
 
     return res.json({ success: result.verified, data: result });
@@ -2182,6 +2195,34 @@ router.post("/verify-bank", auth, async (req, res) => {
       });
   }
 });
+
+// Helper for string similarity (Levenshtein Distance)
+function getStringSimilarity(s1, s2) {
+  if (!s1 || !s2) return 0;
+  s1 = s1.toLowerCase().trim();
+  s2 = s2.toLowerCase().trim();
+  if (s1 === s2) return 1.0;
+  
+  const len1 = s1.length, len2 = s2.length;
+  if (len1 === 0 || len2 === 0) return 0.0;
+  
+  let matrix = [];
+  for (let i = 0; i <= len1; i++) matrix[i] = [i];
+  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+  
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      let cost = (s1[i - 1] === s2[j - 1]) ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+  const maxLen = Math.max(len1, len2);
+  return (maxLen - matrix[len1][len2]) / maxLen;
+}
 
 router.post("/face-match", auth, async (req, res) => {
   const { selfie, applicationId } = req.body || {};

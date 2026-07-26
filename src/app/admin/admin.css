@@ -1153,6 +1153,174 @@ html, body {
   margin: 0;
 }
 
+/* ---------- Page-level Actions (Right Panel) ---------- */
+.pdfb-page-actions {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pdfb-page-action-btn {
+  width: 100%;
+  justify-content: flex-start !important;
+  padding: 8px 12px !important;
+  border: 1.5px solid var(--border-color) !important;
+  border-radius: 8px !important;
+  font-size: 0.74rem !important;
+  transition: all 0.15s ease;
+}
+.pdfb-page-action-btn:hover:not(:disabled) {
+  border-color: var(--wise-green) !important;
+  background: var(--wise-green-alpha) !important;
+  color: var(--wise-dark-green) !important;
+}
+[data-theme="dark"] .pdfb-page-action-btn:hover:not(:disabled) {
+  color: var(--wise-green) !important;
+}
+
+/* Align to Reference */
+.pdfb-align-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1.5px dashed var(--border-color);
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+.pdfb-align-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pdfb-align-ref-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--wise-green-alpha);
+  border: 1.5px solid rgba(159, 232, 112, 0.3);
+  border-radius: 8px;
+}
+.pdfb-align-ref-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.pdfb-align-ref-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--wise-dark-green);
+  font-family: var(--font-mono);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-theme="dark"] .pdfb-align-ref-name {
+  color: var(--wise-green);
+}
+.pdfb-align-ref-clear {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.pdfb-align-ref-clear:hover {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+}
+.pdfb-align-pick-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+.pdfb-align-pick-list {
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 4px;
+}
+.pdfb-align-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pdfb-align-pick-item:hover {
+  background: var(--bg-secondary);
+}
+.pdfb-align-pick-item.checked {
+  background: var(--wise-green-alpha);
+}
+.pdfb-align-pick-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--wise-green);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pdfb-align-pick-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+.pdfb-normalize-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.pdfb-normalize-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  padding: 6px 10px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  transition: border-color 0.2s;
+}
+.pdfb-normalize-input-group:focus-within {
+  border-color: var(--wise-green);
+}
+.pdfb-normalize-input-group .pdfb-prop-input {
+  border: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+  min-width: 0;
+}
+
 /* ---------- Context Menu ---------- */
 .pdfb-context-menu {
   position: fixed;

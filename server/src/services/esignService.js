@@ -11,7 +11,26 @@ class EsignService {
    */
   async createRequest(customerIdentifier, aadhaar, applicationData = {}) {
     const FormData = require('form-data');
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
     
+    // Re-fetch fresh application data from DB to include all corrections
+    // (critical for resubmission flows where user updated rejected fields)
+    if (applicationData.id) {
+      try {
+        const freshApp = await prisma.kycApplication.findUnique({
+          where: { id: applicationData.id },
+          include: { user: true },
+        });
+        if (freshApp) {
+          Object.assign(applicationData, freshApp);
+          console.log(`[EsignService] Refreshed application data from DB for ID: ${applicationData.id}`);
+        }
+      } catch (dbErr) {
+        console.warn(`[EsignService] Could not refresh from DB, using passed data:`, dbErr.message);
+      }
+    }
+
     // 1. Generate the PDF locally on the server
     console.log(`[EsignService] Generating PDF for ${customerIdentifier}...`);
     const pdfBase64 = await generateKycPdf(applicationData);
@@ -56,10 +75,12 @@ class EsignService {
     
     try {
       // Pass the form and custom headers to the digioClient.post wrapper
+      // Use 120s timeout for large PDF uploads (55+ pages with annexures)
       const response = await digioClient.post(endpoint, form, {
         headers: {
           ...form.getHeaders()
-        }
+        },
+        timeout: 120000
       });
       console.log(`[EsignService] Digio Request Created: ${response.id}`);
       return { ...response, pdfBase64 };

@@ -52,7 +52,9 @@ function getVariableValue(variableName, appData) {
     
     // Segments
     case 'isSegmentCash': { const s = safeJsonParse(appData.segments) || {}; return s.equity !== false; }
+    case 'isSegmentEquity': { const s = safeJsonParse(appData.segments) || {}; return s.equity !== false; }
     case 'isSegmentFnO': { const s = safeJsonParse(appData.segments) || {}; return !!s.derivatives; }
+    case 'isSegmentDerivatives': { const s = safeJsonParse(appData.segments) || {}; return !!s.derivatives; }
     case 'isSegmentCurrency': { const s = safeJsonParse(appData.segments) || {}; return !!s.currency || !!s.derivatives; }
     case 'isSegmentDebt': { const s = safeJsonParse(appData.segments) || {}; return !!s.debt; }
     case 'isSegmentCommodity': { const s = safeJsonParse(appData.segments) || {}; return !!s.commodity; }
@@ -86,7 +88,11 @@ function getVariableValue(variableName, appData) {
     case 'isPoiVoterId': return appData.identityMethod === 'voter' || !!iDetails.voterId;
     case 'isPoiPan': return appData.identityMethod === 'pan' || !!iDetails.pan;
     case 'date': return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
-    case 'place': return safeJsonParse(appData.geoDetails)?.address?.split(',')[0] || aDetails.city || '';
+    case 'place': {
+      const selfie = safeJsonParse(appData.selfieDetails) || {};
+      const geoAddress = selfie.geo?.address || safeJsonParse(appData.geoDetails)?.address || '';
+      return geoAddress.split(',')[0] || aDetails.city || '';
+    }
     case 'fullName': return pDetails.fullName;
     case 'fatherName': return pDetails.fatherName;
     case 'motherName': return pDetails.motherName;
@@ -286,14 +292,18 @@ function getVariableValue(variableName, appData) {
     case 'geo.latitude': { 
       const selfie = safeJsonParse(appData.selfieDetails) || {};
       const esign = safeJsonParse(appData.esignDetails) || {};
-      return selfie.lat || esign.lat || ''; 
+      return selfie.geo?.latitude || selfie.latitude || selfie.lat || esign.geo?.latitude || esign.latitude || esign.lat || ''; 
     }
     case 'geo.longitude': { 
       const selfie = safeJsonParse(appData.selfieDetails) || {};
       const esign = safeJsonParse(appData.esignDetails) || {};
-      return selfie.lng || esign.lng || ''; 
+      return selfie.geo?.longitude || selfie.longitude || selfie.lng || esign.geo?.longitude || esign.longitude || esign.lng || ''; 
     }
-    case 'geo.address': { const g = safeJsonParse(appData.geoDetails) || {}; return g.address; }
+    case 'geo.address': { 
+      const selfie = safeJsonParse(appData.selfieDetails) || {};
+      const g = safeJsonParse(appData.geoDetails) || {}; 
+      return selfie.geo?.address || g.address || ''; 
+    }
     case 'updatedAt': return appData.updatedAt ? new Date(appData.updatedAt).toLocaleString() : '';
     case 'ipAddress': return appData.ipAddress;
     case 'deviceType': return appData.deviceType;
