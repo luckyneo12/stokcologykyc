@@ -665,19 +665,18 @@ export default function PdfBuilder() {
   // ─── Normalize Font Size for All Fields (user-specified size) ─────
   const [normalizeFontSize, setNormalizeFontSize] = useState(10);
   const handleNormalizeStyle = useCallback((fontSize) => {
-    const pageFields = fieldsRef.current.filter(f => f.page === pageNum);
-    if (pageFields.length === 0) return;
+    if (fieldsRef.current.length === 0) return;
     const size = parseFloat(fontSize);
     if (!size || size < 1) return;
     pushUndo(fieldsRef.current);
 
-    // Apply the user-specified font size to all variables on this page
+    // Apply the user-specified font size to all text variables across all pages
     setFields(prev => prev.map(f => {
-      if (f.page !== pageNum) return f;
+      if (f.type !== 'text') return f;
       return { ...f, fontSize: size };
     }));
     triggerAutoSave();
-  }, [pageNum, pushUndo, triggerAutoSave]);
+  }, [pushUndo, triggerAutoSave]);
 
   // ─── Custom Variable ──────────────────────────────────────────────
   const handleAddCustomVar = () => {
@@ -1235,11 +1234,11 @@ export default function PdfBuilder() {
               <button
                 className="pdfb-tbtn primary"
                 onClick={() => handleNormalizeStyle(normalizeFontSize)}
-                disabled={fields.filter(f => f.page === pageNum).length === 0}
-                title="Apply this font size to all variables on this page"
+                disabled={fields.length === 0}
+                title="Apply this font size to all text variables across all pages"
                 style={{ padding: '6px 12px', fontSize: '0.7rem', borderRadius: 6 }}
               >
-                Apply All
+                Apply to All Pages
               </button>
             </div>
           </div>
