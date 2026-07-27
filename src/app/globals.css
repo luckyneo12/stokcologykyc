@@ -112,8 +112,15 @@ body {
   color: transparent !important;
   text-shadow: 0 10px 30px rgba(159, 232, 112, 0.15);
 }
+[data-theme="dark"] .text-section {
+  background: linear-gradient(135deg, #9fe870 0%, #cdffad 60%, #ffffff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  text-shadow: 0 10px 30px rgba(159, 232, 112, 0.25);
+}
 .text-title { font-size: 1.62rem; font-weight: 700; letter-spacing: -0.5px; line-height: 1.23; }
-.text-body { font-size: 1.2rem !important; font-weight: 500 !important; line-height: 1.5; color: #555 !important; letter-spacing: -0.2px; }
+.text-body { font-size: 1.2rem !important; font-weight: 500 !important; line-height: 1.5; color: var(--text-secondary) !important; letter-spacing: -0.2px; }
 .text-body-bold { font-size: 1.15rem; font-weight: 700; color: var(--text-primary); line-height: 1.5; letter-spacing: -0.2px; }
 .text-caption { font-size: 0.95rem; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
 
