@@ -14,7 +14,7 @@ const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'];
 
 const StatCard = ({ label, value, trend, trendValue, icon: Icon, color, onClick }) => (
   <div className="premium-metric-card" style={{
-    background: "var(--bg-primary)",
+    background: "var(--bg-card)",
     border: "1px solid var(--border-color)",
     borderRadius: 24,
     padding: "24px 28px",
@@ -59,7 +59,7 @@ const StatCard = ({ label, value, trend, trendValue, icon: Icon, color, onClick 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", padding: "12px 16px", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "12px 16px", borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>
         <p style={{ margin: "0 0 8px", fontSize: "0.85rem", fontWeight: 700, color: "var(--text-muted)" }}>{label}</p>
         {payload.map((entry, index) => (
           <div key={index} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "1rem", fontWeight: 800, color: entry.color }}>
@@ -273,7 +273,7 @@ export default function DashboardOverview({ onNavigate }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr", gap: 24, marginBottom: 24 }}>
         {/* Weekly Trend Area Chart */}
-        <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30 }}>
             <div>
               <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>Submission Volume Trend</div>
@@ -314,7 +314,7 @@ export default function DashboardOverview({ onNavigate }) {
         </div>
 
         {/* Status Distribution Pie Chart */}
-        <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column" }}>
           <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px", marginBottom: 4 }}>Status Breakdown</div>
           <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600, marginBottom: 20 }}>Current pipeline distribution</div>
           
@@ -361,7 +361,7 @@ export default function DashboardOverview({ onNavigate }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 24, marginBottom: 32 }}>
         {/* Drop-off Funnel Chart */}
-        <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30 }}>
             <div>
               <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>User Drop-off Funnel</div>
@@ -383,7 +383,7 @@ export default function DashboardOverview({ onNavigate }) {
         </div>
 
         {/* Live Activity Feed */}
-        <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
           <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-secondary)" }}>
             <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.5px" }}>Live Activity Feed</div>
             <Activity size={18} color="#10b981" />
@@ -392,7 +392,7 @@ export default function DashboardOverview({ onNavigate }) {
             <div style={{ position: "absolute", left: 35, top: 24, bottom: 24, width: 2, background: "var(--border-color)", borderRadius: 2 }} />
             {(liveStats?.liveActivity || []).map((a, i) => (
               <div key={i} style={{ position: "relative", paddingLeft: 30, marginBottom: 24, animation: `slideIn 0.3s ease forwards ${i * 0.1}s`, opacity: 0 }}>
-                <div style={{ position: "absolute", left: -1, top: 4, width: 14, height: 14, borderRadius: "50%", background: "var(--bg-primary)", border: `3px solid ${a.color}`, zIndex: 2, boxShadow: `0 0 10px ${a.color}40` }} />
+                <div style={{ position: "absolute", left: -1, top: 4, width: 14, height: 14, borderRadius: "50%", background: "var(--bg-card)", border: `3px solid ${a.color}`, zIndex: 2, boxShadow: `0 0 10px ${a.color}40` }} />
                 <div style={{ background: "var(--bg-secondary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 2 }}>{a.action}</div>
@@ -410,7 +410,7 @@ export default function DashboardOverview({ onNavigate }) {
       </div>
 
       {/* Recent KYC Requests Table */}
-      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
         <div style={{ padding: "24px 32px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
           <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>Recent Applications</div>
           <button onClick={() => onNavigate("kyc")} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", fontWeight: 800, color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", padding: "8px 16px", borderRadius: 999, cursor: "pointer", transition: "0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
@@ -420,7 +420,7 @@ export default function DashboardOverview({ onNavigate }) {
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", background: "var(--bg-primary)" }}>
+              <tr style={{ textAlign: "left", background: "var(--bg-card)" }}>
                 {["ID", "Applicant", "Status", "Action"].map(h => <th key={h} style={{ padding: "16px 32px", color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid var(--border-color)", fontWeight: 800 }}>{h}</th>)}
               </tr>
             </thead>
@@ -448,7 +448,7 @@ export default function DashboardOverview({ onNavigate }) {
                     </td>
 
                     <td style={{ padding: "18px 32px" }}>
-                      <button onClick={() => onNavigate("kyc")} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
+                      <button onClick={() => onNavigate("kyc")} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-card)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
                     </td>
                   </tr>
                   );
@@ -463,7 +463,7 @@ export default function DashboardOverview({ onNavigate }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 24, marginBottom: 32 }}>
         {/* Rejection Reasons Pie Chart */}
-        <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column" }}>
           <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px", marginBottom: 4 }}>Rejection Reasons</div>
           <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600, marginBottom: 20 }}>Top reasons for application denial</div>
           
@@ -504,7 +504,7 @@ export default function DashboardOverview({ onNavigate }) {
         </div>
 
         {/* Device & Platform Usage */}
-        <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", display: "flex", flexDirection: "column" }}>
           <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px", marginBottom: 4 }}>Device & Platform Usage</div>
           <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600, marginBottom: 20 }}>How users complete KYC</div>
           
