@@ -424,7 +424,7 @@ export default function NomineeStep() {
             addToast("Proof uploaded successfully", "success");
           } catch (err) {
             console.error("Upload error:", err);
-            addToast("Failed to upload document", "error");
+            addToast(err.message || "Failed to upload document", "error");
           }
         } else {
           // For images, open cropper modal
@@ -469,7 +469,7 @@ export default function NomineeStep() {
             addToast("Guardian proof uploaded successfully", "success");
           } catch (err) {
             console.error("Upload error:", err);
-            addToast("Failed to upload document", "error");
+            addToast(err.message || "Failed to upload document", "error");
           }
         } else {
           // For images, open cropper modal
@@ -517,8 +517,7 @@ export default function NomineeStep() {
       setCropModalData(null);
       addToast(`${isGuardian ? "Guardian " : ""}Proof uploaded successfully`, "success");
     } catch (err) {
-      console.error("Upload error:", err);
-      addToast("Failed to upload document", "error");
+      addToast(err.message || "Failed to upload document", "error");
       setCropModalData(null);
     }
   };
