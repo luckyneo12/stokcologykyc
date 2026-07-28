@@ -570,10 +570,13 @@ const uploadDocument = (req, res) => {
   if (!req.file)
     return res.status(400).json({ success: false, error: "No file uploaded" });
 
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+  const baseUrl = `${protocol}://${req.headers.host}`;
+
   const finalPath =
     req.file.path && req.file.path.startsWith("http")
       ? req.file.path
-      : `/uploads/${req.file.filename}`;
+      : `${baseUrl}/uploads/${req.file.filename}`;
 
   res.json({
     success: true,
