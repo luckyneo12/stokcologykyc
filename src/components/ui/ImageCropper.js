@@ -102,7 +102,7 @@ export default function ImageCropper({ filePreview, setFilePreview, onCropApply,
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.rotate((angle * Math.PI) / 180);
       ctx.drawImage(img, -img.width / 2, -img.height / 2);
-      setFilePreview(canvas.toDataURL("image/png"));
+      setFilePreview(canvas.toDataURL("image/jpeg", 0.7));
       setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
     };
     img.src = filePreview;
@@ -120,7 +120,7 @@ export default function ImageCropper({ filePreview, setFilePreview, onCropApply,
       const srcX = img.width * (cropRect.left / 100);
       const srcY = img.height * (cropRect.top / 100);
       ctx.drawImage(img, srcX, srcY, cropW, cropH, 0, 0, cropW, cropH);
-      onCropApply(canvas.toDataURL("image/png"));
+      onCropApply(canvas.toDataURL("image/jpeg", 0.7));
     };
     img.src = filePreview;
   };

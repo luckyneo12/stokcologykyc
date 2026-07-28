@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, usePathname } from "next/navigation";
 import { useKYC } from "@/context/KYCContext";
 import PhoneStep from "./steps/PhoneStep";
@@ -243,20 +244,31 @@ export default function KYCJourney() {
       {/* RIGHT SIDE: Main Journey Content */}
       <div className="portal-content">
         <div className="w-full" style={{ position: "relative", zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {currentStep === 1 && <PhoneStep />}
-          {currentStep === 2 && <EmailStep />}
-          {currentStep === 3 && <PricingStep />}
-          {currentStep === 4 && <PanStep />}
-          {currentStep === 5 && <DigilockerStep />}
-          {currentStep === 6 && <DetailsStep />}
-          {currentStep === 7 && <NomineeChoiceStep />}
-          {currentStep === 8 && <NomineeStep />}
-          {currentStep === 9 && <NomineeAllocationStep />}
-          {currentStep === 10 && <BankVerificationStep />}
-          {currentStep === 11 && <DocumentUploadStep />}
-          {currentStep === 12 && <EsignPreviewStep />}
-          {currentStep === 13 && <AadhaarEsignStep />}
-          {currentStep === 14 && <FinalCompletionStep />}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentStep}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              style={{ width: "100%", display: "flex", justifyContent: "center" }}
+            >
+              {currentStep === 1 && <PhoneStep />}
+              {currentStep === 2 && <EmailStep />}
+              {currentStep === 3 && <PricingStep />}
+              {currentStep === 4 && <PanStep />}
+              {currentStep === 5 && <DigilockerStep />}
+              {currentStep === 6 && <DetailsStep />}
+              {currentStep === 7 && <NomineeChoiceStep />}
+              {currentStep === 8 && <NomineeStep />}
+              {currentStep === 9 && <NomineeAllocationStep />}
+              {currentStep === 10 && <BankVerificationStep />}
+              {currentStep === 11 && <DocumentUploadStep />}
+              {currentStep === 12 && <EsignPreviewStep />}
+              {currentStep === 13 && <AadhaarEsignStep />}
+              {currentStep === 14 && <FinalCompletionStep />}
+            </motion.div>
+          </AnimatePresence>
         </div>
         
         {/* Abstract shapes moved to the right side background for the content area */}

@@ -256,13 +256,13 @@ export default function BankVerificationStep() {
         const accountHolder = result.data.beneficiary_name_with_bank || form.accountHolderName;
 
         if (result.nameMismatch) {
-          addToast("Name mismatch, penny drop not verified. Proceeding to upload bank proof.", "warning");
+          addToast("Name not matched penny drop not verified. Proceeding to upload bank proof.", "warning");
           // Proceed, but keep verified: false so they have to upload proof later
           update("accountHolderName", accountHolder);
           markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
           nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: false } });
         } else {
-          addToast("Bank details verified successfully", "success");
+          addToast("Name matched. Penny drop verified.", "success");
           update("accountHolderName", accountHolder);
           // Record verification fingerprint so this step auto-skips on re-navigation
           markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);

@@ -32,8 +32,9 @@ export default function FinancialProofStep() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) { 
-      addToast("File size too large (max 5MB)", "error"); 
+    if (file.size > 2 * 1024 * 1024) { 
+      addToast("Photo should not be more than 2 MB", "error"); 
+      e.target.value = null;
       return; 
     }
     

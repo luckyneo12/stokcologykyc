@@ -87,6 +87,8 @@ extracted_all.txt
 *.pdf
 !official_form.pdf
 !server/official_form.pdf
+!public/*.pdf
+!schedule_of_charges.pdf
 *test*.pdf
 *test*.js
 *test*.html

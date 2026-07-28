@@ -250,7 +250,7 @@ class BackofficeService {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      timeout: 20000,
+      timeout: 60000,
     });
 
     const token = response.data?.access_token;
@@ -281,7 +281,7 @@ class BackofficeService {
     const url = `${BACKOFFICE_BASE_URL}/GetOrionEKYCDetail/Get?Code=${encodeURIComponent(clientCode)}&ClientType=${encodeURIComponent(clientType)}`;
     const response = await axios.get(url, {
       headers: await this.requestHeaders(),
-      timeout: 20000,
+      timeout: 60000,
     });
     return response.data;
   }
@@ -290,7 +290,7 @@ class BackofficeService {
     const url = `${BACKOFFICE_BASE_URL}/${BACKOFFICE_MODIFY_PATH}`;
     const response = await axios.post(url, payload, {
       headers: await this.requestHeaders(),
-      timeout: 20000,
+      timeout: 60000,
     });
     return response.data;
   }
@@ -338,7 +338,7 @@ class BackofficeService {
       ClientType: existingKyc.ClientType || "I",
       ClientStatus: existingKyc.ClientStatus || "07",
       ClientName: buildString(personalDetails.fullName || existingKyc.ClientName) || null,
-      Dob: formatDate(personalDetails.dob || existingKyc.Dob || existingKyc.DOB) || null,
+      Dob: formatDate(personalDetails.dob || identityDetails.dob || identityDetails.dateOfBirth || identityDetails.ocrData?.pan?.dob || nsdlResponse.dob || nsdlResponse.dateOfBirth || existingKyc.Dob || existingKyc.DOB) || null,
       FatherOrSpouse: existingKyc.FatherOrSpouse || "F",
       FatherPrefix: existingKyc.FatherPrefix || "Mr",
       FatherName: buildString(personalDetails.fatherName || existingKyc.FatherName) || null,

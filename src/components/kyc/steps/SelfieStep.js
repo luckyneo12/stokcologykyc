@@ -6,7 +6,7 @@ import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "
 import { QRCode } from "react-qrcode-logo";
 
 export default function SelfieStep() {
-  const { nextStep, prevStep, addToast, setApplicationId, applicationId } = useKYC();
+  const { nextStep, prevStep, addToast, setApplicationId, applicationId, updateState } = useKYC();
   const [phase, setPhase] = useState("intro"); // intro | processing | done
   const [matchScore, setMatchScore] = useState(null);
   const [showQR, setShowQR] = useState(false);
@@ -26,6 +26,13 @@ export default function SelfieStep() {
       const result = await fetchDigioRequestResponse(requestId, "SELFIE");
       if (result?.success) {
         setMatchScore(result.score || result.faceMatchScore || 0);
+        updateState({ 
+          selfieDetails: { 
+            preview: result.selfiePath, 
+            matchScore: result.score 
+          },
+          selfie: { preview: result.selfiePath }
+        });
       }
       addToast("Selfie verification completed", "success");
       setPhase("done");

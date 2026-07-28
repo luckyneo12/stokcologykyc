@@ -112,6 +112,8 @@ export default function DocumentUploadStep() {
   // Bank Proof State
   const needsBankProof = bankDetails?.method === "PENNY_DROP" && bankDetails?.verified === false;
   const [bankProofPreview, setBankProofPreview] = useState(getFullUrl(bankDetails?.proofPreview || bankDetails?.proof));
+  const [bankProofType, setBankProofType] = useState(bankDetails?.proofType || "");
+  const bankOptions = ["Bank Statement", "Cancelled Cheque", "Passbook"];
   const bankProofInputRef = useRef(null);
 
   // Signature State
@@ -287,7 +289,11 @@ export default function DocumentUploadStep() {
       addToast("Please upload an image or PDF for Financial Proof", "error");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) { addToast("File size too large (max 5MB)", "error"); return; }
+    if (file.size > 2 * 1024 * 1024) { 
+      addToast("Photo should not be more than 2 MB", "error"); 
+      e.target.value = null;
+      return; 
+    }
     
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -306,13 +312,17 @@ export default function DocumentUploadStep() {
       addToast("Please upload an image or PDF for Bank Proof", "error");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) { addToast("File size too large (max 5MB)", "error"); return; }
+    if (file.size > 2 * 1024 * 1024) { 
+      addToast("Photo should not be more than 2 MB", "error"); 
+      e.target.value = null;
+      return; 
+    }
     
     const reader = new FileReader();
     reader.onload = async (event) => {
       setBankProofPreview(event.target.result);
       addToast("Bank proof attached", "success");
-      const updatedBankDetails = { ...(bankDetails || {}), proofPreview: event.target.result, proofType: "Bank Proof" };
+      const updatedBankDetails = { ...(bankDetails || {}), proofPreview: event.target.result, proofType: bankProofType || "Bank Proof" };
       updateState({ bankDetails: updatedBankDetails });
       await syncProgress({ bankDetails: updatedBankDetails }, false, "documentUpload");
     };
@@ -326,7 +336,11 @@ export default function DocumentUploadStep() {
       addToast("Please upload a JPEG or PNG for Signature", "error");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) { addToast("File size too large (max 5MB)", "error"); return; }
+    if (file.size > 2 * 1024 * 1024) { 
+      addToast("Photo should not be more than 2 MB", "error"); 
+      e.target.value = null;
+      return; 
+    }
     
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -343,7 +357,11 @@ export default function DocumentUploadStep() {
       addToast("Please upload an image (JPEG or PNG) for PAN", "error");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) { addToast("File size too large (max 5MB)", "error"); return; }
+    if (file.size > 2 * 1024 * 1024) { 
+      addToast("Photo should not be more than 2 MB", "error"); 
+      e.target.value = null;
+      return; 
+    }
     
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -575,6 +593,21 @@ export default function DocumentUploadStep() {
             </p>
             
             <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <CustomSelect 
+                  value={bankProofType}
+                  onChange={async (val) => {
+                    setBankProofType(val);
+                    if (bankProofPreview) {
+                      const updatedBankDetails = { ...(bankDetails || {}), proofType: val };
+                      updateState({ bankDetails: updatedBankDetails });
+                      await syncProgress({ bankDetails: updatedBankDetails }, false, "documentUpload");
+                    }
+                  }}
+                  options={bankOptions}
+                  placeholder="-- Select Bank Proof Type --"
+                />
+              </div>
               <input type="file" ref={bankProofInputRef} onChange={handleBankProofChange} style={{ display: "none" }} accept="image/*,application/pdf" />
               <button onClick={() => bankProofInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1px dashed var(--wise-danger)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
                 <UploadIcon /> {bankProofPreview ? "Bank Proof Attached (Replace)" : "Upload Bank Proof"}

@@ -128,7 +128,7 @@ export default function PricingStep() {
                 <div className="flex items-center gap-sm" style={{ marginBottom: 6 }}>
                   <span style={{ fontWeight: 800, fontSize: "1.1rem" }}>Derivatives</span>
                 </div>
-                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.4 }}>F&O, Currency, and Commodity</div>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.4 }}>F&O</div>
               </div>
               <div style={{ 
                 width: 24, height: 24, borderRadius: "50%", border: "2px solid var(--border-color)",
@@ -143,18 +143,13 @@ export default function PricingStep() {
         </div>
 
         <div style={{ marginBottom: 32 }}>
-          <label className="text-body-bold" style={{ display: "block", marginBottom: 16, fontSize: "0.95rem" }}>Required Documents</label>
-          
           <div 
             className={`action-row ${brokerageAccepted ? 'accepted' : ''}`}
             onClick={() => { setShowBrokerageModal(true); setBrokerageOpened(true); }}
             style={{ cursor: "pointer" }}
           >
             <div style={{ flex: 1, textAlign: "left" }}>
-              <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: 4 }}>Brokerage Plan</div>
-              <div style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                View Document <ArrowRightIcon size={14} />
-              </div>
+              <div style={{ fontWeight: 800, fontSize: "1rem" }}>Brokerage Plan</div>
             </div>
             <div 
               onClick={(e) => { e.stopPropagation(); setBrokerageAccepted(!brokerageAccepted); }}
@@ -175,10 +170,7 @@ export default function PricingStep() {
             style={{ cursor: "pointer" }}
           >
             <div style={{ flex: 1, textAlign: "left" }}>
-              <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: 4 }}>DP Tariff Sheet</div>
-              <div style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                View Document <ArrowRightIcon size={14} />
-              </div>
+              <div style={{ fontWeight: 800, fontSize: "1rem" }}>DP Tariff Sheet</div>
             </div>
             <div 
               onClick={(e) => { e.stopPropagation(); setTariffAccepted(!tariffAccepted); }}

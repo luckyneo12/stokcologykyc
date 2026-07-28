@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useKYC } from "@/context/KYCContext";
-import { getPincodeData } from "@/utils/kycApi";
+import { getPincodeData, uploadDocument } from "@/utils/kycApi";
 import { maskAadhaarImage } from "@/utils/digio";
 import DateInput from "../DateInput";
 import ImageCropper from "@/components/ui/ImageCropper";
@@ -131,6 +131,19 @@ export default function NomineeStep() {
     }
     return age;
   };
+
+  const base64ToFile = (base64, filename) => {
+    const arr = base64.split(',');
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while(n--){
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, {type:mime});
+  };
+
 
   const [nominees, setNominees] = useState(() => {
     const existing = nomineeDetails?.nominees || [];
@@ -380,6 +393,11 @@ export default function NomineeStep() {
   const handleFileChange = async (idx, e) => {
     const file = e.target.files[0];
     if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        addToast("Photo should not be more than 2 MB", "error");
+        e.target.value = null;
+        return;
+      }
       const isAadhaar = (nominees[idx].proofType || "PAN CARD") === "AADHAAR CARD";
       
       const reader = new FileReader();
@@ -401,10 +419,18 @@ export default function NomineeStep() {
               return;
             }
           }
-          const updated = [...nominees];
-          updated[idx] = { ...updated[idx], proofPath: finalImage };
-          setNominees(updated);
-          if (!isAadhaar) addToast("Proof uploaded successfully", "success");
+          try {
+            addToast("Uploading document... Please wait", "info");
+            const fileToUpload = isAadhaar ? base64ToFile(finalImage, file.name) : file;
+            const uploadResult = await uploadDocument(fileToUpload);
+            const updated = [...nominees];
+            updated[idx] = { ...updated[idx], proofPath: uploadResult.path };
+            setNominees(updated);
+            addToast("Proof uploaded successfully", "success");
+          } catch (err) {
+            console.error("Upload error:", err);
+            addToast("Failed to upload document", "error");
+          }
         } else {
           // For images, open cropper modal
           setCropModalData({ idx, isGuardian: false, imageSrc: reader.result, isAadhaar, fileName: file.name });
@@ -418,6 +444,11 @@ export default function NomineeStep() {
   const handleGuardianFileChange = async (idx, e) => {
     const file = e.target.files[0];
     if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        addToast("Photo should not be more than 2 MB", "error");
+        e.target.value = null;
+        return;
+      }
       const isAadhaar = (nominees[idx].guardianProofType || "PAN CARD") === "AADHAAR CARD";
 
       const reader = new FileReader();
@@ -438,10 +469,18 @@ export default function NomineeStep() {
               return;
             }
           }
-          const updated = [...nominees];
-          updated[idx] = { ...updated[idx], guardianProofPath: finalImage };
-          setNominees(updated);
-          if (!isAadhaar) addToast("Guardian proof uploaded", "success");
+          try {
+            addToast("Uploading guardian document... Please wait", "info");
+            const fileToUpload = isAadhaar ? base64ToFile(finalImage, file.name) : file;
+            const uploadResult = await uploadDocument(fileToUpload);
+            const updated = [...nominees];
+            updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path };
+            setNominees(updated);
+            addToast("Guardian proof uploaded successfully", "success");
+          } catch (err) {
+            console.error("Upload error:", err);
+            addToast("Failed to upload document", "error");
+          }
         } else {
           // For images, open cropper modal
           setCropModalData({ idx, isGuardian: true, imageSrc: reader.result, isAadhaar, fileName: file.name });
@@ -472,18 +511,26 @@ export default function NomineeStep() {
         setCropModalData(null);
         return;
       }
-    } else {
-      addToast(`${isGuardian ? "Guardian " : ""}Proof uploaded successfully`, "success");
     }
 
-    const updated = [...nominees];
-    if (isGuardian) {
-      updated[idx] = { ...updated[idx], guardianProofPath: finalImage };
-    } else {
-      updated[idx] = { ...updated[idx], proofPath: finalImage };
+    try {
+      addToast("Uploading document... Please wait", "info");
+      const fileToUpload = base64ToFile(finalImage, fileName || "document.png");
+      const uploadResult = await uploadDocument(fileToUpload);
+      const updated = [...nominees];
+      if (isGuardian) {
+        updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path };
+      } else {
+        updated[idx] = { ...updated[idx], proofPath: uploadResult.path };
+      }
+      setNominees(updated);
+      setCropModalData(null);
+      addToast(`${isGuardian ? "Guardian " : ""}Proof uploaded successfully`, "success");
+    } catch (err) {
+      console.error("Upload error:", err);
+      addToast("Failed to upload document", "error");
+      setCropModalData(null);
     }
-    setNominees(updated);
-    setCropModalData(null);
   };
 
   const validate = () => {
@@ -632,7 +679,7 @@ export default function NomineeStep() {
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <div style={{ marginBottom: "16px" }}>
                   <div style={{ height: "24px", display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Name *</label>
+                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Name <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                   </div>
                   <input 
                     className="input-field" 
@@ -663,7 +710,7 @@ export default function NomineeStep() {
                 </div>
 
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Mobile *</label>
+                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Mobile <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                   <input 
                     className="input-field" 
                     placeholder="Enter nominee mobile number" 
@@ -678,7 +725,7 @@ export default function NomineeStep() {
                 </div>
 
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Relation {!nom.relation ? "*" : ""}</label>
+                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Relation {!nom.relation ? <span style={{ color: "var(--wise-danger)" }}>*</span> : ""}</label>
                   <CustomSelect 
                     value={nom.relation}
                     placeholder="Choose relation"
@@ -692,7 +739,7 @@ export default function NomineeStep() {
                 </div>
 
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Date of Birth *</label>
+                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Date of Birth <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                   <DateInput 
                     className="input-field" 
                     value={nom.dob || ""} 
@@ -707,7 +754,7 @@ export default function NomineeStep() {
                 <div style={{ marginBottom: "16px" }}>
                   <div style={{ height: "24px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                     <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, opacity: 0.85 }}>
-                      Nominee Address {!nom.sameAddress && <span>*</span>}
+                      Nominee Address {!nom.sameAddress && <span style={{ color: "var(--wise-danger)" }}>*</span>}
                     </label>
                     <div 
                       style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}
@@ -721,7 +768,14 @@ export default function NomineeStep() {
                             city: userAddress?.city || "", state: userAddress?.state || "", pincode: userAddress?.pincode || "", country: userAddress?.country || "India"
                           };
                           setNominees(updated);
-                        } else { updateNominee(idx, "sameAddress", false); }
+                        } else {
+                          const updated = [...nominees];
+                          updated[idx] = {
+                            ...updated[idx], sameAddress: false,
+                            address: "", city: "", state: "", pincode: "", country: ""
+                          };
+                          setNominees(updated);
+                        }
                       }}
                     >
                       <div style={{ 
@@ -797,7 +851,7 @@ export default function NomineeStep() {
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <div style={{ marginBottom: "16px" }}>
                   <div style={{ height: "24px", display: "flex", alignItems: "center", marginBottom: "8px" }}>
-                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Select Nominee Proof Type *</label>
+                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Select Nominee Proof Type <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                   </div>
                   <CustomSelect 
                     value={nom.proofType || "PAN CARD"}
@@ -807,7 +861,7 @@ export default function NomineeStep() {
                 </div>
 
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Enter {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Number *</label>
+                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Enter {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Number <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                   {(nom.proofType || "PAN CARD") === "PAN CARD" ? (
                     <input 
                       className="input-field" 
@@ -863,7 +917,7 @@ export default function NomineeStep() {
                       </label>
                       {nom.proofPath && (
                         <div style={{ marginTop: "12px", textAlign: "center", padding: "10px", borderRadius: "12px", background: "var(--wise-light-mint)", border: "1px solid var(--wise-green)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                          {nom.proofPath.includes("application/pdf") ? (
+                          {nom.proofPath.toLowerCase().endsWith(".pdf") || nom.proofPath.includes("application/pdf") ? (
                             <div style={{ width: "100%", maxWidth: "200px", height: "100px", background: "var(--bg-elevated)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
                               <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-secondary)" }}>PDF Document</span>
                             </div>
@@ -894,7 +948,7 @@ export default function NomineeStep() {
                 </div>
                 <div className="form-grid">
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Name *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Name <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
                       className="input-field" 
                       placeholder="Name" 
@@ -905,7 +959,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Relation *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Relation <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <CustomSelect 
                       value={nom.guardianRelation}
                       placeholder="--Select--"
@@ -916,7 +970,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian DOB *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian DOB <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <DateInput 
                       className="input-field" 
                       value={nom.guardianDob || ""} 
@@ -926,7 +980,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Mobile *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Mobile <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
                       className="input-field" 
                       placeholder="Mobile" 
@@ -941,7 +995,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Email *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Email <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
                       type="email"
                       className="input-field" 
@@ -959,7 +1013,7 @@ export default function NomineeStep() {
                   <div style={{ marginBottom: "16px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                       <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, opacity: 0.85 }}>
-                        Guardian Address {!nom.guardianSameAddress && <span>*</span>}
+                        Guardian Address {!nom.guardianSameAddress && <span style={{ color: "var(--wise-danger)" }}>*</span>}
                       </label>
                       <div 
                         style={{ display: "flex", alignItems: "center", cursor: "pointer", gap: "6px" }}
@@ -973,7 +1027,14 @@ export default function NomineeStep() {
                               guardianCity: userAddress?.city || "", guardianState: userAddress?.state || "", guardianPincode: userAddress?.pincode || "", guardianCountry: userAddress?.country || "India"
                             };
                             setNominees(updated);
-                          } else { updateNominee(idx, "guardianSameAddress", false); }
+                          } else {
+                            const updated = [...nominees];
+                            updated[idx] = {
+                              ...updated[idx], guardianSameAddress: false,
+                              guardianAddress: "", guardianCity: "", guardianState: "", guardianPincode: "", guardianCountry: ""
+                            };
+                            setNominees(updated);
+                          }
                         }}
                       >
                         <div style={{ 
@@ -998,7 +1059,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian City *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian City <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
                       className="input-field" 
                       placeholder="City" 
@@ -1010,7 +1071,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian State *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian State <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <CustomSelect 
                       value={nom.guardianState}
                       placeholder="--Select State--"
@@ -1022,7 +1083,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Pincode *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Pincode <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
                       className="input-field" 
                       placeholder="Pincode" 
@@ -1035,7 +1096,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Country *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Country <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
                       className="input-field" 
                       placeholder="Country" 
@@ -1047,7 +1108,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Select Guardian Proof Type *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Select Guardian Proof Type <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <CustomSelect 
                       value={nom.guardianProofType || "PAN CARD"}
                       options={["PAN CARD", "AADHAAR CARD"]}
@@ -1056,7 +1117,7 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Enter {(nom.guardianProofType || "PAN CARD") === "AADHAAR CARD" ? "Aadhaar" : "PAN"} Number *</label>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Enter {(nom.guardianProofType || "PAN CARD") === "AADHAAR CARD" ? "Aadhaar" : "PAN"} Number <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? (
                       <input 
                         className="input-field" 
@@ -1113,7 +1174,7 @@ export default function NomineeStep() {
                         </label>
                         {nom.guardianProofPath && (
                           <div style={{ marginTop: "12px", textAlign: "center", padding: "10px", borderRadius: "12px", background: "var(--wise-light-mint)", border: "1px solid var(--wise-green)", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                            {nom.guardianProofPath.includes("application/pdf") ? (
+                            {(nom.guardianProofPath.toLowerCase().endsWith(".pdf") || nom.guardianProofPath.includes("application/pdf")) ? (
                               <div style={{ width: "100%", maxWidth: "200px", height: "100px", background: "var(--bg-elevated)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                 <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-secondary)" }}>PDF Document</span>
                               </div>

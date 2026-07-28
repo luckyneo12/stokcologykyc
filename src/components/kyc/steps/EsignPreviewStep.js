@@ -45,7 +45,7 @@ export default function EsignPreviewStep() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            personalDetails, identityDetails, address, bankDetails, nomineeDetails, ocrData, selfieDetails, documents, panUpload, financialProof
+            personalDetails, identityDetails, address, bankDetails, nomineeDetails, ocrData, selfieDetails, documents, panUpload, financialProof, selfie, signature
           })
         });
         
