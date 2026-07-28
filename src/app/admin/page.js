@@ -11,6 +11,7 @@ import {
   AuditLogs
 } from "./components/sections/OtherSections";
 import PdfBuilder from "./components/sections/PdfBuilder";
+import ApiIntegration from "./components/sections/ApiIntegration";
 
 
 export default function AdminPage() {
@@ -75,6 +76,7 @@ export default function AdminPage() {
       case "estamps": return <EStamps searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
       case "audit": return <AuditLogs />;
       case "pdf-builder": return <PdfBuilder />;
+      case "api-integration": return <ApiIntegration />;
       default: return <DashboardOverview onNavigate={handleNavigate} />;
     }
   };

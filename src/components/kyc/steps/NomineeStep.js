@@ -393,11 +393,6 @@ export default function NomineeStep() {
   const handleFileChange = async (idx, e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        addToast("Photo should not be more than 2 MB", "error");
-        e.target.value = null;
-        return;
-      }
       const isAadhaar = (nominees[idx].proofType || "PAN CARD") === "AADHAAR CARD";
       
       const reader = new FileReader();
@@ -444,11 +439,6 @@ export default function NomineeStep() {
   const handleGuardianFileChange = async (idx, e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        addToast("Photo should not be more than 2 MB", "error");
-        e.target.value = null;
-        return;
-      }
       const isAadhaar = (nominees[idx].guardianProofType || "PAN CARD") === "AADHAAR CARD";
 
       const reader = new FileReader();

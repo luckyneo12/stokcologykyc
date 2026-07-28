@@ -8,7 +8,8 @@ import {
   Stamp, 
   FileCog,
   ChevronRight,
-  Menu
+  Menu,
+  Plug
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { id: "audit", label: "Audit Logs", icon: ListOrdered },
   { id: "estamps", label: "E-Stamps", icon: Stamp },
   { id: "pdf-builder", label: "PDF Builder", icon: FileCog },
+  { id: "api-integration", label: "API Integration", icon: Plug },
 ];
 
 export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }) {

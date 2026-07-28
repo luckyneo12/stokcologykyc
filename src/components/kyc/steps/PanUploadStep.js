@@ -135,11 +135,7 @@ export default function PanUploadStep() {
       addToast("Please upload an image (JPEG or PNG)", "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) { 
-      addToast("Photo should not be more than 2 MB", "error"); 
-      e.target.value = null;
-      return; 
-    }
+
     
     setIsAnalyzing(true);
     const reader = new FileReader();

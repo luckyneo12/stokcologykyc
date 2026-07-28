@@ -16,7 +16,8 @@ const {
   getCrmEmployees,
   assignApplication,
   updateUserEstamp,
-  updateEstampSequence
+  updateEstampSequence,
+  testBackofficeConnection
 } = require("../controllers/adminController");
 const { adminAuth } = require("../middlewares/auth");
 const estampRoutes = require("./estampRoutes");
@@ -42,6 +43,7 @@ router.get("/crm-employees", adminAuth, getCrmEmployees);
 router.post("/application/:id/assign", adminAuth, assignApplication);
 router.put("/users/:id/estamp", adminAuth, updateUserEstamp);
 router.put("/sequence/estamp", adminAuth, updateEstampSequence);
+router.post("/backoffice/test-connection", adminAuth, testBackofficeConnection);
 
 // Rejection email / modification request (reuse agent controller logic)
 const { requestModifications } = require("../controllers/agentController");

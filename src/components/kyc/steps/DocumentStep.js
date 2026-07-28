@@ -14,11 +14,7 @@ export default function DocumentStep() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { 
-      addToast("Photo should not be more than 2 MB", "error"); 
-      e.target.value = null;
-      return; 
-    }
+
     
     const reader = new FileReader();
     reader.onload = (event) => {

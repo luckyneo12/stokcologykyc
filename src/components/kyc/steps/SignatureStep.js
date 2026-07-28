@@ -130,11 +130,7 @@ export default function SignatureStep() {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) { 
-      addToast("Photo should not be more than 2 MB", "error"); 
-      e.target.value = null;
-      return; 
-    }
+
     
     setFileName(file.name);
     const reader = new FileReader();

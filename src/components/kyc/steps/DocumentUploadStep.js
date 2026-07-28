@@ -289,11 +289,7 @@ export default function DocumentUploadStep() {
       addToast("Please upload an image or PDF for Financial Proof", "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) { 
-      addToast("Photo should not be more than 2 MB", "error"); 
-      e.target.value = null;
-      return; 
-    }
+
     
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -312,11 +308,7 @@ export default function DocumentUploadStep() {
       addToast("Please upload an image or PDF for Bank Proof", "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) { 
-      addToast("Photo should not be more than 2 MB", "error"); 
-      e.target.value = null;
-      return; 
-    }
+
     
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -336,11 +328,7 @@ export default function DocumentUploadStep() {
       addToast("Please upload a JPEG or PNG for Signature", "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) { 
-      addToast("Photo should not be more than 2 MB", "error"); 
-      e.target.value = null;
-      return; 
-    }
+
     
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -357,11 +345,7 @@ export default function DocumentUploadStep() {
       addToast("Please upload an image (JPEG or PNG) for PAN", "error");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) { 
-      addToast("Photo should not be more than 2 MB", "error"); 
-      e.target.value = null;
-      return; 
-    }
+
     
     const reader = new FileReader();
     reader.onload = (event) => {

@@ -4,6 +4,7 @@ const digioClient = require("../services/digioClient");
 const crmService = require("../services/crmService");
 const backofficeService = require("../services/backofficeService");
 const { ensureDigilockerVerificationDocuments } = require("../routes/digioRoutes");
+const axios = require("axios");
 
 const reviewSchema = z.object({
   status: z.enum(["pending", "under_review", "verified", "rejected", "on_hold"]),
@@ -1392,6 +1393,38 @@ const uploadAdminDocument = async (req, res, next) => {
   }
 };
 
+const testBackofficeConnection = async (req, res, next) => {
+  try {
+    const { baseUrl, username, password } = req.body;
+    
+    if (!baseUrl || !username || !password) {
+      return res.status(400).json({ success: false, error: "Missing required credentials" });
+    }
+
+    const url = `${baseUrl.replace(/\/+$/, "")}/token`;
+    const body = new URLSearchParams({
+      UserName: username,
+      Password: password,
+      Grant_type: "password",
+    }).toString();
+
+    const response = await axios.post(url, body, {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      timeout: 20000,
+    });
+
+    if (response.data && response.data.access_token) {
+      res.json({ success: true, message: "Connection successful! Backoffice API is reachable." });
+    } else {
+      res.status(400).json({ success: false, error: "Connection failed. Please check your credentials." });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.response?.data?.error_description || error.message || "Connection failed" });
+  }
+};
+
 module.exports = {
   getApplications,
   getApplicationById,
@@ -1412,5 +1445,6 @@ module.exports = {
   updateUserEstamp,
   updateEstampSequence,
   updateApplicationDetails,
-  uploadAdminDocument
+  uploadAdminDocument,
+  testBackofficeConnection
 };
