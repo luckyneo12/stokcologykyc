@@ -250,7 +250,7 @@ class BackofficeService {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      timeout: 60000,
+      timeout: 20000,
     });
 
     const token = response.data?.access_token;
@@ -281,7 +281,7 @@ class BackofficeService {
     const url = `${BACKOFFICE_BASE_URL}/GetOrionEKYCDetail/Get?Code=${encodeURIComponent(clientCode)}&ClientType=${encodeURIComponent(clientType)}`;
     const response = await axios.get(url, {
       headers: await this.requestHeaders(),
-      timeout: 60000,
+      timeout: 20000,
     });
     return response.data;
   }
@@ -290,7 +290,7 @@ class BackofficeService {
     const url = `${BACKOFFICE_BASE_URL}/${BACKOFFICE_MODIFY_PATH}`;
     const response = await axios.post(url, payload, {
       headers: await this.requestHeaders(),
-      timeout: 60000,
+      timeout: 20000,
     });
     return response.data;
   }

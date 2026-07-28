@@ -548,7 +548,7 @@ export default function MakerCheckerDashboard() {
                                   e.preventDefault();
                                   setOpenMenuId(openMenuId === k.id ? null : k.id);
                                 }}
-                                style={{ padding: "4px 8px", borderRadius: 4, background: "transparent", border: "1px solid var(--border-color)", cursor: "pointer", fontWeight: "bold", fontSize: "1.1rem" }}
+                                style={{ padding: "4px 8px", borderRadius: 4, background: "transparent", border: "1px solid var(--border-color)", cursor: "pointer", fontWeight: "bold", fontSize: "1.1rem", color: "var(--text-primary)" }}
                               >
                                 ⋮
                               </button>
