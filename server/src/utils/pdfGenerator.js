@@ -481,6 +481,29 @@ async function generateKycPdf(applicationData) {
                 const base64Data = imgRelPath.split(',')[1];
                 imgBytes = Buffer.from(base64Data, 'base64');
                 isPng = imgRelPath.includes('image/png');
+              } else if (imgRelPath.startsWith('http://') || imgRelPath.startsWith('https://')) {
+                console.log(`[PDF Gen] Fetching image from URL: ${imgRelPath}`);
+                try {
+                  const https = require('https');
+                  const http = require('http');
+                  const client = imgRelPath.startsWith('https') ? https : http;
+                  imgBytes = await new Promise((resolve, reject) => {
+                    client.get(imgRelPath, (res) => {
+                      if (res.statusCode >= 200 && res.statusCode < 300) {
+                        const chunks = [];
+                        res.on('data', chunk => chunks.push(chunk));
+                        res.on('end', () => resolve(Buffer.concat(chunks)));
+                      } else {
+                        reject(new Error(`Status Code: ${res.statusCode}`));
+                      }
+                    }).on('error', reject);
+                  });
+                  const lowerPath = imgRelPath.toLowerCase();
+                  isPng = lowerPath.endsWith('.png') || imgRelPath.includes('image/png');
+                  isPdf = lowerPath.endsWith('.pdf') || imgRelPath.includes('application/pdf');
+                } catch (err) {
+                  console.error(`[PDF Gen] Error fetching image URL: ${imgRelPath}`, err.message);
+                }
               } else {
                 const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
                 const imgPath = path.join(__dirname, '../../', cleanPath);
