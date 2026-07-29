@@ -390,7 +390,6 @@ export default function BankVerificationStep() {
                 onChange={val => update("accountType", val)}
                 options={["Saving Account", "Current Account"]}
                 placeholder="--Select--"
-                disabled={!!bankDetails.accountType}
               />
             </div>
 

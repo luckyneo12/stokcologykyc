@@ -175,7 +175,12 @@ function getVariableValue(variableName, appData) {
     case 'accountNumber': return bDetails.accountNumber;
     case 'ifsc': return bDetails.ifsc;
     case 'micr': return bDetails.micr || '';
-    case 'accountType': return bDetails.accountType || 'Savings';
+    case 'accountType': {
+      const type = bDetails.accountType || 'Savings';
+      if (type === "10" || type === 10 || type === "Savings") return "Saving Account";
+      if (type === "11" || type === 11 || type === "Current") return "Current Account";
+      return type;
+    }
     
     // New variables
     case 'prefix': return pDetails.prefix || pDetails.title;
