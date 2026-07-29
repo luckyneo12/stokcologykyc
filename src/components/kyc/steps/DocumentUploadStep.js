@@ -43,13 +43,14 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
           cursor: disabled ? "not-allowed" : "pointer",
           borderColor: error ? "var(--wise-danger)" : isOpen ? "var(--wise-green)" : "var(--border-color)",
           display: "flex", justifyContent: "space-between", alignItems: "center",
-          opacity: disabled ? 0.6 : 1, padding: "0 16px"
+          opacity: disabled ? 0.6 : 1, padding: "0 16px", height: "56px", borderRadius: "12px",
+          background: "var(--input-bg)", transition: "all 0.2s"
         }}
       >
-        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.85rem", fontWeight: 700 }}>
+        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.95rem", fontWeight: 600 }}>
           {value || placeholder}
         </span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", opacity: 0.5 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", opacity: 0.7 }}>
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
       </div>
@@ -416,7 +417,7 @@ export default function DocumentUploadStep() {
   ];
 
   return (
-    <div className="container-sm" style={{ paddingTop: "4vh", paddingBottom: "6vh", maxWidth: "800px" }}>
+    <div className="container-sm" style={{ paddingTop: "4vh", paddingBottom: "6vh", maxWidth: "900px" }}>
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
         <h1 className="text-section" style={{ fontSize: "2.5rem", marginBottom: 12 }}>Document Upload</h1>
         <p className="text-body" style={{ color: "var(--text-secondary)", fontSize: "1rem" }}>
@@ -451,7 +452,7 @@ export default function DocumentUploadStep() {
               />
             ) : (
               <>
-                <button onClick={() => panInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+                <button onClick={() => panInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
                   <UploadIcon /> {panPreview ? "PAN Attached (Replace)" : "Upload PAN"}
                 </button>
                 {panPreview && (
@@ -489,7 +490,7 @@ export default function DocumentUploadStep() {
               />
             ) : (
               <>
-                <button onClick={() => sigInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+                <button onClick={() => sigInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
                   <UploadIcon /> {sigPreview ? "Signature Attached (Replace)" : "Upload Signature"}
                 </button>
                 {sigPreview && (
@@ -514,10 +515,10 @@ export default function DocumentUploadStep() {
               <>
                 {!showQR ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    <button className="btn btn-primary" onClick={startVerification} style={{ width: "100%", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem" }}>
+                    <button className="btn btn-primary" onClick={startVerification} style={{ width: "100%", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "800", fontSize: "1rem", boxShadow: "0 4px 12px rgba(159, 232, 112, 0.2)" }}>
                       Start Selfie Capture
                     </button>
-                    <button className="btn btn-secondary" onClick={() => setShowQR(true)} style={{ width: "100%", padding: "12px", borderRadius: "12px", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
+                    <button className="btn btn-secondary" onClick={() => setShowQR(true)} style={{ width: "100%", height: "48px", padding: "0 16px", borderRadius: "12px", fontSize: "0.95rem", fontWeight: "600", color: "var(--text-secondary)" }}>
                       Show QR
                     </button>
                   </div>
@@ -631,7 +632,7 @@ export default function DocumentUploadStep() {
             </div>
 
             <input type="file" ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
-            <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+            <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
               <UploadIcon /> {finPreview ? "Proof Attached (Replace)" : "Upload Document"}
             </button>
             {finPreview && (
@@ -648,7 +649,7 @@ export default function DocumentUploadStep() {
           className="btn btn-primary" 
           onClick={handleSubmit} 
           disabled={submitting || isCroppingPan || isCroppingSig}
-          style={{ width: "100%", padding: "16px", borderRadius: "16px", fontWeight: 800, fontSize: "1.1rem", opacity: (submitting || isCroppingPan || isCroppingSig) ? 0.7 : 1 }}
+          style={{ width: "100%", height: "60px", padding: "0 16px", borderRadius: "16px", fontWeight: 800, fontSize: "1.1rem", boxShadow: "0 6px 20px rgba(159, 232, 112, 0.25)", opacity: (submitting || isCroppingPan || isCroppingSig) ? 0.7 : 1 }}
         >
           {submitting ? "Saving..." : "Continue"}
         </button>
