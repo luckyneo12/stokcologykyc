@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useKYC } from "@/context/KYCContext";
-import { getPincodeData, uploadDocument } from "@/utils/kycApi";
+import { getPincodeData, uploadDocument, resolveAssetUrl } from "@/utils/kycApi";
 import { maskAadhaarImage } from "@/utils/digio";
 import DateInput from "../DateInput";
 import ImageCropper from "@/components/ui/ImageCropper";
@@ -911,7 +911,7 @@ export default function NomineeStep() {
                               <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-secondary)" }}>PDF Document</span>
                             </div>
                           ) : (
-                            <img src={nom.proofPath} alt="Nominee Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
+                            <img src={resolveAssetUrl(nom.proofPath)} alt="Nominee Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
                           )}
                           <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Nominee {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
                         </div>
@@ -1168,7 +1168,7 @@ export default function NomineeStep() {
                                 <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-secondary)" }}>PDF Document</span>
                               </div>
                             ) : (
-                              <img src={nom.guardianProofPath} alt="Guardian Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
+                              <img src={resolveAssetUrl(nom.guardianProofPath)} alt="Guardian Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
                             )}
                             <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Guardian {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
                           </div>

@@ -576,7 +576,7 @@ const uploadDocument = (req, res) => {
   const finalPath =
     req.file.path && req.file.path.startsWith("http")
       ? req.file.path
-      : `${baseUrl}/uploads/${req.file.filename}`;
+      : `/uploads/${req.file.filename}`;
 
   res.json({
     success: true,
