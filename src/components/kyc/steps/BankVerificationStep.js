@@ -239,6 +239,12 @@ export default function BankVerificationStep() {
        nextStep({ bankDetails: { ...form, method } });
        return;
     }
+    
+    if (method === "Manual Data Entry") {
+       nextStep({ bankDetails: { ...form, method, verified: false } });
+       return;
+    }
+    
     setShowSubmitConfirm(true);
   };
 

@@ -2199,8 +2199,20 @@ router.post("/verify-bank", auth, async (req, res) => {
 // Helper for string similarity (Levenshtein Distance)
 function getStringSimilarity(s1, s2) {
   if (!s1 || !s2) return 0;
-  s1 = s1.toLowerCase().trim();
-  s2 = s2.toLowerCase().trim();
+  
+  // Clean strings: lower case and remove common prefixes
+  const cleanName = (name) => {
+    return name
+      .toLowerCase()
+      .replace(/^(mr\.?|mrs\.?|ms\.?|miss|dr\.?|shri|smt\.?|kumari)\s+/g, '')
+      .replace(/[^a-z0-9 ]/g, '') // optionally remove other special characters just to be safe
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  s1 = cleanName(s1);
+  s2 = cleanName(s2);
+  
   if (s1 === s2) return 1.0;
   
   const len1 = s1.length, len2 = s2.length;

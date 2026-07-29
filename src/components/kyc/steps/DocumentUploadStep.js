@@ -110,7 +110,7 @@ export default function DocumentUploadStep() {
   const finInputRef = useRef(null);
 
   // Bank Proof State
-  const needsBankProof = bankDetails?.method === "PENNY_DROP" && bankDetails?.verified === false;
+  const needsBankProof = bankDetails?.method !== "Manual Data Entry" && bankDetails?.verified === false;
   const [bankProofPreview, setBankProofPreview] = useState(getFullUrl(bankDetails?.proofPreview || bankDetails?.proof));
   const [bankProofType, setBankProofType] = useState(bankDetails?.proofType || "");
   const bankOptions = ["Bank Statement", "Cancelled Cheque", "Passbook"];
@@ -573,7 +573,7 @@ export default function DocumentUploadStep() {
               Bank Proof Required <span style={{ color: "var(--wise-danger)" }}>*</span>
             </h3>
             <p style={{ fontSize: "0.85rem", color: "var(--wise-danger)", marginBottom: "16px", fontWeight: 600 }}>
-              The name on your bank account did not perfectly match your PAN. Please upload a cancelled cheque or bank statement.
+              Since your bank could not be electronically verified (name mismatch or manual entry), please upload a cancelled cheque, bank statement, or passbook.
             </p>
             
             <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
