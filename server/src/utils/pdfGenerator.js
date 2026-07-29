@@ -87,10 +87,15 @@ function getVariableValue(variableName, appData) {
     case 'isPoiDrivingLicense': return appData.identityMethod === 'dl' || !!iDetails.dlNo;
     case 'isPoiVoterId': return appData.identityMethod === 'voter' || !!iDetails.voterId;
     case 'isPoiPan': return appData.identityMethod === 'pan' || !!iDetails.pan;
-    case 'date': return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
+    case 'date': {
+      const esignParsed = safeJsonParse(appData.esignDetails) || {};
+      const eDate = esignParsed.updatedAt || appData.submittedAt || appData.createdAt;
+      return eDate ? new Date(eDate).toLocaleDateString('en-GB') : '';
+    }
     case 'place': {
       const selfie = safeJsonParse(appData.selfieDetails) || {};
-      const geoAddress = selfie.geo?.address || safeJsonParse(appData.geoDetails)?.address || '';
+      const esign = safeJsonParse(appData.esignDetails) || {};
+      const geoAddress = esign.geo?.address || safeJsonParse(appData.geoDetails)?.address || selfie.geo?.address || '';
       return geoAddress.split(',')[0] || aDetails.city || '';
     }
     case 'fullName': return pDetails.fullName;
@@ -350,7 +355,7 @@ async function generateKycPdf(applicationData) {
       where: { isActive: true }
     });
 
-    let officialPdfPath = path.join(__dirname, '../../../public/esigned.pdf');
+    let officialPdfPath = path.join(__dirname, '../../../public/official_form.pdf');
     if (activeTemplate && activeTemplate.basePdfUrl) {
       // Strip leading slash to prevent path.join from treating it as an absolute path
       const safeRelPath = activeTemplate.basePdfUrl.replace(/^\/+/, '');
@@ -360,21 +365,21 @@ async function generateKycPdf(applicationData) {
 
     if (!fs.existsSync(officialPdfPath)) {
       const fallbacks = [
-        path.join(__dirname, '../../../public/esigned.pdf'),
-        path.join(__dirname, '../../../public_html/esigned.pdf'),
-        path.join(__dirname, '../../public/esigned.pdf'),
-        path.join(__dirname, '../../esigned.pdf'),
-        path.join(process.cwd(), 'public/esigned.pdf'),
-        path.join(process.cwd(), 'esigned.pdf'),
-        path.join(process.cwd(), '../public/esigned.pdf'),
-        path.join(__dirname, '../../../../public/esigned.pdf')
+        path.join(__dirname, '../../../public/official_form.pdf'),
+        path.join(__dirname, '../../../public_html/official_form.pdf'),
+        path.join(__dirname, '../../public/official_form.pdf'),
+        path.join(__dirname, '../../official_form.pdf'),
+        path.join(process.cwd(), 'public/official_form.pdf'),
+        path.join(process.cwd(), 'official_form.pdf'),
+        path.join(process.cwd(), '../public/official_form.pdf'),
+        path.join(__dirname, '../../../../public/official_form.pdf')
       ];
       
       // Let's dynamically find it by walking up
       let currentDir = __dirname;
       for (let i = 0; i < 5; i++) {
-        fallbacks.push(path.join(currentDir, 'public/esigned.pdf'));
-        fallbacks.push(path.join(currentDir, 'esigned.pdf'));
+        fallbacks.push(path.join(currentDir, 'public/official_form.pdf'));
+        fallbacks.push(path.join(currentDir, 'official_form.pdf'));
         currentDir = path.join(currentDir, '..');
       }
 

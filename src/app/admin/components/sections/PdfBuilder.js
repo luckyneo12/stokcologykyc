@@ -81,6 +81,18 @@ const BASE_VARIABLES = [
   { name: 'Static Checkbox (Unticked)', key: 'static.false', type: 'checkbox', group: 'Static Elements' },
 
   // Personal
+  { name: 'Gender: Male', key: 'gender_male_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Gender: Female', key: 'gender_female_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Gender: Transgender', key: 'gender_transgender_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Marital Status: Single', key: 'marital_single_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Marital Status: Married', key: 'marital_married_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Nationality: Indian', key: 'nationality_indian_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Nationality: Other', key: 'nationality_other_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Nationality: Other Text', key: 'nationality_other_text', type: 'text', group: 'Personal' },
+  { name: 'Res Status: Resident', key: 'residential_resident_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Res Status: NRI', key: 'residential_nri_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Res Status: Foreign', key: 'residential_foreign_tick', type: 'checkbox', group: 'Personal' },
+  { name: 'Res Status: PIO', key: 'residential_pio_tick', type: 'checkbox', group: 'Personal' },
   { name: 'Prefix', key: 'prefix', type: 'text', group: 'Personal' },
   { name: 'Full Name', key: 'fullName', type: 'text', group: 'Personal' },
   { name: 'Father/Spouse Name', key: 'fatherName', type: 'text', group: 'Personal' },
@@ -664,19 +676,22 @@ export default function PdfBuilder() {
 
   // ─── Normalize Font Size for All Fields (user-specified size) ─────
   const [normalizeFontSize, setNormalizeFontSize] = useState(10);
-  const handleNormalizeStyle = useCallback((fontSize) => {
+  const handleNormalizeStyle = useCallback((fontSize, applyToAll = true) => {
     if (fieldsRef.current.length === 0) return;
     const size = parseFloat(fontSize);
     if (!size || size < 1) return;
     pushUndo(fieldsRef.current);
 
-    // Apply the user-specified font size to all text variables across all pages
+    // Apply the user-specified font size to text variables (all pages or current page)
     setFields(prev => prev.map(f => {
       if (f.type !== 'text') return f;
-      return { ...f, fontSize: size };
+      if (!applyToAll && f.page !== pageNum) return f;
+      // Adjust height if it's too small for the new font size (adding some padding)
+      const newHeight = Math.max(f.height || 24, size + 6);
+      return { ...f, fontSize: size, height: newHeight };
     }));
     triggerAutoSave();
-  }, [pushUndo, triggerAutoSave]);
+  }, [pushUndo, triggerAutoSave, pageNum]);
 
   // ─── Custom Variable ──────────────────────────────────────────────
   const handleAddCustomVar = () => {
@@ -1215,7 +1230,7 @@ export default function PdfBuilder() {
 
           {/* ── Normalize Font Size ── */}
           <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 10, marginTop: 6 }}>
-            <div className="pdfb-normalize-row">
+            <div className="pdfb-normalize-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
               <div className="pdfb-normalize-input-group">
                 {Icons.normalizeFont}
                 <input
@@ -1231,15 +1246,26 @@ export default function PdfBuilder() {
                 />
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700 }}>pt</span>
               </div>
-              <button
-                className="pdfb-tbtn primary"
-                onClick={() => handleNormalizeStyle(normalizeFontSize)}
-                disabled={fields.length === 0}
-                title="Apply this font size to all text variables across all pages"
-                style={{ padding: '6px 12px', fontSize: '0.7rem', borderRadius: 6 }}
-              >
-                Apply to All Pages
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  className="pdfb-tbtn primary"
+                  onClick={() => handleNormalizeStyle(normalizeFontSize, false)}
+                  disabled={fields.length === 0}
+                  title="Apply to current page only"
+                  style={{ flex: 1, padding: '6px', fontSize: '0.65rem', borderRadius: 6, justifyContent: 'center' }}
+                >
+                  This Page
+                </button>
+                <button
+                  className="pdfb-tbtn primary"
+                  onClick={() => handleNormalizeStyle(normalizeFontSize, true)}
+                  disabled={fields.length === 0}
+                  title="Apply to all pages"
+                  style={{ flex: 1, padding: '6px', fontSize: '0.65rem', borderRadius: 6, justifyContent: 'center', backgroundColor: 'var(--text-color)', color: 'var(--bg-color)' }}
+                >
+                  All Pages
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1412,7 +1438,7 @@ function FieldOverlay({
 
   // Font size for display label
   const labelFontSize = f.type === 'text'
-    ? Math.max(7, Math.min(f.height * 0.55 * scale, 14))
+    ? (f.fontSize ? f.fontSize * scale : Math.max(7, Math.min(f.height * 0.55 * scale, 14)))
     : 11;
 
   // ─── Drag handlers ───────────────────────────────────────────────
