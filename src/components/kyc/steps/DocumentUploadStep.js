@@ -418,6 +418,43 @@ export default function DocumentUploadStep() {
 
   return (
     <div className="container-sm" style={{ paddingTop: "4vh", paddingBottom: "6vh", maxWidth: "900px" }}>
+      <style>{`
+        .doc-row {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .doc-row:hover {
+          background: rgba(0, 0, 0, 0.015);
+        }
+        .doc-row.completed {
+          background: rgba(159, 232, 112, 0.04);
+        }
+        .doc-row.completed:hover {
+          background: rgba(159, 232, 112, 0.07);
+        }
+        .doc-number {
+          transition: all 0.3s ease;
+        }
+        .doc-row.completed .doc-number {
+          background: var(--wise-green) !important;
+          color: #000 !important;
+          box-shadow: 0 0 12px rgba(159, 232, 112, 0.5);
+        }
+        .btn-premium {
+          background: linear-gradient(135deg, var(--wise-green) 0%, #87df55 100%);
+          box-shadow: 0 8px 24px rgba(159, 232, 112, 0.25);
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          border: none;
+        }
+        .btn-premium:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 32px rgba(159, 232, 112, 0.4);
+        }
+        .btn-premium:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+      `}</style>
       <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
         <h1 className="text-section" style={{ fontSize: "2.5rem", marginBottom: 12 }}>Document Upload</h1>
         <p className="text-body" style={{ color: "var(--text-secondary)", fontSize: "1rem" }}>
@@ -425,18 +462,39 @@ export default function DocumentUploadStep() {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "24px" }}>
+      <div className="card animate-slide-up" style={{ padding: "0", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 10px 40px rgba(0,0,0,0.03)" }}>
         
         {/* PAN Section */}
-        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ background: "var(--wise-green)", color: "#000", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>1</span>
-            PAN Card <span style={{ color: "var(--wise-danger)" }}>*</span>
-          </h3>
-          <input type="file" ref={panInputRef} onChange={handlePanChange} style={{ display: "none" }} accept="image/*" />
+        <div className={`doc-row ${panPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "24px" }}>
+            <div style={{ flex: "1 1 300px" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+                <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>1</span>
+                PAN Card <span style={{ color: "var(--wise-danger)" }}>*</span>
+              </h3>
+              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Upload a clear picture of your PAN card.</p>
+            </div>
+            
+            <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px" }}>
+              <input type="file" ref={panInputRef} onChange={handlePanChange} style={{ display: "none" }} accept="image/*" />
+              {panPreview ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
+                  <img src={panPreview} alt="PAN Preview" style={{ height: "56px", width: "86px", objectFit: "contain", borderRadius: "8px", background: "var(--bg-secondary)" }} />
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                     <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                  </div>
+                  <button onClick={() => panInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                </div>
+              ) : (
+                <button onClick={() => panInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
+                  <UploadIcon /> Upload PAN
+                </button>
+              )}
+            </div>
+          </div>
           
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            {isCroppingPan ? (
+          {isCroppingPan && (
+            <div style={{ marginTop: "12px" }}>
               <ImageCropper 
                 filePreview={rawPanImage} 
                 setFilePreview={setRawPanImage} 
@@ -450,31 +508,41 @@ export default function DocumentUploadStep() {
                 }}
                 onCancel={() => { setIsCroppingPan(false); if (panInputRef.current) panInputRef.current.value = ""; }}
               />
-            ) : (
-              <>
-                <button onClick={() => panInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
-                  <UploadIcon /> {panPreview ? "PAN Attached (Replace)" : "Upload PAN"}
-                </button>
-                {panPreview && (
-                  <div style={{ marginTop: "16px", textAlign: "center", padding: "10px", border: "1.5px dashed var(--border-color)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
-                    <img src={panPreview} alt="PAN Preview" style={{ maxHeight: "150px", maxWidth: "100%", borderRadius: "8px" }} />
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Signature Section */}
-        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ background: "var(--wise-green)", color: "#000", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>2</span>
-            Signature <span style={{ color: "var(--wise-danger)" }}>*</span>
-          </h3>
-          <input type="file" ref={sigInputRef} onChange={handleSigChange} style={{ display: "none" }} accept="image/jpeg,image/png" />
+        <div className={`doc-row ${sigPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "24px" }}>
+            <div style={{ flex: "1 1 300px" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+                <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>2</span>
+                Signature <span style={{ color: "var(--wise-danger)" }}>*</span>
+              </h3>
+              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Upload a clear image of your signature on blank white paper.</p>
+            </div>
+            
+            <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px" }}>
+              <input type="file" ref={sigInputRef} onChange={handleSigChange} style={{ display: "none" }} accept="image/jpeg,image/png" />
+              {sigPreview ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
+                  <img src={sigPreview} alt="Signature Preview" style={{ height: "56px", width: "86px", objectFit: "contain", borderRadius: "8px", background: "#fff", border: "1px solid var(--border-color)" }} />
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                     <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                  </div>
+                  <button onClick={() => sigInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                </div>
+              ) : (
+                <button onClick={() => sigInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
+                  <UploadIcon /> Upload Signature
+                </button>
+              )}
+            </div>
+          </div>
           
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            {isCroppingSig ? (
+          {isCroppingSig && (
+            <div style={{ marginTop: "12px" }}>
               <ImageCropper 
                 filePreview={rawSigImage} 
                 setFilePreview={setRawSigImage} 
@@ -488,97 +556,89 @@ export default function DocumentUploadStep() {
                 }}
                 onCancel={() => { setIsCroppingSig(false); if (sigInputRef.current) sigInputRef.current.value = ""; }}
               />
-            ) : (
-              <>
-                <button onClick={() => sigInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
-                  <UploadIcon /> {sigPreview ? "Signature Attached (Replace)" : "Upload Signature"}
-                </button>
-                {sigPreview && (
-                  <div style={{ marginTop: "16px", textAlign: "center", padding: "10px", border: "1.5px dashed var(--border-color)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
-                    <img src={sigPreview} alt="Signature Preview" style={{ maxHeight: "150px", maxWidth: "100%", borderRadius: "8px", background: "#fff" }} />
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Selfie Section */}
-        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ background: "var(--wise-green)", color: "#000", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>3</span>
-            Selfie Verification <span style={{ color: "var(--wise-danger)" }}>*</span>
-          </h3>
+        <div className={`doc-row ${selfiePhase === "done" ? "completed" : ""}`} style={{ padding: "32px 24px", borderBottom: needsBankProof ? "1px solid var(--border-color)" : "none", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: "24px" }}>
+            <div style={{ flex: "1 1 300px" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+                <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>3</span>
+                Selfie Verification <span style={{ color: "var(--wise-danger)" }}>*</span>
+              </h3>
+              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Complete a live face verification securely via Digio.</p>
+            </div>
+            
+            <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px" }}>
+              {selfiePhase === "intro" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {!showQR ? (
+                    <>
+                      <button className="btn btn-premium" onClick={startVerification} style={{ width: "100%", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "800", fontSize: "0.95rem", color: "#000" }}>
+                        Start Selfie Capture
+                      </button>
+                      <button onClick={() => setShowQR(true)} style={{ width: "100%", background: "transparent", border: "1.5px solid var(--border-color)", color: "var(--text-secondary)", height: "48px", padding: "0 16px", borderRadius: "12px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-secondary)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>
+                        Or scan QR on mobile
+                      </button>
+                    </>
+                  ) : (
+                    <div style={{ padding: "20px", background: "var(--bg-elevated)", borderRadius: "16px", textAlign: "center", border: "1px solid var(--border-color)" }}>
+                      <p style={{ fontSize: "0.85rem", marginBottom: "16px", fontWeight: 600, color: "var(--text-primary)" }}>Scan with your mobile camera</p>
+                      {resumeUrl && (
+                        <div style={{ background: "white", padding: "10px", borderRadius: "12px", display: "inline-block", marginBottom: "16px", border: "1px solid #e1e1e1", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
+                          <QRCode value={resumeUrl} size={150} />
+                        </div>
+                      )}
+                      <button onClick={() => setShowQR(false)} style={{ width: "100%", background: "var(--bg-secondary)", border: "none", color: "var(--text-primary)", height: "44px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="var(--bg-secondary)"}>
+                        Hide QR Code
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            {selfiePhase === "intro" && (
-              <>
-                {!showQR ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    <button className="btn btn-primary" onClick={startVerification} style={{ width: "100%", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "800", fontSize: "1rem", boxShadow: "0 4px 12px rgba(159, 232, 112, 0.2)" }}>
-                      Start Selfie Capture
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => setShowQR(true)} style={{ width: "100%", height: "48px", padding: "0 16px", borderRadius: "12px", fontSize: "0.95rem", fontWeight: "600", color: "var(--text-secondary)" }}>
-                      Show QR
-                    </button>
+              {selfiePhase === "processing" && (
+                <div style={{ textAlign: "center", padding: "24px", background: "var(--bg-elevated)", borderRadius: "16px", border: "1px solid var(--border-color)" }}>
+                  <div className="loader" style={{ margin: "0 auto 16px", width: "24px", height: "24px" }}></div>
+                  <p style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-primary)" }}>Launching Capture...</p>
+                  <button onClick={() => setSelfiePhase("intro")} style={{ marginTop: "12px", background: "transparent", border: "none", color: "var(--text-secondary)", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>Cancel</button>
+                </div>
+              )}
+
+              {selfiePhase === "done" && (
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
+                  {selfiePreviewUrl ? (
+                    <img src={selfiePreviewUrl} alt="Selfie" style={{ height: "48px", width: "48px", objectFit: "cover", borderRadius: "50%", background: "var(--bg-secondary)", border: "2px solid var(--wise-green)" }} />
+                  ) : (
+                    <div style={{ height: "48px", width: "48px", borderRadius: "50%", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center", color: "#000", fontSize: "1.2rem", fontWeight: 800 }}>✓</div>
+                  )}
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Verified</p>
                   </div>
-                ) : (
-                  <div style={{ padding: "16px", background: "var(--bg-secondary)", borderRadius: "12px", textAlign: "center" }}>
-                    <p style={{ fontSize: "0.9rem", marginBottom: "12px", fontWeight: 600 }}>Scan with your mobile camera</p>
-                    {resumeUrl && (
-                      <div style={{ background: "white", padding: "8px", borderRadius: "8px", display: "inline-block", marginBottom: "12px" }}>
-                        <QRCode value={resumeUrl} size={256} />
-                      </div>
-                    )}
-                    <button className="btn btn-text" onClick={() => setShowQR(false)} style={{ fontSize: "0.8rem", width: "100%" }}>
-                      Hide QR Code
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-            {selfiePhase === "processing" && (
-              <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <div className="loader" style={{ margin: "0 auto 16px", width: "24px", height: "24px" }}></div>
-                <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>Launching Digio Capture...</p>
-                <button className="btn btn-secondary" onClick={() => setSelfiePhase("intro")} style={{ marginTop: "16px", padding: "8px 16px", fontSize: "0.8rem" }}>
-                  Cancel
-                </button>
-              </div>
-            )}
-            {selfiePhase === "done" && (
-              <div style={{ textAlign: "center", padding: "16px", border: "1.5px dashed var(--wise-green)", borderRadius: "12px", background: "var(--bg-secondary)" }}>
-                <p style={{ color: "var(--wise-green)", fontWeight: 800, fontSize: "1rem", marginBottom: "8px" }}>✓ Verified</p>
-                {selfiePreviewUrl && (
-                  <div style={{ margin: "12px auto", width: "120px", height: "120px", borderRadius: "50%", overflow: "hidden", border: "3px solid var(--wise-green)", padding: "2px", background: "#fff" }}>
-                    <img 
-                      src={selfiePreviewUrl} 
-                      alt="Selfie" 
-                      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} 
-                    />
-                  </div>
-                )}
-                <button onClick={() => setSelfiePhase("intro")} style={{ marginTop: "12px", fontSize: "0.75rem", padding: "6px 16px", borderRadius: "20px", border: "none", background: "var(--wise-green)", color: "#000", cursor: "pointer", fontWeight: 700 }}>
-                  Retake Selfie
-                </button>
-              </div>
-            )}
+                  <button onClick={() => setSelfiePhase("intro")} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Retake</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Bank Proof Section (Conditional) */}
         {needsBankProof && (
-          <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
-            <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ background: "var(--wise-danger)", color: "#fff", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>!</span>
-              Bank Proof Required <span style={{ color: "var(--wise-danger)" }}>*</span>
-            </h3>
-            <p style={{ fontSize: "0.85rem", color: "var(--wise-danger)", marginBottom: "16px", fontWeight: 600 }}>
-              Since your bank could not be electronically verified (name mismatch or manual entry), please upload a cancelled cheque, bank statement, or passbook.
-            </p>
-            
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ marginBottom: "16px" }}>
+          <div className={`doc-row ${bankProofPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderTop: "1px solid var(--border-color)", borderBottom: "1px solid var(--border-color)", background: "rgba(247, 85, 85, 0.02)" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: "24px" }}>
+              <div style={{ flex: "1 1 300px" }}>
+                <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+                  <span className="doc-number" style={{ background: "var(--wise-danger)", color: "#fff", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>!</span>
+                  Bank Proof Required <span style={{ color: "var(--wise-danger)" }}>*</span>
+                </h3>
+                <p style={{ fontSize: "0.9rem", color: "var(--wise-danger)", margin: 0, paddingLeft: "40px", fontWeight: 500, lineHeight: 1.5 }}>
+                  Since your bank could not be electronically verified, please upload a cancelled cheque, bank statement, or passbook.
+                </p>
+              </div>
+              
+              <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px", display: "flex", flexDirection: "column", gap: "12px" }}>
                 <CustomSelect 
                   value={bankProofType}
                   onChange={async (val) => {
@@ -590,35 +650,45 @@ export default function DocumentUploadStep() {
                     }
                   }}
                   options={bankOptions}
-                  placeholder="-- Select Bank Proof Type --"
+                  placeholder="-- Select Bank Proof --"
                 />
+                <input type="file" ref={bankProofInputRef} onChange={handleBankProofChange} style={{ display: "none" }} accept="image/*,application/pdf" />
+                
+                {bankProofPreview ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
+                    <div style={{ height: "48px", width: "48px", borderRadius: "8px", background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 800 }}>DOC</div>
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                       <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                    </div>
+                    <button onClick={() => bankProofInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                  </div>
+                ) : (
+                  <button onClick={() => bankProofInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--wise-danger)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--wise-danger)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.background = "rgba(247, 85, 85, 0.05)"} onMouseOut={(e) => e.currentTarget.style.background = "var(--bg-elevated)"}>
+                    <UploadIcon /> Upload Proof
+                  </button>
+                )}
               </div>
-              <input type="file" ref={bankProofInputRef} onChange={handleBankProofChange} style={{ display: "none" }} accept="image/*,application/pdf" />
-              <button onClick={() => bankProofInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", padding: "16px", borderRadius: "12px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1px dashed var(--wise-danger)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
-                <UploadIcon /> {bankProofPreview ? "Bank Proof Attached (Replace)" : "Upload Bank Proof"}
-              </button>
-              {bankProofPreview && (
-                <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--wise-green)", marginTop: "12px", fontWeight: 600 }}>✓ Bank Document Attached</p>
-              )}
             </div>
           </div>
         )}
 
         {/* Financial Proof Section */}
-        <div className="card animate-slide-up" style={{ padding: "24px", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column", overflow: "visible" }}>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ background: "var(--border-color)", color: "var(--text-primary)", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem" }}>4</span>
-            Financial Proof 
-            { (personalDetails?.annualIncome === "More Than 25 Lac" || segments?.derivatives) ? (
-              <span style={{ color: "var(--wise-danger)" }}>*</span>
-            ) : (
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>(Optional)</span>
-            )}
-          </h3>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "16px" }}>Required for F&O Trading or High Income.</p>
-          
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <div style={{ marginBottom: "16px" }}>
+        <div className={`doc-row ${finPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderTop: needsBankProof ? "none" : "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: "24px" }}>
+            <div style={{ flex: "1 1 300px" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+                <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>4</span>
+                Financial Proof 
+                { (personalDetails?.annualIncome === "More Than 25 Lac" || segments?.derivatives) ? (
+                  <span style={{ color: "var(--wise-danger)" }}>*</span>
+                ) : (
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, background: "var(--bg-secondary)", padding: "4px 10px", borderRadius: "14px" }}>Optional</span>
+                )}
+              </h3>
+              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Required for F&O Trading or High Income categories.</p>
+            </div>
+            
+            <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px", display: "flex", flexDirection: "column", gap: "12px" }}>
               <CustomSelect 
                 value={finType}
                 onChange={async (val) => {
@@ -627,29 +697,36 @@ export default function DocumentUploadStep() {
                   await syncProgress({ financialProof: { type: val, filePreview: finPreview } }, false, "documentUpload");
                 }}
                 options={finOptions}
-                placeholder="-- Select Income Proof Type --"
+                placeholder="-- Select Income Proof --"
               />
+              <input type="file" ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
+              
+              {finPreview ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
+                  <div style={{ height: "48px", width: "48px", borderRadius: "8px", background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 800 }}>DOC</div>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                     <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                  </div>
+                  <button onClick={() => finInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                </div>
+              ) : (
+                <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
+                  <UploadIcon /> Upload Proof
+                </button>
+              )}
             </div>
-
-            <input type="file" ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
-            <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 16px", borderRadius: "12px", fontWeight: "700", fontSize: "1rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
-              <UploadIcon /> {finPreview ? "Proof Attached (Replace)" : "Upload Document"}
-            </button>
-            {finPreview && (
-              <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--wise-green)", marginTop: "12px", fontWeight: 600 }}>✓ Document Attached</p>
-            )}
           </div>
         </div>
 
       </div>
 
       {/* Action Buttons */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: "32px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: "40px" }}>
         <button 
-          className="btn btn-primary" 
+          className="btn btn-premium" 
           onClick={handleSubmit} 
           disabled={submitting || isCroppingPan || isCroppingSig}
-          style={{ width: "100%", height: "60px", padding: "0 16px", borderRadius: "16px", fontWeight: 800, fontSize: "1.1rem", boxShadow: "0 6px 20px rgba(159, 232, 112, 0.25)", opacity: (submitting || isCroppingPan || isCroppingSig) ? 0.7 : 1 }}
+          style={{ width: "100%", height: "64px", padding: "0 16px", borderRadius: "16px", fontWeight: 800, fontSize: "1.15rem", color: "#000" }}
         >
           {submitting ? "Saving..." : "Continue"}
         </button>
