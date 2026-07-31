@@ -31,6 +31,16 @@ function parseJsonField(value, fallback = {}) {
 function formatDate(value) {
   if (!value) return null;
   if (typeof value !== "string") value = String(value);
+  
+  // Handle DD/MM/YYYY format from Digilocker
+  if (value.includes("/")) {
+    const parts = value.split("/");
+    if (parts.length === 3 && parts[2].length === 4) {
+      // Convert to YYYY-MM-DD
+      value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().split("T")[0];
@@ -250,7 +260,7 @@ class BackofficeService {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      timeout: 20000,
+      timeout: 60000,
     });
 
     const token = response.data?.access_token;
@@ -281,7 +291,7 @@ class BackofficeService {
     const url = `${BACKOFFICE_BASE_URL}/GetOrionEKYCDetail/Get?Code=${encodeURIComponent(clientCode)}&ClientType=${encodeURIComponent(clientType)}`;
     const response = await axios.get(url, {
       headers: await this.requestHeaders(),
-      timeout: 20000,
+      timeout: 60000,
     });
     return response.data;
   }
@@ -290,7 +300,7 @@ class BackofficeService {
     const url = `${BACKOFFICE_BASE_URL}/${BACKOFFICE_MODIFY_PATH}`;
     const response = await axios.post(url, payload, {
       headers: await this.requestHeaders(),
-      timeout: 20000,
+      timeout: 60000,
     });
     return response.data;
   }
@@ -330,13 +340,13 @@ class BackofficeService {
     const aadhaar = pickFirst(identityDetails.aadhaar, identityDetails.aadhar, existingKyc.Aadhar, existingKyc.IDProofRef);
 
     const mergedKyc = {
-      FirmID: existingKyc.FirmID || null,
+      FirmID: existingKyc.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       OpenDate: formatDate(existingKyc.OpenDate) || openDate,
       CloseDate: existingKyc.CloseDate || null,
       PanNo: buildString(identityDetails.pan || existingKyc.PanNo || existingKyc.PANNo) || null,
       ClientType: existingKyc.ClientType || "I",
-      ClientStatus: existingKyc.ClientStatus || "07",
+      ClientStatus: existingKyc.ClientStatus || "01",
       ClientName: buildString(personalDetails.fullName || existingKyc.ClientName) || null,
       Dob: formatDate(personalDetails.dob || identityDetails.dob || identityDetails.dateOfBirth || identityDetails.ocrData?.pan?.dob || nsdlResponse.dob || nsdlResponse.dateOfBirth || existingKyc.Dob || existingKyc.DOB) || null,
       FatherOrSpouse: existingKyc.FatherOrSpouse || "F",
@@ -368,7 +378,7 @@ class BackofficeService {
 
     const addressEntry = {
       AddressID: existingAddress.AddressID || null,
-      FirmID: existingAddress.FirmID || null,
+      FirmID: existingAddress.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       AddressType: existingAddress.AddressType || "C",
       AddressLine1: addressLines.line1 || existingAddress.AddressLine1 || null,
@@ -396,7 +406,7 @@ class BackofficeService {
     if (emailValue) {
       contactEntries.push({
         ContactID: existingContact.ContactID || null,
-        FirmID: existingContact.FirmID || null,
+        FirmID: existingContact.FirmID || BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
         ContactType: "E",
         ISD: null,
@@ -415,7 +425,7 @@ class BackofficeService {
     if (phoneValue) {
       contactEntries.push({
         ContactID: existingContact.ContactID || null,
-        FirmID: existingContact.FirmID || null,
+        FirmID: existingContact.FirmID || BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
         ContactType: "M",
         ISD: "91",
@@ -433,7 +443,7 @@ class BackofficeService {
 
     const bankEntry = {
       BankID: existingBank.BankID || null,
-      FirmID: existingBank.FirmID || null,
+      FirmID: existingBank.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       PrimaryFlag: "Y",
       BankAccountNumber: buildString(bankDetails.accountNumber || existingBank.BankAccountNumber) || null,
@@ -475,7 +485,7 @@ class BackofficeService {
       { ExchangeID: "NSE", CategoryCode: "1" },
       { ExchangeID: "BSE", CategoryCode: "01" },
     ].map((exchange) => ({
-      FirmID: null,
+      FirmID: BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       ExchangeName: null,
       Remark: null,
@@ -491,7 +501,7 @@ class BackofficeService {
     ]
       .filter((segment) => segment.enabled)
       .map(({ enabled, ...segment }) => ({
-        FirmID: null,
+        FirmID: BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
         ExchangeName: null,
         SegmentName: null,
@@ -514,7 +524,7 @@ class BackofficeService {
       const allocation = nomineeAllocation.percentages?.[index] ?? (index === 0 ? 100 : 0);
       const nomineeProof = mapProofType(nominee.proofType);
       return {
-        FirmID: null,
+        FirmID: BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
         NomineeType: "N",
         Relation: mapRelation(nominee.relation),
@@ -594,7 +604,7 @@ class BackofficeService {
     }
 
     const backOfficeEntry = {
-      FirmID: existingBackoffice.FirmID || null,
+      FirmID: existingBackoffice.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       ProtectedAccount: existingBackoffice.ProtectedAccount || "N",
       ModifyRemark: existingBackoffice.ModifyRemark || `KYC push from ${application.applicationId}`,
@@ -634,53 +644,24 @@ class BackofficeService {
     };
 
     const payload = {
-      ClientCode: clientCode,
-      ClientType: clientType,
-      KYCDetail: {
-        Status: "Y",
-        KYCDetail: mergedKyc,
-      },
-      AddressDetail: {
-        Status: "Y",
-        AddressDetail: [addressEntry],
-      },
-      ContactDetail: {
-        Status: "Y",
-        ContactDetail: contactEntries.length > 0 ? contactEntries : [existingContact].filter(Boolean),
-      },
-      BankDetail: {
-        Status: "Y",
-        BankDetail: [bankEntry],
-      },
-      BackOfficeDetail: {
-        Status: "Y",
-        BackOfficeDetail: backOfficeEntry,
-      },
-      ExchangeDetail: {
-        Status: "Y",
-        ExchangeDetail: exchangeEntries,
-      },
-      SegmentDetail: {
-        Status: "Y",
-        SegmentDetail: segmentEntries,
-      },
+      KYCDetail: mergedKyc,
+      AddressDetail: [addressEntry],
+      ContactDetail: contactEntries.length > 0 ? contactEntries : [existingContact].filter(Boolean),
+      BankDetail: bankEntry,
+      BackOfficeDetail: backOfficeEntry,
+      ExchangeDetail: exchangeEntries,
+      SegmentDetail: segmentEntries,
       NomineeDetail: {
-        Status: "Y",
+        ClientCode: clientCode,
         NomineeOptFlag: nomineeOptFlag,
         NomineeDetail: nomineeEntries,
       },
     };
 
     if (documentEntries.length) {
-      payload.ClientDocumentDetail = {
-        Status: "Y",
-        ClientDocumentDetail: documentEntries,
-      };
+      payload.ClientDocumentDetail = documentEntries;
     } else if (Array.isArray(existing.ClientDocumentDetail) && existing.ClientDocumentDetail.length) {
-      payload.ClientDocumentDetail = {
-        Status: "N",
-        ClientDocumentDetail: existing.ClientDocumentDetail,
-      };
+      payload.ClientDocumentDetail = existing.ClientDocumentDetail;
     }
 
     if (Array.isArray(existing.ClientBackOfficeDetail) && existing.ClientBackOfficeDetail.length) {

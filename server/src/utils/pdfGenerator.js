@@ -525,11 +525,17 @@ async function generateKycPdf(applicationData) {
                 if (isPdf) {
                   const [embeddedPage] = await pdfDoc.embedPdf(imgBytes, [0]);
                   page.drawPage(embeddedPage, { x: field.x, y: yPos - h, width: w, height: h });
-                } else if (isPng) {
-                  const image = await pdfDoc.embedPng(imgBytes);
-                  page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
                 } else {
-                  const image = await pdfDoc.embedJpg(imgBytes);
+                  let image;
+                  try {
+                    image = isPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
+                  } catch (e1) {
+                    try {
+                      image = isPng ? await pdfDoc.embedJpg(imgBytes) : await pdfDoc.embedPng(imgBytes);
+                    } catch (e2) {
+                      throw new Error("Could not embed image as JPG or PNG. " + e1.message);
+                    }
+                  }
                   page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
                 }
               }
@@ -542,11 +548,11 @@ async function generateKycPdf(applicationData) {
             : !!val; // if no match value, act as boolean flag
             
           if (isMatch) {
-            page.drawText('\u2713', { // Check mark in ZapfDingbats
+            page.drawText('X', { // Use 'X' in standard Helvetica font for compatibility
               x: field.x + 2,
               y: yPos - (field.height || 20) + 2,
               size: (field.height || 20) - 2,
-              font: dingbats,
+              font: font,
               color: rgb(0, 0, 0)
             });
           }
