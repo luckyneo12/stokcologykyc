@@ -50,7 +50,7 @@ export default function AadhaarEsignStep() {
       
       updateState({ status: "under_review", submittedAt: new Date().toISOString() });
       addToast("Document eSigned successfully!", "success");
-      nextStep();
+      nextStep({ status: "under_review", submittedAt: new Date().toISOString() });
     } catch (error) {
       console.error("Post-eSign error:", error);
       setPhase("failed");

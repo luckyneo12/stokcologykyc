@@ -443,6 +443,12 @@ const saveStep = async (req, res, next) => {
       }
     }
 
+    // CRITICAL FIX: Prevent race condition where a lagging saveStep with "pending" overwrites "under_review"
+    if (updateData.status === "pending" && (app.status === "under_review" || app.status === "verified")) {
+      console.log(`[KYC SaveStep] Preventing status downgrade from ${app.status} to pending for App: ${applicationId}`);
+      delete updateData.status;
+    }
+
     console.log(
       `[KYC SaveStep] Saving ${Object.keys(updateData).length} fields for App: ${applicationId}`,
     );

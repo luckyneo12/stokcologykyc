@@ -165,7 +165,7 @@ export default function SelfieStep() {
               <p className="text-body-bold" style={{ marginBottom: 16 }}>Scan with your mobile camera</p>
               {resumeUrl && (
                 <div style={{ background: "white", padding: 16, borderRadius: 8, display: "inline-block", marginBottom: 16 }}>
-                  <QRCode value={resumeUrl} size={180} />
+                  <QRCode value={resumeUrl} size={256} ecLevel="L" />
                 </div>
               )}
               <p className="text-caption" style={{ color: "var(--text-muted)" }}>

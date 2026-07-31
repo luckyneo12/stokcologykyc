@@ -462,7 +462,7 @@ export default function DocumentUploadStep() {
         </p>
       </div>
 
-      <div className="card animate-slide-up" style={{ padding: "0", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 10px 40px rgba(0,0,0,0.03)" }}>
+      <div className="card animate-slide-up" style={{ padding: "0", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column", boxShadow: "0 10px 40px rgba(0,0,0,0.03)" }}>
         
         {/* PAN Section */}
         <div className={`doc-row ${panPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -588,7 +588,7 @@ export default function DocumentUploadStep() {
                       <p style={{ fontSize: "0.85rem", marginBottom: "16px", fontWeight: 600, color: "var(--text-primary)" }}>Scan with your mobile camera</p>
                       {resumeUrl && (
                         <div style={{ background: "white", padding: "10px", borderRadius: "12px", display: "inline-block", marginBottom: "16px", border: "1px solid #e1e1e1", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
-                          <QRCode value={resumeUrl} size={150} />
+                          <QRCode value={resumeUrl} size={256} ecLevel="L" />
                         </div>
                       )}
                       <button onClick={() => setShowQR(false)} style={{ width: "100%", background: "var(--bg-secondary)", border: "none", color: "var(--text-primary)", height: "44px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="var(--bg-secondary)"}>

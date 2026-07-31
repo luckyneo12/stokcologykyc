@@ -1973,6 +1973,21 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       }
     }
 
+    const findGeoVal = (obj, keys) => {
+      if (!obj || typeof obj !== "object") return undefined;
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      for (const v of Object.values(obj)) {
+        const res = findGeoVal(v, keys);
+        if (res !== undefined && res !== null) return res;
+      }
+      return undefined;
+    };
+    const geoLat = findGeoVal(digioResponse, ["latitude", "lat"]);
+    const geoLng = findGeoVal(digioResponse, ["longitude", "lng", "lon"]);
+    const geoAddress = findGeoVal(digioResponse, ["address", "location_address"]);
+
     if (hasSelfieData) {
       nextSelfieDetails = {
         ...nextSelfieDetails,
@@ -1988,6 +2003,20 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
           ? { matchScore: extractedFaceScore }
           : {}),
       };
+
+      if (geoLat || geoLng) {
+        nextSelfieDetails.geo = {
+          ...(nextSelfieDetails.geo || {}),
+          address: geoAddress || nextSelfieDetails.geo?.address || null,
+          latitude: geoLat || nextSelfieDetails.geo?.latitude || null,
+          longitude: geoLng || nextSelfieDetails.geo?.longitude || null,
+          provider: "digio"
+        };
+        nextSelfieDetails.lat = geoLat;
+        nextSelfieDetails.lng = geoLng;
+        nextSelfieDetails.latitude = geoLat;
+        nextSelfieDetails.longitude = geoLng;
+      }
     } else if (extractedFaceScore !== null) {
       nextSelfieDetails.matchScore = extractedFaceScore;
     }

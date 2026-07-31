@@ -1131,10 +1131,7 @@ export function KYCProvider({ children }) {
         if (typeof window !== "undefined") {
           sessionStorage.setItem(
             "kyc-progress",
-            JSON.stringify({
-              currentStep: freshNextStepIndex,
-              status: stateToReturn.status,
-            }),
+            JSON.stringify(stateToReturn)
           );
         }
         return stateToReturn;
