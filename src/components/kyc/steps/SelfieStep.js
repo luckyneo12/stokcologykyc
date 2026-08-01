@@ -209,7 +209,7 @@ export default function SelfieStep() {
               Match Confidence: {matchScore}%
             </p>
           )}
-          <button className="btn btn-primary" onClick={nextStep} style={{ width: "100%" }}>
+          <button className="btn btn-primary" onClick={() => nextStep()} style={{ width: "100%" }}>
             Continue <ArrowRightIcon size={18} />
           </button>
         </div>

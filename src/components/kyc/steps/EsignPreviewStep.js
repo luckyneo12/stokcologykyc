@@ -134,7 +134,7 @@ export default function EsignPreviewStep() {
         )}
 
         <button 
-          onClick={nextStep} 
+          onClick={() => nextStep()} 
           className="btn-primary" 
           style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}
         >

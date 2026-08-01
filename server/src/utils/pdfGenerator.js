@@ -548,11 +548,11 @@ async function generateKycPdf(applicationData) {
             : !!val; // if no match value, act as boolean flag
             
           if (isMatch) {
-            page.drawText('X', { // Use 'X' in standard Helvetica font for compatibility
+            page.drawText('✔', { // '✔' in pdf-lib's ZapfDingbats mapping is a heavy checkmark
               x: field.x + 2,
               y: yPos - (field.height || 20) + 2,
               size: (field.height || 20) - 2,
-              font: font,
+              font: dingbats,
               color: rgb(0, 0, 0)
             });
           }

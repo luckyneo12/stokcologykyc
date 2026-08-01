@@ -46,27 +46,29 @@ export default function KYCJourney() {
     }
   }, []);
 
-  // Synchronize URL with currentStep
-  useEffect(() => {
-    if (mounted && currentStep >= 0) {
-      const stepId = (steps.length > 0 ? steps : STEPS)[currentStep]?.id;
-      if (stepId) {
-        const targetPath = stepId === "phone" ? "/" : `/${stepId}`;
-        
-        if (pathname !== targetPath) {
-          router.push(targetPath, { scroll: false });
-        }
-      }
-    }
-  }, [currentStep, mounted, steps, STEPS, pathname, router]);
+  const lastStepRef = useRef(currentStep);
+  const lastPathnameRef = useRef(pathname);
 
-  // Handle browser back/forward buttons to sync state with URL
   useEffect(() => {
-    if (mounted) {
-      const activeSteps = steps.length > 0 ? steps : STEPS;
+    if (!mounted) return;
+
+    const activeSteps = steps.length > 0 ? steps : STEPS;
+    const currentStepId = activeSteps[currentStep]?.id;
+    const targetPath = currentStepId === "phone" ? "/" : `/${currentStepId}`;
+
+    // Case 1: currentStep changed via code (nextStep / goToStep)
+    if (currentStep !== lastStepRef.current) {
+      if (pathname !== targetPath) {
+        router.push(targetPath, { scroll: false });
+      }
+      lastStepRef.current = currentStep;
+      lastPathnameRef.current = targetPath;
+    }
+    // Case 2: pathname changed via browser back/forward
+    else if (pathname !== lastPathnameRef.current) {
       const stepIndexFromUrl = activeSteps.findIndex(s => {
-        const targetPath = s.id === "phone" ? "/" : `/${s.id}`;
-        return targetPath === pathname;
+        const p = s.id === "phone" ? "/" : `/${s.id}`;
+        return p === pathname;
       });
 
       if (stepIndexFromUrl !== -1 && stepIndexFromUrl !== currentStep) {
@@ -77,8 +79,10 @@ export default function KYCJourney() {
           goToStep(stepIndexFromUrl);
         }
       }
+      lastPathnameRef.current = pathname;
+      lastStepRef.current = stepIndexFromUrl !== -1 ? stepIndexFromUrl : currentStep;
     }
-  }, [pathname, mounted, steps, STEPS, currentStep, goToStep, router]);
+  }, [currentStep, pathname, mounted, steps, STEPS, router, goToStep]);
 
   const handleMouseMove = (e) => {
     if (sidebarRef.current) {

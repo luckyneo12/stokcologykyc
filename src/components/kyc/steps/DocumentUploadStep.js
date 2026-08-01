@@ -134,6 +134,7 @@ export default function DocumentUploadStep() {
   const [selfiePhase, setSelfiePhase] = useState(isSelfieDone ? "done" : "intro"); // intro, processing, done
   const [matchScore, setMatchScore] = useState(selfie?.matchScore || null);
   const [selfiePreviewUrl, setSelfiePreviewUrl] = useState(getFullUrl(selfie?.preview));
+  const [selfieError, setSelfieError] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
 
@@ -162,7 +163,10 @@ export default function DocumentUploadStep() {
       setSelfiePhase("done");
       if (selfie.preview) {
         const full = getFullUrl(selfie.preview);
-        if (full !== selfiePreviewUrl) setSelfiePreviewUrl(full);
+        if (full !== selfiePreviewUrl) {
+          setSelfiePreviewUrl(full);
+          setSelfieError(false);
+        }
       }
       if (selfie.matchScore !== undefined && selfie.matchScore !== matchScore) setMatchScore(selfie.matchScore);
     }
@@ -180,16 +184,35 @@ export default function DocumentUploadStep() {
 
   const handleDigioSuccess = async (requestId) => {
     try {
-      const result = await fetchDigioRequestResponse(requestId, "SELFIE");
+      let result;
+      let retries = 5;
+      
+      while (retries > 0) {
+        result = await fetchDigioRequestResponse(requestId, "SELFIE");
+        if (result?.success && result.updates?.selfieDetails?.preview) {
+          break; // Got the selfie!
+        }
+        // Wait 2 seconds before polling again
+        await new Promise(res => setTimeout(res, 2000));
+        retries--;
+      }
+
       if (result?.success) {
         setMatchScore(result.score || result.faceMatchScore || 0);
         if (result.updates?.selfieDetails?.preview) {
           const preview = result.updates.selfieDetails.preview;
-          setSelfiePreviewUrl(preview.startsWith('http') || preview.startsWith('data:') ? preview : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}${preview}`);
+          setSelfiePreviewUrl(getFullUrl(preview));
+          setSelfieError(false);
+          addToast("Selfie verification completed", "success");
+          setSelfiePhase("done");
+        } else {
+          addToast("Selfie is still processing. Please wait or try again.", "error");
+          setSelfiePhase("intro");
         }
+      } else {
+        addToast("Failed to verify selfie", "error");
+        setSelfiePhase("intro");
       }
-      addToast("Selfie verification completed", "success");
-      setSelfiePhase("done");
     } catch (error) {
       addToast("Error fetching verification results", "error");
       setSelfiePhase("intro");
@@ -609,8 +632,13 @@ export default function DocumentUploadStep() {
 
               {selfiePhase === "done" && (
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
-                  {selfiePreviewUrl ? (
-                    <img src={selfiePreviewUrl} alt="Selfie" style={{ height: "48px", width: "48px", objectFit: "cover", borderRadius: "50%", background: "var(--bg-secondary)", border: "2px solid var(--wise-green)" }} />
+                  {selfiePreviewUrl && !selfieError ? (
+                    <img 
+                      src={selfiePreviewUrl} 
+                      alt="Selfie" 
+                      style={{ height: "48px", width: "48px", objectFit: "cover", borderRadius: "50%", background: "var(--bg-secondary)", border: "2px solid var(--wise-green)" }} 
+                      onError={() => setSelfieError(true)}
+                    />
                   ) : (
                     <div style={{ height: "48px", width: "48px", borderRadius: "50%", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center", color: "#000", fontSize: "1.2rem", fontWeight: 800 }}>✓</div>
                   )}
