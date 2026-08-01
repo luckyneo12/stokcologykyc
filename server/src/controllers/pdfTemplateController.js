@@ -65,6 +65,7 @@ const saveTemplate = async (req, res) => {
          } catch (e) { 
            console.error("Could not load base PDF", e); 
            fs.appendFileSync(logFile, `Error loading base PDF: ${e.message}\n`);
+           throw new Error("Could not load base PDF. Compilation aborted to prevent data corruption.");
          }
       }
 
