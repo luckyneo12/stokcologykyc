@@ -2,6 +2,7 @@ import { useKYC } from "@/context/KYCContext";
 import { useState, useEffect } from "react";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Logo from "../Logo";
+import PdfMobileViewer from "../PdfMobileViewer";
 
 export default function EsignPreviewStep() {
   const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents, preGeneratedPdf } = useKYC();
@@ -112,13 +113,7 @@ export default function EsignPreviewStep() {
           </div>
         )}
 
-        {pdfUrl && (
-          <iframe 
-            src={`${pdfUrl}#toolbar=0&view=FitH`} 
-            style={{ width: "100%", height: "70vh", minHeight: "500px", border: "none" }} 
-            title="KYC Preview" 
-          />
-        )}
+        {pdfUrl && <PdfMobileViewer url={pdfUrl} />}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 32, maxWidth: "480px", marginLeft: "auto", marginRight: "auto" }}>
