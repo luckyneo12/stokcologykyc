@@ -151,6 +151,7 @@ export default function DocumentUploadStep() {
   const selfiePollRef = useRef(null);
   const selfieSocketRef = useRef(null);
   const hasProcessedSelfieRedirect = useRef(false);
+  const pendingSelfieRequestId = useRef(null);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -298,6 +299,14 @@ export default function DocumentUploadStep() {
           setSelfieError(false);
           addToast("Selfie verification completed", "success");
           setSelfiePhase("done");
+          // Clear pending request
+          pendingSelfieRequestId.current = null;
+          sessionStorage.removeItem("pendingSelfieRequestId");
+          // Update context so desktop also picks it up
+          updateState({
+            selfie: { preview, matchScore: result.score || result.faceMatchScore || 0 },
+            selfieDetails: { preview, matchScore: result.score || result.faceMatchScore || 0 },
+          });
         } else {
           addToast("Selfie is still processing. Please wait or try again.", "error");
           setSelfiePhase("intro");
@@ -311,6 +320,31 @@ export default function DocumentUploadStep() {
       setSelfiePhase("intro");
     }
   };
+
+  // --- Visibility change: detect when user returns to tab after Digio popup/tab ---
+  // On mobile, the Digio callback often doesn't fire because the browser suspends
+  // the original tab. This listener catches the user coming back and auto-checks.
+  useEffect(() => {
+    // Restore any pending selfie request from a previous session/page load
+    const savedPending = sessionStorage.getItem("pendingSelfieRequestId");
+    if (savedPending && selfiePhase !== "done") {
+      pendingSelfieRequestId.current = savedPending;
+      // Auto-check immediately in case the selfie completed while we were away
+      setSelfiePhase("processing");
+      handleDigioSuccess(savedPending);
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && pendingSelfieRequestId.current) {
+        console.log("[DocUpload] Tab became visible — checking pending selfie:", pendingSelfieRequestId.current);
+        setSelfiePhase("processing");
+        handleDigioSuccess(pendingSelfieRequestId.current);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [selfiePhase]);
 
   useEffect(() => {
     if (hasProcessedSelfieRedirect.current) return;
@@ -356,13 +390,16 @@ export default function DocumentUploadStep() {
   }, []);
 
   const startVerification = async () => {
+    const isMobile = isMobileDevice();
     const digio = initializeDigio({
-      is_redirection_approach: window.innerWidth <= 768,
+      is_redirection_approach: isMobile,
       redirect_url: window.location.href,
       callback: async (response) => {
         if (response.error_code) {
           addToast(`Selfie verification failed: ${response.message}`, "error");
           setSelfiePhase("intro");
+          pendingSelfieRequestId.current = null;
+          sessionStorage.removeItem("pendingSelfieRequestId");
           return;
         }
         handleDigioSuccess(response.digio_doc_id || response.id);
@@ -391,6 +428,10 @@ export default function DocumentUploadStep() {
         return;
       }
 
+      // Save the request ID so visibilitychange can pick it up on mobile
+      pendingSelfieRequestId.current = requestId;
+      sessionStorage.setItem("pendingSelfieRequestId", requestId);
+
       if (requestData.accessToken) {
         digio.submit(requestId, customerIdentifier, requestData.accessToken);
       } else {
@@ -400,6 +441,8 @@ export default function DocumentUploadStep() {
       if (digio.cancel) digio.cancel();
       addToast(error?.message || "Error connecting to selfie verification service", "error");
       setSelfiePhase("intro");
+      pendingSelfieRequestId.current = null;
+      sessionStorage.removeItem("pendingSelfieRequestId");
     }
   };
 
