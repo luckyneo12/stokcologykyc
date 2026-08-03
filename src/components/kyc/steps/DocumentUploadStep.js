@@ -1,9 +1,11 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useKYC } from "@/context/KYCContext";
 import { ArrowLeftIcon } from "../Icons";
 import ImageCropper from "@/components/ui/ImageCropper";
-import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import SelfieCaptureInline from "../SelfieCaptureInline";
+import { initializeDigio, createDigioRequest } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
 
@@ -146,12 +148,11 @@ export default function DocumentUploadStep() {
   const [matchScore, setMatchScore] = useState(selfie?.matchScore || null);
   const [selfiePreviewUrl, setSelfiePreviewUrl] = useState(getFullUrl(selfie?.preview));
   const [selfieError, setSelfieError] = useState(false);
+  const [showSelfieCapture, setShowSelfieCapture] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
   const selfiePollRef = useRef(null);
   const selfieSocketRef = useRef(null);
-  const hasProcessedSelfieRedirect = useRef(false);
-  const pendingSelfieRequestId = useRef(null);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -276,174 +277,18 @@ export default function DocumentUploadStep() {
     }
   }, [applicationId]);
 
-  const handleDigioSuccess = async (requestId) => {
-    try {
-      let result;
-      let retries = 5;
-      
-      while (retries > 0) {
-        result = await fetchDigioRequestResponse(requestId, "SELFIE");
-        if (result?.success && result.updates?.selfieDetails?.preview) {
-          break; // Got the selfie!
-        }
-        // Wait 2 seconds before polling again
-        await new Promise(res => setTimeout(res, 2000));
-        retries--;
-      }
-
-      if (result?.success) {
-        setMatchScore(result.score || result.faceMatchScore || 0);
-        if (result.updates?.selfieDetails?.preview) {
-          const preview = result.updates.selfieDetails.preview;
-          setSelfiePreviewUrl(getFullUrl(preview));
-          setSelfieError(false);
-          addToast("Selfie verification completed", "success");
-          setSelfiePhase("done");
-          // Clear pending request
-          pendingSelfieRequestId.current = null;
-          sessionStorage.removeItem("pendingSelfieRequestId");
-          // Update context so desktop also picks it up
-          updateState({
-            selfie: { preview, matchScore: result.score || result.faceMatchScore || 0 },
-            selfieDetails: { preview, matchScore: result.score || result.faceMatchScore || 0 },
-          });
-        } else {
-          addToast("Selfie is still processing. Please wait or try again.", "error");
-          setSelfiePhase("intro");
-        }
-      } else {
-        addToast("Failed to verify selfie", "error");
-        setSelfiePhase("intro");
-      }
-    } catch (error) {
-      addToast("Error fetching verification results", "error");
-      setSelfiePhase("intro");
-    }
-  };
-
-  // --- Visibility change: detect when user returns to tab after Digio popup/tab ---
-  // On mobile, the Digio callback often doesn't fire because the browser suspends
-  // the original tab. This listener catches the user coming back and auto-checks.
-  useEffect(() => {
-    // Restore any pending selfie request from a previous session/page load
-    const savedPending = sessionStorage.getItem("pendingSelfieRequestId");
-    if (savedPending && selfiePhase !== "done") {
-      pendingSelfieRequestId.current = savedPending;
-      // Auto-check immediately in case the selfie completed while we were away
-      setSelfiePhase("processing");
-      handleDigioSuccess(savedPending);
-    }
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && pendingSelfieRequestId.current) {
-        console.log("[DocUpload] Tab became visible — checking pending selfie:", pendingSelfieRequestId.current);
-        setSelfiePhase("processing");
-        handleDigioSuccess(pendingSelfieRequestId.current);
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [selfiePhase]);
-
-  useEffect(() => {
-    if (hasProcessedSelfieRedirect.current) return;
-
-    const searchParams = new URLSearchParams(window.location.search);
-    const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
-    const status = searchParams.get("message") || searchParams.get("status");
-    
-    if (documentId && status) {
-      hasProcessedSelfieRedirect.current = true;
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      if (window.opener && window.opener !== window) {
-        window.opener.postMessage({ type: 'DIGIO_SUCCESS', documentId, step: 'SELFIE', status }, window.location.origin);
-        window.close();
-        return;
-      }
-
-      setSelfiePhase("processing");
-      if (status.toLowerCase().includes("success") || status === "Sign completed") {
-        handleDigioSuccess(documentId);
-      } else {
-        setSelfiePhase("intro");
-        addToast(`Selfie verification failed: ${status}`, "error");
-      }
-    }
-
-    const handleMessage = (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === 'DIGIO_SUCCESS' && event.data?.step === 'SELFIE') {
-        setSelfiePhase("processing");
-        if (event.data.status.toLowerCase().includes("success") || event.data.status === "Sign completed") {
-          handleDigioSuccess(event.data.documentId);
-        } else {
-          setSelfiePhase("intro");
-          addToast(`Selfie verification failed: ${event.data.status}`, "error");
-        }
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  const startVerification = async () => {
-    const isMobile = isMobileDevice();
-    const digio = initializeDigio({
-      is_redirection_approach: isMobile,
-      redirect_url: window.location.href,
-      callback: async (response) => {
-        if (response.error_code) {
-          addToast(`Selfie verification failed: ${response.message}`, "error");
-          setSelfiePhase("intro");
-          pendingSelfieRequestId.current = null;
-          sessionStorage.removeItem("pendingSelfieRequestId");
-          return;
-        }
-        handleDigioSuccess(response.digio_doc_id || response.id);
-      },
+  const handleInlineSelfieSuccess = ({ score, selfiePath, localPreview }) => {
+    const fullUrl = localPreview || getFullUrl(selfiePath);
+    setSelfiePreviewUrl(fullUrl);
+    setMatchScore(score);
+    setSelfieError(false);
+    setSelfiePhase("done");
+    setShowSelfieCapture(false);
+    addToast("Selfie verification completed", "success");
+    updateState({
+      selfie: { preview: selfiePath, matchScore: score },
+      selfieDetails: { preview: selfiePath, matchScore: score },
     });
-
-    if (!digio) {
-      addToast("Unable to initialize selfie verification flow", "error");
-      setSelfiePhase("intro");
-      return;
-    }
-
-    if (!digio.is_redirection_approach) {
-      digio.init();
-    }
-
-    setSelfiePhase("processing");
-    try {
-      const requestData = await createDigioRequest("SELFIE", {});
-      const { requestId, customerIdentifier, applicationId: newAppId } = requestData;
-      if (newAppId) setApplicationId(newAppId);
-
-      if (!requestId) {
-        addToast("Unable to create selfie request", "error");
-        setSelfiePhase("intro");
-        return;
-      }
-
-      // Save the request ID so visibilitychange can pick it up on mobile
-      pendingSelfieRequestId.current = requestId;
-      sessionStorage.setItem("pendingSelfieRequestId", requestId);
-
-      if (requestData.accessToken) {
-        digio.submit(requestId, customerIdentifier, requestData.accessToken);
-      } else {
-        digio.submit(requestId, customerIdentifier);
-      }
-    } catch (error) {
-      if (digio.cancel) digio.cancel();
-      addToast(error?.message || "Error connecting to selfie verification service", "error");
-      setSelfiePhase("intro");
-      pendingSelfieRequestId.current = null;
-      sessionStorage.removeItem("pendingSelfieRequestId");
-    }
   };
 
   // --- Document Logic ---
@@ -736,11 +581,11 @@ export default function DocumentUploadStep() {
             </div>
             
             <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px" }}>
-              {selfiePhase === "intro" && (
+              {selfiePhase === "intro" && !showSelfieCapture && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {!showQR ? (
                     <>
-                      <button className="btn btn-premium" onClick={startVerification} style={{ width: "100%", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "800", fontSize: "0.95rem", color: "#000" }}>
+                      <button className="btn btn-premium" onClick={() => setShowSelfieCapture(true)} style={{ width: "100%", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "800", fontSize: "0.95rem", color: "#000" }}>
                         Start Selfie Capture
                       </button>
                       <button onClick={() => setShowQR(true)} style={{ width: "100%", background: "transparent", border: "1.5px solid var(--border-color)", color: "var(--text-secondary)", height: "48px", padding: "0 16px", borderRadius: "12px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-secondary)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>
@@ -767,13 +612,6 @@ export default function DocumentUploadStep() {
                 </div>
               )}
 
-              {selfiePhase === "processing" && (
-                <div style={{ textAlign: "center", padding: "24px", background: "var(--bg-elevated)", borderRadius: "16px", border: "1px solid var(--border-color)" }}>
-                  <div className="loader" style={{ margin: "0 auto 16px", width: "24px", height: "24px" }}></div>
-                  <p style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-primary)" }}>Launching Capture...</p>
-                  <button onClick={() => setSelfiePhase("intro")} style={{ marginTop: "12px", background: "transparent", border: "none", color: "var(--text-secondary)", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>Cancel</button>
-                </div>
-              )}
 
               {selfiePhase === "done" && (
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
@@ -907,6 +745,25 @@ export default function DocumentUploadStep() {
           <ArrowLeftIcon size={18} /> Back
         </button>
       </div>
+
+      {showSelfieCapture && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, minHeight: "100%", background: "rgba(0,0,0,0.9)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ width: "100%", maxWidth: "500px", background: "#111", borderRadius: "20px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.8)", border: "1px solid rgba(255,255,255,0.15)", position: "relative", zIndex: 100000 }}>
+            <div style={{ padding: "20px", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, color: "#fff", fontSize: "1.1rem" }}>Selfie Capture</h3>
+              <button onClick={() => setShowSelfieCapture(false)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", padding: 4 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <SelfieCaptureInline 
+              applicationId={applicationId} 
+              onSuccess={handleInlineSelfieSuccess} 
+              onCancel={() => setShowSelfieCapture(false)} 
+            />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

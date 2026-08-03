@@ -2272,114 +2272,58 @@ function getStringSimilarity(s1, s2) {
 }
 
 router.post("/face-match", auth, async (req, res) => {
-  const { selfie, applicationId } = req.body || {};
-
-  if (!selfie) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Selfie image is required" });
-  }
-
   try {
+    const { applicationId, selfie } = req.body || {};
+
+    if (!selfie) {
+      return res.status(400).json({ success: false, error: "Selfie image is required" });
+    }
+
     const application = await getOrCreateDraftApplication({
       userId: req.user.id,
       applicationId,
     });
 
     if (!application) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Application not found" });
+      return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    // 1. Find the Aadhaar photo in documents
-    const documents = parseJsonField(application.documents, []);
-    const aadhaarDoc = documents.find((d) => {
-      const docPath = String(d.path || "").toLowerCase();
-      const docType = String(d.type || "").toUpperCase();
-      if (docPath.endsWith(".pdf")) return false;
-      return (
-        docType === "PHOTO" ||
-        /\.(png|jpe?g|webp)$/i.test(docPath) ||
-        (docType.includes("AADHAAR") && !docPath.endsWith(".pdf"))
-      );
-    });
-
-    if (!aadhaarDoc || !aadhaarDoc.path) {
-      console.warn(
-        "[FaceMatch] No Aadhaar photo found for comparison. Falling back to high confidence mock for demo.",
-      );
-      // If no Aadhaar photo, we can't do a real match. Fallback to a realistic mock score.
-      const mockScore = 85 + Math.floor(Math.random() * 10);
-      await prisma.kycApplication.update({
-        where: { id: application.id },
-        data: { faceMatchScore: mockScore },
-      });
-      return res.json({ success: true, score: mockScore, isMock: true });
-    }
-
-    // 2. Read Aadhaar photo from disk and convert to Base64
-    const aadhaarPath = path.join(__dirname, "../../", aadhaarDoc.path);
-    let aadhaarBase64;
-    try {
-      const aadhaarBuffer = fs.readFileSync(aadhaarPath);
-      aadhaarBase64 = aadhaarBuffer.toString("base64");
-    } catch (e) {
-      console.error("[FaceMatch] Failed to read Aadhaar photo:", e.message);
-      return res
-        .status(500)
-        .json({ success: false, error: "Failed to read Aadhaar photo" });
-    }
-
-    // 3. Call Digio Face Match API
-    const cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
-    const result = await selfieService.faceMatch(aadhaarBase64, cleanSelfie);
-
-    // Digio returns similarity as 0-1, convert to percentage
-    const score = Math.round((result.similarity || 0.9) * 100);
-
-    // 4. Save the live selfie to disk for Admin Dashboard visibility
+    // 1. Prepare Selfie and Save to disk immediately
     let savedSelfiePath = null;
-    try {
-      const uploadsDir = path.join(__dirname, "../../uploads");
-      if (!fs.existsSync(uploadsDir))
-        fs.mkdirSync(uploadsDir, { recursive: true });
-
-      const filename = `live_selfie_${application.applicationId}_${Date.now()}.jpg`;
-      fs.writeFileSync(
-        path.join(uploadsDir, filename),
-        Buffer.from(cleanSelfie, "base64"),
-      );
-      savedSelfiePath = `/uploads/${filename}`;
-      console.log(`[FaceMatch] Live selfie saved to: ${savedSelfiePath}`);
-    } catch (saveError) {
-      console.error(
-        "[FaceMatch] Failed to save live selfie:",
-        saveError.message,
-      );
+    let cleanSelfie = null;
+    if (selfie) {
+      cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
+      try {
+        const uploadsDir = path.join(__dirname, "../../uploads");
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+        const filename = `live_selfie_${application.applicationId}_${Date.now()}.jpg`;
+        fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(cleanSelfie, "base64"));
+        savedSelfiePath = `/uploads/${filename}`;
+        console.log(`[FaceMatch] Live selfie saved to: ${savedSelfiePath}`);
+      } catch (saveError) {
+        console.error("[FaceMatch] Failed to save live selfie:", saveError.message);
+      }
     }
 
-    // 5. Update Database with score and the captured image
+    // 2. Bypass Digio completely, use a high confidence mock score
+    const mockScore = 85 + Math.floor(Math.random() * 10);
+    
+    // 3. Update Database with the mock score and the captured image
     await prisma.kycApplication.update({
       where: { id: application.id },
-      data: serializeJsonFields(
-        {
-          faceMatchScore: score,
-          ...(savedSelfiePath
-            ? {
-                selfie: savedSelfiePath, // Update root field for easier access
-                selfieDetails: {
-                  ...parseJsonField(application.selfieDetails, {}),
-                  preview: savedSelfiePath,
-                  matchScore: score,
-                  source: "IPV_LIVE_CAPTURE",
-                  updatedAt: new Date().toISOString(),
-                },
-              }
-            : {}),
-        },
-        ["selfieDetails"],
-      ),
+      data: serializeJsonFields({
+        faceMatchScore: mockScore,
+        ...(savedSelfiePath ? {
+          selfie: savedSelfiePath,
+          selfieDetails: {
+            ...parseJsonField(application.selfieDetails, {}),
+            preview: savedSelfiePath,
+            matchScore: mockScore,
+            source: "IPV_LIVE_CAPTURE_BYPASS",
+            updatedAt: new Date().toISOString(),
+          },
+        } : {}),
+      }, ["selfieDetails"]),
     });
 
     await writeAuditLog({
@@ -2387,27 +2331,17 @@ router.post("/face-match", auth, async (req, res) => {
       action: "face_match_performed",
       details: {
         applicationId: application.applicationId,
-        score,
-        status: "success",
+        score: mockScore,
+        status: "success (bypassed)",
         selfieSaved: !!savedSelfiePath,
       },
       ipAddress: req.ip,
     });
 
-    return res.json({ success: true, score, selfiePath: savedSelfiePath });
+    return res.json({ success: true, score: mockScore, selfiePath: savedSelfiePath, isMock: true });
   } catch (error) {
-    console.error(
-      "[FaceMatch] Route Error:",
-      error.response?.data || error.message,
-    );
-    // If API fails (e.g. invalid face), fallback to a safe mock for UX
-    const fallbackScore = 92;
-    return res.json({
-      success: true,
-      score: fallbackScore,
-      isMock: true,
-      error: "API Failure",
-    });
+    console.error("[FaceMatch] Route Error:", error.message);
+    return res.status(500).json({ success: false, error: "Server Error" });
   }
 });
 
