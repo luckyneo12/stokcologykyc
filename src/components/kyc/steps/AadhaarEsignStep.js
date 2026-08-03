@@ -66,6 +66,14 @@ export default function AadhaarEsignStep() {
     
     if (documentId && status && !loading) {
       window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // If opened in a popup/new tab, notify opener and close
+      if (window.opener && window.opener !== window) {
+        window.opener.postMessage({ type: 'DIGIO_SUCCESS', documentId, step: 'ESIGN', status }, window.location.origin);
+        window.close();
+        return;
+      }
+
       if (status === "Sign completed" || status.toLowerCase() === "success") {
         handleDigioSuccess(documentId);
       } else {
@@ -73,6 +81,23 @@ export default function AadhaarEsignStep() {
         addToast(`eSign failed: ${status}`, "error");
       }
     }
+
+    // Listen for messages from popup
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'DIGIO_SUCCESS' && event.data?.step === 'ESIGN') {
+        const popupStatus = event.data.status;
+        if (popupStatus === "Sign completed" || popupStatus.toLowerCase() === "success") {
+          handleDigioSuccess(event.data.documentId);
+        } else {
+          setPhase("failed");
+          addToast(`eSign failed: ${popupStatus}`, "error");
+        }
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const startESign = async () => {
