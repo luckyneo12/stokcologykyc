@@ -103,9 +103,15 @@ function getVariableValue(variableName, appData) {
     case 'motherName': return pDetails.motherName;
     case 'dob': return pDetails.dob;
     case 'gender': return pDetails.gender;
+    case 'gender_male_tick': return String(pDetails.gender || '').toLowerCase() === 'male';
+    case 'gender_female_tick': return String(pDetails.gender || '').toLowerCase() === 'female';
+    case 'gender_transgender_tick': return String(pDetails.gender || '').toLowerCase() === 'transgender' || String(pDetails.gender || '').toLowerCase() === 'other';
     case 'pan': return iDetails.pan;
     case 'aadhaar': return iDetails.aadhaar;
     case 'maritalStatus': return pDetails.maritalStatus;
+    case 'marital_single_tick': return String(pDetails.maritalStatus || '').toLowerCase() === 'single';
+    case 'marital_married_tick': return String(pDetails.maritalStatus || '').toLowerCase() === 'married';
+    
     case 'occupation': return pDetails.occupation;
     case 'education': return pDetails.education;
     case 'static.emailBelongsToSelf': return 'Self';
@@ -137,6 +143,9 @@ function getVariableValue(variableName, appData) {
     case 'isIncome10To25Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('10-25') || i.includes('10 to 25'); }
     case 'isIncomeAbove25Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('>25') || i.includes('above 25') || i.includes('more than 25'); }
     case 'nationality': return pDetails.nationality || 'Indian';
+    case 'nationality_indian_tick': return String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
+    case 'nationality_other_tick': return String(pDetails.nationality || 'Indian').toLowerCase() !== 'indian';
+    
     case 'residentialStatus': {
       const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
       const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
@@ -145,15 +154,21 @@ function getVariableValue(variableName, appData) {
       }
       return 'Resident Individual';
     }
-    case 'isResidentIndividual': {
+    case 'residential_resident_tick': {
       const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
       const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
       return isIndian && !isTaxOutside;
     }
-    case 'isNonResidentIndian': {
+    case 'residential_nri_tick': {
       const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
       const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
       return !isIndian || isTaxOutside;
+    }
+    case 'residential_foreign_tick': {
+      return String(pDetails.nationality || 'Indian').toLowerCase() !== 'indian';
+    }
+    case 'residential_pio_tick': {
+      return false; // Assuming PIO is not currently supported in the standard flow, but preventing it from being accidentally checked by a true-evaluating string
     }
     case 'email': return appData.email || pDetails.email || appData.user?.email;
     case 'phone': return appData.phone || pDetails.phone || appData.user?.phone;

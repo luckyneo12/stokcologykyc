@@ -2074,6 +2074,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       ipAddress: req.ip,
     });
 
+    // Notify connected clients (e.g. desktop UI waiting for mobile selfie)
+    req.app.get("io")?.to(application.applicationId).emit("kyc_updated");
+
     return res.json({
       success: true,
       applicationId: application.applicationId,
@@ -2120,11 +2123,14 @@ router.post("/verify-bank", auth, async (req, res) => {
         .json({ success: false, error: "Application not found" });
     }
 
+    const personalDetails = parseJsonField(application.personalDetails, {});
+    const bankDetails = parseJsonField(application.bankDetails, {});
+
     // Call Bank Service (v4 Penny Drop)
     const result = await bankService.verifyAccount(
       accountNumber,
       ifsc,
-      beneficiaryName || application.personalDetails?.fullName,
+      beneficiaryName || personalDetails.fullName,
     );
 
     if (result.verified) {
@@ -2144,7 +2150,7 @@ router.post("/verify-bank", auth, async (req, res) => {
         console.warn("IFSC lookup failed during bank verification:", e.message);
       }
 
-      const panName = application.personalDetails?.fullName || beneficiaryName || "";
+      const panName = personalDetails.fullName || beneficiaryName || "";
       const bankNameFromDigio = result.beneficiary_name_with_bank || result.beneficiary_name || "";
       const localMatchScore = getStringSimilarity(panName, bankNameFromDigio) * 100;
       const digioMatchScore = parseFloat(result.name_match_score || result.name_match_score_percentage || 0);
@@ -2159,9 +2165,9 @@ router.post("/verify-bank", auth, async (req, res) => {
           result.bank_name ||
           result.bank ||
           branchDetails.bank_name ||
-          application.bankDetails?.bankName,
+          bankDetails.bankName,
         micr:
-          result.micr || branchDetails.micr || application.bankDetails?.micr,
+          result.micr || branchDetails.micr || bankDetails.micr,
         accountHolderName: bankNameFromDigio,
         verified: isNameMatched,
         verifiedAt: result.verified_at,
@@ -2173,15 +2179,15 @@ router.post("/verify-bank", auth, async (req, res) => {
           branchDetails.address ||
           branchDetails.bank_address ||
           branchDetails.branch ||
-          application.bankDetails?.address,
-        city: branchDetails.city || application.bankDetails?.city,
-        state: branchDetails.state || application.bankDetails?.state,
-        district: branchDetails.district || application.bankDetails?.district,
+          bankDetails.address,
+        city: branchDetails.city || bankDetails.city,
+        state: branchDetails.state || bankDetails.state,
+        district: branchDetails.district || bankDetails.district,
         pincode:
           branchDetails.pin ||
           branchDetails.pincode ||
           branchDetails.pin_code ||
-          application.bankDetails?.pincode,
+          bankDetails.pincode,
       });
 
       await prisma.kycApplication.update({

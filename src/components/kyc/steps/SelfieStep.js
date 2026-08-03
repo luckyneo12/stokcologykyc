@@ -1,16 +1,30 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { ArrowRightIcon } from "../Icons";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
+import { io } from "socket.io-client";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+/** Detect if the current device is a mobile/tablet */
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+}
 
 export default function SelfieStep() {
   const { nextStep, prevStep, addToast, setApplicationId, applicationId, updateState } = useKYC();
-  const [phase, setPhase] = useState("intro"); // intro | processing | done
+  const [phase, setPhase] = useState("intro"); // intro | processing | done | mobileCompleted
   const [matchScore, setMatchScore] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
+  const pollRef = useRef(null);
+  const socketRef = useRef(null);
+  const hasProcessedRedirect = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -21,58 +35,171 @@ export default function SelfieStep() {
     }
   }, [applicationId]);
 
-  const handleDigioSuccess = async (requestId) => {
+  // ─── Handle successful Digio selfie completion ───────────────────────
+  const handleDigioSuccess = useCallback(async (requestId, opts = {}) => {
+    const { isMobileRedirectReturn = false } = opts;
     try {
       const result = await fetchDigioRequestResponse(requestId, "SELFIE");
       if (result?.success) {
         setMatchScore(result.score || result.faceMatchScore || 0);
-        updateState({ 
-          selfieDetails: { 
-            preview: result.selfiePath, 
-            matchScore: result.score 
+        updateState({
+          selfieDetails: {
+            preview: result.selfiePath,
+            matchScore: result.score,
           },
-          selfie: { preview: result.selfiePath }
+          selfie: { preview: result.selfiePath },
         });
       }
       addToast("Selfie verification completed", "success");
-      setPhase("done");
-      nextStep();
+
+      // On mobile (QR-scanned device), show "close this tab" instead of advancing
+      if (isMobileRedirectReturn) {
+        setPhase("mobileCompleted");
+      } else {
+        setPhase("done");
+        nextStep();
+      }
     } catch (error) {
       addToast("Error fetching verification results", "error");
       setPhase("intro");
     }
+  }, [addToast, nextStep, updateState]);
+
+  // ─── Socket.IO + Polling: watch for cross-device selfie completion ──
+  // Activated when QR code is shown on desktop
+  const startCrossDevicePolling = useCallback(() => {
+    const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
+    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    if (!activeAppId || !token) return;
+
+    // Connect to Socket.IO and join the application room
+    const socket = io(API_BASE_URL, { withCredentials: true });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("[SelfieStep Socket.IO] Connected, joining room:", activeAppId);
+      socket.emit("join_application", activeAppId);
+    });
+
+    // When the server emits kyc_updated (after mobile completes selfie),
+    // fetch the latest status and check if selfie is done
+    socket.on("kyc_updated", async () => {
+      console.log("[SelfieStep Socket.IO] Received kyc_updated — checking selfie status...");
+      await checkSelfieStatus(activeAppId, token);
+    });
+
+    // Also set up a fallback polling interval (every 5s) in case Socket.IO events are missed
+    pollRef.current = setInterval(async () => {
+      await checkSelfieStatus(activeAppId, token);
+    }, 5000);
+
+    console.log("[SelfieStep] Cross-device polling started (Socket.IO + 5s fallback)");
+  }, [applicationId]);
+
+  const checkSelfieStatus = async (appId, token) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/kyc/status/${appId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (!data.success || !data.application) return;
+
+      const app = data.application;
+      const selfieDetails =
+        typeof app.selfieDetails === "string"
+          ? JSON.parse(app.selfieDetails)
+          : app.selfieDetails;
+
+      // If selfie has been captured (preview path exists), auto-advance
+      if (selfieDetails?.preview) {
+        console.log("[SelfieStep] Selfie detected from another device! Auto-advancing...");
+        setMatchScore(selfieDetails.matchScore || null);
+        updateState({
+          selfieDetails: {
+            preview: selfieDetails.preview,
+            matchScore: selfieDetails.matchScore,
+          },
+          selfie: { preview: selfieDetails.preview },
+        });
+        addToast("Selfie captured on your mobile device!", "success");
+        stopCrossDevicePolling();
+        setPhase("done");
+        nextStep();
+      }
+    } catch (err) {
+      console.warn("[SelfieStep] Status check failed:", err.message);
+    }
   };
 
+  const stopCrossDevicePolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+  }, []);
+
+  // Start/stop polling when QR visibility changes
   useEffect(() => {
+    if (showQR && phase === "intro") {
+      startCrossDevicePolling();
+    }
+    return () => stopCrossDevicePolling();
+  }, [showQR, phase, startCrossDevicePolling, stopCrossDevicePolling]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => stopCrossDevicePolling();
+  }, [stopCrossDevicePolling]);
+
+  // ─── Handle Digio redirect return (URL params) ──────────────────────
+  useEffect(() => {
+    if (hasProcessedRedirect.current) return;
+
     const searchParams = new URLSearchParams(window.location.search);
     const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
     const status = searchParams.get("message") || searchParams.get("status");
-    
+
     if (documentId && status) {
+      hasProcessedRedirect.current = true;
       window.history.replaceState({}, document.title, window.location.pathname);
-      
+
       // If opened in a popup/new tab, notify opener and close
       if (window.opener && window.opener !== window) {
-        window.opener.postMessage({ type: 'DIGIO_SUCCESS', documentId, step: 'SELFIE', status }, window.location.origin);
+        window.opener.postMessage(
+          { type: "DIGIO_SUCCESS", documentId, step: "SELFIE", status },
+          window.location.origin
+        );
         window.close();
         return;
       }
 
+      // Determine if this is a mobile redirect return
+      const isMobile = isMobileDevice();
+
       setPhase("processing");
       if (status.toLowerCase().includes("success") || status === "Sign completed") {
-        handleDigioSuccess(documentId);
+        handleDigioSuccess(documentId, { isMobileRedirectReturn: isMobile });
       } else {
         setPhase("intro");
         addToast(`Selfie verification failed: ${status}`, "error");
       }
     }
 
-    // Listen for messages from popup
+    // Listen for messages from popup (desktop popup flow)
     const handleMessage = (event) => {
       if (event.origin !== window.location.origin) return;
-      if (event.data?.type === 'DIGIO_SUCCESS' && event.data?.step === 'SELFIE') {
+      if (event.data?.type === "DIGIO_SUCCESS" && event.data?.step === "SELFIE") {
         setPhase("processing");
-        if (event.data.status.toLowerCase().includes("success") || event.data.status === "Sign completed") {
+        if (
+          event.data.status.toLowerCase().includes("success") ||
+          event.data.status === "Sign completed"
+        ) {
           handleDigioSuccess(event.data.documentId);
         } else {
           setPhase("intro");
@@ -81,10 +208,11 @@ export default function SelfieStep() {
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [addToast, handleDigioSuccess]);
 
+  // ─── Start selfie verification ───────────────────────────────────────
   const startVerification = async () => {
     setPhase("processing");
 
@@ -98,26 +226,38 @@ export default function SelfieStep() {
           });
           coords.lat = pos.coords.latitude;
           coords.lng = pos.coords.longitude;
-        } catch(err) {
+        } catch (err) {
           console.warn("Geolocation skipped:", err.message);
         }
       }
 
       const requestData = await createDigioRequest("SELFIE", coords);
-      const { requestId, customerIdentifier, applicationId } = requestData;
-      if (applicationId) setApplicationId(applicationId);
+      const { requestId, customerIdentifier, applicationId: appId } = requestData;
+      if (appId) setApplicationId(appId);
 
+      const isMobile = isMobileDevice();
 
-      const digio = initializeDigio({
+      // On mobile, use redirect approach so Digio redirects back to our app
+      // instead of opening a popup/new tab that won't auto-close
+      const digioOptions = {
         callback: async (response) => {
           if (response.error_code) {
             addToast(`Selfie verification failed: ${response.message}`, "error");
             setPhase("intro");
             return;
           }
-          handleDigioSuccess(response.digio_doc_id || response.id);
+          handleDigioSuccess(response.digio_doc_id || response.id, {
+            isMobileRedirectReturn: isMobile,
+          });
         },
-      });
+      };
+
+      if (isMobile) {
+        digioOptions.is_redirection_approach = true;
+        digioOptions.redirect_url = window.location.origin + window.location.pathname;
+      }
+
+      const digio = initializeDigio(digioOptions);
 
       if (!digio || !requestId) {
         addToast("Unable to initialize selfie verification flow", "error");
@@ -136,6 +276,7 @@ export default function SelfieStep() {
     }
   };
 
+  // ─── Render ──────────────────────────────────────────────────────────
   return (
     <div className="container-sm" style={{ paddingTop: "8vh", paddingBottom: "4vh" }}>
       <div className="text-center" style={{ marginBottom: 28 }}>
@@ -168,8 +309,14 @@ export default function SelfieStep() {
                   <QRCode value={resumeUrl} size={256} ecLevel="L" />
                 </div>
               )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 }}>
+                <div className="loader" style={{ width: 16, height: 16, borderWidth: 2 }}></div>
+                <p className="text-caption" style={{ color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>
+                  Waiting for selfie from your mobile...
+                </p>
+              </div>
               <p className="text-caption" style={{ color: "var(--text-muted)" }}>
-                This will resume your KYC journey exactly at this step on your phone. This screen will automatically update once you finish.
+                This screen will automatically advance once you complete the selfie on your phone.
               </p>
               <button className="btn btn-text" onClick={() => setShowQR(false)} style={{ marginTop: 12 }}>
                 Hide QR Code
@@ -212,6 +359,29 @@ export default function SelfieStep() {
           <button className="btn btn-primary" onClick={() => nextStep()} style={{ width: "100%" }}>
             Continue <ArrowRightIcon size={18} />
           </button>
+        </div>
+      )}
+
+      {/* Mobile completion screen — shown on the QR-scanned device after selfie is done */}
+      {phase === "mobileCompleted" && (
+        <div className="card" style={{ padding: 48, textAlign: "center" }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <h2 className="text-section" style={{ marginBottom: 12 }}>Selfie Captured Successfully!</h2>
+          <p className="text-body" style={{ marginBottom: 8, color: "var(--text-secondary)" }}>
+            Your selfie has been verified and synced. You can now safely close this tab and continue on your original device.
+          </p>
+          {matchScore !== null && (
+            <p style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--wise-green)", marginBottom: 16 }}>
+              Match Score: {matchScore}%
+            </p>
+          )}
+          <p className="text-caption" style={{ color: "var(--text-muted)", marginTop: 16 }}>
+            Your desktop/laptop screen will automatically advance to the next step.
+          </p>
         </div>
       )}
     </div>

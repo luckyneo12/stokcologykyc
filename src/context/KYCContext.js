@@ -212,7 +212,7 @@ const STEP_RELEVANT_KEYS = {
   nominee: ["nomineeDetails"],
   nomineeAllocation: ["nomineeAllocation"],
   bankVerification: ["bankDetails"],
-  documentUpload: ["financialProof", "signature", "panUpload"],
+  documentUpload: ["financialProof", "signature", "panUpload", "selfieDetails"],
   esignPreview: ["generatedPdfBase64"],
   aadhaarEsign: [
     "status",

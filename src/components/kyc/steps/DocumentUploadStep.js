@@ -1,10 +1,21 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { ArrowLeftIcon } from "../Icons";
 import ImageCropper from "@/components/ui/ImageCropper";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
+import { io } from "socket.io-client";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+/** Detect if the current device is a mobile/tablet */
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+}
 
 const UploadIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -111,7 +122,7 @@ export default function DocumentUploadStep() {
   const finInputRef = useRef(null);
 
   // Bank Proof State
-  const needsBankProof = bankDetails?.method !== "Manual Data Entry" && bankDetails?.verified === false;
+  const needsBankProof = bankDetails?.verified === false;
   const [bankProofPreview, setBankProofPreview] = useState(getFullUrl(bankDetails?.proofPreview || bankDetails?.proof));
   const [bankProofType, setBankProofType] = useState(bankDetails?.proofType || "");
   const bankOptions = ["Bank Statement", "Cancelled Cheque", "Passbook"];
@@ -137,6 +148,9 @@ export default function DocumentUploadStep() {
   const [selfieError, setSelfieError] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
+  const selfiePollRef = useRef(null);
+  const selfieSocketRef = useRef(null);
+  const hasProcessedSelfieRedirect = useRef(false);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -172,12 +186,91 @@ export default function DocumentUploadStep() {
     }
   }, [panUpload, signature, financialProof, selfie]);
 
+  // --- Cross-device selfie polling via Socket.IO + fallback ---
+  const checkSelfieStatus = useCallback(async () => {
+    const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
+    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    if (!activeAppId || !token) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/kyc/status/${activeAppId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!data.success || !data.application) return;
+      const app = data.application;
+      const sd = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : app.selfieDetails;
+      if (sd?.preview) {
+        console.log("[DocUpload] Selfie detected from another device! Updating...");
+        const fullUrl = getFullUrl(sd.preview);
+        setSelfiePreviewUrl(fullUrl);
+        setSelfieError(false);
+        setMatchScore(sd.matchScore || null);
+        setSelfiePhase("done");
+        updateState({
+          selfie: { preview: sd.preview, matchScore: sd.matchScore },
+          selfieDetails: { preview: sd.preview, matchScore: sd.matchScore },
+        });
+        addToast("Selfie captured on your mobile device!", "success");
+        stopSelfieCrossDevicePolling();
+      }
+    } catch (err) {
+      console.warn("[DocUpload] Selfie status check failed:", err.message);
+    }
+  }, [applicationId, addToast, updateState]);
+
+  const startSelfieCrossDevicePolling = useCallback(() => {
+    const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
+    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    if (!activeAppId || !token) return;
+
+    const socket = io(API_BASE_URL, { withCredentials: true });
+    selfieSocketRef.current = socket;
+    socket.on("connect", () => {
+      console.log("[DocUpload Socket.IO] Connected, joining room:", activeAppId);
+      socket.emit("join_application", activeAppId);
+    });
+    socket.on("kyc_updated", () => {
+      console.log("[DocUpload Socket.IO] kyc_updated — checking selfie...");
+      checkSelfieStatus();
+    });
+
+    // Fallback poll every 5 seconds
+    selfiePollRef.current = setInterval(() => checkSelfieStatus(), 5000);
+    console.log("[DocUpload] Cross-device selfie polling started");
+  }, [applicationId, checkSelfieStatus]);
+
+  const stopSelfieCrossDevicePolling = useCallback(() => {
+    if (selfiePollRef.current) {
+      clearInterval(selfiePollRef.current);
+      selfiePollRef.current = null;
+    }
+    if (selfieSocketRef.current) {
+      selfieSocketRef.current.disconnect();
+      selfieSocketRef.current = null;
+    }
+  }, []);
+
+  // Start/stop cross-device polling when QR is shown/hidden
+  useEffect(() => {
+    if (showQR && selfiePhase === "intro") {
+      startSelfieCrossDevicePolling();
+    }
+    return () => stopSelfieCrossDevicePolling();
+  }, [showQR, selfiePhase, startSelfieCrossDevicePolling, stopSelfieCrossDevicePolling]);
+
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => stopSelfieCrossDevicePolling();
+  }, [stopSelfieCrossDevicePolling]);
+
   // --- Selfie Logic ---
   useEffect(() => {
     if (typeof window !== "undefined") {
       const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
       if (token && applicationId) {
-        setResumeUrl(`${window.location.origin}/resume?token=${token}&appId=${applicationId}`);
+        const baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || "https://stokcologykyc.vercel.app";
+        setResumeUrl(`${baseUrl}/resume?token=${token}&appId=${applicationId}`);
       }
     }
   }, [applicationId]);
@@ -220,11 +313,14 @@ export default function DocumentUploadStep() {
   };
 
   useEffect(() => {
+    if (hasProcessedSelfieRedirect.current) return;
+
     const searchParams = new URLSearchParams(window.location.search);
     const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
     const status = searchParams.get("message") || searchParams.get("status");
     
     if (documentId && status) {
+      hasProcessedSelfieRedirect.current = true;
       window.history.replaceState({}, document.title, window.location.pathname);
       
       if (window.opener && window.opener !== window) {
@@ -261,6 +357,8 @@ export default function DocumentUploadStep() {
 
   const startVerification = async () => {
     const digio = initializeDigio({
+      is_redirection_approach: window.innerWidth <= 768,
+      redirect_url: window.location.href,
       callback: async (response) => {
         if (response.error_code) {
           addToast(`Selfie verification failed: ${response.message}`, "error");
@@ -614,6 +712,10 @@ export default function DocumentUploadStep() {
                           <QRCode value={resumeUrl} size={256} ecLevel="L" />
                         </div>
                       )}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10 }}>
+                        <div className="loader" style={{ width: 14, height: 14, borderWidth: 2 }}></div>
+                        <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--wise-green)", margin: 0 }}>Waiting for selfie from your mobile...</p>
+                      </div>
                       <button onClick={() => setShowQR(false)} style={{ width: "100%", background: "var(--bg-secondary)", border: "none", color: "var(--text-primary)", height: "44px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="var(--bg-secondary)"}>
                         Hide QR Code
                       </button>
