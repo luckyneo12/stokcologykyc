@@ -30,26 +30,18 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
     try {
       setValidationState({ ok: false, msg: "Please click 'Allow' for Camera and Location prompts", type: "warning" });
 
-      // 1. Get Location (KYC Compliance)
-      const locData = await new Promise((resolve) => {
-        if (!navigator.geolocation) {
-          resolve(null);
-          return;
-        }
+      // 1. Get Location concurrently (don't await it to block camera)
+      if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-          (err) => {
-            console.warn("[SelfieCapture] Location denied/failed", err);
-            resolve(null); // Proceed even if location is denied
+          (pos) => {
+            if (isMounted.current) setLocationData({ lat: pos.coords.latitude, lng: pos.coords.longitude });
           },
+          (err) => console.warn("[SelfieCapture] Location denied/failed", err),
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
-      });
-      
-      if (!isMounted.current) return;
-      if (locData) setLocationData(locData);
+      }
 
-      // 2. Get Camera
+      // 2. Get Camera immediately
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setStatus("error");
         setErrorMsg("Your browser doesn't support camera access. Please use a modern browser.");

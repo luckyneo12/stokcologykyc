@@ -143,7 +143,11 @@ export default function DocumentUploadStep() {
   const panInputRef = useRef(null);
 
   // Selfie State
-  const isSelfieDone = Boolean(selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0));
+  const isSelfieDone = Boolean(
+    (selfie?.preview && selfie.preview !== "__CLEARED__") || 
+    (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0)
+  );
+  
   const [selfiePhase, setSelfiePhase] = useState(isSelfieDone ? "done" : "intro"); // intro, processing, done
   const [matchScore, setMatchScore] = useState(selfie?.matchScore || null);
   const [selfiePreviewUrl, setSelfiePreviewUrl] = useState(getFullUrl(selfie?.preview));
@@ -175,9 +179,9 @@ export default function DocumentUploadStep() {
       const full = getFullUrl(bankDetails.proofPreview || bankDetails.proof);
       if (full !== bankProofPreview) setBankProofPreview(full);
     }
-    if (selfie?.preview || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0)) {
+    if ((selfie?.preview && selfie.preview !== "__CLEARED__") || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0)) {
       setSelfiePhase("done");
-      if (selfie.preview) {
+      if (selfie.preview && selfie.preview !== "__CLEARED__") {
         const full = getFullUrl(selfie.preview);
         if (full !== selfiePreviewUrl) {
           setSelfiePreviewUrl(full);
@@ -202,7 +206,7 @@ export default function DocumentUploadStep() {
       if (!data.success || !data.application) return;
       const app = data.application;
       const sd = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : app.selfieDetails;
-      if (sd?.preview) {
+      if (sd?.preview && sd.preview !== "__CLEARED__") {
         console.log("[DocUpload] Selfie detected from another device! Updating...");
         const fullUrl = getFullUrl(sd.preview);
         setSelfiePreviewUrl(fullUrl);
@@ -628,7 +632,21 @@ export default function DocumentUploadStep() {
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                     <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Verified</p>
                   </div>
-                  <button onClick={() => setSelfiePhase("intro")} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Retake</button>
+                  <button onClick={async () => {
+                    setSelfiePhase("intro");
+                    setSelfiePreviewUrl(null);
+                    setMatchScore(null);
+                    setSelfieError(false);
+                    updateState({
+                      selfie: { image: null, preview: null, livenessPass: false, matchScore: 0 },
+                      selfieDetails: null
+                    });
+                    try {
+                      await syncProgress({ selfie: { preview: "__CLEARED__", matchScore: 0 } }, false, "documentUpload");
+                    } catch (e) {
+                      console.warn("Failed to clear selfie on backend", e);
+                    }
+                  }} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Retake</button>
                 </div>
               )}
             </div>
