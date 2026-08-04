@@ -427,9 +427,10 @@ function PdfThumbnail({ src }) {
       setLoading(true);
       setFailed(false);
       try {
+        const processedSrc = src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : src;
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version || "5.7.284"}/build/pdf.worker.min.mjs`;
-        const pdf = await pdfjs.getDocument({ url: src }).promise;
+        const pdf = await pdfjs.getDocument({ url: processedSrc }).promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 3.0 });
         const canvas = canvasRef.current;
@@ -1104,8 +1105,8 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) && shouldDisplayAsIframe(label) ? (
-        <object data={`/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={`/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        <object data={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
@@ -1944,11 +1945,11 @@ export default function AgentReview() {
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
                 {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
                   <object 
-                    data={`/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
+                    data={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
                     type="application/pdf"
                     style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
                   >
-                    <embed src={`/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    <embed src={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
                   </object>
                 ) : (
                   <div style={{ 

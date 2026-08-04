@@ -74,14 +74,52 @@ const REVIEW_STEPS = [
     id: "pricingSelection",
     kycIndex: 3,
     title: "Pricing Plan",
-    evidenceTitle: "",
-    evidenceHint: "Verify the plan and segment choices before moving ahead.",
+    evidenceTitle: "Pricing Documents",
+    evidenceHint: "Review the accepted tariff sheet and brokerage rates.",
     fields: (app) => [
       ["Selected plan", app.pricingSelection?.plan || app.segments?.pricingPlan || app.segments?.plan, "pricingSelection.plan"],
       ["Segments", formatList(app.segments?.selected || app.segments?.segments || app.segments), "segments.selected"],
       ["BSDA", app.bsda, "bsda"],
+      ["BOID", app.user?.boid, "user.boid"],
+      ["Brokerage Plan", (
+        <details key="brokerage">
+          <summary style={{ cursor: "pointer", outline: "none", color: "var(--wise-green)", userSelect: "none" }}>Standard</summary>
+          <div style={{ marginTop: 8, fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8, borderLeft: "2px solid var(--border-color)", color: "var(--text-secondary)", fontWeight: 600 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 200 }}><span>Eq Delivery:</span> <strong style={{color:"var(--text-primary)"}}>0.30%</strong></div>
+            <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 200 }}><span>Eq Intra Day:</span> <strong style={{color:"var(--text-primary)"}}>0.03%</strong></div>
+            <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 200 }}><span>Eq Futures:</span> <strong style={{color:"var(--text-primary)"}}>0.03%</strong></div>
+            <div style={{ display: "flex", justifyContent: "space-between", maxWidth: 200 }}><span>F&O:</span> <strong style={{color:"var(--text-primary)"}}>50/per lot</strong></div>
+          </div>
+        </details>
+      ), null],
+      ["Tariff Sheet", app.pricingSelection?.tariffSheet || app.segments?.tariffSheet || "Standard", "pricingSelection.tariffSheet"]
     ],
-    evidence: () => [],
+    evidence: () => {
+      const brokerageSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300" style="background:white; font-family:sans-serif; border: 1px solid #e5e7eb; border-radius: 8px;">
+  <rect width="100%" height="100%" fill="#ffffff" rx="8" />
+  <text x="24" y="48" font-size="22" font-weight="800" fill="#111827">Brokerage Plan (Standard)</text>
+  <line x1="24" y1="64" x2="476" y2="64" stroke="#e5e7eb" stroke-width="2" />
+  <text x="24" y="104" font-size="16" font-weight="600" fill="#374151">Equity Delivery</text>
+  <text x="476" y="104" font-size="16" font-weight="800" fill="#059669" text-anchor="end">0.30%</text>
+  <line x1="24" y1="120" x2="476" y2="120" stroke="#f3f4f6" stroke-width="1" />
+  
+  <text x="24" y="148" font-size="16" font-weight="600" fill="#374151">Equity Intra Day</text>
+  <text x="476" y="148" font-size="16" font-weight="800" fill="#059669" text-anchor="end">0.03%</text>
+  <line x1="24" y1="164" x2="476" y2="164" stroke="#f3f4f6" stroke-width="1" />
+
+  <text x="24" y="192" font-size="16" font-weight="600" fill="#374151">Equity Futures</text>
+  <text x="476" y="192" font-size="16" font-weight="800" fill="#059669" text-anchor="end">0.03%</text>
+  <line x1="24" y1="208" x2="476" y2="208" stroke="#f3f4f6" stroke-width="1" />
+
+  <text x="24" y="236" font-size="16" font-weight="600" fill="#374151">Futures Option</text>
+  <text x="476" y="236" font-size="16" font-weight="800" fill="#059669" text-anchor="end">50/per lot</text>
+</svg>`;
+      return [
+        { label: "DP Tariff Sheet", src: resolveAssetUrl("/schedule_of_charges.pdf") },
+        { label: "Brokerage Rates", src: `data:image/svg+xml;base64,${btoa(brokerageSvg)}` }
+      ];
+    },
   },
   {
     id: "panVerification",
@@ -428,9 +466,10 @@ function PdfThumbnail({ src }) {
       setLoading(true);
       setFailed(false);
       try {
+        const processedSrc = src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : src;
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version || "5.7.284"}/build/pdf.worker.min.mjs`;
-        const pdf = await pdfjs.getDocument({ url: src }).promise;
+        const pdf = await pdfjs.getDocument({ url: processedSrc }).promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 3.0 });
         const canvas = canvasRef.current;
@@ -659,6 +698,11 @@ function nomineeFields(app) {
       [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
       [`Nominee ${index + 1} DOB`, nominee.dob],
       [`Nominee ${index + 1} allocation`, `${allocation}%`],
+      [`Nominee ${index + 1} email`, nominee.email],
+      [`Nominee ${index + 1} mobile`, nominee.mobile],
+      [`Nominee ${index + 1} address`, [nominee.address, nominee.city, nominee.state, nominee.pincode, nominee.country].filter(Boolean).join(", ") || undefined],
+      [`Nominee ${index + 1} proof type`, nominee.proofType],
+      [`Nominee ${index + 1} proof number`, nominee.proofNumber],
     ];
     if (nominee.guardianName) {
       fields.push(
@@ -710,7 +754,7 @@ function isPdf(src) {
 function shouldDisplayAsIframe(label) {
   if (!label) return false;
   const l = label.toLowerCase();
-  return l.includes("esigned pdf") || l.includes("pep") || l.includes("f&o") || l.includes("financial");
+  return l.includes("esigned pdf") || l.includes("pep") || l.includes("f&o") || l.includes("financial") || l.includes("tariff");
 }
 
 function openInNewTab(src) {
@@ -1101,16 +1145,30 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   const [rotation, setRotation] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handleWheel = (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) && shouldDisplayAsIframe(label) ? (
-        <object data={`/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={`/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        <object data={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
-          style={{ flex: 1, position: "relative", overflow: "hidden", cursor: isDragging ? "grabbing" : "grab", userSelect: "none" }}
+          ref={containerRef}
+          style={{ flex: 1, position: "relative", overflow: "hidden", cursor: isDragging ? "grabbing" : "grab", userSelect: "none", touchAction: "none" }}
           onWheel={(e) => {
             if (e.deltaY < 0) {
               setZoom(Math.min(5, zoom + 0.1));
@@ -1199,6 +1257,39 @@ export default function AgentReview() {
   const [stepRejectReason, setStepRejectReason] = useState("");
   const [showRejectionConfirmModal, setShowRejectionConfirmModal] = useState(false);
   const fileInputRef = useRef(null);
+  const mainPreviewRef = useRef(null);
+  const modulePreviewRefs = useRef([]);
+
+  // Global handler to prevent trackpad pinch-zoom from scaling the entire browser page
+  useEffect(() => {
+    const preventGlobalPinchZoom = (e) => {
+      if (e.ctrlKey || e.type === "gesturestart") {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("wheel", preventGlobalPinchZoom, { passive: false });
+    document.addEventListener("gesturestart", preventGlobalPinchZoom, { passive: false });
+    document.addEventListener("gesturechange", preventGlobalPinchZoom, { passive: false });
+    
+    return () => {
+      document.removeEventListener("wheel", preventGlobalPinchZoom);
+      document.removeEventListener("gesturestart", preventGlobalPinchZoom);
+      document.removeEventListener("gesturechange", preventGlobalPinchZoom);
+    };
+  }, []);
+
+  // Local handler for the main preview
+  useEffect(() => {
+    const el = mainPreviewRef.current;
+    if (!el) return;
+    const handleWheel = (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
 
   const handleZoomChange = useCallback((newZoomVal) => {
     setPreviewZoom(newZoomVal);
@@ -1865,7 +1956,7 @@ export default function AgentReview() {
                                         <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4 }}>
                                           {label === "Segments" && typeof currentValue === "string" 
                                             ? currentValue.split(",").join(", ") 
-                                            : (currentValue !== undefined && currentValue !== null ? String(currentValue) : "")
+                                            : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? currentValue : String(currentValue)) : "")
                                           }
                                         </div>
                                       )}
@@ -1929,6 +2020,7 @@ export default function AgentReview() {
           </div>
           
           <div 
+            ref={mainPreviewRef}
             style={{ 
               flex: 1, 
               position: "relative", 
@@ -1937,7 +2029,8 @@ export default function AgentReview() {
               background: "var(--bg-secondary)", 
               overflow: "hidden",
               cursor: isDragging ? "grabbing" : "grab",
-              userSelect: "none"
+              userSelect: "none",
+              touchAction: "none"
             }}
             onWheel={(e) => {
               if (selectedDocument) {
@@ -1971,10 +2064,10 @@ export default function AgentReview() {
                  <span style={{ fontWeight: 600, fontSize: "1.1rem" }}>NO DOCUMENT</span>
                  <span style={{ fontSize: "0.9rem" }}>uploaded</span>
               </div>
-            ) : selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1 ? (
+            ) : selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1 ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "row", gap: 16, padding: 16, overflow: "hidden" }}>
                 {REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).map((doc, idx) => (
-                  <div key={`${selectedDocument.stepKey}-${idx}`} style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)", borderRadius: 8, border: "1px solid var(--border-color)", overflow: "hidden" }}>
+                  <div key={`${selectedDocument.stepKey}-${idx}`} ref={el => modulePreviewRefs.current[idx] = el} style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)", borderRadius: 8, border: "1px solid var(--border-color)", overflow: "hidden" }}>
                     <div style={{ padding: "8px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)", fontSize: "0.75rem", fontWeight: 700, textAlign: "center", color: "var(--text-primary)" }}>
                       {doc.label || "Document"}
                     </div>
@@ -1986,11 +2079,11 @@ export default function AgentReview() {
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
                 {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
                   <object 
-                    data={`/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
+                    data={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
                     type="application/pdf"
                     style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
                   >
-                    <embed src={`/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    <embed src={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
                   </object>
                 ) : (
                   <div style={{ 

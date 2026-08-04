@@ -460,22 +460,21 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                       )}
                     </td>
                     <td style={{ textAlign: "right", paddingRight: 24 }}>
-                      {stamp.status === "available" ? (
-                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                          <button onClick={() => { setEditingStamp({ id: stamp.id, certificateNo: stamp.certificateNo, serialNo: stamp.serialNo, fileUrl: stamp.fileUrl }); setPreviewScale(1); setPreviewPos({ x: 0, y: 0 }); }} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }} title="Edit" onMouseOver={e => { e.currentTarget.style.color = "var(--text-primary)"; e.currentTarget.style.borderColor = "var(--text-primary)"; }} onMouseOut={e => { e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.borderColor = "var(--border-color)"; }}>
-                            <Edit2 size={16} />
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                        {stamp.status !== "available" && stamp.assignedTo && (
+                          <button onClick={() => stamp.kycApplicationId ? router.push(`/admin/maker-checker/${stamp.kycApplicationId}`) : router.push(`/admin/user/${stamp.assignedTo}`)} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontWeight: 700, fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => { e.currentTarget.style.background = "var(--bg-card)"; e.currentTarget.style.borderColor = "var(--text-primary)"; }} onMouseOut={e => { e.currentTarget.style.background = "var(--bg-secondary)"; e.currentTarget.style.borderColor = "var(--border-color)"; }}>
+                            <Eye size={14} /> View KYC
                           </button>
+                        )}
+                        <button onClick={() => { setEditingStamp({ id: stamp.id, certificateNo: stamp.certificateNo, serialNo: stamp.serialNo, fileUrl: stamp.fileUrl }); setPreviewScale(1); setPreviewPos({ x: 0, y: 0 }); }} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }} title="Edit" onMouseOver={e => { e.currentTarget.style.color = "var(--text-primary)"; e.currentTarget.style.borderColor = "var(--text-primary)"; }} onMouseOut={e => { e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.borderColor = "var(--border-color)"; }}>
+                          <Edit2 size={16} />
+                        </button>
+                        {stamp.status === "available" && (
                           <button onClick={() => handleDelete(stamp.id)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "#e5484d", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }} title="Delete" onMouseOver={e => { e.currentTarget.style.background = "#e5484d"; e.currentTarget.style.color = "white"; e.currentTarget.style.borderColor = "#e5484d"; }} onMouseOut={e => { e.currentTarget.style.background = "var(--bg-secondary)"; e.currentTarget.style.color = "#e5484d"; e.currentTarget.style.borderColor = "var(--border-color)"; }}>
                             <Trash2 size={16} />
                           </button>
-                        </div>
-                      ) : (
-                        stamp.assignedTo && (
-                          <button onClick={() => stamp.kycApplicationId ? router.push(`/admin/application/${stamp.kycApplicationId}`) : router.push(`/admin/user/${stamp.assignedTo}`)} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontWeight: 700, fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => { e.currentTarget.style.background = "var(--bg-card)"; e.currentTarget.style.borderColor = "var(--text-primary)"; }} onMouseOut={e => { e.currentTarget.style.background = "var(--bg-secondary)"; e.currentTarget.style.borderColor = "var(--border-color)"; }}>
-                            <Eye size={14} /> View KYC
-                          </button>
-                        )
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

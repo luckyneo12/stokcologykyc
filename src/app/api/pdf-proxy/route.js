@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server';
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const targetUrl = searchParams.get('url');
+  let targetUrl = searchParams.get('url');
 
   if (!targetUrl) {
     return new NextResponse('URL is required', { status: 400 });
+  }
+
+  // Bypass proxy for localhost to avoid Node fetch ECONNREFUSED issues
+  if (targetUrl.includes('localhost') || targetUrl.includes('127.0.0.1')) {
+    return NextResponse.redirect(targetUrl);
   }
 
   try {
