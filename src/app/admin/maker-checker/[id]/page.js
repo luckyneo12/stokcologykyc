@@ -1197,6 +1197,7 @@ export default function AgentReview() {
   const [globalRejectReason, setGlobalRejectReason] = useState("");
   const [rejectStepModal, setRejectStepModal] = useState(null);
   const [stepRejectReason, setStepRejectReason] = useState("");
+  const [showRejectionConfirmModal, setShowRejectionConfirmModal] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleZoomChange = useCallback((newZoomVal) => {
@@ -1662,7 +1663,7 @@ export default function AgentReview() {
           <button onClick={handleGlobalApprove} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.4)", transition: "all 0.2s" }}>
             <CheckCircle2 size={16} /> Approve KYC
           </button>
-          <button onClick={handleSendRejectionMail} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.4)", transition: "all 0.2s" }}>
+          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.4)", transition: "all 0.2s" }}>
             <Mail size={16} /> Send Rejection Mail
           </button>
           <AdminThemeToggle />
@@ -2079,6 +2080,63 @@ export default function AgentReview() {
 
         </div>
       </div>
+
+      {showRejectionConfirmModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 600, maxWidth: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)" }}>Confirm Rejection</h3>
+            <p style={{ margin: "0 0 16px 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+              The following steps have been marked as rejected. Please review them before sending the rejection email.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+              {Object.entries(getStepStatuses(app))
+                .filter(([key, status]) => status?.status === "rejected")
+                .map(([key, status]) => {
+                  const stepObj = REVIEW_STEPS.find(s => s.id === key);
+                  return (
+                    <div key={key} style={{ background: "var(--bg-secondary)", padding: 12, borderRadius: 8, border: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.9rem", marginBottom: 4 }}>
+                          {stepObj?.label || key}
+                        </div>
+                        <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                          <span style={{ fontWeight: 600, color: "#ef4444" }}>Reason:</span> {status.reason || "No reason provided"}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleUnrejectStep(key, stepObj?.label || key)}
+                        disabled={submitting}
+                        style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, fontSize: "0.8rem", cursor: submitting ? "not-allowed" : "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}
+                      >
+                        Remove Rejection
+                      </button>
+                    </div>
+                  );
+                })}
+              {Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && (
+                <div style={{ padding: 16, textAlign: "center", color: "var(--text-muted)", fontSize: "0.9rem", fontStyle: "italic" }}>
+                  No rejected steps remain.
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button onClick={() => setShowRejectionConfirmModal(false)} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)" }}>
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  setShowRejectionConfirmModal(false);
+                  handleSendRejectionMail();
+                }} 
+                disabled={submitting || Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0} 
+                style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 600, cursor: (submitting || Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0) ? "not-allowed" : "pointer", opacity: (submitting || Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0) ? 0.6 : 1 }}
+              >
+                Confirm & Send Email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showGlobalReject && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>

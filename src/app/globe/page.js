@@ -1,6 +1,7 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { API_BASE_URL } from "@/utils/apiConfig";
+import io from "socket.io-client";
 
 import GlobeSidebar from "./components/GlobeSidebar";
 import GlobeOverview from "./components/GlobeOverview";
@@ -22,11 +23,13 @@ export default function GlobePage() {
       return;
     }
     
-    // Restore section from localstorage
+    // Restore section from localstorage only on initial load
     const savedSection = localStorage.getItem("globeActiveSection");
-    if (savedSection) setActiveSection(savedSection);
-    
-    fetchData();
+    if (savedSection && savedSection !== activeSection) {
+      setActiveSection(savedSection);
+    } else {
+      fetchData(activeSection);
+    }
   }, [token]);
 
   const handleNavigate = (section) => {
@@ -34,23 +37,43 @@ export default function GlobePage() {
     localStorage.setItem("globeActiveSection", section);
   };
 
-  const fetchData = async () => {
+  const fetchData = async (section, silent = false) => {
     try {
-      const [kpiRes, appsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/globe/kpis`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${API_BASE_URL}/api/globe/kycs`, { headers: { "Authorization": `Bearer ${token}` } })
-      ]);
+      if (!silent) setLoading(true);
+      const kpiRes = await fetch(`${API_BASE_URL}/api/globe/kpis`, { headers: { "Authorization": `Bearer ${token}` } });
       const kpiData = await kpiRes.json();
-      const appsData = await appsRes.json();
-      
       if (kpiData.success) setKpis(kpiData.data);
-      if (appsData.success) setApplications(appsData.data);
+
+      if (section !== "overview") {
+        const appsRes = await fetch(`${API_BASE_URL}/api/globe/kycs?globeStatus=${section}`, { headers: { "Authorization": `Bearer ${token}` } });
+        const appsData = await appsRes.json();
+        if (appsData.success) setApplications(appsData.data);
+      }
     } catch (err) {
       console.error("Error fetching Globe data", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  const fetchRef = useRef(fetchData);
+  useEffect(() => {
+    fetchRef.current = fetchData;
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (token) {
+      fetchData(activeSection);
+      
+      const socket = io(API_BASE_URL, { withCredentials: true });
+      socket.on("connect", () => socket.emit("join_staff"));
+      socket.on("applications_updated", () => {
+        if (fetchRef.current) fetchRef.current(activeSection, true);
+      });
+      
+      return () => socket.disconnect();
+    }
+  }, [activeSection, token]);
 
   const handleAction = async (id, action) => {
     let url = `${API_BASE_URL}/api/globe/kycs/${id}/${action}`;
@@ -74,7 +97,7 @@ export default function GlobePage() {
       const data = await res.json();
       if (data.success) {
         alert(`Successfully ${action}ed KYC application!`);
-        fetchData();
+        fetchData(activeSection, true);
       } else {
         alert(`Error: ${data.message || data.error}`);
       }
@@ -106,8 +129,8 @@ export default function GlobePage() {
       }}>
         {/* Dynamic Content */}
         <div style={{ padding: "40px 48px", maxWidth: "1600px", margin: "0 auto", animation: "fadeIn 0.4s ease forwards" }}>
-          {activeSection === "overview" && <GlobeOverview kpis={kpis} />}
-          {activeSection === "maker_checker" && <GlobeReviewQueue applications={applications} handleAction={handleAction} />}
+          {activeSection === "overview" && <GlobeOverview kpis={kpis} onNavigate={handleNavigate} />}
+          {["pending", "approved", "rejected"].includes(activeSection) && <GlobeReviewQueue applications={applications} handleAction={handleAction} activeSection={activeSection} />}
         </div>
       </main>
 

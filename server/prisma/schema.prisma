@@ -26,6 +26,8 @@ model User {
   KycApplication_KycApplication_assignedToToUser KycApplication[] @relation("KycApplication_assignedToToUser")
   reviewedApps                                   KycApplication[] @relation("ReviewedBy")
   kycApplications                                KycApplication[]
+  boid                                           String?          @unique
+  boidAssigned                                   Boid?            @relation("BoidAssigned")
 }
 
 model KycApplication {
@@ -163,4 +165,18 @@ model PdfTemplate {
   fields     String   @db.LongText
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model Boid {
+  id                Int       @id @default(autoincrement())
+  boidNumber        String    @unique
+  status            String    @default("available") // "available", "assigned", "cooling_period"
+  assignedTo        Int?      @unique
+  coolingPeriodEnds DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User?     @relation("BoidAssigned", fields: [assignedTo], references: [id])
+
+  @@index([boidNumber])
+  @@index([status])
 }

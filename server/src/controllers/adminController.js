@@ -722,6 +722,21 @@ const deleteApplication = async (req, res, next) => {
 
       // Delete user (cascade will handle KycApplication and AuditLogs if configured, otherwise manual)
       // Prisma cascade is defined in schema if set, but we'll do it safely
+      // Release BOID if assigned
+      const boid = await prisma.boid.findFirst({ where: { assignedTo: userId } });
+      if (boid) {
+        const coolingPeriodEnds = new Date();
+        coolingPeriodEnds.setDate(coolingPeriodEnds.getDate() + 7);
+        await prisma.boid.update({
+          where: { id: boid.id },
+          data: {
+            status: "cooling_period",
+            assignedTo: null,
+            coolingPeriodEnds
+          }
+        });
+      }
+
       await prisma.$transaction([
         prisma.auditLog.deleteMany({ where: { userId } }),
         prisma.kycApplication.deleteMany({ where: { userId } }),
@@ -1031,6 +1046,14 @@ const sendToBackoffice = async (req, res, next) => {
         }),
         ipAddress: req.ip,
       },
+    });
+
+    await prisma.kycApplication.update({
+      where: { id: app.id },
+      data: {
+        pushedToBackoffice: true,
+        pushedToBackofficeAt: new Date(),
+      }
     });
 
     res.json({ success: true, clientCode: resolvedClientCode, payload, response });

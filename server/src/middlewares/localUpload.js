@@ -27,6 +27,8 @@ const localUpload = multer({
       "image/webp", 
       "application/pdf",
       "text/html",
+      "text/plain",
+      "text/csv",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ];

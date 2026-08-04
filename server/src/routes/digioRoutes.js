@@ -1119,6 +1119,38 @@ router.post("/verify-pan", auth, async (req, res) => {
         ),
       });
 
+      // BOID Allocation Logic
+      const userWithBoid = await prisma.user.findUnique({ where: { id: req.user.id } });
+      if (!userWithBoid.boid) {
+        // Find an available BOID or one whose cooling period has expired
+        const availableBoid = await prisma.boid.findFirst({
+          where: {
+            OR: [
+              { status: "available" },
+              { status: "cooling_period", coolingPeriodEnds: { lt: new Date() } }
+            ]
+          },
+          orderBy: { createdAt: "asc" }
+        });
+
+        if (availableBoid) {
+          await prisma.$transaction([
+            prisma.boid.update({
+              where: { id: availableBoid.id },
+              data: {
+                status: "assigned",
+                assignedTo: req.user.id,
+                coolingPeriodEnds: null
+              }
+            }),
+            prisma.user.update({
+              where: { id: req.user.id },
+              data: { boid: availableBoid.boidNumber }
+            })
+          ]);
+        }
+      }
+
       await writeAuditLog({
         userId: req.user.id,
         action: "pan_verified_directly",

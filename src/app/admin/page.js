@@ -12,6 +12,7 @@ import {
 } from "./components/sections/OtherSections";
 import PdfBuilder from "./components/sections/PdfBuilder";
 import ApiIntegration from "./components/sections/ApiIntegration";
+import BoidManagement from "./components/sections/BoidManagement";
 
 
 export default function AdminPage() {
@@ -74,6 +75,7 @@ export default function AdminPage() {
       case "overview": return <DashboardOverview onNavigate={handleNavigate} />;
       case "kyc": return <KYCRequests searchQuery={searchQuery} onSearchChange={setSearchQuery} defaultFilter={activeSectionParams?.filter} />;
       case "estamps": return <EStamps searchQuery={searchQuery} onSearchChange={setSearchQuery} />;
+      case "boids": return <BoidManagement />;
       case "audit": return <AuditLogs />;
       case "pdf-builder": return <PdfBuilder />;
       case "api-integration": return <ApiIntegration />;

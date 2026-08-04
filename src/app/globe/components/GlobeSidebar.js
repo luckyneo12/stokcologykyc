@@ -4,12 +4,18 @@ import { usePathname, useRouter } from "next/navigation";
 
 const NAV_ITEMS = [
   { id: "overview", label: "Dashboard", icon: "grid" },
-  { id: "maker_checker", label: "Review Queue", icon: "shield" }
+  { id: "maker_checker", label: "Maker / Checker", icon: "shield" },
+  { id: "pending", label: "Pending", icon: "clock" },
+  { id: "approved", label: "Approved", icon: "check" },
+  { id: "rejected", label: "Rejected", icon: "x" }
 ];
 
 const ICONS = {
   grid: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
   shield: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+  clock: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  check: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>,
+  x: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
 };
 
 export default function GlobeSidebar({ active, onNavigate, collapsed, onToggle }) {
@@ -112,7 +118,14 @@ export default function GlobeSidebar({ active, onNavigate, collapsed, onToggle }
           return (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                if (item.id === "maker_checker") {
+                  router.push("/globe/maker-checker");
+                } else {
+                  if (typeof onNavigate === 'function') onNavigate(item.id);
+                  else router.push(`/globe`);
+                }
+              }}
               title={collapsed ? item.label : ""}
               style={{
                 display: "flex",

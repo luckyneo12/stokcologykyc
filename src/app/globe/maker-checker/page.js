@@ -3,10 +3,10 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
-import AdminSidebar from "../components/AdminSidebar";
-import AdminThemeToggle from "../components/AdminThemeToggle";
+import GlobeSidebar from "../components/GlobeSidebar";
+
 import { useDragScroll } from "@/utils/useDragScroll";
-import "@/app/admin/admin.css";
+import "../globe-table.css";
 
 const STEP_LABELS = {
   0: "Step 0: Welcome", 
@@ -28,12 +28,10 @@ const STEP_LABELS = {
 
 const STATUS_MAP = { 
   pending: "badge-pending", 
-  under_review: "badge-review",
   identity_verified: "badge-verified",
   verified: "badge-verified", 
   rejected: "badge-rejected", 
-  on_hold: "badge-suspended",
-  approved: "badge-verified"
+  on_hold: "badge-suspended" 
 };
 
 export default function MakerCheckerDashboard() {
@@ -45,7 +43,7 @@ export default function MakerCheckerDashboard() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [adminUser, setAdminUser] = useState(null);
+  const [globeUser, setAdminUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -83,7 +81,7 @@ export default function MakerCheckerDashboard() {
       minWidth: PERMANENT_WIDTHS[colName],
       maxWidth: PERMANENT_WIDTHS[colName],
       width: PERMANENT_WIDTHS[colName],
-      backgroundColor: "var(--bg-sticky)",
+      backgroundColor: isHeader ? "var(--bg-secondary)" : "var(--bg-primary)",
       boxShadow: "none",
     };
   };
@@ -130,10 +128,10 @@ export default function MakerCheckerDashboard() {
 
   const handleContinueJourney = async (k) => {
     try {
-      const adminToken = localStorage.getItem("adminToken");
+      const globeToken = localStorage.getItem("globeToken");
       const res = await fetch(`${API_BASE_URL}/api/admin/application/${k.id}/generate-token`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${adminToken}` }
+        headers: { "Authorization": `Bearer ${globeToken}` }
       });
       const data = await res.json();
       if (data.success) {
@@ -155,7 +153,7 @@ export default function MakerCheckerDashboard() {
   const deleteUser = async (applicationId) => {
     if (!confirm("Are you sure you want to delete this application?")) return;
     try {
-      const token = localStorage.getItem("adminToken");
+      const token = localStorage.getItem("globeToken");
       const res = await fetch(`${API_BASE_URL}/api/admin/application/${applicationId}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
@@ -175,7 +173,7 @@ export default function MakerCheckerDashboard() {
   const sendToBackoffice = async (applicationId) => {
     if (!confirm("Are you sure you want to send this user's data to the Backoffice?")) return;
     try {
-      const token = localStorage.getItem("adminToken");
+      const token = localStorage.getItem("globeToken");
       const res = await fetch(`${API_BASE_URL}/api/admin/application/${applicationId}/send-backoffice`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` }
@@ -183,7 +181,6 @@ export default function MakerCheckerDashboard() {
       const data = await res.json();
       if (data.success) {
         alert("Sent to Backoffice successfully");
-        fetchApplications(true);
       } else {
         alert(data.error || "Failed to send to Backoffice");
       }
@@ -202,7 +199,7 @@ export default function MakerCheckerDashboard() {
       }
     }
     try {
-      const token = localStorage.getItem("adminToken");
+      const token = localStorage.getItem("globeToken");
       const response = await fetch(`${API_BASE_URL}/api/admin/review/${applicationId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -221,21 +218,21 @@ export default function MakerCheckerDashboard() {
   };
 
   useEffect(() => {
-    const userStr = localStorage.getItem("adminUser");
+    const userStr = localStorage.getItem("globeUser");
     if (userStr && userStr !== "undefined") {
       try {
         setAdminUser(JSON.parse(userStr));
       } catch (e) {
-        console.error("Failed to parse adminUser", e);
+        console.error("Failed to parse globeUser", e);
       }
     }
   }, []);
 
   useEffect(() => {
     const verifyToken = async () => {
-      const token = localStorage.getItem("adminToken");
+      const token = localStorage.getItem("globeToken");
       if (!token) {
-        window.location.href = "/admin/login";
+        window.location.href = "/globe/login";
         return;
       }
       try {
@@ -255,21 +252,21 @@ export default function MakerCheckerDashboard() {
     if (typeof window === "undefined") return;
     if (!isSilent) setLoading(true);
     try {
-      const url = new URL(`${API_BASE_URL}/api/agent/applications`);
-      if (filter !== "all") url.searchParams.append("status", filter);
+      const url = new URL(`${API_BASE_URL}/api/globe/kycs`);
+      if (filter !== "all") url.searchParams.append("globeStatus", filter);
       if (search) url.searchParams.append("search", search);
       url.searchParams.append("page", page);
       url.searchParams.append("limit", 15);
 
-      const token = localStorage.getItem("adminToken");
+      const token = localStorage.getItem("globeToken");
       const response = await fetch(url, {
         headers: { "Authorization": `Bearer ${token}` }
       });
 
       if (response.status === 401) {
-        localStorage.removeItem("adminToken");
-        localStorage.removeItem("adminUser");
-        window.location.href = "/admin/login";
+        localStorage.removeItem("globeToken");
+        localStorage.removeItem("globeUser");
+        window.location.href = "/globe/login";
         return;
       }
 
@@ -277,9 +274,10 @@ export default function MakerCheckerDashboard() {
       if (contentType && contentType.includes("application/json")) {
         const data = await response.json();
         if (data.success) {
-          setTotal(data.total);
-          setTotalPages(data.totalPages);
-          const mapped = data.applications.map(app => {
+          setTotal(data.pagination?.total || 0);
+          setTotalPages(data.pagination?.pages || 1);
+          const appsArray = data.data || data.applications || [];
+          const mapped = appsArray.map(app => {
             let parsedPersonal = {};
             try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
             
@@ -394,38 +392,42 @@ export default function MakerCheckerDashboard() {
         width: "100%",
         height: "100%"
       }}>
-        <AdminSidebar 
-          active="maker_checker" 
+        <GlobeSidebar 
+          active="maker_checker"
+          onNavigate={(sec) => {
+            localStorage.setItem("globeActiveSection", sec);
+            router.push("/globe");
+          }}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
-
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflowY: "auto" }}>
-          {/* Top Header */}
-          <header className="admin-header">
-            <div style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "0.9rem" }}>
-              Admin / <span style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>Maker / Checker</span>
-            </div>
-            
-            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-              <AdminThemeToggle />
-              <div style={{ display: "flex", alignItems: "center", gap: 12, borderLeft: "1px solid var(--border-color)", paddingLeft: 20 }}>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>Super Admin</div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Role: Master Control</div>
-                </div>
-                <div style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-dark-green)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                </div>
+        
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+          <div style={{ 
+            padding: "16px 28px", 
+            display: "flex", 
+            justifyContent: "space-between", 
+            alignItems: "center",
+            background: "var(--bg-primary)",
+            borderBottom: "1px solid var(--border-color)",
+            zIndex: 20
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div>
+                <h1 style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.5px", margin: 0 }}>Maker / Checker Queue</h1>
+                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: 4, margin: 0 }}>Review applications step-by-step.</p>
               </div>
             </div>
-          </header>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 12px", background: "var(--bg-secondary)", borderRadius: 99, border: "1px solid var(--border-color)" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 10px rgba(16,185,129,0.5)" }}></div>
+                <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)" }}>{globeUser?.email || "Agent"}</span>
+              </div>
+            </div>
+          </div>
 
-          <main style={{ padding: "24px", flex: 1, width: "100%" }}>
+          <main style={{ padding: "24px", flex: 1, width: "100%", overflowY: "auto" }}>
             <div className="admin-animate">
-              <h1 className="admin-section-title">Maker / Checker Queue</h1>
-              <p className="admin-section-subtitle">Review applications step-by-step.</p>
-
               {/* Controls */}
               <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
                 <input className="admin-input" placeholder="Search by name or ID..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} />
@@ -447,7 +449,7 @@ export default function MakerCheckerDashboard() {
                   </button>
                   {filterOpen && (
                     <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
-                      {["all", "pending", "verified", "rejected", "on_hold", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
+                      {["all", "pending", "approved", "rejected"].map(f => (
                         <div 
                           key={f}
                           onClick={() => { setFilter(f); setFilterOpen(false); }}
@@ -543,7 +545,7 @@ export default function MakerCheckerDashboard() {
                           </td>
                         </tr>
                       ) : kycs.map((k, index) => (
-                        <tr key={k.id} onClick={() => router.push(`/admin/maker-checker/${k.id}`)} style={{ cursor: "pointer" }}>
+                        <tr key={k.id} onClick={() => router.push(`/globe/maker-checker/${k.id}`)} style={{ cursor: "pointer" }}>
                           {visibleColumns.includes("S.No.") && (
                             <td style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text-muted)", ...getStickyStyle("S.No.") }}>
                               {(page - 1) * 15 + index + 1}
@@ -562,14 +564,9 @@ export default function MakerCheckerDashboard() {
                               </button>
                               
                               {openMenuId === k.id && (
-                                <div className="premium-action-menu" style={{ right: 'auto', left: 0, top: (index >= 3 && index >= kycs.length - 4) ? "auto" : "100%", bottom: (index >= 3 && index >= kycs.length - 4) ? "100%" : "auto" }}>
-                                  <button onClick={() => { setOpenMenuId(null); router.push(`/admin/maker-checker/${k.id}`); }} className="premium-action-item">Verify</button>
-                                  <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} className="premium-action-item">Continue Journey</button>
-                                  <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} className="premium-action-item danger">Delete</button>
-                                  <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} className="premium-action-item">Change Status</button>
-                                  {k.status === "verified" && (
-                                    <button onClick={() => { setOpenMenuId(null); sendToBackoffice(k.id); }} className="premium-action-item success">Send to Backoffice</button>
-                                  )}
+                                <div className="premium-action-menu" style={{ position: "absolute", top: "100%", left: 0, minWidth: "120px", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px" }}>
+                                  <button onClick={() => { setOpenMenuId(null); router.push(`/globe/maker-checker/${k.id}`); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "var(--text-primary)" }}>Verify</button>
+                                  <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "var(--text-primary)" }}>Change Status</button>
                                 </div>
                               )}
                             </div>
@@ -594,7 +591,7 @@ export default function MakerCheckerDashboard() {
                                   className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
                                   style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, border: "none" }}
                                 >
-                                  {(k.status === 'under_review' ? 'pending' : k.status).replace("_", " ").toUpperCase()}
+                                  {((k.status === 'under_review' ? 'pending' : k.status) || 'pending').replace("_", " ").toUpperCase()}
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: openStatusMenuId === k.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </div>
                                 {openStatusMenuId === k.id && (

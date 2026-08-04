@@ -141,25 +141,41 @@ class GlobeController {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const skip = (page - 1) * limit;
+      const globeStatus = req.query.globeStatus;
+
+      const whereClause = { status: "verified" };
+      if (globeStatus && globeStatus !== "all") {
+        whereClause.globeStatus = globeStatus;
+      }
+
+      const search = req.query.search;
+      if (search) {
+        whereClause.OR = [
+          { applicationId: { contains: search } },
+          { clientCode: { contains: search } },
+          { user: { email: { contains: search } } },
+          { user: { phone: { contains: search } } },
+          { personalDetails: { contains: search } },
+        ];
+      }
+
+      console.log(`[Globe API] fetching getPendingKYCs. globeStatus=${globeStatus}, search=${search}`);
+      console.log(`[Globe API] whereClause:`, JSON.stringify(whereClause, null, 2));
 
       const [applications, total] = await Promise.all([
         prisma.kycApplication.findMany({
-          where: { 
-            status: "verified",
-          },
+          where: whereClause,
           include: {
             user: {
               select: { phone: true, email: true },
             },
           },
-          orderBy: { createdAt: "desc" },
+          orderBy: { updatedAt: "desc" },
           skip,
           take: limit,
         }),
         prisma.kycApplication.count({
-          where: { 
-            status: "verified",
-          },
+          where: whereClause,
         }),
       ]);
 
@@ -184,19 +200,31 @@ class GlobeController {
       const { id } = req.params;
       const userId = req.user.id;
 
-      const application = await prisma.kycApplication.update({
-        where: { id: parseInt(id) },
-        data: {
-          globeStatus: "approved",
-          globeReviewedAt: new Date(),
-          globeReviewedBy: userId,
-        },
-      });
+      let application;
+      if (!isNaN(parseInt(id)) && parseInt(id).toString() === id.toString()) {
+        application = await prisma.kycApplication.update({
+          where: { id: parseInt(id) },
+          data: {
+            globeStatus: "approved",
+            globeReviewedAt: new Date(),
+            globeReviewedBy: userId,
+          },
+        });
+      } else {
+        application = await prisma.kycApplication.update({
+          where: { applicationId: id },
+          data: {
+            globeStatus: "approved",
+            globeReviewedAt: new Date(),
+            globeReviewedBy: userId,
+          },
+        });
+      }
 
       await prisma.auditLog.create({
         data: {
           action: "GLOBE_APPROVED_KYC",
-          details: `KYC Application ${application.applicationId} approved by Globe user`,
+          details: JSON.stringify({ message: `KYC Application ${application.applicationId} approved by Globe user` }),
           targetId: id.toString(),
           targetType: "KycApplication",
           userId: userId,
@@ -221,20 +249,33 @@ class GlobeController {
         return res.status(400).json({ success: false, message: "Remarks are required for rejection" });
       }
 
-      const application = await prisma.kycApplication.update({
-        where: { id: parseInt(id) },
-        data: {
-          globeStatus: "rejected",
-          globeRemarks: remarks,
-          globeReviewedAt: new Date(),
-          globeReviewedBy: userId,
-        },
-      });
+      let application;
+      if (!isNaN(parseInt(id)) && parseInt(id).toString() === id.toString()) {
+        application = await prisma.kycApplication.update({
+          where: { id: parseInt(id) },
+          data: {
+            globeStatus: "rejected",
+            globeRemarks: remarks,
+            globeReviewedAt: new Date(),
+            globeReviewedBy: userId,
+          },
+        });
+      } else {
+        application = await prisma.kycApplication.update({
+          where: { applicationId: id },
+          data: {
+            globeStatus: "rejected",
+            globeRemarks: remarks,
+            globeReviewedAt: new Date(),
+            globeReviewedBy: userId,
+          },
+        });
+      }
 
       await prisma.auditLog.create({
         data: {
           action: "GLOBE_REJECTED_KYC",
-          details: `KYC Application ${application.applicationId} rejected by Globe user. Reason: ${remarks}`,
+          details: JSON.stringify({ message: `KYC Application ${application.applicationId} rejected by Globe user. Reason: ${remarks}` }),
           targetId: id.toString(),
           targetType: "KycApplication",
           userId: userId,

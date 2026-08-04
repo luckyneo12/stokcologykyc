@@ -5,17 +5,23 @@ import {
 
 const COLORS = ['#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6'];
 
-const StatCard = ({ label, value, color }) => (
-  <div style={{
-    background: "var(--bg-primary)",
-    border: "1px solid var(--border-color)",
-    borderRadius: 24,
-    padding: "24px 28px",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.02)",
-    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-    position: "relative",
-    overflow: "hidden"
-  }}>
+const StatCard = ({ label, value, color, onClick }) => (
+  <div 
+    onClick={onClick}
+    style={{
+      background: "var(--bg-primary)",
+      border: "1px solid var(--border-color)",
+      borderRadius: 24,
+      padding: "24px 28px",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.02)",
+      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+      position: "relative",
+      overflow: "hidden",
+      cursor: onClick ? "pointer" : "default"
+    }}
+    onMouseOver={onClick ? (e) => e.currentTarget.style.transform = "translateY(-4px)" : undefined}
+    onMouseOut={onClick ? (e) => e.currentTarget.style.transform = "translateY(0)" : undefined}
+  >
     <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
       {label}
     </div>
@@ -25,7 +31,7 @@ const StatCard = ({ label, value, color }) => (
   </div>
 );
 
-export default function GlobeOverview({ kpis }) {
+export default function GlobeOverview({ kpis, onNavigate }) {
   if (!kpis) return <div style={{ padding: 40, color: "var(--text-muted)", fontWeight: 600 }}>Loading analytics...</div>;
 
   return (
@@ -42,9 +48,9 @@ export default function GlobeOverview({ kpis }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24, marginBottom: 40 }}>
-        <StatCard label="Total Pending" value={kpis.statusDistribution?.find(s => s.name === "Pending")?.value || 0} color="#3b82f6" />
-        <StatCard label="Approved (All Time)" value={kpis.approvedByGlobe} color="#10b981" />
-        <StatCard label="Rejected (All Time)" value={kpis.rejectedByGlobe} color="#ef4444" />
+        <StatCard label="Total Pending" value={kpis.statusDistribution?.find(s => s.name === "Pending")?.value || 0} color="#3b82f6" onClick={() => onNavigate && onNavigate("pending")} />
+        <StatCard label="Approved (All Time)" value={kpis.approvedByGlobe} color="#10b981" onClick={() => onNavigate && onNavigate("approved")} />
+        <StatCard label="Rejected (All Time)" value={kpis.rejectedByGlobe} color="#ef4444" onClick={() => onNavigate && onNavigate("rejected")} />
         <StatCard label="Avg TAT (Hrs)" value={kpis.avgTatHours || "0.0"} color="#f59e0b" />
       </div>
 

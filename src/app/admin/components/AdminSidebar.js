@@ -9,7 +9,8 @@ import {
   FileCog,
   ChevronRight,
   Menu,
-  Plug
+  Plug,
+  Hash
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   // { id: "kyc", label: "KYC Requests", icon: FileText },
   { id: "audit", label: "Audit Logs", icon: ListOrdered },
   { id: "estamps", label: "E-Stamps", icon: Stamp },
+  { id: "boids", label: "BOID Management", icon: Hash },
   { id: "pdf-builder", label: "PDF Builder", icon: FileCog },
   { id: "api-integration", label: "API Integration", icon: Plug },
 ];

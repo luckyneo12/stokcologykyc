@@ -57,6 +57,7 @@ const getAssignedApplications = async (req, res, next) => {
           personalDetails: true,
           identityDetails: true,
           stepStatuses: true,
+          globeStatus: true,
           isResubmitted: true,
           riskScore: true,
           faceMatchScore: true,

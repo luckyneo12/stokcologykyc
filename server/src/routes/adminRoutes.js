@@ -24,6 +24,9 @@ const estampRoutes = require("./estampRoutes");
 
 const router = express.Router();
 
+const boidRoutes = require("./boidRoutes");
+router.use("/boids", boidRoutes);
+
 router.use("/estamp", estampRoutes);
 
 router.get("/applications", adminAuth, getApplications);

@@ -1,15 +1,29 @@
 import { useState } from "react";
 
-export default function GlobeReviewQueue({ applications, handleAction }) {
+function formatTimePending(createdAt) {
+  const diffMs = Date.now() - new Date(createdAt).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) return `${diffDays} days`;
+  if (diffHours > 0) return `${diffHours} hours`;
+  return `${diffMins} mins`;
+}
+
+export default function GlobeReviewQueue({ applications, handleAction, activeSection }) {
+  const isPending = activeSection === "pending";
+  const title = isPending ? "Pending Applications" : activeSection === "approved" ? "Approved Applications" : activeSection === "rejected" ? "Rejected Applications" : "Review Queue";
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32 }}>
         <div>
           <h2 style={{ fontSize: "1.8rem", fontWeight: 900, letterSpacing: "-0.5px", margin: 0, color: "var(--text-primary)" }}>
-            Review Queue
+            {title}
           </h2>
           <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontWeight: 600 }}>
-            Manage and process pending KYC applications
+            {isPending ? "Manage and process pending KYC applications" : `View ${activeSection} KYC applications`}
           </p>
         </div>
       </div>
@@ -19,16 +33,16 @@ export default function GlobeReviewQueue({ applications, handleAction }) {
           <thead>
             <tr style={{ background: "var(--bg-secondary)", textAlign: "left" }}>
               <th style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>ID</th>
-              <th style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>Date</th>
+              <th style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>{isPending ? "Time Pending" : "Date"}</th>
               <th style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>Globe Status</th>
               <th style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-color)", color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {applications.length > 0 ? applications.map((app) => (
+            {applications && applications.length > 0 ? applications.map((app) => (
               <tr key={app.id} style={{ borderBottom: "1px solid var(--border-color)", transition: "background 0.2s ease" }} onMouseOver={(e) => e.currentTarget.style.background = "var(--bg-secondary)"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                 <td style={{ padding: "20px 24px", fontWeight: 700, color: "var(--text-primary)" }}>{app.applicationId}</td>
-                <td style={{ padding: "20px 24px", color: "var(--text-muted)", fontWeight: 600 }}>{new Date(app.createdAt).toLocaleDateString()}</td>
+                <td style={{ padding: "20px 24px", color: "var(--text-muted)", fontWeight: 600 }}>{isPending ? formatTimePending(app.createdAt) : new Date(app.createdAt).toLocaleDateString()}</td>
                 <td style={{ padding: "20px 24px" }}>
                   <span style={{ 
                     padding: "6px 12px", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 800, 

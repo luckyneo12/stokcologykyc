@@ -812,6 +812,16 @@ export default function ApplicationDetail() {
               <div style={{ width: 6, height: 6, background: "#30a46c", borderRadius: "50%", animation: "pulse 1.5s infinite" }}></div>
               LIVE SYNC
             </div>
+            {app.globeStatus && (
+              <span style={{ 
+                padding: "8px 20px", borderRadius: "100px", fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase",
+                background: app.globeStatus === 'approved' ? 'rgba(16, 185, 129, 0.1)' : app.globeStatus === 'rejected' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)', 
+                color: app.globeStatus === 'approved' ? '#10b981' : app.globeStatus === 'rejected' ? '#ef4444' : '#f59e0b', 
+                border: `1px solid ${app.globeStatus === 'approved' ? 'rgba(16,185,129,0.3)' : app.globeStatus === 'rejected' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`
+              }}>
+                GLOBE {app.globeStatus}
+              </span>
+            )}
             <span className={`badge ${STATUS_MAP[app.status]}`} style={{ padding: "8px 20px" }}>{app.status?.toUpperCase() || "PENDING"}</span>
           </div>
         </div>
