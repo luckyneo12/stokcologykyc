@@ -77,6 +77,16 @@ function mapGender(value) {
   const normalized = String(value).trim().toUpperCase();
   if (["M", "MALE"].includes(normalized)) return "M";
   if (["F", "FEMALE"].includes(normalized)) return "F";
+  if (normalized.includes("TRANS")) return "T";
+  return normalized.charAt(0);
+}
+
+function mapNomineeGender(value) {
+  if (!value) return null;
+  const normalized = String(value).trim().toUpperCase();
+  if (["M", "MALE"].includes(normalized)) return "M";
+  if (["F", "FEMALE"].includes(normalized)) return "F";
+  if (normalized.includes("TRANS")) return "TG";
   return normalized.charAt(0);
 }
 
@@ -85,7 +95,9 @@ function mapMaritalStatus(value) {
   const normalized = String(value).trim().toUpperCase();
   if (["MARRIED", "M"].includes(normalized)) return "M";
   if (["UNMARRIED", "U", "SINGLE"].includes(normalized)) return "U";
-  return normalized;
+  if (["DIVORCE", "DIVORCED", "D"].includes(normalized)) return "D";
+  if (["WIDOW", "WIDOWER", "WIDOWED", "W"].includes(normalized)) return "W";
+  return normalized.charAt(0);
 }
 
 function mapAccountType(value) {
@@ -138,6 +150,20 @@ function mapProofType(value) {
   if (normalized.includes("PASSPORT")) return "01";
   if (normalized.includes("DRIVING")) return "04";
   if (normalized.includes("VOTER")) return "02";
+  return null;
+}
+
+function mapNomineeAddressProof(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized.includes("AADHAAR") || normalized.includes("UID")) return "01";
+  if (normalized.includes("PASSPORT")) return "02";
+  if (normalized.includes("DRIVING")) return "03";
+  if (normalized.includes("VOTER")) return "04";
+  if (normalized.includes("NREGA")) return "05";
+  if (normalized.includes("BANK")) return "06";
+  if (normalized.includes("GAS")) return "07";
+  if (normalized.includes("TELEPHONE")) return "08";
+  if (normalized.includes("ELECTRICITY") || normalized.includes("BILL")) return "09";
   return null;
 }
 
@@ -207,18 +233,20 @@ function mapAnnualIncome(value) {
 function mapOccupation(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized.includes("private")) return "01";
-  if (normalized.includes("business")) return "02";
-  if (normalized.includes("professional")) return "03";
-  if (normalized.includes("retired")) return "04";
-  if (normalized.includes("student")) return "05";
-  if (normalized.includes("house")) return "06";
-  if (normalized.includes("government") || normalized.includes("public")) return "07";
+  if (normalized.includes("public")) return "01";
+  if (normalized.includes("private")) return "02";
+  if (normalized.includes("government")) return "03";
+  if (normalized.includes("professional")) return "04";
+  if (normalized.includes("self")) return "05";
+  if (normalized.includes("retired")) return "06";
+  if (normalized.includes("house")) return "07";
+  if (normalized.includes("student")) return "08";
+  if (normalized.includes("business")) return "09";
   return "99";
 }
 
 function mapPep(value) {
-  return mapYesNo(value, "N") === "Y" ? "02" : "01";
+  return mapYesNo(value, "N") === "Y" ? "01" : "03";
 }
 
 function buildAddressLines(address = {}) {
@@ -344,7 +372,7 @@ class BackofficeService {
       ClientCode: clientCode,
       OpenDate: formatDate(existingKyc.OpenDate) || openDate,
       CloseDate: existingKyc.CloseDate || null,
-      PanNo: buildString(identityDetails.pan || existingKyc.PanNo || existingKyc.PANNo) || null,
+      PanNo: buildString(identityDetails.pan || existingKyc.PanNo || existingKyc.PANNo)?.toUpperCase() || null,
       ClientType: existingKyc.ClientType || "I",
       ClientStatus: existingKyc.ClientStatus || "01",
       ClientName: buildString(personalDetails.fullName || existingKyc.ClientName) || null,
@@ -354,22 +382,22 @@ class BackofficeService {
       FatherName: buildString(personalDetails.fatherName || existingKyc.FatherName) || null,
       MotherPrefix: existingKyc.MotherPrefix || "Mrs",
       MotherName: buildString(personalDetails.motherName || existingKyc.MotherName) || null,
-      Maidenprefix: existingKyc.Maidenprefix || null,
       MaidenName: existingKyc.MaidenName || null,
-      Email: emailValue,
       Gender: mapGender(personalDetails.gender || existingKyc.Gender) || null,
       MaritalStatus: mapMaritalStatus(personalDetails.maritalStatus || existingKyc.MaritalStatus) || null,
-      MobileNo: phoneValue,
-      Nationality: existingKyc.Nationality || "IN",
-      Citizenship: existingKyc.Citizenship || "IN",
       ResidentialStatus: existingKyc.ResidentialStatus || "RI",
+      Citizenship: existingKyc.Citizenship || "IN",
       IDProof: existingKyc.IDProof || (aadhaar ? "05" : null),
       IDProofRef: aadhaar,
       Aadhar: aadhaar,
       AnnualIncome: mapAnnualIncome(personalDetails.annualIncome) || existingKyc.AnnualIncome || null,
       AnnualIncomeDate: formatDate(existingKyc.AnnualIncomeDate) || openDate,
+      NetWorth: existingKyc.NetWorth || personalDetails.networth || null,
+      NetWorthDate: formatDate(existingKyc.NetWorthDate || personalDetails.networthDate) || openDate,
       Occupation: mapOccupation(personalDetails.occupation) || existingKyc.Occupation || null,
       PEP: mapPep(personalDetails.politicallyExposed || existingKyc.PEP),
+      FamilyGroup: existingKyc.FamilyGroup || "N",
+      AadharSeeded: existingKyc.AadharSeeded || (aadhaar ? "Y" : "N"),
       BranchID: existingKyc.BranchID || BACKOFFICE_BRANCH_ID,
       SubBranchID: existingKyc.SubBranchID || BACKOFFICE_SUB_BRANCH_ID,
       TypeOfDoc: existingKyc.TypeOfDoc || "04",
@@ -392,14 +420,22 @@ class BackofficeService {
       AddressPrimary: existingAddress.AddressPrimary || "Y",
       AddressProof: buildString(address.addressProof || existingAddress.AddressProof) || (aadhaar ? "01" : null),
       AddressProofOther: buildString(address.addressProofOther || existingAddress.AddressProofOther) || null,
-      AddressProofDate: formatDate(address.addressProofDate || existingAddress.AddressProofDate) || null,
+      AddressProofDate: formatDate(address.addressProofDate || existingAddress.AddressProofDate) || openDate,
       AddressProofExpiry: formatDate(address.addressProofExpiry || existingAddress.AddressProofExpiry) || null,
       AddressProofRef: buildString(address.addressProofRef || existingAddress.AddressProofRef || aadhaar) || null,
       AddressStateOther: existingAddress.AddressStateOther || null,
       Delete: "N",
-      AddressProofIssuedBy: existingAddress.AddressProofIssuedBy || null,
+      AddressProofIssuedBy: existingAddress.AddressProofIssuedBy || (aadhaar ? "UIDAI" : null),
       SameAsCorrespondence: existingAddress.SameAsCorrespondence || "Y",
     };
+
+    const permanentAddressEntry = {
+      ...addressEntry,
+      AddressID: null,
+      AddressType: "P",
+    };
+
+    const addressEntries = [addressEntry, permanentAddressEntry];
 
     const contactEntries = [];
 
@@ -453,14 +489,15 @@ class BackofficeService {
       ChequePrintName: buildString(bankDetails.accountHolderName || existingBank.ChequePrintName) || null,
       BankCode: buildString(bankDetails.bankCode || existingBank.BankCode) || null,
       BankName: buildString(bankDetails.bankName || existingBank.BankName) || null,
-      BankAddress1: buildString(bankDetails.address1 || existingBank.BankAddress1) || null,
+      BankAddress1: buildString(bankDetails.branchAddress || bankDetails.address1 || existingBank.BankAddress1) || "NOT PROVIDED",
       BankAddress2: buildString(bankDetails.address2 || existingBank.BankAddress2) || null,
       BankAddress3: buildString(bankDetails.address3 || existingBank.BankAddress3) || null,
       BankCity: buildString(bankDetails.city || existingBank.BankCity) || null,
       BankPincode: buildString(bankDetails.pincode || existingBank.BankPincode) || null,
-      BankState: buildString(bankDetails.state || existingBank.BankState) || null,
+      BankState: buildString(bankDetails.state || existingBank.BankState)?.substring(0, 5) || null,
       BankSateOther: existingBank.BankSateOther || null,
       BankCountry: buildString(bankDetails.country || existingBank.BankCountry) || "IN",
+      PennyDropStatus: existingBank.PennyDropStatus || (bankDetails.verified === false ? "N" : "Y"),
       PaymentMode: existingBank.PaymentMode || null,
       ECSMandateDate: formatDate(existingBank.ECSMandateDate) || null,
       ECSFromDate: formatDate(existingBank.ECSFromDate) || null,
@@ -480,10 +517,41 @@ class BackofficeService {
       TradingAccountType: existingBank.TradingAccountType || null,
     };
 
+    const existingDepositoryArray = arrayFromBackoffice(existing.DepositoryDetail, "DepositoryDetail");
+    const depositoryEntries = existingDepositoryArray.length > 0 ? existingDepositoryArray.map(dep => ({
+      ...dep,
+      FirmID: dep.FirmID || BACKOFFICE_FIRM_ID,
+      ClientCode: clientCode,
+    })) : [
+      {
+        FirmID: BACKOFFICE_FIRM_ID,
+        ClientCode: clientCode,
+        DepositoryType: application.boid ? (application.boid.startsWith('IN') ? 'NSDL' : 'CDSL') : 'CDSL',
+        DepositoryID: application.boid ? application.boid.substring(0, 8) : null,
+        DepositoryClientID: application.boid ? application.boid.substring(8) : null,
+        POAFlag: "N",
+        POAMarginFlag: "N",
+        PrimaryFlag: "Y",
+      }
+    ];
+
+    const brokerageMappingDetail = {
+      FirmID: BACKOFFICE_FIRM_ID,
+      ClientCode: clientCode,
+      CurrencySlabID: existing.BrokerageMappingDetail?.CurrencySlabID || null,
+      CapitalSlabID: existing.BrokerageMappingDetail?.CapitalSlabID || null,
+      CommoditySlabID: existing.BrokerageMappingDetail?.CommoditySlabID || null,
+      DerivativeSlabID: existing.BrokerageMappingDetail?.DerivativeSlabID || null,
+      CurrencyFlag: "N",
+      CapitalFlag: "Y",
+      CommodityFlag: "N",
+      DerivativeFlag: segments.derivatives ? "Y" : "N",
+    };
+
     const activeDate = openDate;
     const exchangeEntries = [
       { ExchangeID: "NSE", CategoryCode: "1" },
-      { ExchangeID: "BSE", CategoryCode: "01" },
+      { ExchangeID: "BSE", CategoryCode: "I" },
     ].map((exchange) => ({
       FirmID: BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
@@ -520,10 +588,13 @@ class BackofficeService {
         ...segment,
       }));
 
-    const nomineeEntries = nomineeOptFlag === "Y" ? (nomineeDetails.nominees || []).map((nominee, index) => {
+    const nomineeEntries = nomineeOptFlag === "Y" ? (nomineeDetails.nominees || []).flatMap((nominee, index) => {
       const allocation = nomineeAllocation.percentages?.[index] ?? (index === 0 ? 100 : 0);
       const nomineeProof = mapProofType(nominee.proofType);
-      return {
+      const nomineeAddressProof = mapNomineeAddressProof(nominee.proofType);
+      
+      const entries = [];
+      const nomineeEntry = {
         FirmID: BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
         NomineeType: "N",
@@ -540,7 +611,7 @@ class BackofficeService {
         DOB: formatDate(nominee.dob),
         PANNO: nomineeProof === "03" ? buildString(nominee.proofNumber)?.toUpperCase() : null,
         UID: nomineeProof === "05" ? buildString(nominee.proofNumber) : null,
-        Gender: mapGender(nominee.gender),
+        Gender: mapNomineeGender(nominee.gender),
         MaritalStatus: mapMaritalStatus(nominee.maritalStatus),
         ResidentialStatus: "RI",
         Nationnality: "IN",
@@ -548,7 +619,7 @@ class BackofficeService {
         OccupationOther: null,
         IDProof: nomineeProof,
         IDProofRefNo: buildString(nominee.proofNumber),
-        Address1: buildString(nominee.address || addressEntry.AddressLine1),
+        Address1: buildString(nominee.address || addressEntry.AddressLine1)?.substring(0, 100) || null,
         Address2: buildString(nominee.address2 || addressEntry.AddressLine2),
         Address3: buildString(nominee.address3 || addressEntry.AddressLine3),
         City: buildString(nominee.city || addressEntry.AddressCity),
@@ -557,9 +628,9 @@ class BackofficeService {
         State: mapState(nominee.state || addressEntry.AddressState),
         StateOther: null,
         Country: buildString(nominee.country) === "India" ? "IN" : buildString(nominee.country) || "IN",
-        AddressProof: nomineeProof === "05" ? "01" : null,
+        AddressProof: nomineeAddressProof,
         AddressProofOther: null,
-        AddressProofRef: nomineeProof === "05" ? buildString(nominee.proofNumber) : null,
+        AddressProofRef: nomineeAddressProof ? buildString(nominee.proofNumber) : null,
         AddressProofDate: null,
         AddressProofDateExpiry: null,
         Delete: "N",
@@ -572,6 +643,63 @@ class BackofficeService {
         NomineeStatusFlag: "S",
         NomineeStatusCheck: null,
       };
+      entries.push(nomineeEntry);
+
+      if (nominee.guardianName) {
+        const guardianProof = mapProofType(nominee.guardianProofType || nominee.guardianProof);
+        const guardianAddressProof = mapNomineeAddressProof(nominee.guardianProofType || nominee.guardianProof);
+        entries.push({
+          FirmID: BACKOFFICE_FIRM_ID,
+          ClientCode: clientCode,
+          NomineeType: "NG",
+          Relation: mapRelation(nominee.guardianRelation),
+          PreFix: null,
+          Name: buildString(nominee.guardianName),
+          FatherSpouse: "F",
+          FatherPreFix: null,
+          FatherName: null,
+          MotherPreFix: null,
+          MotherName: null,
+          MaidenPreFix: null,
+          MaidenName: null,
+          DOB: formatDate(nominee.guardianDob) || null,
+          PANNO: guardianProof === "03" ? buildString(nominee.guardianProofNumber)?.toUpperCase() : null,
+          UID: guardianProof === "05" ? buildString(nominee.guardianProofNumber) : null,
+          Gender: null,
+          MaritalStatus: null,
+          ResidentialStatus: "RI",
+          Nationnality: "IN",
+          Occupation: null,
+          OccupationOther: null,
+          IDProof: guardianProof,
+          IDProofRefNo: buildString(nominee.guardianProofNumber),
+          Address1: buildString(nominee.guardianAddress || nomineeEntry.Address1)?.substring(0, 100) || null,
+          Address2: buildString(nominee.guardianAddress2 || nomineeEntry.Address2),
+          Address3: buildString(nominee.guardianAddress3 || nomineeEntry.Address3),
+          City: buildString(nominee.guardianCity || nomineeEntry.City),
+          Pincode: buildString(nominee.guardianPincode || nomineeEntry.Pincode),
+          District: buildString(nominee.guardianDistrict || nomineeEntry.District),
+          State: mapState(nominee.guardianState || nomineeEntry.State),
+          StateOther: null,
+          Country: "IN",
+          AddressProof: guardianAddressProof,
+          AddressProofOther: null,
+          AddressProofRef: guardianAddressProof ? buildString(nominee.guardianProofNumber) : null,
+          AddressProofDate: null,
+          AddressProofDateExpiry: null,
+          Delete: "N",
+          SharePercentage: 0,
+          EmailID: buildString(nominee.guardianEmail || nomineeEntry.EmailID),
+          ISD: "91",
+          Mobile: buildString(nominee.guardianMobile || nomineeEntry.Mobile),
+          MinorInd: "N",
+          NomineeSerialNo: String(index + 1),
+          NomineeStatusFlag: "S",
+          NomineeStatusCheck: null,
+        });
+      }
+
+      return entries;
     }) : [];
 
     const documentEntries = [];
@@ -593,10 +721,12 @@ class BackofficeService {
     addDocument("SIGN", "signature.jpeg", signature.filePreview || signature.preview || signature.image);
     addDocument("PAN", "pan.jpeg", panUpload.filePreview || panUpload.preview || identityDetails.panImage);
     addDocument("PHOTO", "photo.jpeg", application.selfie || selfieDetails.preview || selfieDetails.image);
-    addDocument("INC", "financial-proof", financialProof.filePreview || financialProof.preview);
+    addDocument("BANK", "financial-proof", financialProof.filePreview || financialProof.preview);
     if (Array.isArray(documents)) {
       documents.forEach((document, index) => {
-        addDocument(document.documentId || document.type || `DOC${index + 1}`, document.name || document.filename || `document-${index + 1}`, document.filePreview || document.preview || document.data);
+        let docId = document.documentId || document.type || "OTHER";
+        if (docId.startsWith("DOC")) docId = "OTHER";
+        addDocument(docId, document.name || document.filename || `document-${index + 1}`, document.filePreview || document.preview || document.data);
       });
     } else {
       addDocument("UID", "aadhaar-front.jpeg", documents.frontPreview || documents.front);
@@ -635,19 +765,19 @@ class BackofficeService {
       NomineeOptFlag: existingBackoffice.NomineeOptFlag || nomineeOptFlag,
       UnTracedFlag: existingBackoffice.UnTracedFlag || "N",
       EducationCode: existingBackoffice.EducationCode || mapEducation(personalDetails.education),
-      OtherMktExperience: existingBackoffice.OtherMktExperience || personalDetails.experience || "0",
-      StockMktExperience: existingBackoffice.StockMktExperience || personalDetails.experience || "0",
-      DerivativeMktExperience: existingBackoffice.DerivativeMktExperience || (segments.derivatives ? personalDetails.experience || "0" : "0"),
+      OtherMktExperience: String(existingBackoffice.OtherMktExperience || personalDetails.experience || "0").substring(0, 2),
+      StockMktExperience: String(existingBackoffice.StockMktExperience || personalDetails.experience || "0").substring(0, 2),
+      DerivativeMktExperience: String(existingBackoffice.DerivativeMktExperience || (segments.derivatives ? personalDetails.experience || "0" : "0")).substring(0, 2),
       LanguageCode: existingBackoffice.LanguageCode || "01",
-      DDPI: mapYesNo(personalDetails.ddpi, null),
-      BSDA: application.bsda || null,
     };
 
     const payload = {
       KYCDetail: mergedKyc,
-      AddressDetail: [addressEntry],
+      AddressDetail: addressEntries,
       ContactDetail: contactEntries.length > 0 ? contactEntries : [existingContact].filter(Boolean),
       BankDetail: bankEntry,
+      DepositoryDetail: depositoryEntries,
+      BrokerageMappingDetail: brokerageMappingDetail,
       BackOfficeDetail: backOfficeEntry,
       ExchangeDetail: exchangeEntries,
       SegmentDetail: segmentEntries,
