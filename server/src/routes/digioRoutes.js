@@ -2251,7 +2251,33 @@ router.post("/verify-bank", auth, async (req, res) => {
       });
     }
 
-    return res.json({ success: result.verified, data: result });
+    // Even if it failed penny drop (account invalid, or Digio rejected it), 
+    // allow user to move forward and provide manual bank proof.
+    const failedBankDetails = mergeJson(application.bankDetails, {
+      accountNumber,
+      ifsc,
+      verified: false,
+      method: "PENNY_DROP",
+      name_match: false,
+    });
+    
+    await prisma.kycApplication.update({
+      where: { id: application.id },
+      data: serializeJsonFields(
+        {
+          bankDetails: failedBankDetails,
+          currentStep: Math.max(application.currentStep || 0, 11), // Bank step is 11
+        },
+        ["bankDetails"],
+      ),
+    });
+
+    return res.json({ 
+      success: true, 
+      verified: false,
+      nameMismatch: true, 
+      data: result 
+    });
   } catch (error) {
     console.error("Bank Verification Route Error:", error.message);
     return res
