@@ -260,9 +260,9 @@ function buildAddressLines(address = {}) {
   }
 
   return {
-    line1: pickFirst(address.line1, address.addressLine1),
-    line2: pickFirst(address.line2, address.addressLine2),
-    line3: pickFirst(address.line3, address.addressLine3),
+    line1: pickFirst(address.line1, address.addressLine1)?.slice(0, 100) || null,
+    line2: pickFirst(address.line2, address.addressLine2)?.slice(0, 100) || null,
+    line3: pickFirst(address.line3, address.addressLine3)?.slice(0, 100) || null,
   };
 }
 
@@ -371,7 +371,7 @@ class BackofficeService {
       FirmID: existingKyc.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       OpenDate: formatDate(existingKyc.OpenDate) || openDate,
-      CloseDate: existingKyc.CloseDate || null,
+      CloseDate: formatDate(existingKyc.CloseDate) || null,
       PanNo: buildString(identityDetails.pan || existingKyc.PanNo || existingKyc.PANNo)?.toUpperCase() || null,
       ClientType: existingKyc.ClientType || "I",
       ClientStatus: existingKyc.ClientStatus || "01",
@@ -392,7 +392,7 @@ class BackofficeService {
       Aadhar: aadhaar,
       AnnualIncome: mapAnnualIncome(personalDetails.annualIncome) || existingKyc.AnnualIncome || null,
       AnnualIncomeDate: formatDate(existingKyc.AnnualIncomeDate) || openDate,
-      NetWorth: existingKyc.NetWorth || personalDetails.networth || null,
+      NetWorth: parseInt(existingKyc.NetWorth || personalDetails.networth, 10) || null,
       NetWorthDate: formatDate(existingKyc.NetWorthDate || personalDetails.networthDate) || openDate,
       Occupation: mapOccupation(personalDetails.occupation) || existingKyc.Occupation || null,
       PEP: mapPep(personalDetails.politicallyExposed || existingKyc.PEP),
@@ -487,14 +487,14 @@ class BackofficeService {
       BankIFSC: buildString(bankDetails.ifsc || existingBank.BankIFSC) || null,
       BankMICR: buildString(bankDetails.micr || existingBank.BankMICR) || null,
       ChequePrintName: buildString(bankDetails.accountHolderName || existingBank.ChequePrintName) || null,
-      BankCode: buildString(bankDetails.bankCode || existingBank.BankCode) || null,
+      BankCode: buildString(bankDetails.bankCode || existingBank.BankCode) || "NA",
       BankName: buildString(bankDetails.bankName || existingBank.BankName) || null,
       BankAddress1: buildString(bankDetails.branchAddress || bankDetails.address1 || existingBank.BankAddress1) || "NOT PROVIDED",
       BankAddress2: buildString(bankDetails.address2 || existingBank.BankAddress2) || null,
       BankAddress3: buildString(bankDetails.address3 || existingBank.BankAddress3) || null,
-      BankCity: buildString(bankDetails.city || existingBank.BankCity) || null,
-      BankPincode: buildString(bankDetails.pincode || existingBank.BankPincode) || null,
-      BankState: buildString(bankDetails.state || existingBank.BankState)?.substring(0, 5) || null,
+      BankCity: buildString(bankDetails.city || existingBank.BankCity) || "NOT PROVIDED",
+      BankPincode: buildString(bankDetails.pincode || existingBank.BankPincode || address.pincode || address.postalCode || existingAddress.AddressPincode) || "000000",
+      BankState: mapState(bankDetails.state || existingBank.BankState) || mapState(address.state || existingAddress.AddressState) || "OT",
       BankSateOther: existingBank.BankSateOther || null,
       BankCountry: buildString(bankDetails.country || existingBank.BankCountry) || "IN",
       PennyDropStatus: existingBank.PennyDropStatus || (bankDetails.verified === false ? "N" : "Y"),
@@ -522,18 +522,18 @@ class BackofficeService {
       ...dep,
       FirmID: dep.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
-    })) : [
+    })) : (application.boid ? [
       {
         FirmID: BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
-        DepositoryType: application.boid ? (application.boid.startsWith('IN') ? 'NSDL' : 'CDSL') : 'CDSL',
-        DepositoryID: application.boid ? application.boid.substring(0, 8) : null,
-        DepositoryClientID: application.boid ? application.boid.substring(8) : null,
+        DepositoryType: application.boid.startsWith('IN') ? 'NSDL' : 'CDSL',
+        DepositoryID: application.boid.substring(0, 8),
+        DepositoryClientID: application.boid.substring(8),
         POAFlag: "N",
         POAMarginFlag: "N",
         PrimaryFlag: "Y",
       }
-    ];
+    ] : []);
 
     const brokerageMappingDetail = {
       FirmID: BACKOFFICE_FIRM_ID,
@@ -635,12 +635,12 @@ class BackofficeService {
         AddressProofDateExpiry: null,
         Delete: "N",
         SharePercentage: Number(allocation) || 0,
-        EmailID: buildString(nominee.email),
-        ISD: "91",
-        Mobile: buildString(nominee.mobile),
-        MinorInd: nominee.guardianName ? "Y" : "N",
-        NomineeSerialNo: String(index + 1),
-        NomineeStatusFlag: "S",
+          EmailID: buildString(nominee.email),
+          ISD: "91",
+          Mobile: buildString(nominee.mobile),
+          MinorInd: nominee.guardianName ? "Y" : "N",
+          NomineeSerialNo: index + 1,
+          NomineeStatusFlag: "S",
         NomineeStatusCheck: null,
       };
       entries.push(nomineeEntry);
@@ -693,7 +693,7 @@ class BackofficeService {
           ISD: "91",
           Mobile: buildString(nominee.guardianMobile || nomineeEntry.Mobile),
           MinorInd: "N",
-          NomineeSerialNo: String(index + 1),
+          NomineeSerialNo: index + 1,
           NomineeStatusFlag: "S",
           NomineeStatusCheck: null,
         });
@@ -774,7 +774,7 @@ class BackofficeService {
     const payload = {
       KYCDetail: mergedKyc,
       AddressDetail: addressEntries,
-      ContactDetail: contactEntries.length > 0 ? contactEntries : [existingContact].filter(Boolean),
+      ContactDetail: contactEntries.length > 0 ? contactEntries : (Object.keys(existingContact).length > 0 ? [existingContact] : []),
       BankDetail: bankEntry,
       DepositoryDetail: depositoryEntries,
       BrokerageMappingDetail: brokerageMappingDetail,
