@@ -970,6 +970,9 @@ router.post("/create-request", auth, async (req, res) => {
       ),
     });
 
+      // Notify clients of real-time update
+      if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
+
     await writeAuditLog({
       userId: req.user.id,
       action: "digio_request_created",
@@ -1118,6 +1121,9 @@ router.post("/verify-pan", auth, async (req, res) => {
           ["identityDetails", "personalDetails", "ocrData"],
         ),
       });
+
+      // Notify clients of real-time update
+      if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
 
       // BOID Allocation Logic
       const userWithBoid = await prisma.user.findUnique({ where: { id: req.user.id } });
@@ -2089,6 +2095,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       ),
     });
 
+      // Notify clients of real-time update
+      if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
+
     await writeAuditLog({
       userId: req.user.id,
       action: "digio_response_fetched",
@@ -2233,6 +2242,9 @@ router.post("/verify-bank", auth, async (req, res) => {
         ),
       });
 
+      // Notify clients of real-time update
+      if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
+
       await writeAuditLog({
         userId: req.user.id,
         action: "bank_verified_directly",
@@ -2271,6 +2283,9 @@ router.post("/verify-bank", auth, async (req, res) => {
         ["bankDetails"],
       ),
     });
+
+      // Notify clients of real-time update
+      if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
 
     return res.json({ 
       success: true, 
@@ -2383,6 +2398,9 @@ router.post("/face-match", auth, async (req, res) => {
         } : {}),
       }, ["selfieDetails"]),
     });
+
+      // Notify clients of real-time update
+      if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
 
     await writeAuditLog({
       userId: req.user.id,

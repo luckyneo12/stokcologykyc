@@ -307,7 +307,7 @@ export default function MakerCheckerDashboard() {
             riskScore: app.riskScore || 0,
             faceMatch: app.faceMatchScore || 0,
             startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
-            esignDate: parsedEsign.timestamp || (app.currentStep >= 13 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
+            esignDate: parsedEsign.timestamp || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
             submittedAt: new Date(app.updatedAt || app.createdAt).toLocaleString(),
           };});
           setKycs(mapped);

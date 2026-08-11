@@ -167,7 +167,12 @@ class GlobeController {
           where: whereClause,
           include: {
             user: {
-              select: { phone: true, email: true },
+              select: { 
+                phone: true, 
+                email: true,
+                eStamp: true,
+                eStampAssigned: { select: { serialNo: true } }
+              },
             },
           },
           orderBy: { updatedAt: "desc" },
@@ -352,6 +357,56 @@ class GlobeController {
     } catch (error) {
       console.error("Error in pushToBackoffice:", error);
       res.status(500).json({ success: false, message: "Internal server error pushing to backoffice" });
+    }
+  }
+
+  async updateGlobeStatus(req, res) {
+    try {
+      const { id } = req.params;
+      const { globeStatus, remarks } = req.body;
+      const userId = req.user.id;
+
+      if (!['pending', 'approved', 'rejected'].includes(globeStatus)) {
+        return res.status(400).json({ success: false, message: "Invalid globe status" });
+      }
+
+      let queryId = {};
+      if (!isNaN(parseInt(id)) && parseInt(id).toString() === id.toString()) {
+        queryId = { id: parseInt(id) };
+      } else {
+        queryId = { applicationId: id };
+      }
+
+      const application = await prisma.kycApplication.update({
+        where: queryId,
+        data: {
+          globeStatus,
+          globeRemarks: remarks || null,
+          globeReviewedAt: new Date(),
+          globeReviewedBy: userId,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          action: `GLOBE_STATUS_${globeStatus.toUpperCase()}`,
+          details: JSON.stringify({ message: `KYC Application ${application.applicationId} globe status updated to ${globeStatus}${remarks ? '. Reason: ' + remarks : ''}` }),
+          targetId: id.toString(),
+          targetType: "KycApplication",
+          userId: userId,
+          ipAddress: req.ip || req.connection.remoteAddress,
+        },
+      });
+
+      const io = req.app.get("io");
+      if (io) {
+        io.to("staff_room").emit("applications_updated");
+      }
+
+      res.status(200).json({ success: true, data: application });
+    } catch (error) {
+      console.error("Error in updateGlobeStatus:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
     }
   }
 }

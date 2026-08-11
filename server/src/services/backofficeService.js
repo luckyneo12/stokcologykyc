@@ -1,4 +1,6 @@
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 
 const BACKOFFICE_BASE_URL = (process.env.BACKOFFICE_BASE_URL || "http://61.247.230.203:15000/api").replace(/\/+$/, "");
 const BACKOFFICE_USERNAME = process.env.BACKOFFICE_USERNAME;
@@ -54,6 +56,18 @@ function buildString(value) {
 function stripDataUri(value) {
   const raw = buildString(value);
   if (!raw) return null;
+  
+  if (raw.startsWith("/uploads/")) {
+    try {
+      const filePath = path.join(__dirname, "../../", raw.replace(/^\//, ""));
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath, "base64");
+      }
+    } catch (err) {
+      console.warn("Could not read local file for base64 conversion:", raw, err.message);
+    }
+  }
+
   const commaIndex = raw.indexOf(",");
   return raw.startsWith("data:") && commaIndex >= 0 ? raw.slice(commaIndex + 1) : raw;
 }

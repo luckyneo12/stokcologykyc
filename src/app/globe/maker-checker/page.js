@@ -217,6 +217,26 @@ export default function MakerCheckerDashboard() {
     }
   };
 
+  const updateGlobeStatusAPI = async (applicationId, globeStatus) => {
+    try {
+      const token = localStorage.getItem("globeToken");
+      const response = await fetch(`${API_BASE_URL}/api/globe/kycs/${applicationId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ globeStatus })
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert(`Globe Status updated successfully`);
+        fetchApplications(true);
+      } else {
+        alert(data.error || "Operation failed");
+      }
+    } catch (err) {
+      alert("Operation failed");
+    }
+  };
+
   useEffect(() => {
     const userStr = localStorage.getItem("globeUser");
     if (userStr && userStr !== "undefined") {
@@ -305,7 +325,7 @@ export default function MakerCheckerDashboard() {
             riskScore: app.riskScore || 0,
             faceMatch: app.faceMatchScore || 0,
             startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
-            esignDate: parsedEsign.timestamp || (app.currentStep >= 13 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
+            esignDate: parsedEsign.timestamp || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
             submittedAt: new Date(app.updatedAt || app.createdAt).toLocaleString(),
           };});
           setKycs(mapped);
@@ -564,9 +584,11 @@ export default function MakerCheckerDashboard() {
                               </button>
                               
                               {openMenuId === k.id && (
-                                <div className="premium-action-menu" style={{ position: "absolute", top: "100%", left: 0, minWidth: "120px", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px" }}>
-                                  <button onClick={() => { setOpenMenuId(null); router.push(`/globe/maker-checker/${k.id}`); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "var(--text-primary)" }}>Verify</button>
-                                  <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "var(--text-primary)" }}>Change Status</button>
+                                <div className="premium-action-menu" style={{ position: "absolute", top: (index >= 3 && index >= kycs.length - 4) ? "auto" : "100%", bottom: (index >= 3 && index >= kycs.length - 4) ? "100%" : "auto", left: 0, minWidth: "160px", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px" }}>
+                                  <button onClick={() => { setOpenMenuId(null); router.push(`/globe/maker-checker/${k.id}`); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "var(--text-primary)", borderRadius: "4px" }} onMouseEnter={e => e.target.style.background = 'var(--bg-secondary)'} onMouseLeave={e => e.target.style.background = 'transparent'}>Verify</button>
+                                  <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "var(--text-primary)", borderRadius: "4px" }} onMouseEnter={e => e.target.style.background = 'var(--bg-secondary)'} onMouseLeave={e => e.target.style.background = 'transparent'}>Continue Journey</button>
+                                  <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "#ef4444", borderRadius: "4px" }} onMouseEnter={e => e.target.style.background = '#fef2f2'} onMouseLeave={e => e.target.style.background = 'transparent'}>Delete</button>
+                                  <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", textAlign: "left", fontWeight: 600, color: "var(--text-primary)", borderRadius: "4px" }} onMouseEnter={e => e.target.style.background = 'var(--bg-secondary)'} onMouseLeave={e => e.target.style.background = 'transparent'}>Change Status</button>
                                 </div>
                               )}
                             </div>
@@ -585,29 +607,39 @@ export default function MakerCheckerDashboard() {
                           </td>}
                           {visibleColumns.includes("Status") && <td>
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
+                              <div className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}>
+                                {((k.status === 'under_review' ? 'pending' : k.status) || 'pending').replace("_", " ").toUpperCase()}
+                              </div>
+                              {k.isResubmitted && (
+                                <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
+                              )}
+                            </div>
+                          </td>}
+
+                          {visibleColumns.includes("Globe Status") && <td>
+                            <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
                               <div className="status-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
                                 <div 
                                   onClick={() => setOpenStatusMenuId(openStatusMenuId === k.id ? null : k.id)}
-                                  className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
+                                  className={`badge ${STATUS_MAP[k.globeStatus] || "badge-pending"}`}
                                   style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, border: "none" }}
                                 >
-                                  {((k.status === 'under_review' ? 'pending' : k.status) || 'pending').replace("_", " ").toUpperCase()}
+                                  {(k.globeStatus || "PENDING").toUpperCase()}
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: openStatusMenuId === k.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </div>
                                 {openStatusMenuId === k.id && (
                                   <div style={{ position: "absolute", top: (index >= kycs.length - 3 && kycs.length > 3) ? "auto" : "100%", bottom: (index >= kycs.length - 3 && kycs.length > 3) ? "100%" : "auto", marginTop: (index >= kycs.length - 3 && kycs.length > 3) ? 0 : 4, marginBottom: (index >= kycs.length - 3 && kycs.length > 3) ? 4 : 0, left: 0, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px", minWidth: "120px" }}>
                                     {[
                                       { value: "pending", label: "PENDING" },
-                                      { value: "verified", label: "VERIFIED" },
-                                      { value: "rejected", label: "REJECTED" },
-                                      { value: "on_hold", label: "ON HOLD" }
+                                      { value: "approved", label: "APPROVED" },
+                                      { value: "rejected", label: "REJECTED" }
                                     ].map(opt => (
                                       <div 
                                         key={opt.value}
                                         onClick={() => {
-                                          if ((k.status === 'under_review' ? 'pending' : k.status) !== opt.value) {
-                                            updateStatus(k.id, opt.value);
-                                            setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: opt.value } : app));
+                                          if (k.globeStatus !== opt.value) {
+                                            updateGlobeStatusAPI(k.id, opt.value);
+                                            setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: opt.value } : app));
                                           }
                                           setOpenStatusMenuId(null);
                                         }}
@@ -620,19 +652,14 @@ export default function MakerCheckerDashboard() {
                                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                                       >
                                         {opt.label}
-                                        {(k.status === 'under_review' ? 'pending' : k.status) === opt.value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                        {k.globeStatus === opt.value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
                                       </div>
                                     ))}
                                   </div>
                                 )}
                               </div>
-                              {k.isResubmitted && (
-                                <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
-                              )}
                             </div>
                           </td>}
-
-                          {visibleColumns.includes("Globe Status") && <td><span className={`badge ${STATUS_MAP[k.globeStatus] || "badge-pending"}`}>{(k.globeStatus || "PENDING").toUpperCase()}</span></td>}
                           {visibleColumns.includes("E-Stamp") && <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem" }}>{k.eStamp}</td>}
                           {visibleColumns.includes("Start Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.startDate}</td>}
                           {visibleColumns.includes("eSign Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.esignDate}</td>}

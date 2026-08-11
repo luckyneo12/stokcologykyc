@@ -435,8 +435,14 @@ export function KYCProvider({ children }) {
                 app.reviewedAt &&
                 app.reviewedAt !== lastSyncedReviewedAt.current;
 
-              if (!stepChanged && !statusChanged && !adminMoved && isPolling)
-                return prev;
+              if (!stepChanged && !statusChanged && !adminMoved && isPolling) {
+                // If it's a socket event, we should still sync the data if the device is inactive
+                // to show real-time changes (e.g. document uploads) from the other device.
+                const timeSinceLastNav = Date.now() - (lastClientStepChange.current || 0);
+                if (timeSinceLastNav < 15000) {
+                  return prev;
+                }
+              }
 
               const updateSessionStorage = (nextState) => {
                 try {
@@ -557,8 +563,8 @@ export function KYCProvider({ children }) {
               }
 
               // 3. BACKGROUND POLLING LOGIC:
-              // - If server moved FORWARD (e.g. user moving in another tab), follow it.
-              // - If server reports OLDER step (race condition), IGNORE IT (don't yank back).
+              // For real-time updates across devices, if this device is not actively
+              // navigating (cooldown), we should sync with the server's state.
               if (isPolling) {
                 const serverIsNewerAdminChange =
                   app.reviewedAt &&
@@ -566,36 +572,32 @@ export function KYCProvider({ children }) {
                     new Date(app.reviewedAt).getTime() >
                       new Date(lastSyncedReviewedAt.current).getTime());
 
-                const isAlreadyCompleted = app.currentStep >= 14;
-                const shouldForward =
-                  app.currentStep > prev.currentStep && !isAlreadyCompleted;
-
-                // Navigation Cooldown to prevent race conditions during large uploads
+                // Navigation Cooldown to prevent race conditions while user is typing/clicking
                 const timeSinceLastNav = Date.now() - (lastClientStepChange.current || 0);
                 const isNavCooldown = timeSinceLastNav < 15000; // 15 seconds
 
-                if (shouldForward && isNavCooldown && !statusChanged && !serverIsNewerAdminChange) {
+                if (isNavCooldown && !statusChanged && !serverIsNewerAdminChange) {
                   console.log(
-                    `[KYC Sync] Ignoring server pull to Step: ${app.currentStep} due to 15s navigation cooldown.`
+                    `[KYC Sync] Ignoring server pull to Step: ${app.currentStep} due to 15s activity cooldown on this device.`
                   );
-                } else if (
-                  (shouldForward && !isNavCooldown) ||
-                  statusChanged ||
-                  serverIsNewerAdminChange
-                ) {
-                  const reason = (shouldForward && !isNavCooldown)
-                    ? "Server is ahead"
-                    : statusChanged
-                      ? "Status changed"
-                      : "Admin moved step/status";
+                  return prev;
+                }
+                
+                // If the user hasn't interacted recently, we sync everything from the server!
+                // This ensures real-time updates from other devices (like mobile selfie completion).
+                const reason = statusChanged 
+                  ? "Status changed" 
+                  : serverIsNewerAdminChange 
+                    ? "Admin moved step/status" 
+                    : "Real-time sync from another device";
 
-                  console.log(
-                    `[KYC Sync] Following server (${reason}). New Step: ${app.currentStep}, Status: ${app.status}`,
-                  );
+                console.log(
+                  `[KYC Sync] Following server (${reason}). New Step: ${app.currentStep}, Status: ${app.status}`,
+                );
 
-                  if (serverIsNewerAdminChange) {
-                    lastSyncedReviewedAt.current = app.reviewedAt;
-                  }
+                if (serverIsNewerAdminChange) {
+                  lastSyncedReviewedAt.current = app.reviewedAt;
+                }
 
                   // Defensive merge even on background sync
                   return updateSessionStorage({
@@ -644,12 +646,8 @@ export function KYCProvider({ children }) {
                     stepStatuses: app.stepStatuses || prev.stepStatuses,
                   });
                 }
-
                 // If server is behind and no admin change, stay where we are (no yank back)
                 return prev;
-              }
-
-              return prev;
             });
             return app;
           }

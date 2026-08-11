@@ -21,6 +21,7 @@ router.get("/kycs", globeController.getPendingKYCs);
 router.post("/kycs/:id/approve", globeController.approveKYC);
 router.post("/kycs/:id/reject", globeController.rejectKYC);
 router.post("/kycs/:id/push", globeController.pushToBackoffice);
+router.put("/kycs/:id/status", globeController.updateGlobeStatus);
 
 router.get("/application/:id", getApplicationById);
 
