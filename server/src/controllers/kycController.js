@@ -533,6 +533,60 @@ const saveStep = async (req, res, next) => {
         where: { applicationId },
         data: updateData,
       });
+
+      // --- NEW CLOUDINARY CLEANUP LOGIC ---
+      try {
+        const { deleteCloudinaryFile } = require("../utils/cloudinaryHelper");
+
+        // Simple string fields
+        const simpleDocFields = ["panUpload", "signature", "financialProof", "selfie"];
+        for (const field of simpleDocFields) {
+          if (updateData[field] && app[field] && updateData[field] !== app[field]) {
+            deleteCloudinaryFile(app[field]);
+          }
+        }
+
+        // Bank proof (inside JSON)
+        if (updateData.bankDetails && app.bankDetails) {
+          const oldBank = typeof app.bankDetails === 'string' ? JSON.parse(app.bankDetails) : app.bankDetails;
+          const newBank = typeof updateData.bankDetails === 'string' ? JSON.parse(updateData.bankDetails) : updateData.bankDetails;
+          if (newBank?.proofUrl && oldBank?.proofUrl && newBank.proofUrl !== oldBank.proofUrl) {
+            deleteCloudinaryFile(oldBank.proofUrl);
+          }
+        }
+        
+        // Selfie details preview (inside JSON)
+        if (updateData.selfieDetails && app.selfieDetails) {
+          const oldSelfie = typeof app.selfieDetails === 'string' ? JSON.parse(app.selfieDetails) : app.selfieDetails;
+          const newSelfie = typeof updateData.selfieDetails === 'string' ? JSON.parse(updateData.selfieDetails) : updateData.selfieDetails;
+          if (newSelfie?.preview && oldSelfie?.preview && newSelfie.preview !== oldSelfie.preview) {
+            deleteCloudinaryFile(oldSelfie.preview);
+          }
+        }
+
+        // Documents array (Aadhaar front, back, etc)
+        if (updateData.documents && app.documents) {
+          const oldDocs = typeof app.documents === 'string' ? JSON.parse(app.documents) : (app.documents || []);
+          const newDocs = typeof updateData.documents === 'string' ? JSON.parse(updateData.documents) : (updateData.documents || []);
+          
+          if (Array.isArray(oldDocs) && Array.isArray(newDocs)) {
+            oldDocs.forEach(oldDoc => {
+              // Usually docs have a "type" property like "Aadhaar Front"
+              const typeId = oldDoc.type || oldDoc.name;
+              if (typeId) {
+                const newDoc = newDocs.find(d => (d.type || d.name) === typeId);
+                if (newDoc && newDoc.path !== oldDoc.path) {
+                  deleteCloudinaryFile(oldDoc.path);
+                }
+              }
+            });
+          }
+        }
+      } catch (cleanupErr) {
+        console.error("[KYC SaveStep] Cloudinary cleanup failed non-fatally:", cleanupErr.message);
+      }
+      // ------------------------------------
+
       console.log(`[KYC SaveStep] Success for App: ${applicationId}`);
     } catch (dbError) {
       console.error("[KYC SaveStep] Prisma Error:", dbError.message);

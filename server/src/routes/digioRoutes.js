@@ -13,6 +13,25 @@ const bankService = require("../services/bankService");
 const selfieService = require("../services/selfieService");
 const esignService = require("../services/esignService");
 const digioClient = require("../services/digioClient");
+const cloudinary = require("cloudinary").v2;
+
+const uploadBufferToCloudinary = (buffer, filename, format = undefined) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { 
+        folder: "kyc_uploads", 
+        public_id: filename, 
+        resource_type: "auto",
+        ...(format && { format })
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    uploadStream.end(buffer);
+  });
+};
 
 const router = express.Router();
 
@@ -415,16 +434,18 @@ async function downloadDigilockerIssuedDocuments({
         buffer,
         response.headers?.["content-type"] || "",
       );
-      const filename = `digilocker_${docType.toLowerCase()}_issued_${requestId}_${Date.now()}.${extension}`;
-      fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+      const publicId = `digilocker_${docType.toLowerCase()}_issued_${requestId}_${Date.now()}`;
+      
+      const filePath = path.join(uploadsDir, `${publicId}.${extension}`);
+      fs.writeFileSync(filePath, buffer);
 
       addSavedDocument({
-        path: `/uploads/${filename}`,
+        path: `/uploads/${publicId}.${extension}`,
         type: docType,
         label: `DigiLocker ${docType} (issued)`,
         issued: true,
       });
-      console.log(`[Digio] Saved issued ${docType} as ${extension}`);
+      console.log(`[Digio] Saved issued ${docType} locally: /uploads/${publicId}.${extension}`);
     } catch (error) {
       const status = error.response?.status;
       const message = error.response?.data
@@ -1617,13 +1638,14 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
             /^data:(image|application)\/[a-z0-9.+-]+;base64,/i,
             "",
           );
+          
           fs.writeFileSync(
             path.join(uploadsDir, filename),
             Buffer.from(cleanBase64, "base64"),
           );
-          console.log(
-            `[Digio] Successfully extracted document: ${documentType || label} as ${ext}`,
-          );
+          
+          console.log(`[Digio] Extracted and saved locally: ${documentType || label} as ${ext}`);
+          
           const inferredType = documentType || inferDocumentType(label);
           const resolvedType =
             !isPdf && inferredType === "AADHAAR" ? "PHOTO" : inferredType;
@@ -1806,26 +1828,29 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         });
       }
 
-      savedDocumentPaths.push({
-        path: `/uploads/${filename}`,
-        type,
-        label: `DigiLocker ${type} Verification PDF`,
-        generated: true,
-      });
+      try {
+        savedDocumentPaths.push({
+          path: `/uploads/${filename}`,
+          type,
+          label: `DigiLocker ${type} Verification PDF`,
+          generated: true,
+        });
+        console.log(`[Digio] Generated ${type} PDF and saved locally: /uploads/${filename}`);
+      } catch (err) {
+        console.error(`[Digio] Failed to add generated ${type} PDF:`, err);
+      }
     };
 
     if (
       (payload.type === "DIGILOCKER" || payload.type === "PAN_VERIFICATION") &&
-      nextIdentityDetails.aadhaar &&
-      !hasPdfForType("AADHAAR")
+      nextIdentityDetails.aadhaar
     ) {
       await addGeneratedVerificationPdf("AADHAAR");
     }
 
     if (
       (payload.type === "DIGILOCKER" || payload.type === "PAN_VERIFICATION") &&
-      nextIdentityDetails.pan &&
-      !hasPdfForType("PAN")
+      nextIdentityDetails.pan
     ) {
       await addGeneratedVerificationPdf("PAN");
     }
@@ -1911,12 +1936,14 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
               mediaBuffer &&
               (mediaBuffer.byteLength > 0 || mediaBuffer.length > 0)
             ) {
-              const fileName = `selfie_${application.applicationId}_${Date.now()}.jpg`;
-              const filePath = path.join(__dirname, "../../uploads", fileName);
-              fs.writeFileSync(filePath, Buffer.from(mediaBuffer));
-              downloadedSelfiePath = `/uploads/${fileName}`;
+              const publicId = `selfie_${application.applicationId}_${Date.now()}`;
+              console.log(`[Digio Extraction] Uploading selfie to Cloudinary...`);
+              
+              const cloudinaryResult = await uploadBufferToCloudinary(Buffer.from(mediaBuffer), publicId, "jpg");
+              downloadedSelfiePath = cloudinaryResult.secure_url;
+              
               console.log(
-                `[Digio Extraction] Saved downloaded selfie to ${downloadedSelfiePath}`,
+                `[Digio Extraction] Saved downloaded selfie to Cloudinary: ${downloadedSelfiePath}`,
               );
             }
           } catch (err) {
@@ -1985,8 +2012,13 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       let livenessBuffer = null;
       if (safeSelfieDocPath) {
         try {
-          const absolutePath = path.join(__dirname, "../../", safeSelfieDocPath.replace(/^[\/\\]/, ""));
-          livenessBuffer = fs.readFileSync(absolutePath);
+          if (safeSelfieDocPath.startsWith("http")) {
+            const resp = await fetch(safeSelfieDocPath);
+            livenessBuffer = Buffer.from(await resp.arrayBuffer());
+          } else {
+            const absolutePath = path.join(__dirname, "../../", safeSelfieDocPath.replace(/^[\/\\]/, ""));
+            livenessBuffer = fs.readFileSync(absolutePath);
+          }
         } catch (e) {
           console.error("[Digio Liveness] Failed to read selfie file:", e.message);
         }
@@ -2082,7 +2114,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
             : extractedFaceScore !== null
               ? { faceMatchScore: extractedFaceScore }
               : {}),
-          currentStep: Math.max(application.currentStep, 4),
+          currentStep: Math.max(application.currentStep, STEP_BY_REQUEST_TYPE[payload.type] || 4),
         },
         [
           "ocrData",
@@ -2117,6 +2149,52 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     // Notify connected clients (e.g. desktop UI waiting for mobile selfie)
     req.app.get("io")?.to(application.applicationId).emit("kyc_updated");
+
+    // START ASYNC BACKGROUND UPLOAD
+    (async () => {
+      try {
+        const appToUpdate = await prisma.kycApplication.findUnique({
+          where: { applicationId: application.applicationId }
+        });
+        if (!appToUpdate) return;
+        
+        let docsUpdated = false;
+        const currentDocs = parseJsonField(appToUpdate.documents, []);
+        
+        for (let i = 0; i < currentDocs.length; i++) {
+          const doc = currentDocs[i];
+          if (doc.path && doc.path.startsWith('/uploads/')) {
+            const localPath = path.join(__dirname, "../..", doc.path);
+            if (fs.existsSync(localPath)) {
+              console.log(`[Background] Uploading ${doc.label || 'document'} to Cloudinary...`);
+              const fileBuffer = fs.readFileSync(localPath);
+              const ext = doc.path.split('.').pop()?.toLowerCase();
+              const publicId = doc.path.split('/').pop().replace(`.${ext}`, '');
+              
+              try {
+                const cloudinaryResult = await uploadBufferToCloudinary(fileBuffer, publicId, ext === 'pdf' ? 'pdf' : undefined);
+                currentDocs[i].path = cloudinaryResult.secure_url;
+                docsUpdated = true;
+                try { fs.unlinkSync(localPath); } catch (e) {} // Cleanup local file
+              } catch (upErr) {
+                console.error(`[Background] Failed to upload ${doc.path}:`, upErr.message);
+              }
+            }
+          }
+        }
+        
+        if (docsUpdated) {
+          await prisma.kycApplication.update({
+            where: { applicationId: application.applicationId },
+            data: { documents: JSON.stringify(currentDocs) }
+          });
+          console.log(`[Background] Successfully moved local documents to Cloudinary for ${application.applicationId}`);
+        }
+      } catch (err) {
+        console.error(`[Background] Background upload process failed:`, err);
+      }
+    })();
+
 
     return res.json({
       success: true,
@@ -2263,35 +2341,11 @@ router.post("/verify-bank", auth, async (req, res) => {
       });
     }
 
-    // Even if it failed penny drop (account invalid, or Digio rejected it), 
-    // allow user to move forward and provide manual bank proof.
-    const failedBankDetails = mergeJson(application.bankDetails, {
-      accountNumber,
-      ifsc,
-      verified: false,
-      method: "PENNY_DROP",
-      name_match: false,
-    });
-    
-    await prisma.kycApplication.update({
-      where: { id: application.id },
-      data: serializeJsonFields(
-        {
-          bankDetails: failedBankDetails,
-          currentStep: Math.max(application.currentStep || 0, 11), // Bank step is 11
-        },
-        ["bankDetails"],
-      ),
-    });
-
-      // Notify clients of real-time update
-      if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
-
+    // If penny drop failed completely (e.g., invalid account number or IFSC),
+    // we should explicitly block the user and ask them to fix the details.
     return res.json({ 
-      success: true, 
-      verified: false,
-      nameMismatch: true, 
-      data: result 
+      success: false, 
+      error: "Invalid Bank Account Details. Please check your Account Number and IFSC Code."
     });
   } catch (error) {
     console.error("Bank Verification Route Error:", error.message);
@@ -2361,20 +2415,19 @@ router.post("/face-match", auth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    // 1. Prepare Selfie and Save to disk immediately
+    // 1. Prepare Selfie and Save to Cloudinary
     let savedSelfiePath = null;
     let cleanSelfie = null;
     if (selfie) {
       cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
       try {
-        const uploadsDir = path.join(__dirname, "../../uploads");
-        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-        const filename = `live_selfie_${application.applicationId}_${Date.now()}.jpg`;
-        fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(cleanSelfie, "base64"));
-        savedSelfiePath = `/uploads/${filename}`;
-        console.log(`[FaceMatch] Live selfie saved to: ${savedSelfiePath}`);
+        const selfieBuffer = Buffer.from(cleanSelfie, "base64");
+        console.log(`[FaceMatch] Uploading selfie to Cloudinary for ${application.applicationId}...`);
+        const cloudinaryResult = await uploadBufferToCloudinary(selfieBuffer, `kyc_selfie_${application.applicationId}_${Date.now()}`, "jpg");
+        savedSelfiePath = cloudinaryResult.secure_url;
+        console.log(`[FaceMatch] Live selfie securely saved to Cloudinary: ${savedSelfiePath}`);
       } catch (saveError) {
-        console.error("[FaceMatch] Failed to save live selfie:", saveError.message);
+        console.error("[FaceMatch] Failed to save live selfie to Cloudinary:", saveError.message);
       }
     }
 
@@ -2398,6 +2451,18 @@ router.post("/face-match", auth, async (req, res) => {
         } : {}),
       }, ["selfieDetails"]),
     });
+
+    // --- NEW CLOUDINARY CLEANUP LOGIC ---
+    if (savedSelfiePath && application.selfie) {
+      try {
+        const { deleteCloudinaryFile } = require("../utils/cloudinaryHelper");
+        // application.selfie holds the old selfie URL from the DB fetch at the start of this route
+        deleteCloudinaryFile(application.selfie);
+      } catch (cleanupErr) {
+        console.error("[FaceMatch] Cloudinary cleanup failed non-fatally:", cleanupErr.message);
+      }
+    }
+    // ------------------------------------
 
       // Notify clients of real-time update
       if (req.app && req.app.get("io")) { req.app.get("io").to(application?.applicationId || req.body?.applicationId || req.params?.applicationId || req.query?.applicationId).emit("kyc_updated"); }
@@ -2618,7 +2683,7 @@ router.post("/mask-aadhaar", auth, async (req, res) => {
     data,
     data_content_type = "PNG",
     file_name = "aadhaar.png",
-    consent = "yes",
+    consent = "Y",
   } = req.body;
 
   if (!data) {

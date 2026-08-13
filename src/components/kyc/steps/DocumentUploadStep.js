@@ -7,6 +7,7 @@ import ImageCropper from "@/components/ui/ImageCropper";
 import SelfieCaptureInline from "../SelfieCaptureInline";
 import { initializeDigio, createDigioRequest } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
+import { uploadDocument } from "@/utils/kycApi";
 import { io } from "socket.io-client";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -17,6 +18,15 @@ function isMobileDevice() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
     navigator.userAgent
   );
+}
+
+function dataURLtoFile(dataurl, filename) {
+  var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+      bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+  while(n--){
+      u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, {type:mime});
 }
 
 const UploadIcon = () => (
@@ -307,10 +317,15 @@ export default function DocumentUploadStep() {
     
     const reader = new FileReader();
     reader.onload = async (event) => {
-      setFinPreview(event.target.result);
-      addToast("Financial proof attached", "success");
-      updateState({ financialProof: { type: finType, filePreview: event.target.result } });
-      await syncProgress({ financialProof: { type: finType, filePreview: event.target.result } }, false, "documentUpload");
+      setFinPreview(event.target.result); // local preview for immediate feedback
+      try {
+        const uploadResult = await uploadDocument(file);
+        addToast("Financial proof attached and uploaded", "success");
+        updateState({ financialProof: { type: finType, filePreview: uploadResult.path } });
+        await syncProgress({ financialProof: { type: finType, filePreview: uploadResult.path } }, false, "documentUpload");
+      } catch (err) {
+        addToast("Failed to upload financial proof", "error");
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -326,11 +341,16 @@ export default function DocumentUploadStep() {
     
     const reader = new FileReader();
     reader.onload = async (event) => {
-      setBankProofPreview(event.target.result);
-      addToast("Bank proof attached", "success");
-      const updatedBankDetails = { ...(bankDetails || {}), proofPreview: event.target.result, proofType: bankProofType || "Bank Proof" };
-      updateState({ bankDetails: updatedBankDetails });
-      await syncProgress({ bankDetails: updatedBankDetails }, false, "documentUpload");
+      setBankProofPreview(event.target.result); // local preview
+      try {
+        const uploadResult = await uploadDocument(file);
+        addToast("Bank proof attached and uploaded", "success");
+        const updatedBankDetails = { ...(bankDetails || {}), proofPreview: uploadResult.path, proofType: bankProofType || "Bank Proof" };
+        updateState({ bankDetails: updatedBankDetails });
+        await syncProgress({ bankDetails: updatedBankDetails }, false, "documentUpload");
+      } catch (err) {
+        addToast("Failed to upload bank proof", "error");
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -515,9 +535,15 @@ export default function DocumentUploadStep() {
                 onCropApply={async (res) => { 
                   setPanPreview(res); 
                   setIsCroppingPan(false); 
-                  addToast("PAN cropped successfully", "success");
-                  updateState({ panUpload: { filePreview: res } });
-                  await syncProgress({ panUpload: { filePreview: res } }, false, "documentUpload");
+                  try {
+                    const file = dataURLtoFile(res, "pan_upload.jpg");
+                    const uploadResult = await uploadDocument(file);
+                    addToast("PAN cropped and uploaded successfully", "success");
+                    updateState({ panUpload: { filePreview: uploadResult.path } });
+                    await syncProgress({ panUpload: { filePreview: uploadResult.path } }, false, "documentUpload");
+                  } catch (err) {
+                    addToast("Failed to upload PAN image", "error");
+                  }
                 }}
                 onCancel={() => { setIsCroppingPan(false); if (panInputRef.current) panInputRef.current.value = ""; }}
               />
@@ -563,9 +589,15 @@ export default function DocumentUploadStep() {
                 onCropApply={async (res) => { 
                   setSigPreview(res); 
                   setIsCroppingSig(false); 
-                  addToast("Signature cropped successfully", "success");
-                  updateState({ signature: { filePreview: res } });
-                  await syncProgress({ signature: { filePreview: res } }, false, "documentUpload");
+                  try {
+                    const file = dataURLtoFile(res, "signature.jpg");
+                    const uploadResult = await uploadDocument(file);
+                    addToast("Signature cropped and uploaded successfully", "success");
+                    updateState({ signature: { filePreview: uploadResult.path } });
+                    await syncProgress({ signature: { filePreview: uploadResult.path } }, false, "documentUpload");
+                  } catch (err) {
+                    addToast("Failed to upload signature image", "error");
+                  }
                 }}
                 onCancel={() => { setIsCroppingSig(false); if (sigInputRef.current) sigInputRef.current.value = ""; }}
               />

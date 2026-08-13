@@ -120,9 +120,9 @@ export const uploadDocument = async (file, options = {}) => {
   const formData = new FormData();
   formData.append("document", file);
 
-  const endpoint = options.useCloudinary
-    ? `${API_BASE_URL}/api/kyc/upload-document`
-    : `${API_BASE_URL}/api/kyc/upload-local`;
+  const endpoint = options.useLocal
+    ? `${API_BASE_URL}/api/kyc/upload-local`
+    : `${API_BASE_URL}/api/kyc/upload-document`;
 
   const response = await fetch(endpoint, {
     method: "POST",

@@ -182,7 +182,7 @@ const REVIEW_STEPS = [
     },
     evidence: (app, tab = "aadhaar") => {
       return [
-        findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
+        findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo"]),
         ...getAllPanDocuments(app).filter(doc => doc.label !== "Uploaded PAN Card")
       ].filter(Boolean);
     },
@@ -265,7 +265,7 @@ const REVIEW_STEPS = [
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
       return [
-        findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
+        findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo"]),
         getAllPanDocuments(app).find(doc => doc.label !== "Uploaded PAN Card") || getAllPanDocuments(app)[0],
         (app.personalDetails?.politicallyExposed === "Yes" && pepProof) ? firstMedia(pepProof, "PEP Document") : null
       ].filter(Boolean);
@@ -496,10 +496,11 @@ function PdfThumbnail({ src }) {
     <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {loading && <div style={{ color: "var(--text-muted)", fontWeight: 800 }}>Loading PDF...</div>}
       {failed && (
-        <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 24 }}>
+        <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: "auto" }}>
           <FileText size={34} />
-          <div style={{ marginTop: 10, fontWeight: 900 }}>PDF preview unavailable</div>
-          <div style={{ marginTop: 6, fontSize: "0.82rem", fontWeight: 700 }}>The uploaded file could not be loaded from the server.</div>
+          <div style={{ fontSize: "0.85rem", fontWeight: 700, marginTop: 8 }}>PDF preview unavailable</div>
+          <div style={{ fontSize: "0.7rem", marginTop: 4, maxWidth: 200, lineHeight: 1.4 }}>The document is raw data (XML) from DigiLocker and cannot be rendered visually.</div>
+          <button onClick={() => window.open(src, '_blank')} style={{ marginTop: 12, padding: "6px 12px", background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 6, cursor: "pointer", fontSize: "0.75rem", fontWeight: "bold", pointerEvents: "auto" }}>View Raw File ↗</button>
         </div>
       )}
       <canvas ref={canvasRef} style={{ maxWidth: "100%", maxHeight: "100%", display: loading || failed ? "none" : "block" }} />
@@ -616,7 +617,14 @@ function findDocument(app, keywords, label, excludeKeywords = []) {
   const lowerExclude = excludeKeywords.map((k) => k.toLowerCase());
   const docs = normalizeDocuments(app);
   
-  for (const doc of docs) {
+  // Sort docs: generated ones first
+  const sortedDocs = [...docs].sort((a, b) => {
+    if (a?.generated && !b?.generated) return -1;
+    if (!a?.generated && b?.generated) return 1;
+    return 0;
+  });
+  
+  for (const doc of sortedDocs) {
     const haystack = JSON.stringify(doc || {}).toLowerCase();
     
     const matchesKeyword = lowerKeywords.some((keyword) => haystack.includes(keyword));
@@ -636,7 +644,15 @@ function getAllPanDocuments(app) {
   if (manual) pans.push(manual);
 
   const docs = normalizeDocuments(app);
-  docs.forEach(doc => {
+  
+  // Sort docs: generated ones first
+  const sortedDocs = [...docs].sort((a, b) => {
+    if (a?.generated && !b?.generated) return -1;
+    if (!a?.generated && b?.generated) return 1;
+    return 0;
+  });
+
+  sortedDocs.forEach(doc => {
     const type = String(doc?.type || "").toUpperCase();
     const label = String(doc?.label || "").toUpperCase();
     const path = String(doc?.path || "").toLowerCase();
@@ -747,8 +763,19 @@ function getStepStatuses(app) {
   return statuses;
 }
 
+function getSafePreviewUrl(src) {
+  if (!src) return src;
+  // Cloudinary blocks direct PDF delivery via ACL for this account.
+  // Converting .pdf to .jpg instructs Cloudinary to render the PDF as an image, bypassing the ACL.
+  if (typeof src === 'string' && src.includes('res.cloudinary.com') && src.endsWith('.pdf')) {
+    return src.replace(/\.pdf$/, '.jpg');
+  }
+  return src;
+}
+
 function isPdf(src) {
-  return src?.startsWith("data:application/pdf") || src?.toLowerCase().includes(".pdf");
+  const safeSrc = getSafePreviewUrl(src);
+  return safeSrc?.startsWith("data:application/pdf") || safeSrc?.toLowerCase().endsWith(".pdf");
 }
 
 function shouldDisplayAsIframe(label) {
@@ -1162,8 +1189,8 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) && shouldDisplayAsIframe(label) ? (
-        <object data={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        <object data={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
@@ -1202,7 +1229,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
             transition: isDragging ? "none" : "transform 0.2s ease",
             height: "100%", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none"
           }}>
-            {isPdf(src) ? <PdfThumbnail src={src} /> : <img src={src} alt="Preview" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: 4 }} />}
+            {isPdf(src) ? <PdfThumbnail src={getSafePreviewUrl(src)} /> : <img src={getSafePreviewUrl(src)} alt="Preview" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: 4 }} />}
           </div>
         </div>
       )}
@@ -1216,7 +1243,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
           <button onClick={(e) => {
             e.stopPropagation();
             const link = document.createElement('a');
-            link.href = src;
+            link.href = getSafePreviewUrl(src);
             link.target = '_blank';
             link.download = 'document';
             document.body.appendChild(link);
@@ -1598,7 +1625,7 @@ export default function AgentReview() {
     };
 
     // Aadhaar Documents
-    pushDoc(findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]), "digilocker");
+    pushDoc(findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo"]), "digilocker");
     pushDoc(findDocument(app, ["aadhaar", "digilocker", "photo"], "Aadhaar Image", ["pan", "pdf"]), "digilocker");
 
     // PAN Documents
@@ -2079,11 +2106,11 @@ export default function AgentReview() {
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
                 {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
                   <object 
-                    data={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
+                    data={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} 
                     type="application/pdf"
                     style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
                   >
-                    <embed src={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    <embed src={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
                   </object>
                 ) : (
                   <div style={{ 
@@ -2097,10 +2124,10 @@ export default function AgentReview() {
                     pointerEvents: "none"
                   }}>
                     {isPdf(selectedDocument.src) ? (
-                      <PdfThumbnail src={selectedDocument.src} />
+                      <PdfThumbnail src={getSafePreviewUrl(selectedDocument.src)} />
                     ) : (
                       <img 
-                        src={selectedDocument.src} 
+                        src={getSafePreviewUrl(selectedDocument.src)} 
                         alt="Preview" 
                         draggable={false}
                         style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", userSelect: "none" }} 

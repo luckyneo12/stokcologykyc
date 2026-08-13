@@ -677,10 +677,18 @@ export default function ApplicationDetail() {
 
   const getDocumentByKeywords = (keywords) => getDocumentsByKeywords(keywords)[0];
 
-  const isImageDocumentPath = (docPath = "") => /\.(png|jpe?g|webp)$/i.test(String(docPath).toLowerCase());
+  const isImageDocumentPath = (docPath = "") => /\.(png|jpe?g|webp)$/i.test(String(getSafePreviewUrl(docPath)).toLowerCase());
+  const getSafePreviewUrl = (src) => {
+    if (!src) return src;
+    if (typeof src === 'string' && src.includes('res.cloudinary.com') && src.endsWith('.pdf')) {
+      return src.replace(/\.pdf$/, '.jpg');
+    }
+    return src;
+  };
+
   const isPdfDocumentPath = (docPath = "") => {
-    const pathStr = String(docPath).toLowerCase();
-    return pathStr.includes(".pdf") || pathStr.startsWith("data:application/pdf") || pathStr.includes("application/pdf");
+    const pathStr = String(getSafePreviewUrl(docPath)).toLowerCase();
+    return pathStr.endsWith(".pdf") || pathStr.startsWith("data:application/pdf") || pathStr.includes("application/pdf");
   };
 
   const allStoredDocuments = Array.isArray(app?.documents) ? app.documents : [];
@@ -1495,9 +1503,9 @@ export default function ApplicationDetail() {
                     <span className="inspection-label">DigiLocker PAN</span>
                     <div className="document-preview-frame document-preview-frame--scroll">
                       {isPdfDocumentPath(panDocument.path) ? (
-                        <PdfThumbnail src={resolveAssetUrl(panDocument.path)} label="PAN from DigiLocker" />
+                        <PdfThumbnail src={getSafePreviewUrl(resolveAssetUrl(panDocument.path))} label="PAN from DigiLocker" />
                       ) : (
-                        <img src={resolveAssetUrl(panDocument.path)} alt="PAN from DigiLocker" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+                        <img src={getSafePreviewUrl(resolveAssetUrl(panDocument.path))} alt="PAN from DigiLocker" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
                       )}
                     </div>
                     <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)", cursor: "pointer" }} onClick={() => openInNewTab(resolveAssetUrl(panDocument.path))}>OPEN PDF ↗</div>
@@ -1548,16 +1556,16 @@ export default function ApplicationDetail() {
                     <div className="document-preview-frame document-preview-frame--scroll">
                       {app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof ? (
                         isPdfDocumentPath(app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof) ? (
-                          <PdfThumbnail src={resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof)} label="PEP Proof" />
+                          <PdfThumbnail src={getSafePreviewUrl(resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof))} label="PEP Proof" />
                         ) : (
-                          <img src={resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof)} alt="PEP Proof" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+                          <img src={getSafePreviewUrl(resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof))} alt="PEP Proof" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
                         )
                       ) : (
                         <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>No PEP proof</div>
                       )}
                     </div>
                     {(app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof) && (
-                      <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)" }}>VIEW FULL ↗</div>
+                      <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)" }} onClick={() => openInNewTab(getSafePreviewUrl(resolveAssetUrl(app.personalDetails.pepProofPreview || app.personalDetails.pepProof)))}>VIEW FULL ↗</div>
                     )}
                   </div>
                 )}
@@ -1568,12 +1576,12 @@ export default function ApplicationDetail() {
                     <span className="inspection-label" style={{ color: "var(--wise-green)" }}>eSigned Application</span>
                     <div className="document-preview-frame document-preview-frame--scroll">
                       {isPdfDocumentPath(esignDocument.path) ? (
-                        <PdfThumbnail src={resolveAssetUrl(esignDocument.path)} label="eSigned PDF" />
+                        <PdfThumbnail src={getSafePreviewUrl(resolveAssetUrl(esignDocument.path))} label="eSigned PDF" />
                       ) : (
-                        <img src={resolveAssetUrl(esignDocument.path)} alt="eSigned Document" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+                        <img src={getSafePreviewUrl(resolveAssetUrl(esignDocument.path))} alt="eSigned Document" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
                       )}
                     </div>
-                    <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)", cursor: "pointer" }} onClick={() => openInNewTab(resolveAssetUrl(esignDocument.path))}>OPEN PDF ↗</div>
+                    <div className="document-preview-footer" style={{ textAlign: "right", color: "var(--wise-green)", cursor: "pointer" }} onClick={() => openInNewTab(getSafePreviewUrl(resolveAssetUrl(esignDocument.path)))}>OPEN PDF ↗</div>
                   </div>
                 )}
               </div>

@@ -13,6 +13,9 @@ function getVariableValue(variableName, appData) {
   const iDetails = safeJsonParse(appData.identityDetails) || {};
   const aDetails = safeJsonParse(appData.address) || {};
   const bDetails = safeJsonParse(appData.bankDetails) || {};
+  const fProof = safeJsonParse(appData.financialProof) || {};
+  const docs = safeJsonParse(appData.documents) || [];
+  const docTypesString = Array.isArray(docs) ? docs.map(d => d.type || d.name || '').join(' ') : '';
   
   switch(variableName) {
     case 'applicationId': return appData.applicationId;
@@ -79,30 +82,30 @@ function getVariableValue(variableName, appData) {
     }
 
     // Proof of Address
-    case 'isPoaAadhaarChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('01') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('aadhar') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('aadhaar');
-    case 'isPoaPassportChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('02') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('passport');
-    case 'isPoaVoterIdChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('03') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('voter');
-    case 'isPoaDrivingLicenseChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('04') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('dl') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('driving');
-    case 'isPoaBankerLetterChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('banker');
-    case 'isPoaElectricityBillChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('electricity');
-    case 'isPoaLandlineBillChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('landline') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('telephone');
-    case 'isPoaIdentityCardChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('identity card');
-    case 'isPoaLeaseChecked': return String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('lease') || String(aDetails.addressProof || aDetails.proofType || '').toLowerCase().includes('rent');
+    case 'isPoaAadhaarChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('01') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('aadhar') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('aadhaar');
+    case 'isPoaPassportChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('02') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('passport');
+    case 'isPoaVoterIdChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('03') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('voter');
+    case 'isPoaDrivingLicenseChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('04') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('dl') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('driving');
+    case 'isPoaBankerLetterChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('banker');
+    case 'isPoaElectricityBillChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('electricity');
+    case 'isPoaLandlineBillChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('landline') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('telephone');
+    case 'isPoaIdentityCardChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('identity card');
+    case 'isPoaLeaseChecked': return String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('lease') || String(aDetails.addressProof || aDetails.proofType || docTypesString).toLowerCase().includes('rent');
 
     // Bank Proof
     case 'isPennyDropChecked': return !!bDetails.verified || !!bDetails.accountNumber;
-    case 'isBankStatementChecked': return String(bDetails.proofType || bDetails.documentType || '').toLowerCase().includes('statement');
-    case 'isBankerCertificateChecked': return String(bDetails.proofType || bDetails.documentType || '').toLowerCase().includes('certificate');
-    case 'isCancelledChequeChecked': return String(bDetails.proofType || bDetails.documentType || '').toLowerCase().includes('cheque') || String(bDetails.proofType || bDetails.documentType || '').toLowerCase().includes('check');
+    case 'isBankStatementChecked': return String(bDetails.proofType || bDetails.documentType || bDetails.type || '').toLowerCase().includes('statement');
+    case 'isBankerCertificateChecked': return String(bDetails.proofType || bDetails.documentType || bDetails.type || '').toLowerCase().includes('certificate');
+    case 'isCancelledChequeChecked': return String(bDetails.proofType || bDetails.documentType || bDetails.type || '').toLowerCase().includes('cheque') || String(bDetails.proofType || bDetails.documentType || bDetails.type || '').toLowerCase().includes('check');
 
-    case 'isIncomeItrChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('itr');
-    case 'isIncomeSalaryChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('salary');
-    case 'isIncomeNetworthChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('networth');
-    case 'isIncomeDematChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('demat');
-    case 'isIncomeBankChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('bank');
-    case 'isIncomeAnnualChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('annual');
-    case 'isIncomeSelfDecChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('self');
-    case 'isIncomeOthersChecked': return String(safeJsonParse(appData.financialProof)?.proofType || '').toLowerCase().includes('other');
+    case 'isIncomeItrChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('itr');
+    case 'isIncomeSalaryChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('salary');
+    case 'isIncomeNetworthChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('networth');
+    case 'isIncomeDematChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('demat');
+    case 'isIncomeBankChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('bank');
+    case 'isIncomeAnnualChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('annual');
+    case 'isIncomeSelfDecChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('self');
+    case 'isIncomeOthersChecked': return String(fProof.proofType || fProof.type || '').toLowerCase().includes('other');
     case 'isNriClientChecked': {
       const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
       const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
@@ -550,6 +553,10 @@ async function generateKycPdf(applicationData) {
                 imgBytes = Buffer.from(base64Data, 'base64');
                 isPng = imgRelPath.includes('image/png');
               } else if (imgRelPath.startsWith('http://') || imgRelPath.startsWith('https://')) {
+                // If it's a cloudinary PDF, safely convert to PNG to bypass pdf-lib signature rejection
+                if (imgRelPath.includes('cloudinary.com') && imgRelPath.toLowerCase().endsWith('.pdf')) {
+                  imgRelPath = imgRelPath.slice(0, -4) + '.png';
+                }
                 console.log(`[PDF Gen] Fetching image from URL: ${imgRelPath}`);
                 try {
                   const https = require('https');

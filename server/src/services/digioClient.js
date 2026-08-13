@@ -58,6 +58,7 @@ class DigioClient {
        if (data && typeof data === 'object' && !data.append) { // if not FormData
           const logData = { ...data };
           if (logData.file_data) logData.file_data = '<BASE64_STRING_OMITTED>';
+          if (logData.data && typeof logData.data === 'string' && logData.data.length > 200) logData.data = '<BASE64_STRING_OMITTED>';
           console.log(`[Digio API Body]`, JSON.stringify(logData, null, 2));
        } else {
           console.log(`[Digio API Body] [FormData or Non-JSON payload]`);
