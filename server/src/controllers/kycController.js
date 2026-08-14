@@ -1063,17 +1063,25 @@ const previewPdf = async (req, res, next) => {
 };
 const sendWelcome = async (req, res) => {
   try {
-    const applicationId = req.user.applicationId;
-    
-    const app = await prisma.kycApplication.findUnique({
-      where: { applicationId },
-    });
+    let applicationId = req.body.applicationId;
+    let app = null;
+
+    if (applicationId) {
+      app = await prisma.kycApplication.findUnique({
+        where: { applicationId },
+      });
+    } else {
+      app = await prisma.kycApplication.findFirst({
+        where: { userId: req.user.id },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (app) applicationId = app.applicationId;
+    }
 
     if (!app) {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    // Ensure the welcome email is only sent once
     let stepStatuses = {};
     if (app.stepStatuses) {
       try {
@@ -1083,10 +1091,6 @@ const sendWelcome = async (req, res) => {
       } catch (e) {
         console.error("Error parsing stepStatuses:", e);
       }
-    }
-
-    if (stepStatuses.welcomeEmailSent) {
-      return res.json({ success: true, message: "Welcome email already sent" });
     }
 
     const personalDetails = typeof app.personalDetails === "string" 
