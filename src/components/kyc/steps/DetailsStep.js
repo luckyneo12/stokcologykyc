@@ -240,7 +240,7 @@ export default function DetailsStep() {
 
     setIsUploading(true);
     try {
-      const result = await uploadDocument(file, { useLocal: true });
+      const result = await uploadDocument(file);
       if (result.success) {
         update("pepProof", result.path);
         addToast("PEP proof uploaded successfully", "success");

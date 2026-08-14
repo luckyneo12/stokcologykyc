@@ -5,7 +5,7 @@ import { useKYC } from "@/context/KYCContext";
 export default function NomineeAllocationStep() {
   const { nomineeDetails, nomineeAllocation, updateNested, nextStep, prevStep, addToast } = useKYC();
   
-  const nominees = nomineeDetails.nominees || [];
+  const nominees = nomineeDetails?.nominees || [];
   // Function to calculate equal split
   const getEqualSplit = (count) => {
     if (count === 1) return [100];
@@ -87,7 +87,7 @@ export default function NomineeAllocationStep() {
     nextStep({ nomineeAllocation: { percentages } });
   };
 
-  if (nomineeDetails.opted === "No") {
+  if (nomineeDetails?.opted === "No") {
     return (
       <div className="container-sm" style={{ paddingTop: "6vh", paddingBottom: "6vh", maxWidth: "500px" }}>
         <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>

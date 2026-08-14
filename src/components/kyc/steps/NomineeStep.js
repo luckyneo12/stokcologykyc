@@ -38,6 +38,14 @@ const UserIcon = () => (
   </svg>
 );
 
+const UploadIcon = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+    <polyline points="17 8 12 3 7 8"></polyline>
+    <line x1="12" y1="3" x2="12" y2="15"></line>
+  </svg>
+);
+
 const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -107,7 +115,9 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 export default function NomineeStep() {
   const { nomineeDetails, address: userAddress, identityDetails, personalDetails, ocrData, nextStep, prevStep, addToast } = useKYC();
   
-  const [nominees, setNominees, clearNomineesDraft] = useLocalDraft("nominees", nomineeDetails?.nominees || [createEmptyNominee()]);
+  const initialNominees = Array.isArray(nomineeDetails?.nominees) && nomineeDetails.nominees.length > 0 ? nomineeDetails.nominees : [createEmptyNominee()];
+  const [draftNominees, setNominees, clearNomineesDraft] = useLocalDraft("nominees", initialNominees);
+  const nominees = Array.isArray(draftNominees) && draftNominees.length > 0 ? draftNominees : [createEmptyNominee()];
   
   const ALL_RELATIONS = [
     "Brother", "Daughter", "Father", "Nephew", "Grand-father", "Grand-mother", 
@@ -172,7 +182,8 @@ export default function NomineeStep() {
 
   const updateNominee = (idx, field, value) => {
     setNominees(prev => {
-      const updated = [...prev];
+      const current = Array.isArray(prev) && prev.length > 0 ? prev : [createEmptyNominee()];
+      const updated = [...current];
       let finalValue = value;
       
       const isGuardianField = field.includes("guardian");
@@ -665,7 +676,7 @@ export default function NomineeStep() {
                   <input 
                     type="tel"
                     name={`nomineeMobile_${idx}`}
-                    autocomplete="tel"
+                    autoComplete="tel"
                     className="input-field" 
                     placeholder="Enter nominee mobile number" 
                     value={nom.mobile || ""} 
