@@ -775,12 +775,20 @@ export default function DetailsStep() {
                 </svg>
               </button>
             </div>
-            <div style={{ flex: 1, overflow: "hidden", background: "var(--bg-secondary, #f9f9f9)" }}>
-              <iframe 
-                src={previewUrl} 
-                style={{ width: "100%", height: "100%", border: "none" }} 
-                title="Document Preview"
-              />
+            <div style={{ flex: 1, overflow: "hidden", background: "var(--bg-secondary, #f9f9f9)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+              {previewUrl && (previewUrl.toLowerCase().includes('.pdf') || previewUrl.startsWith('data:application/pdf')) ? (
+                <iframe 
+                  src={previewUrl} 
+                  style={{ width: "100%", height: "100%", border: "none", borderRadius: "8px" }} 
+                  title="Document Preview"
+                />
+              ) : (
+                <img 
+                  src={previewUrl} 
+                  alt="Document Preview"
+                  style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "8px" }} 
+                />
+              )}
             </div>
           </div>
         </div>,
