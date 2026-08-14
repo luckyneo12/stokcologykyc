@@ -1213,6 +1213,16 @@ export function KYCProvider({ children }) {
       localStorage.removeItem("kycApplicationId");
       localStorage.removeItem("kycToken");
       localStorage.removeItem("token");
+      
+      // Clear all kyc-drafts to prevent stale data in new applications
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("kyc-draft-")) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
     }
   }, []);
 
