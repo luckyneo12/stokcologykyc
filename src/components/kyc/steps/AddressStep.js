@@ -2,12 +2,13 @@
 import { useState } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { getPincodeData } from "@/utils/kycApi";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { MapPinIcon, ArrowLeftIcon, ArrowRightIcon } from "../Icons";
 import Logo from "../Logo";
 
 export default function AddressStep() {
   const { address, updateNested, nextStep, prevStep, addToast } = useKYC();
-  const [form, setForm] = useState(address);
+  const [form, setForm, clearFormDraft] = useLocalDraft("address", address);
 
   const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -21,7 +22,8 @@ export default function AddressStep() {
           setForm(prev => ({
             ...prev,
             city: data.city !== "Unknown" ? data.city : prev.city,
-            state: data.state !== "Unknown" ? data.state : prev.state
+            state: data.state !== "Unknown" ? data.state : prev.state,
+            country: "India"
           }));
         }
       } catch (error) {
@@ -31,7 +33,11 @@ export default function AddressStep() {
   };
 
   const handleNext = () => {
-    if (!form.line1 || !form.city || !form.pincode) { addToast("Please fill in required address fields", "error"); return; }
+    if (!form.line1 || !form.city || !form.pincode) {
+      addToast("Please fill in required address fields", "error");
+      return;
+    }
+    clearFormDraft();
     nextStep({ address: form });
   };
 
@@ -59,9 +65,15 @@ export default function AddressStep() {
           </div>
         </div>
 
-        <div className="input-group" style={{ marginBottom: 32 }}>
-          <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.85rem" }}>State</label>
-          <input className="input-field" placeholder="e.g. Maharashtra" value={form.state || ""} onChange={e => update("state", e.target.value)} />
+        <div className="form-grid-2" style={{ marginBottom: 32 }}>
+          <div className="input-group">
+            <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.85rem" }}>State</label>
+            <input className="input-field" placeholder="e.g. Maharashtra" value={form.state || ""} onChange={e => update("state", e.target.value)} />
+          </div>
+          <div className="input-group">
+            <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.85rem" }}>Country</label>
+            <input className="input-field" placeholder="e.g. India" value={form.country || "India"} onChange={e => update("country", e.target.value)} />
+          </div>
         </div>
 
         <div className="flex gap-md">

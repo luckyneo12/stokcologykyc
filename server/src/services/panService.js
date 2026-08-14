@@ -67,19 +67,19 @@ class PanService {
 
       console.log('Digio PAN Response:', JSON.stringify(data));
 
-      // Explicitly check for matches if provided by API
+      // Gather mismatches to show all errors at once
+      const errors = [];
       if (data.name_as_per_pan_match === false) {
-        return {
-          success: false,
-          message: 'Name mismatch: The name provided does not match the name on the PAN card.',
-          data: data
-        };
+        errors.push("Name mismatch");
       }
-
       if (data.date_of_birth_match === false) {
+        errors.push("DOB mismatch");
+      }
+      
+      if (errors.length > 0) {
         return {
           success: false,
-          message: 'DOB mismatch: The date of birth provided does not match our records.',
+          message: `${errors.join(" & ")}: The provided details do not match the PAN records.`,
           data: data
         };
       }

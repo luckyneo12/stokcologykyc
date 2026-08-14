@@ -1,8 +1,10 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useKYC } from "@/context/KYCContext";
-import { Upload, Check, Loader2 } from "lucide-react";
-import { uploadDocument } from "@/utils/kycApi";
+import { Upload, Check, Loader2, Eye } from "lucide-react";
+import { uploadDocument, resolveAssetUrl } from "@/utils/kycApi";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 
 const CheckIcon = ({ size = 10, color = "white" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
@@ -196,7 +198,7 @@ const CheckboxItem = ({ label, value, onChange, disabled }) => {
 
 export default function DetailsStep() {
   const { personalDetails, updateNested, nextStep, prevStep, addToast, syncProgress } = useKYC();
-  const [form, setForm] = useState(personalDetails);
+  const [form, setForm, clearFormDraft] = useLocalDraft("details", personalDetails);
 
   const lastAutoSaveValues = useRef({
     politicallyExposed: form.politicallyExposed,
@@ -230,6 +232,7 @@ export default function DetailsStep() {
   const [showMore, setShowMore] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showDDPIWarning, setShowDDPIWarning] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -313,6 +316,7 @@ export default function DetailsStep() {
       addToast("Please complete required fields", "error");
       return;
     }
+    clearFormDraft();
     nextStep({ personalDetails: form });
   };
 
@@ -476,9 +480,12 @@ export default function DetailsStep() {
                     {isUploading ? (
                       <Loader2 size={16} className="animate-spin" style={{ color: "var(--wise-green)" }} />
                     ) : form.pepProof ? (
-                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                         <Check size={16} style={{ color: "var(--wise-green)" }} />
-                        <div onClick={(e) => { e.preventDefault(); update("pepProof", null); }} style={{ color: "var(--wise-danger)", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                        <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPreviewUrl(resolveAssetUrl(form.pepProof)); }} style={{ color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                          <Eye size={16} />
+                        </div>
+                        <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); update("pepProof", null); }} style={{ color: "var(--wise-danger)", cursor: "pointer", display: "flex", alignItems: "center" }}>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -739,6 +746,53 @@ export default function DetailsStep() {
 
         </div>
       </div>
+      
+      {previewUrl && typeof document !== 'undefined' && createPortal(
+        <div style={{ 
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "24px"
+        }} onClick={() => setPreviewUrl(null)}>
+          <div style={{ 
+            width: "100%", maxWidth: "800px", height: "85vh", 
+            background: "var(--bg-elevated, white)", borderRadius: "16px", 
+            display: "flex", flexDirection: "column",
+            boxShadow: "0 24px 48px rgba(0,0,0,0.2)",
+            overflow: "hidden"
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ 
+              display: "flex", justifyContent: "space-between", alignItems: "center", 
+              padding: "16px 24px", borderBottom: "1px solid var(--border-color)",
+              background: "var(--bg-elevated, white)"
+            }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "var(--text-primary, black)" }}>Document Preview</h3>
+              <button 
+                onClick={() => setPreviewUrl(null)} 
+                style={{ 
+                  background: "var(--bg-secondary, #eee)", border: "none", cursor: "pointer", 
+                  width: "36px", height: "36px", borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "var(--text-primary, black)"
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: "hidden", background: "var(--bg-secondary, #f9f9f9)" }}>
+              <iframe 
+                src={previewUrl} 
+                style={{ width: "100%", height: "100%", border: "none" }} 
+                title="Document Preview"
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showDDPIWarning && (
         <div style={{
@@ -748,15 +802,15 @@ export default function DetailsStep() {
           display: "flex", alignItems: "center", justifyContent: "center",
           zIndex: 100000, padding: "20px"
         }}>
-          <div className="card animate-slide-up" style={{
+          <div className="animate-slide-up" style={{
             maxWidth: "500px", width: "100%", padding: "40px",
-            background: "var(--bg-elevated)", borderRadius: "32px",
-            textAlign: "center", border: "1px solid var(--border-color)",
+            background: "#ffffff", borderRadius: "32px",
+            textAlign: "center", border: "1px solid rgba(0,0,0,0.1)",
             boxShadow: "0 24px 60px rgba(0,0,0,0.15)"
           }}>
             <p style={{
-              fontSize: "1.05rem", lineHeight: "1.6", color: "var(--text-primary)",
-              fontWeight: 700, marginBottom: "32px", textAlign: "left"
+              fontSize: "1.05rem", lineHeight: "1.6", color: "#0e0f0c",
+              fontWeight: 700, marginBottom: "32px", textAlign: "center"
             }}>
               If DDPI is selected as "No", the client is required to submit a duly signed physical Delivery Instruction Slip (DIS) to the DP for securities pay-in, buyback, tender offer, and mutual fund redemption transactions, and in case of pledge, a duly signed Pledge Creation Form must also be submitted to the DP for processing.
             </p>
@@ -766,7 +820,7 @@ export default function DetailsStep() {
               style={{
                 width: "120px", height: "48px", minHeight: "48px",
                 borderRadius: "12px", fontSize: "1rem", fontWeight: 900,
-                margin: "0 auto", background: "#0070f3", color: "white"
+                margin: "0 auto"
               }}
             >
               OK

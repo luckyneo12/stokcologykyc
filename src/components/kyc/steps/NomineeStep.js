@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useKYC } from "@/context/KYCContext";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { getPincodeData, uploadDocument, resolveAssetUrl } from "@/utils/kycApi";
 import { maskAadhaarImage } from "@/utils/digio";
 import DateInput from "../DateInput";
@@ -14,6 +15,16 @@ const INDIAN_STATES = [
   "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Lakshadweep", "Puducherry"
 ];
 
+const createEmptyNominee = () => ({ 
+  name: "", email: "", mobile: "", relation: "", dob: "", 
+  sameAddress: false, address: "", city: "", state: "", 
+  pincode: "", country: "India", proofType: "PAN CARD", proofNumber: "", proofPath: "",
+  guardianDob: "", guardianName: "", guardianSameAddress: false, guardianAddress: "", guardianCity: "",
+  guardianState: "", guardianCountry: "India", guardianPincode: "",
+  guardianMobile: "", guardianEmail: "", guardianRelation: "",
+  guardianProofType: "PAN CARD", guardianProofNumber: "", guardianProofPath: ""
+});
+
 const CheckIcon = ({ size = 10, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
@@ -24,14 +35,6 @@ const UserIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
     <circle cx="12" cy="7" r="4"></circle>
-  </svg>
-);
-
-const UploadIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-    <polyline points="17 8 12 3 7 8"></polyline>
-    <line x1="12" y1="3" x2="12" y2="15"></line>
   </svg>
 );
 
@@ -101,19 +104,10 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
   );
 };
 
-const InputGroup = ({ label, mandatory, children, style = {} }) => (
-  <div style={{ display: "flex", flexDirection: "column", width: "100%", marginBottom: "16px", ...style }}>
-    <label style={{ fontSize: "0.72rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "4px", whiteSpace: "nowrap", opacity: 0.85 }}>
-      {label} {mandatory && <span style={{ color: "var(--wise-danger)", fontSize: "0.8rem", marginLeft: "1px" }}>*</span>}
-    </label>
-    <div style={{ width: "100%" }}>
-      {children}
-    </div>
-  </div>
-);
-
 export default function NomineeStep() {
-  const { nomineeDetails, address: userAddress, identityDetails, personalDetails, ocrData, updateNested, nextStep, prevStep, addToast } = useKYC();
+  const { nomineeDetails, address: userAddress, identityDetails, personalDetails, ocrData, nextStep, prevStep, addToast } = useKYC();
+  
+  const [nominees, setNominees, clearNomineesDraft] = useLocalDraft("nominees", nomineeDetails?.nominees || [createEmptyNominee()]);
   
   const ALL_RELATIONS = [
     "Brother", "Daughter", "Father", "Nephew", "Grand-father", "Grand-mother", 
@@ -144,21 +138,6 @@ export default function NomineeStep() {
     return new File([u8arr], filename, {type:mime});
   };
 
-
-  const [nominees, setNominees] = useState(() => {
-    const existing = nomineeDetails?.nominees || [];
-    if (existing.length === 0) return [{ 
-      name: "", email: "", mobile: "", relation: "", dob: "", 
-      sameAddress: false, address: "", city: "", state: "", 
-      pincode: "", country: "India", proofType: "PAN CARD", proofNumber: "", proofPath: "",
-      guardianDob: "", guardianName: "", guardianSameAddress: false, guardianAddress: "", guardianCity: "",
-      guardianState: "", guardianCountry: "India", guardianPincode: "",
-      guardianMobile: "", guardianEmail: "", guardianRelation: "",
-      guardianProofType: "PAN CARD", guardianProofNumber: "", guardianProofPath: ""
-    }];
-    return existing;
-  });
-
   const [errors, setErrors] = useState({});
   const [cropModalData, setCropModalData] = useState(null);
 
@@ -167,15 +146,7 @@ export default function NomineeStep() {
       addToast("Maximum 3 nominees allowed", "info");
       return;
     }
-    setNominees([...nominees, { 
-      name: "", email: "", mobile: "", relation: "", dob: "", 
-      sameAddress: false, address: "", city: "", state: "", 
-      pincode: "", country: "India", proofType: "PAN CARD", proofNumber: "", proofPath: "",
-      guardianDob: "", guardianName: "", guardianSameAddress: false, guardianAddress: "", guardianCity: "",
-      guardianState: "", guardianCountry: "India", guardianPincode: "",
-      guardianMobile: "", guardianEmail: "", guardianRelation: "",
-      guardianProofType: "PAN CARD", guardianProofNumber: "", guardianProofPath: ""
-    }]);
+    setNominees([...nominees, createEmptyNominee()]);
   };
 
   const removeNominee = (idx) => {
@@ -183,7 +154,6 @@ export default function NomineeStep() {
     const updated = nominees.filter((_, i) => i !== idx);
     setNominees(updated);
     
-    // Rebuild errors to match new indices
     const newErrors = {};
     Object.keys(errors).forEach(key => {
       const parts = key.split("-");
@@ -205,20 +175,17 @@ export default function NomineeStep() {
       const updated = [...prev];
       let finalValue = value;
       
-      // Determine proof type for this specific nominee/guardian with default fallbacks
       const isGuardianField = field.includes("guardian");
       const currentProofType = isGuardianField
         ? (field === "guardianProofType" ? value : (updated[idx].guardianProofType || "PAN CARD"))
         : (field === "proofType" ? value : (updated[idx].proofType || "PAN CARD"));
       
-      // Auto-uppercase for PAN
       if ((field === "proofNumber" || field === "guardianProofNumber") && currentProofType === "PAN CARD") {
         finalValue = value.toUpperCase();
       }
       
       updated[idx] = { ...updated[idx], [field]: finalValue };
       
-      // Clear data and errors when type changes
       if (field === "proofType" || field === "guardianProofType") {
         const numField = isGuardianField ? "guardianProofNumber" : "proofNumber";
         const pathField = isGuardianField ? "guardianProofPath" : "proofPath";
@@ -233,7 +200,6 @@ export default function NomineeStep() {
         });
       }
 
-      // Real-time validation for proof numbers
       if ((field === "proofNumber" || field === "guardianProofNumber") && finalValue) {
         const userPAN = typeof identityDetails?.pan === "string" ? identityDetails.pan.toUpperCase().trim() : "";
         const userAadhaar = identityDetails?.aadhaar?.trim();
@@ -275,13 +241,14 @@ export default function NomineeStep() {
         });
       }
 
-      // Mobile validation (Real-time)
       if (field === "mobile" || field === "guardianMobile") {
         const errKey = `${idx}-${field}`;
         setErrors(prevErr => {
           const newErrors = { ...prevErr };
           if (finalValue && !/^[0-9]*$/.test(finalValue)) {
             newErrors[errKey] = "Numbers only allowed";
+          } else if (finalValue && finalValue.length > 10) {
+            newErrors[errKey] = "Mobile number should not be more than 10 digits";
           } else if (finalValue && finalValue.length > 0 && !/^[6-9]/.test(finalValue)) {
             newErrors[errKey] = "Mobile number must start with 6, 7, 8 or 9";
           } else {
@@ -291,7 +258,6 @@ export default function NomineeStep() {
         });
       }
 
-      // Email validation (Real-time clear)
       if (field === "email" || field === "guardianEmail") {
         const errKey = `${idx}-${field}`;
         setErrors(prevErr => {
@@ -305,7 +271,6 @@ export default function NomineeStep() {
         });
       }
 
-      // Real-time validation for nominee matching user's name and dob
       if (field === "name" || field === "dob") {
         const errKey = `${idx}-nameDob`;
         const updatedName = field === "name" ? finalValue : updated[idx].name;
@@ -332,7 +297,6 @@ export default function NomineeStep() {
 
         setErrors(prevErr => {
           const newErrors = { ...prevErr };
-          // Strictly require both Name and DOB to match
           if (
             cleanNomName && cleanUserName && nomDobNorm && userDobNorm &&
             cleanNomName === cleanUserName &&
@@ -361,9 +325,11 @@ export default function NomineeStep() {
           if (field === "pincode") {
             if (data.city !== "Unknown") updateNominee(idx, "city", data.city);
             if (data.state !== "Unknown") updateNominee(idx, "state", data.state);
+            updateNominee(idx, "country", "India");
           } else if (field === "guardianPincode") {
             if (data.city !== "Unknown") updateNominee(idx, "guardianCity", data.city);
             if (data.state !== "Unknown") updateNominee(idx, "guardianState", data.state);
+            updateNominee(idx, "guardianCountry", "India");
           }
         }
       } catch (error) {
@@ -377,7 +343,6 @@ export default function NomineeStep() {
       const newErrors = { ...errors };
       const errKey = `${idx}-${field}`;
       
-      // Only check length on blur if it's not already failing real-time checks
       if (value && value.length !== 10 && !newErrors[errKey]) {
         newErrors[errKey] = "Mobile number must be exactly 10 digits";
         setErrors(newErrors);
@@ -398,7 +363,6 @@ export default function NomineeStep() {
       const reader = new FileReader();
       reader.onloadend = async () => {
         if (file.type === "application/pdf") {
-          // PDFs cannot be cropped, process directly
           if (isAadhaar) addToast("Masking Aadhaar... Please wait", "info");
           let finalImage = reader.result;
           if (isAadhaar) {
@@ -427,12 +391,11 @@ export default function NomineeStep() {
             addToast(err.message || "Failed to upload document", "error");
           }
         } else {
-          // For images, open cropper modal
           setCropModalData({ idx, isGuardian: false, imageSrc: reader.result, isAadhaar, fileName: file.name });
         }
       };
       reader.readAsDataURL(file);
-      e.target.value = null; // reset input
+      e.target.value = null;
     }
   };
 
@@ -472,12 +435,11 @@ export default function NomineeStep() {
             addToast(err.message || "Failed to upload document", "error");
           }
         } else {
-          // For images, open cropper modal
           setCropModalData({ idx, isGuardian: true, imageSrc: reader.result, isAadhaar, fileName: file.name });
         }
       };
       reader.readAsDataURL(file);
-      e.target.value = null; // reset input
+      e.target.value = null;
     }
   };
 
@@ -537,7 +499,6 @@ export default function NomineeStep() {
       if (!nom.proofNumber?.trim()) { 
         newErrors[`${idx}-proofNumber`] = "Required"; isValid = false; 
       } else {
-        // Format check on submit too
         const val = nom.proofNumber.toUpperCase().trim();
         const currentProofType = nom.proofType || "PAN CARD";
         if (currentProofType === "PAN CARD") {
@@ -620,6 +581,7 @@ export default function NomineeStep() {
       addToast("Please fill all required fields correctly", "error");
       return;
     }
+    clearNomineesDraft();
     nextStep({ nomineeDetails: { ...nomineeDetails, numberOfNominees: nominees.length.toString(), nominees } });
   };
 
@@ -701,6 +663,9 @@ export default function NomineeStep() {
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Nominee Mobile <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                   <input 
+                    type="tel"
+                    name={`nomineeMobile_${idx}`}
+                    autocomplete="tel"
                     className="input-field" 
                     placeholder="Enter nominee mobile number" 
                     value={nom.mobile || ""} 
@@ -971,6 +936,9 @@ export default function NomineeStep() {
                   <div style={{ marginBottom: "16px" }}>
                     <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Mobile <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
+                      type="tel"
+                      name={`guardianMobile_${idx}`}
+                      autocomplete="tel"
                       className="input-field" 
                       placeholder="Mobile" 
                       value={nom.guardianMobile || ""} 

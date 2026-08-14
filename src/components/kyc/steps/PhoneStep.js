@@ -22,6 +22,7 @@ export default function PhoneStep() {
   const [acceptedTerms, setAcceptedTerms] = useState(true);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
 
   const [showPreAgreement, setShowPreAgreement] = useState(() => {
     if (typeof window !== "undefined") {
@@ -83,8 +84,14 @@ export default function PhoneStep() {
     if (val !== "" && /\D/.test(val)) {
       addToast("Enter digit only", "error");
     }
-    // Only set numeric value
-    setPhoneNumber(val.replace(/\D/g, ""));
+    const numericVal = val.replace(/\D/g, "");
+    setPhoneNumber(numericVal);
+    
+    if (numericVal.length > 10) {
+      setPhoneError("Mobile number should not be more than 10 digits");
+    } else {
+      setPhoneError("");
+    }
   };
 
   const handlePhoneBlur = () => {
@@ -193,12 +200,12 @@ export default function PhoneStep() {
         {/* Phone Input Section */}
         <div style={{ marginBottom: isOtpMode ? 20 : 28, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}>
           <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.9rem" }}>Mobile Number</label>
-          <div className="input-field" style={{ position: "relative", display: "flex", alignItems: "baseline", paddingLeft: "16px", paddingRight: isOtpMode ? "60px" : "24px", cursor: isOtpMode ? "default" : "text" }}>
+          <div className="input-field" style={{ position: "relative", display: "flex", alignItems: "baseline", paddingLeft: "16px", paddingRight: isOtpMode ? "60px" : "24px", cursor: isOtpMode ? "default" : "text", borderColor: phoneError ? "var(--wise-danger)" : "var(--border-color)" }}>
             <span style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "1.1rem", marginRight: "8px", pointerEvents: "none" }}>+91</span>
             <input 
               type="tel" placeholder="00000 00000" 
               style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontWeight: 700, fontSize: "1.1rem", color: "var(--text-primary)", padding: 0, height: "100%" }}
-              value={phoneNumber} onChange={handlePhoneChange} onBlur={handlePhoneBlur} maxLength={10}
+              value={phoneNumber} onChange={handlePhoneChange} onBlur={handlePhoneBlur}
               onKeyDown={(e) => e.key === "Enter" && phoneNumber.length === 10 && !isOtpMode && handleSendOtp()}
               readOnly={isOtpMode}
             />
@@ -219,6 +226,9 @@ export default function PhoneStep() {
               </button>
             )}
           </div>
+          {phoneError && (
+            <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>{phoneError}</p>
+          )}
         </div>
 
         {/* Terms and Conditions */}

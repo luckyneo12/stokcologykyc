@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useKYC } from "@/context/KYCContext";
-import { verifyPanDirect, initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
+import { verifyPanDirect } from "@/utils/digio";
 import Logo from "../Logo";
 import DateInput from "../DateInput";
 
@@ -29,9 +30,10 @@ const formatPanValue = (value) => {
 
 export default function PanStep() {
   const { personalDetails, identityDetails, panVerified, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId, markStepVerified } = useKYC();
-  const [pan, setPan] = useState(formatPanValue(identityDetails.pan));
-  const [fullName, setFullName] = useState(personalDetails.fullName || "");
-  const [dob, setDob] = useState(personalDetails.dob || "");
+  const [pan, setPan, clearPanDraft] = useLocalDraft("pan", formatPanValue(identityDetails.pan));
+  const [fullName, setFullName, clearFullNameDraft] = useLocalDraft("panFullName", personalDetails.fullName || "");
+  const [dob, setDob, clearDobDraft] = useLocalDraft("panDob", personalDetails.dob || "");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [digioLoading, setDigioLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -54,17 +56,21 @@ export default function PanStep() {
     const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
     if (!panRegex.test(pan.toUpperCase())) {
       addToast("Please enter a valid PAN number", "error");
+      setFieldErrors({ pan: true });
       return;
     }
     if (!fullName || fullName.length < 3) {
       addToast("Please enter your full name as per PAN", "error");
+      setFieldErrors({ fullName: true });
       return;
     }
     if (!dob) {
       addToast("Please enter your Date of Birth", "error");
+      setFieldErrors({ dob: true });
       return;
     }
 
+    setFieldErrors({});
     setLoading(true);
 
     try {
@@ -78,6 +84,11 @@ export default function PanStep() {
         addToast("PAN verified successfully!", "success");
         // Record verification fingerprint so this step auto-skips on re-navigation
         markStepVerified(4, `${pan.toUpperCase()}|${fullName.toUpperCase()}|${dob}`);
+        
+        clearPanDraft();
+        clearFullNameDraft();
+        clearDobDraft();
+        
         nextStep({
           identityDetails: { ...identityDetails, pan: pan.toUpperCase() },
           personalDetails: { 
@@ -89,12 +100,38 @@ export default function PanStep() {
           panVerified: true
         });
       } else {
-        addToast(result.message || "PAN verification failed", "error");
+        const msg = result.message || "PAN verification failed";
+        addToast(msg, "error");
         setLoading(false);
+        const newErrors = {};
+        const lowerMsg = msg.toLowerCase();
+        if (lowerMsg.includes("dob") || lowerMsg.includes("date of birth") || lowerMsg.includes("year")) {
+          newErrors.dob = true;
+        }
+        if (lowerMsg.includes("name")) {
+          newErrors.fullName = true;
+        }
+        if (lowerMsg.includes("invalid pan") || Object.keys(newErrors).length === 0) {
+          newErrors.pan = true;
+        }
+        setFieldErrors(newErrors);
       }
     } catch (err) {
+      const msg = err?.message || "PAN verification service is unavailable";
       setLoading(false);
-      addToast(err?.message || "PAN verification service is unavailable", "error");
+      addToast(msg, "error");
+      const newErrors = {};
+      const lowerMsg = msg.toLowerCase();
+      if (lowerMsg.includes("dob") || lowerMsg.includes("date of birth") || lowerMsg.includes("year")) {
+        newErrors.dob = true;
+      }
+      if (lowerMsg.includes("name")) {
+        newErrors.fullName = true;
+      }
+      if (lowerMsg.includes("invalid pan") || Object.keys(newErrors).length === 0) {
+        newErrors.pan = true;
+      }
+      setFieldErrors(newErrors);
     }
   };
 
@@ -131,16 +168,17 @@ export default function PanStep() {
             style={{ 
               height: "56px", 
               borderRadius: "16px", 
-              border: "1.5px solid var(--border-color)",
+              border: `1.5px solid ${fieldErrors.pan ? "var(--wise-danger)" : "var(--border-color)"}`,
               fontSize: "1.1rem", 
               fontWeight: 700, 
               textTransform: "uppercase",
               background: "var(--input-bg)",
               color: "var(--text-primary)",
-              padding: "0 20px"
+              padding: "0 20px",
+              outline: "none"
             }}
             value={pan} 
-            onChange={e => setPan(e.target.value)}
+            onChange={e => { setPan(e.target.value); setFieldErrors(prev => ({...prev, pan: false})); }}
             maxLength={10}
           />
         </div>
@@ -156,16 +194,17 @@ export default function PanStep() {
             style={{ 
               height: "56px", 
               borderRadius: "16px", 
-              border: "1.5px solid var(--border-color)",
+              border: `1.5px solid ${fieldErrors.fullName ? "var(--wise-danger)" : "var(--border-color)"}`,
               fontSize: "1.1rem", 
               fontWeight: 700,
               textTransform: "uppercase",
               background: "var(--input-bg)",
               color: "var(--text-primary)",
-              padding: "0 20px"
+              padding: "0 20px",
+              outline: "none"
             }}
             value={fullName} 
-            onChange={e => setFullName(e.target.value)}
+            onChange={e => { setFullName(e.target.value); setFieldErrors(prev => ({...prev, fullName: false})); }}
           />
         </div>
 
@@ -178,15 +217,16 @@ export default function PanStep() {
             style={{ 
               height: "56px", 
               borderRadius: "16px", 
-              border: "1.5px solid var(--border-color)",
+              border: `1.5px solid ${fieldErrors.dob ? "var(--wise-danger)" : "var(--border-color)"}`,
               fontSize: "1.1rem", 
               fontWeight: 700,
               background: "var(--input-bg)",
               color: "var(--text-primary)",
-              padding: "0 20px"
+              padding: "0 20px",
+              outline: "none"
             }}
             value={dob} 
-            onChange={e => setDob(e.target.value)}
+            onChange={e => { setDob(e.target.value); setFieldErrors(prev => ({...prev, dob: false})); }}
           />
         </div>
 

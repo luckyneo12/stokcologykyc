@@ -2,20 +2,21 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useKYC } from "@/context/KYCContext";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { ZapIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon } from "../Icons";
 import Logo from "../Logo";
 
 export default function PricingStep() {
   const { segments, bsda, updateState, nextStep, prevStep, theme, addToast, emailVerified, syncProgress } = useKYC();
-  const [selectedSegments, setSelectedSegments] = useState(segments || { equity: true, derivatives: false });
-  const [bsdaPreference, setBsdaPreference] = useState(bsda || "opt-in");
+  const [selectedSegments, setSelectedSegments, clearSegmentsDraft] = useLocalDraft("pricingSegments", segments || { equity: true, derivatives: false });
+  const [bsdaPreference, setBsdaPreference, clearBsdaDraft] = useLocalDraft("pricingBsda", bsda || "opt-in");
   const [showModal, setShowModal] = useState(false);
   const [showBrokerageModal, setShowBrokerageModal] = useState(false);
   const [showTariffModal, setShowTariffModal] = useState(false);
   const [brokerageOpened, setBrokerageOpened] = useState(false);
   const [tariffOpened, setTariffOpened] = useState(false);
-  const [brokerageAccepted, setBrokerageAccepted] = useState(false);
-  const [tariffAccepted, setTariffAccepted] = useState(false);
+  const [brokerageAccepted, setBrokerageAccepted, clearBrokerageDraft] = useLocalDraft("pricingBrokerageAccepted", false);
+  const [tariffAccepted, setTariffAccepted, clearTariffDraft] = useLocalDraft("pricingTariffAccepted", false);
   const [showBrokerageTooltip, setShowBrokerageTooltip] = useState(false);
   const [showTariffTooltip, setShowTariffTooltip] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -25,8 +26,8 @@ export default function PricingStep() {
   }, []);
 
   const lastAutoSaveValues = useRef({
-    segments: segments || { equity: true, derivatives: false },
-    bsda: bsda || "opt-in"
+    segments: selectedSegments,
+    bsda: bsdaPreference
   });
 
   // Auto-sync preferences to prevent data loss if user refreshes or closes tab
@@ -86,6 +87,8 @@ export default function PricingStep() {
       addToast("Please review and accept both Brokerage Plan and DP Tariff Sheet.", "error");
       return;
     }
+    clearSegmentsDraft();
+    clearBsdaDraft();
     nextStep({ segments: selectedSegments, bsda: bsdaPreference });
   };
 

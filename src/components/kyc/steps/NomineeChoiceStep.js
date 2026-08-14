@@ -1,12 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useKYC } from "@/context/KYCContext";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import Logo from "../Logo";
 
 export default function NomineeChoiceStep() {
   const { nomineeDetails, updateNested, nextStep, prevStep, goToStep, currentStep } = useKYC();
-  const [opted, setOpted] = useState(nomineeDetails.opted || "Yes");
-  const [confirmed, setConfirmed] = useState(false);
+  const [opted, setOpted, clearOptedDraft] = useLocalDraft("nomineeOpted", nomineeDetails.opted || "Yes");
+  const [confirmed, setConfirmed, clearConfirmedDraft] = useLocalDraft("nomineeConfirmed", false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -22,6 +23,8 @@ export default function NomineeChoiceStep() {
   const handleNext = () => {
     if (opted === "No" && !confirmed) return;
 
+    clearOptedDraft();
+    clearConfirmedDraft();
     const updates = { nomineeDetails: { ...nomineeDetails, opted } };
     if (opted === "No") {
       // Skip Nominee and Allocation steps

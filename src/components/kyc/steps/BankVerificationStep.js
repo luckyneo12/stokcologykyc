@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useKYC } from "@/context/KYCContext";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import Logo from "../Logo";
 import { Eye, EyeOff } from "lucide-react";
 
@@ -84,8 +85,8 @@ export default function BankVerificationStep() {
   const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified } = useKYC();
   
   // Local state for the dropdown selection
-  const [method, setMethod] = useState(bankDetails.method || "");
-  const [form, setForm] = useState({
+  const [method, setMethod, clearMethodDraft] = useLocalDraft("bankMethod", bankDetails.method || "");
+  const [form, setForm, clearFormDraft] = useLocalDraft("bankForm", {
     accountNumber: bankDetails.accountNumber || "",
     ifsc: bankDetails.ifsc || "",
     bankName: bankDetails.bankName || "",
@@ -236,6 +237,8 @@ export default function BankVerificationStep() {
   const handleSubmit = () => {
     if (!validateBankDetails()) return;
     if (isAlreadyVerified) {
+       clearMethodDraft();
+       clearFormDraft();
        nextStep({ bankDetails: { ...form, method } });
        return;
     }
@@ -261,12 +264,16 @@ export default function BankVerificationStep() {
           // Proceed, but keep verified: false so they have to upload proof later
           update("accountHolderName", accountHolder);
           markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
+          clearMethodDraft();
+          clearFormDraft();
           nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: false } });
         } else {
           addToast("Name matched. Penny drop verified.", "success");
           update("accountHolderName", accountHolder);
           // Record verification fingerprint so this step auto-skips on re-navigation
           markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
+          clearMethodDraft();
+          clearFormDraft();
           nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: true } });
         }
       } else {
