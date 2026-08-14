@@ -34,9 +34,12 @@ export default function AadhaarEsignStep() {
   
   const handleDigioSuccess = async (requestId) => {
     setLoading(true);
-    setPhase("processing");
+    setPhase("verifying");
     try {
-      await fetchDigioRequestResponse(requestId, "ESIGN");
+      const result = await fetchDigioRequestResponse(requestId, "ESIGN");
+      if (!result) {
+        throw new Error("Could not verify eSign response. Please try again.");
+      }
       
       const activeApplicationId = kycApplicationId;
       if (activeApplicationId) {
@@ -111,12 +114,12 @@ export default function AadhaarEsignStep() {
       environment: process.env.NEXT_PUBLIC_DIGIO_ENV || "production",
       logoUrl: "/logo120.png",
       callback: async (response) => {
-        if (response.error_code) {
-          console.error("Digio Error:", response);
-          if (response.error_code === "CANCELLED") {
+        if (response.error_code || response.message === "cancelled" || !response.digio_doc_id) {
+          console.error("Digio Error/Cancel:", response);
+          if (response.error_code === "CANCELLED" || response.message === "cancelled" || !response.digio_doc_id) {
             addToast("eSign cancelled by user", "info");
           } else {
-            addToast(`eSign failed: ${response.message}`, "error");
+            addToast(`eSign failed: ${response.message || 'Unknown error'}`, "error");
           }
           setLoading(false);
           setPhase("failed");
@@ -227,6 +230,16 @@ export default function AadhaarEsignStep() {
           <p style={{ fontSize: "1.3rem", fontWeight: 900, color: "var(--text-primary)" }}>Launching Signing Portal</p>
           <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginTop: 12, fontWeight: 600 }}>
             Please wait while we establish a secure connection.
+          </p>
+        </div>
+      )}
+
+      {phase === "verifying" && (
+        <div className="card animate-fade-in" style={{ padding: "64px 40px", textAlign: "center", borderRadius: "32px", background: "var(--bg-card)", border: "1.5px solid var(--border-color)" }}>
+          <div className="loader" style={{ margin: '0 auto 32px', width: "56px", height: "56px", border: "4px solid var(--border-color)", borderTop: "4px solid var(--wise-green)" }}></div>
+          <p style={{ fontSize: "1.3rem", fontWeight: 900, color: "var(--text-primary)" }}>Verifying Signature & Finalizing</p>
+          <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginTop: 12, fontWeight: 600 }}>
+            Almost done! We are securely downloading your signed document.
           </p>
         </div>
       )}

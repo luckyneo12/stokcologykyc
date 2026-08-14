@@ -1220,6 +1220,13 @@ const updateApplicationDetails = async (req, res, next) => {
         current = current[p];
       }
       current[parts[parts.length - 1]] = value;
+
+      // Special handling for text-based segments input from admin
+      if (topKey === "segments" && (keyPath === "segments.selected" || keyPath === "segments.segments" || keyPath === "segments")) {
+        const valStr = String(value).toLowerCase();
+        current.derivatives = valStr.includes("derivative") || valStr.includes("f&o") || valStr.includes("fno") || valStr.includes("futures");
+        current.equity = valStr.includes("equity") || valStr.includes("cash") || valStr.includes("cm");
+      }
     }
 
     // Convert updated objects to JSON strings
@@ -1244,6 +1251,19 @@ const updateApplicationDetails = async (req, res, next) => {
       updatePayload.currentStep = 12; // eSign preview
       updatePayload.status = "pending";
       updatePayload.isResubmitted = false;
+
+      // Regenerate the PDF with the newly updated data so the eSign preview reflects the changes
+      try {
+        const { generateKycPdf } = require("../utils/pdfGenerator");
+        const appForPdf = { ...app };
+        for (const [key, value] of Object.entries(updatePayload)) {
+          appForPdf[key] = value;
+        }
+        updatePayload.generatedPdfBase64 = await generateKycPdf(appForPdf);
+        console.log(`[AdminController] Successfully regenerated PDF for App ${id}`);
+      } catch (err) {
+        console.error("[AdminController] Failed to regenerate PDF on admin update:", err);
+      }
     }
 
     await prisma.kycApplication.update({

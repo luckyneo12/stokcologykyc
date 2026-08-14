@@ -471,6 +471,7 @@ async function generateKycPdf(applicationData) {
         fields = parsedFields.variables;
       }
       const pages = pdfDoc.getPages();
+      const embeddedMediaCache = new Map();
 
       for (const field of fields) {
         const pageIndex = (field.page || 1) - 1;
@@ -544,74 +545,88 @@ async function generateKycPdf(applicationData) {
 
           if (imgRelPath) {
             try {
-              let imgBytes;
-              let isPng = false;
-              let isPdf = false;
+              let embeddedMedia = embeddedMediaCache.get(imgRelPath);
               
-              if (imgRelPath.startsWith('data:image')) {
-                const base64Data = imgRelPath.split(',')[1];
-                imgBytes = Buffer.from(base64Data, 'base64');
-                isPng = imgRelPath.includes('image/png');
-              } else if (imgRelPath.startsWith('http://') || imgRelPath.startsWith('https://')) {
-                // If it's a cloudinary PDF, safely convert to PNG to bypass pdf-lib signature rejection
-                if (imgRelPath.includes('cloudinary.com') && imgRelPath.toLowerCase().endsWith('.pdf')) {
-                  imgRelPath = imgRelPath.slice(0, -4) + '.png';
-                }
-                console.log(`[PDF Gen] Fetching image from URL: ${imgRelPath}`);
-                try {
-                  const https = require('https');
-                  const http = require('http');
-                  const client = imgRelPath.startsWith('https') ? https : http;
-                  imgBytes = await new Promise((resolve, reject) => {
-                    client.get(imgRelPath, (res) => {
-                      if (res.statusCode >= 200 && res.statusCode < 300) {
-                        const chunks = [];
-                        res.on('data', chunk => chunks.push(chunk));
-                        res.on('end', () => resolve(Buffer.concat(chunks)));
-                      } else {
-                        reject(new Error(`Status Code: ${res.statusCode}`));
-                      }
-                    }).on('error', reject);
-                  });
-                  const lowerPath = imgRelPath.toLowerCase();
-                  isPng = lowerPath.endsWith('.png') || imgRelPath.includes('image/png');
-                  isPdf = lowerPath.endsWith('.pdf') || imgRelPath.includes('application/pdf');
-                } catch (err) {
-                  console.error(`[PDF Gen] Error fetching image URL: ${imgRelPath}`, err.message);
-                }
-              } else {
-                const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
-                const imgPath = path.join(__dirname, '../../', cleanPath);
-                console.log(`[PDF Gen] Checking imgPath: ${imgPath}`);
-                if (fs.existsSync(imgPath)) {
-                  imgBytes = fs.readFileSync(imgPath);
-                  const lowerPath = imgPath.toLowerCase();
-                  isPng = lowerPath.endsWith('.png');
-                  isPdf = lowerPath.endsWith('.pdf');
+              if (!embeddedMedia) {
+                let imgBytes;
+                let isPng = false;
+                let isPdf = false;
+                
+                if (imgRelPath.startsWith('data:image')) {
+                  const base64Data = imgRelPath.split(',')[1];
+                  imgBytes = Buffer.from(base64Data, 'base64');
+                  isPng = imgRelPath.includes('image/png');
+                } else if (imgRelPath.startsWith('http://') || imgRelPath.startsWith('https://')) {
+                  // If it's a cloudinary PDF, safely convert to PNG to bypass pdf-lib signature rejection
+                  if (imgRelPath.includes('cloudinary.com') && imgRelPath.toLowerCase().endsWith('.pdf')) {
+                    imgRelPath = imgRelPath.slice(0, -4) + '.png';
+                  }
+                  console.log(`[PDF Gen] Fetching image from URL: ${imgRelPath}`);
+                  try {
+                    const https = require('https');
+                    const http = require('http');
+                    const client = imgRelPath.startsWith('https') ? https : http;
+                    imgBytes = await new Promise((resolve, reject) => {
+                      client.get(imgRelPath, (res) => {
+                        if (res.statusCode >= 200 && res.statusCode < 300) {
+                          const chunks = [];
+                          res.on('data', chunk => chunks.push(chunk));
+                          res.on('end', () => resolve(Buffer.concat(chunks)));
+                        } else {
+                          reject(new Error(`Status Code: ${res.statusCode}`));
+                        }
+                      }).on('error', reject);
+                    });
+                    const lowerPath = imgRelPath.toLowerCase();
+                    isPng = lowerPath.endsWith('.png') || imgRelPath.includes('image/png');
+                    isPdf = lowerPath.endsWith('.pdf') || imgRelPath.includes('application/pdf');
+                  } catch (err) {
+                    console.error(`[PDF Gen] Error fetching image URL: ${imgRelPath}`, err.message);
+                  }
                 } else {
-                  console.error(`[PDF Gen] Img not found at path: ${imgPath}`);
+                  const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
+                  const imgPath = path.join(__dirname, '../../', cleanPath);
+                  console.log(`[PDF Gen] Checking imgPath: ${imgPath}`);
+                  if (fs.existsSync(imgPath)) {
+                    imgBytes = fs.readFileSync(imgPath);
+                    const lowerPath = imgPath.toLowerCase();
+                    isPng = lowerPath.endsWith('.png');
+                    isPdf = lowerPath.endsWith('.pdf');
+                  } else {
+                    console.error(`[PDF Gen] Img not found at path: ${imgPath}`);
+                  }
+                }
+
+                if (imgBytes) {
+                  if (isPdf) {
+                    const [embeddedPage] = await pdfDoc.embedPdf(imgBytes, [0]);
+                    embeddedMedia = { type: 'pdf', object: embeddedPage };
+                  } else {
+                    let image;
+                    try {
+                      image = isPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
+                    } catch (e1) {
+                      try {
+                        image = isPng ? await pdfDoc.embedJpg(imgBytes) : await pdfDoc.embedPng(imgBytes);
+                      } catch (e2) {
+                        throw new Error("Could not embed image as JPG or PNG. " + e1.message);
+                      }
+                    }
+                    embeddedMedia = { type: 'image', object: image };
+                  }
+                  // Save to cache for reuse in this PDF generation
+                  embeddedMediaCache.set(imgRelPath, embeddedMedia);
                 }
               }
 
-              if (imgBytes) {
+              if (embeddedMedia) {
                 const w = field.width || 100;
                 const h = field.height || 100;
 
-                if (isPdf) {
-                  const [embeddedPage] = await pdfDoc.embedPdf(imgBytes, [0]);
-                  page.drawPage(embeddedPage, { x: field.x, y: yPos - h, width: w, height: h });
+                if (embeddedMedia.type === 'pdf') {
+                  page.drawPage(embeddedMedia.object, { x: field.x, y: yPos - h, width: w, height: h });
                 } else {
-                  let image;
-                  try {
-                    image = isPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
-                  } catch (e1) {
-                    try {
-                      image = isPng ? await pdfDoc.embedJpg(imgBytes) : await pdfDoc.embedPng(imgBytes);
-                    } catch (e2) {
-                      throw new Error("Could not embed image as JPG or PNG. " + e1.message);
-                    }
-                  }
-                  page.drawImage(image, { x: field.x, y: yPos - h, width: w, height: h });
+                  page.drawImage(embeddedMedia.object, { x: field.x, y: yPos - h, width: w, height: h });
                 }
               }
             } catch(e) { console.error("[PDF Gen] Img embed fail for", field.variable, ":", e.message); }

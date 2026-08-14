@@ -1761,38 +1761,88 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     // Fallback 2: Direct Download from Digio if no images extracted
     if (savedDocumentPaths.length === 0) {
-      try {
-        let downloadResponse;
-        if (payload.type === "ESIGN") {
-          downloadResponse = await esignService.downloadDocument(requestId);
-        } else {
-          downloadResponse = await digioClient.downloadKycDocument(requestId);
+      if (payload.type === "ESIGN") {
+        // Run completely in background for ESIGN to prevent blocking frontend completion
+        (async () => {
+          try {
+            console.log(`[Background] Starting async download for ESIGN document ${requestId}...`);
+            const downloadResponse = await esignService.downloadDocument(requestId);
+            if (downloadResponse && downloadResponse.data) {
+              const buffer = Buffer.from(downloadResponse.data);
+              console.log(`[Background] ESIGN document downloaded (${buffer.length} bytes), uploading to Cloudinary...`);
+              
+              const { uploadBufferToCloudinary } = require("../utils/cloudinaryHelper");
+              const publicId = `digio_${requestId}_${Date.now()}`;
+              
+              try {
+                const cloudinaryResult = await uploadBufferToCloudinary(buffer, publicId, 'pdf');
+                const finalUrl = cloudinaryResult.secure_url;
+                
+                // Fetch fresh documents array and update DB
+                const appToUpdate = await prisma.kycApplication.findUnique({ where: { applicationId: application.applicationId } });
+                if (appToUpdate) {
+                  const currentDocs = parseJsonField(appToUpdate.documents, []);
+                  currentDocs.push({
+                    path: finalUrl,
+                    type: "ESIGN_DOCUMENT",
+                    label: "eSigned PDF"
+                  });
+                  await prisma.kycApplication.update({
+                    where: { applicationId: application.applicationId },
+                    data: { documents: JSON.stringify(currentDocs) }
+                  });
+                  console.log(`[Background] Successfully saved ESIGN document to DB for ${application.applicationId}`);
+                }
+              } catch (cloudErr) {
+                console.error("[Background] Failed to upload ESIGN to cloudinary:", cloudErr.message);
+                // Fallback to local storage if Cloudinary fails
+                const filename = `${publicId}.pdf`;
+                const filePath = path.join(uploadsDir, filename);
+                fs.writeFileSync(filePath, buffer);
+                
+                const appToUpdate = await prisma.kycApplication.findUnique({ where: { applicationId: application.applicationId } });
+                if (appToUpdate) {
+                  const currentDocs = parseJsonField(appToUpdate.documents, []);
+                  currentDocs.push({ path: `/uploads/${filename}`, type: "ESIGN_DOCUMENT", label: "eSigned PDF" });
+                  await prisma.kycApplication.update({
+                    where: { applicationId: application.applicationId },
+                    data: { documents: JSON.stringify(currentDocs) }
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.error("[Background] Background ESIGN download failed:", err.message);
+          }
+        })();
+      } else {
+        // Synchronous download for PAN/DIGILOCKER
+        try {
+          const downloadResponse = await digioClient.downloadKycDocument(requestId);
+          if (downloadResponse && downloadResponse.data) {
+            const contentType = String(
+              downloadResponse.headers?.["content-type"] || "",
+            ).toLowerCase();
+            const buffer = Buffer.from(downloadResponse.data);
+            const isPdf =
+              contentType.includes("pdf") ||
+              buffer.slice(0, 4).toString() === "%PDF";
+            const extension = isPdf ? "pdf" : "png";
+            const filename = `digio_${requestId}_${Date.now()}.${extension}`;
+            const filePath = path.join(uploadsDir, filename);
+            fs.writeFileSync(filePath, buffer);
+            savedDocumentPaths.push({
+              path: `/uploads/${filename}`,
+              type: payload.type || "DIGILOCKER_DOCUMENT",
+              label: "download",
+            });
+          }
+        } catch (downloadError) {
+          console.warn(
+            `[Digio] Document download skipped or failed for ${requestId}:`,
+            downloadError.message,
+          );
         }
-
-        if (downloadResponse && downloadResponse.data) {
-          const contentType = String(
-            downloadResponse.headers?.["content-type"] || "",
-          ).toLowerCase();
-          const buffer = Buffer.from(downloadResponse.data);
-          const isPdf =
-            payload.type === "ESIGN" ||
-            contentType.includes("pdf") ||
-            buffer.slice(0, 4).toString() === "%PDF";
-          const extension = isPdf ? "pdf" : "png";
-          const filename = `digio_${requestId}_${Date.now()}.${extension}`;
-          const filePath = path.join(uploadsDir, filename);
-          fs.writeFileSync(filePath, buffer);
-          savedDocumentPaths.push({
-            path: `/uploads/${filename}`,
-            type: payload.type || "DIGILOCKER_DOCUMENT",
-            label: "download",
-          });
-        }
-      } catch (downloadError) {
-        console.warn(
-          `[Digio] Document download skipped or failed for ${requestId}:`,
-          downloadError.message,
-        );
       }
     }
 

@@ -892,16 +892,33 @@ const downloadPdf = async (req, res, next) => {
     // Find the ESIGN document path
     let pdfPath = null;
     const documents = parseJsonField(app.documents, []);
-    const esignDoc = [...documents].reverse().find(
+    let esignDoc = [...documents].reverse().find(
       (doc) =>
-        doc.type === "ESIGN" ||
+        doc.type === "ESIGN" || doc.type === "ESIGN_DOCUMENT" ||
         (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")),
     );
+
+    // If eSign is complete but the background upload hasn't finished yet, poll for it
+    if (!esignDoc && (app.currentStep >= 13 || app.status === 'under_review')) {
+       for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const freshApp = await prisma.kycApplication.findUnique({ where: { applicationId: req.params.applicationId }});
+          const freshDocs = parseJsonField(freshApp.documents, []);
+          esignDoc = [...freshDocs].reverse().find(
+            (doc) => doc.type === "ESIGN" || doc.type === "ESIGN_DOCUMENT" || (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_"))
+          );
+          if (esignDoc) break;
+       }
+    }
+
     if (esignDoc) {
       pdfPath = esignDoc.path;
     }
 
     if (pdfPath) {
+      if (pdfPath.startsWith("http")) {
+        return res.redirect(pdfPath);
+      }
       const fullPath = require("path").join(__dirname, "../../", pdfPath);
       if (require("fs").existsSync(fullPath)) {
         return res.download(
@@ -1048,12 +1065,28 @@ const sendWelcome = async (req, res) => {
   try {
     const applicationId = req.user.applicationId;
     
-    const app = await prisma.kYCApplication.findUnique({
+    const app = await prisma.kycApplication.findUnique({
       where: { applicationId },
     });
 
     if (!app) {
       return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    // Ensure the welcome email is only sent once
+    let stepStatuses = {};
+    if (app.stepStatuses) {
+      try {
+        stepStatuses = typeof app.stepStatuses === "string" 
+          ? JSON.parse(app.stepStatuses) 
+          : app.stepStatuses;
+      } catch (e) {
+        console.error("Error parsing stepStatuses:", e);
+      }
+    }
+
+    if (stepStatuses.welcomeEmailSent) {
+      return res.json({ success: true, message: "Welcome email already sent" });
     }
 
     const personalDetails = typeof app.personalDetails === "string" 
@@ -1110,6 +1143,13 @@ const sendWelcome = async (req, res) => {
 
     await emailService.sendWelcomeEmail(email, fullName, pdfAttachment);
     
+    // Mark email as sent in the database
+    stepStatuses.welcomeEmailSent = true;
+    await prisma.kYCApplication.update({
+      where: { applicationId },
+      data: { stepStatuses: JSON.stringify(stepStatuses) }
+    });
+
     res.json({ success: true, message: "Welcome email sent" });
   } catch (error) {
     console.error("[Send Welcome Email Error]:", error);
