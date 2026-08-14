@@ -9,10 +9,17 @@ export default function DateInput({ value, onChange, style, className, max }) {
     if (value && typeof value === 'string' && value.includes("-")) {
       const parts = value.split("-");
       if (parts.length === 3) {
-        setTextValue(`${parts[2]}/${parts[1]}/${parts[0]}`);
+        const expected = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        if (textValue !== expected && textValue.replace(/\D/g, "") !== expected.replace(/\D/g, "")) {
+          setTextValue(expected);
+        }
       }
     } else if (!value) {
-      setTextValue("");
+      // Only clear the text box if it currently holds a FULL date but the parent is empty
+      // This prevents wiping the user's typing when they are halfway through entering a date
+      if (textValue.replace(/\D/g, "").length === 8) {
+        setTextValue("");
+      }
     }
   }, [value]);
 
@@ -59,7 +66,9 @@ export default function DateInput({ value, onChange, style, className, max }) {
       const mm = val.slice(2, 4);
       const yyyy = val.slice(4);
       onChange({ target: { value: `${yyyy}-${mm}-${dd}` } });
-    } else if (val.length === 0) {
+    } else {
+      // If the date is incomplete, ensure the parent's state is cleared 
+      // so it doesn't hold onto an old, invalid date!
       onChange({ target: { value: "" } });
     }
   };

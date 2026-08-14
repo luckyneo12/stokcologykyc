@@ -52,6 +52,7 @@ class EsignService {
     }
 
     const requestDetails = {
+      signature_type: "aadhaar",
       signers: [
         {
           identifier: customerIdentifier,
