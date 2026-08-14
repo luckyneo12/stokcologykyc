@@ -200,34 +200,24 @@ export default function DetailsStep() {
   const { personalDetails, updateNested, nextStep, prevStep, addToast, syncProgress } = useKYC();
   const [form, setForm, clearFormDraft] = useLocalDraft("details", personalDetails);
 
-  const lastAutoSaveValues = useRef({
-    politicallyExposed: form.politicallyExposed,
-    pepType: form.pepType,
-    pepProof: form.pepProof,
-    taxResidencyOutside: form.taxResidencyOutside,
-    ddpi: form.ddpi
-  });
+  const lastAutoSaveValues = useRef(form || {});
+  const initializedForm = useRef(false);
 
-  // Auto-save critical regulatory status changes to prevent data loss on refresh/polling
+  // Comprehensive debounced auto-save for all fields to prevent data loss on refresh/polling
   useEffect(() => {
-    const hasChangedLocally = 
-      form.politicallyExposed !== lastAutoSaveValues.current.politicallyExposed || 
-      form.pepType !== lastAutoSaveValues.current.pepType ||
-      form.pepProof !== lastAutoSaveValues.current.pepProof ||
-      form.taxResidencyOutside !== lastAutoSaveValues.current.taxResidencyOutside ||
-      form.ddpi !== lastAutoSaveValues.current.ddpi;
+    if (!initializedForm.current) return;
+    
+    // Check if the form has actually changed compared to the last auto-save
+    const hasChangedLocally = JSON.stringify(form) !== JSON.stringify(lastAutoSaveValues.current);
 
     if (hasChangedLocally) {
-      lastAutoSaveValues.current = {
-        politicallyExposed: form.politicallyExposed,
-        pepType: form.pepType,
-        pepProof: form.pepProof,
-        taxResidencyOutside: form.taxResidencyOutside,
-        ddpi: form.ddpi
-      };
-      syncProgress({ personalDetails: form });
+      const timer = setTimeout(() => {
+        lastAutoSaveValues.current = JSON.parse(JSON.stringify(form));
+        syncProgress({ personalDetails: form });
+      }, 1000); // Wait 1 second after they stop typing to save
+      return () => clearTimeout(timer);
     }
-  }, [form.politicallyExposed, form.pepType, form.pepProof, form.taxResidencyOutside, form.ddpi, form, syncProgress]);
+  }, [form, syncProgress]);
   const [errors, setErrors] = useState({});
   const [showMore, setShowMore] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -252,7 +242,6 @@ export default function DetailsStep() {
     }
   };
 
-  const initializedForm = useRef(false);
 
   useEffect(() => {
     if (personalDetails && Object.keys(personalDetails).length > 0) {
@@ -289,8 +278,12 @@ export default function DetailsStep() {
     if (!form.motherName?.trim()) errs.motherName = "Req";
     if (!form.gender) errs.gender = "Req";
     if (!form.maritalStatus) errs.maritalStatus = "Req";
+    if (!form.education) errs.education = "Req";
     if (!form.occupation) errs.occupation = "Req";
     if (!form.annualIncome) errs.annualIncome = "Req";
+    if (!form.experience) errs.experience = "Req";
+    if (!form.politicallyExposed) errs.politicallyExposed = "Req";
+    if (!form.taxResidencyOutside) errs.taxResidencyOutside = "Req";
     
     if (form.politicallyExposed === "Yes") {
       if (!form.pepType) errs.pepType = "Req";

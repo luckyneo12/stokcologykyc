@@ -89,6 +89,8 @@ export default function PricingStep() {
     }
     clearSegmentsDraft();
     clearBsdaDraft();
+    clearBrokerageDraft();
+    clearTariffDraft();
     nextStep({ segments: selectedSegments, bsda: bsdaPreference });
   };
 
