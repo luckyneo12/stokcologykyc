@@ -162,6 +162,20 @@ export default function PhoneStep() {
 
       addToast(startResult.isNew ? "Mobile number verified" : "Welcome back! Resuming your application.", "success");
       
+      if (startResult.isNew) {
+        // Aggressively clear all kyc-drafts to prevent stale data from a previously deleted application
+        if (typeof window !== "undefined") {
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith("kyc-draft-")) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(k => localStorage.removeItem(k));
+        }
+      }
+
       const updates = { 
         applicationId: startResult.applicationId, 
         phone: phoneNumber, 
