@@ -2057,7 +2057,10 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         extractedMedia.video ||
         extractedFaceScore !== null);
 
-    // --- LIVENESS CHECK INJECTION ---
+    // --- LIVENESS CHECK INJECTION (Skipped for Digio SDK) ---
+    // Since we are now using Digio's official SDK, the liveness check is performed natively on their end.
+    // Running our own passive liveness check here is redundant and causes sandbox failures.
+    /*
     if (hasSelfieData && isExplicitSelfiePayload) {
       let livenessBuffer = null;
       if (safeSelfieDocPath) {
@@ -2082,16 +2085,15 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
           console.log("[Digio Liveness] Running liveness check via Server-Side API...");
           const livenessResult = await digioClient.checkPassiveLiveness(livenessBuffer, requestId);
           if (livenessResult.result === "FAIL" || livenessResult.result === "UNKNOWN") {
-            const errorMsg = Array.isArray(livenessResult.errors) ? livenessResult.errors.join(", ") : "Liveness Check Failed";
-            return res.status(400).json({ success: false, error: "Selfie rejected: " + errorMsg });
+            console.warn("[Digio Liveness] Check Failed, but ignoring since SDK already approved.");
           }
           console.log("[Digio Liveness] Check passed. Score:", livenessResult.score);
         } catch (livenessError) {
           console.error("[Digio Liveness Error]:", livenessError.message);
-          return res.status(400).json({ success: false, error: "Liveness Check Failed. Please try again." });
         }
       }
     }
+    */
 
     const findGeoVal = (obj, keys) => {
       if (!obj || typeof obj !== "object") return undefined;

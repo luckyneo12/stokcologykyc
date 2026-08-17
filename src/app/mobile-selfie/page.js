@@ -11,8 +11,12 @@ function MobileSelfieContent() {
   const hasProcessedRedirect = useRef(false);
 
   useEffect(() => {
-    const token = searchParams.get("token");
-    const appId = searchParams.get("appId");
+    const urlToken = searchParams.get("token");
+    const urlAppId = searchParams.get("appId");
+    
+    // Digio redirect may strip URL query parameters, so fallback to sessionStorage
+    const token = urlToken || sessionStorage.getItem("kycToken");
+    const appId = urlAppId || sessionStorage.getItem("kycApplicationId");
     
     // Check for Digio Redirect Return
     const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
@@ -24,9 +28,8 @@ function MobileSelfieContent() {
       return;
     }
 
-    // Set token for digio.js utility
-    sessionStorage.setItem("kycToken", token);
-    sessionStorage.setItem("kycApplicationId", appId);
+    if (urlToken) sessionStorage.setItem("kycToken", urlToken);
+    if (urlAppId) sessionStorage.setItem("kycApplicationId", urlAppId);
 
     if (documentId && digioMessage && !hasProcessedRedirect.current) {
       hasProcessedRedirect.current = true;
