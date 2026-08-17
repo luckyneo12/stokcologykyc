@@ -17,6 +17,7 @@ const storage = new CloudinaryStorage({
   params: {
     folder: "kyc_uploads",
     resource_type: "auto",
+    access_mode: "public",
     public_id: (req, file) => `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
   },
 });

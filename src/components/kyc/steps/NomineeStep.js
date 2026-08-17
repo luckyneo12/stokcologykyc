@@ -6,6 +6,8 @@ import { getPincodeData, uploadDocument, resolveAssetUrl } from "@/utils/kycApi"
 import { maskAadhaarImage } from "@/utils/digio";
 import DateInput from "../DateInput";
 import ImageCropper from "@/components/ui/ImageCropper";
+import { Eye } from "lucide-react";
+import DocumentPreviewModal from "../DocumentPreviewModal";
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", 
@@ -150,6 +152,7 @@ export default function NomineeStep() {
 
   const [errors, setErrors] = useState({});
   const [cropModalData, setCropModalData] = useState(null);
+  const [previewModalData, setPreviewModalData] = useState(null);
 
   const addNominee = () => {
     if (nominees.length >= 3) {
@@ -889,7 +892,12 @@ export default function NomineeStep() {
                           ) : (
                             <img src={resolveAssetUrl(nom.proofPath)} alt="Nominee Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
                           )}
-                          <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Nominee {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <p style={{ fontSize: "0.7rem", color: "var(--wise-positive)", fontWeight: 800, margin: 0, whiteSpace: "nowrap" }}>✓ Nominee {(nom.proofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
+                            <button onClick={() => setPreviewModalData({ url: resolveAssetUrl(nom.proofPath) })} style={{ background: "var(--bg-secondary)", border: "none", padding: "6px", borderRadius: "8px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
+                              <Eye size={16} />
+                            </button>
+                          </div>
                         </div>
                       )}
                     </>
@@ -1149,7 +1157,12 @@ export default function NomineeStep() {
                             ) : (
                               <img src={resolveAssetUrl(nom.guardianProofPath)} alt="Guardian Proof" style={{ maxWidth: "200px", maxHeight: "150px", borderRadius: "8px", objectFit: "contain", border: "1px solid var(--border-color)" }} />
                             )}
-                            <p style={{ fontSize: "0.75rem", color: "var(--wise-positive)", fontWeight: 800 }}>✓ Guardian {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <p style={{ fontSize: "0.7rem", color: "var(--wise-positive)", fontWeight: 800, margin: 0, whiteSpace: "nowrap" }}>✓ Guardian {(nom.guardianProofType || "PAN CARD") === "PAN CARD" ? "PAN" : "Aadhaar"} Uploaded</p>
+                              <button onClick={() => setPreviewModalData({ url: resolveAssetUrl(nom.guardianProofPath) })} style={{ background: "var(--bg-secondary)", border: "none", padding: "6px", borderRadius: "8px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
+                                <Eye size={16} />
+                              </button>
+                            </div>
                           </div>
                         )}
                       </>
@@ -1208,6 +1221,13 @@ export default function NomineeStep() {
         </button>
       </div>
       {/* Modal is removed since cropping is now inline */}
+      
+      <DocumentPreviewModal 
+        isOpen={!!previewModalData} 
+        onClose={() => setPreviewModalData(null)} 
+        documentUrl={previewModalData?.url} 
+        documentType={previewModalData?.type} 
+      />
     </div>
   );
 }

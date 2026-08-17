@@ -15,7 +15,7 @@ const KYCContext = createContext(null);
 const INITIAL_STATE = {
   currentStep: 1,
   applicationId: "",
-  isRestoring: false,
+  isRestoring: true,
   phone: "",
   otpVerified: false,
   emailVerified: false,
@@ -212,7 +212,7 @@ const STEP_RELEVANT_KEYS = {
   nominee: ["nomineeDetails"],
   nomineeAllocation: ["nomineeAllocation"],
   bankVerification: ["bankDetails"],
-  documentUpload: ["financialProof", "signature", "panUpload", "selfieDetails"],
+  documentUpload: ["financialProof", "signature", "panUpload", "selfieDetails", "bankDetails"],
   esignPreview: ["generatedPdfBase64"],
   aadhaarEsign: [
     "status",
@@ -350,7 +350,7 @@ export function KYCProvider({ children }) {
       const next = [...prev, { id, message, type }];
       setTimeout(
         () => setToasts((curr) => curr.filter((t) => t.id !== id)),
-        4000,
+        8000,
       );
       return next;
     });

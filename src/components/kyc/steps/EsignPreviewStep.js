@@ -120,7 +120,7 @@ export default function EsignPreviewStep() {
         {pdfUrl && (
           <a 
             href={pdfUrl}
-            download={`KYC_Application_${personalDetails?.fullName ? personalDetails.fullName.replace(/\s+/g, '_') : 'Form'}.pdf`}
+            download={`KYC_Application_${personalDetails?.fullName ? personalDetails.fullName.replace(/\s+/g, '_') : 'Form'}_${applicationId || ''}.pdf`}
             className="btn-secondary"
             style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)", color: "var(--text-primary)", textDecoration: "none" }}
           >

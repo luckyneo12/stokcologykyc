@@ -9,6 +9,8 @@ import { initializeDigio, createDigioRequest } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
 import { uploadDocument } from "@/utils/kycApi";
 import { io } from "socket.io-client";
+import { Eye } from "lucide-react";
+import DocumentPreviewModal from "../DocumentPreviewModal";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -169,6 +171,8 @@ export default function DocumentUploadStep() {
   const selfieSocketRef = useRef(null);
 
   const [submitting, setSubmitting] = useState(false);
+  const [previewModalData, setPreviewModalData] = useState(null);
+  const [showSkipDerivativesModal, setShowSkipDerivativesModal] = useState(false);
 
   // --- Sync from Context (for cross-device updates) ---
   useEffect(() => {
@@ -200,7 +204,7 @@ export default function DocumentUploadStep() {
       }
       if (selfie.matchScore !== undefined && selfie.matchScore !== matchScore) setMatchScore(selfie.matchScore);
     }
-  }, [panUpload, signature, financialProof, selfie]);
+  }, [panUpload, signature, financialProof, selfie, bankDetails]);
 
   // --- Cross-device selfie polling via Socket.IO + fallback ---
   const checkSelfieStatus = useCallback(async () => {
@@ -428,12 +432,7 @@ export default function DocumentUploadStep() {
 
     setSubmitting(true);
     try {
-      nextStep({
-        financialProof: { type: finType, filePreview: finPreview },
-        signature: { filePreview: sigPreview },
-        panUpload: { filePreview: panPreview },
-        selfie: { matchScore: matchScore, preview: selfiePreviewUrl }
-      });
+      nextStep();
     } catch (err) {
       setSubmitting(false);
       addToast("Failed to save documents", "error");
@@ -514,9 +513,14 @@ export default function DocumentUploadStep() {
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
                   <img src={panPreview} alt="PAN Preview" style={{ height: "56px", width: "86px", objectFit: "contain", borderRadius: "8px", background: "var(--bg-secondary)" }} />
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                     <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                     <p style={{ fontSize: "0.7rem", color: "var(--wise-green)", fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>✓ Attached</p>
                   </div>
-                  <button onClick={() => panInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={() => setPreviewModalData({ url: panPreview })} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px", borderRadius: "10px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
+                      <Eye size={18} />
+                    </button>
+                    <button onClick={() => panInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                  </div>
                 </div>
               ) : (
                 <button onClick={() => panInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
@@ -568,9 +572,14 @@ export default function DocumentUploadStep() {
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
                   <img src={sigPreview} alt="Signature Preview" style={{ height: "56px", width: "86px", objectFit: "contain", borderRadius: "8px", background: "#fff", border: "1px solid var(--border-color)" }} />
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                     <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                     <p style={{ fontSize: "0.7rem", color: "var(--wise-green)", fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>✓ Attached</p>
                   </div>
-                  <button onClick={() => sigInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={() => setPreviewModalData({ url: sigPreview })} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px", borderRadius: "10px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
+                      <Eye size={18} />
+                    </button>
+                    <button onClick={() => sigInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                  </div>
                 </div>
               ) : (
                 <button onClick={() => sigInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
@@ -662,23 +671,28 @@ export default function DocumentUploadStep() {
                     <div style={{ height: "48px", width: "48px", borderRadius: "50%", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center", color: "#000", fontSize: "1.2rem", fontWeight: 800 }}>✓</div>
                   )}
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Verified</p>
+                    <p style={{ fontSize: "0.7rem", color: "var(--wise-green)", fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>✓ Verified</p>
                   </div>
-                  <button onClick={async () => {
-                    setSelfiePhase("intro");
-                    setSelfiePreviewUrl(null);
-                    setMatchScore(null);
-                    setSelfieError(false);
-                    updateState({
-                      selfie: { image: null, preview: null, livenessPass: false, matchScore: 0 },
-                      selfieDetails: null
-                    });
-                    try {
-                      await syncProgress({ selfie: { preview: "__CLEARED__", matchScore: 0 } }, false, "documentUpload");
-                    } catch (e) {
-                      console.warn("Failed to clear selfie on backend", e);
-                    }
-                  }} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Retake</button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={() => setPreviewModalData({ url: selfiePreviewUrl })} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px", borderRadius: "10px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
+                      <Eye size={18} />
+                    </button>
+                    <button onClick={async () => {
+                      setSelfiePhase("intro");
+                      setSelfiePreviewUrl(null);
+                      setMatchScore(null);
+                      setSelfieError(false);
+                      updateState({
+                        selfie: { image: null, preview: null, livenessPass: false, matchScore: 0 },
+                        selfieDetails: null
+                      });
+                      try {
+                        await syncProgress({ selfie: { preview: "__CLEARED__", matchScore: 0 } }, false, "documentUpload");
+                      } catch (e) {
+                        console.warn("Failed to clear selfie on backend", e);
+                      }
+                    }} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Retake</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -719,9 +733,14 @@ export default function DocumentUploadStep() {
                   <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
                     <div style={{ height: "48px", width: "48px", borderRadius: "8px", background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 800 }}>DOC</div>
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                       <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                       <p style={{ fontSize: "0.7rem", color: "var(--wise-green)", fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>✓ Attached</p>
                     </div>
-                    <button onClick={() => bankProofInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button onClick={() => setPreviewModalData({ url: bankProofPreview })} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px", borderRadius: "10px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
+                        <Eye size={18} />
+                      </button>
+                      <button onClick={() => bankProofInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                    </div>
                   </div>
                 ) : (
                   <button onClick={() => bankProofInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--wise-danger)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--wise-danger)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.background = "rgba(247, 85, 85, 0.05)"} onMouseOut={(e) => e.currentTarget.style.background = "var(--bg-elevated)"}>
@@ -754,8 +773,9 @@ export default function DocumentUploadStep() {
                 value={finType}
                 onChange={async (val) => {
                   setFinType(val);
-                  updateState({ financialProof: { type: val, filePreview: finPreview } });
-                  await syncProgress({ financialProof: { type: val, filePreview: finPreview } }, false, "documentUpload");
+                  const updatedFinProof = { ...(financialProof || {}), type: val };
+                  updateState({ financialProof: updatedFinProof });
+                  await syncProgress({ financialProof: updatedFinProof }, false, "documentUpload");
                 }}
                 options={finOptions}
                 placeholder="-- Select Income Proof --"
@@ -766,14 +786,24 @@ export default function DocumentUploadStep() {
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
                   <div style={{ height: "48px", width: "48px", borderRadius: "8px", background: "var(--bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.85rem", fontWeight: 800 }}>DOC</div>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                     <p style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, margin: 0 }}>✓ Attached</p>
+                     <p style={{ fontSize: "0.7rem", color: "var(--wise-green)", fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>✓ Attached</p>
                   </div>
-                  <button onClick={() => finInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={() => setPreviewModalData({ url: finPreview })} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px", borderRadius: "10px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
+                      <Eye size={18} />
+                    </button>
+                    <button onClick={() => finInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                  </div>
                 </div>
               ) : (
                 <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
                   <UploadIcon /> Upload Proof
                 </button>
+              )}
+              {segments?.derivatives && (
+                 <button onClick={() => setShowSkipDerivativesModal(true)} style={{ marginTop: "4px", width: "100%", background: "transparent", border: "none", color: "var(--text-secondary)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", textDecoration: "underline" }}>
+                   Skip & Trade only in Equity
+                 </button>
               )}
             </div>
           </div>
@@ -814,6 +844,44 @@ export default function DocumentUploadStep() {
         </div>
       )}
 
+      <DocumentPreviewModal 
+        isOpen={!!previewModalData} 
+        onClose={() => setPreviewModalData(null)} 
+        documentUrl={previewModalData?.url} 
+        documentType={previewModalData?.type} 
+      />
+
+      {showSkipDerivativesModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, minHeight: "100%", background: "rgba(0,0,0,0.8)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ width: "100%", maxWidth: "400px", background: "var(--bg-primary)", borderRadius: "20px", overflow: "hidden", padding: "24px" }}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "1.2rem", fontWeight: 800 }}>Skip Financial Proof?</h3>
+            <p style={{ margin: "0 0 24px 0", fontSize: "0.95rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+              Your derivatives segment will be deselected and you will ONLY work in Equity segment. Are you sure you want to proceed?
+            </p>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button onClick={() => setShowSkipDerivativesModal(false)} style={{ flex: 1, padding: "12px", background: "var(--bg-secondary)", color: "var(--text-primary)", border: "none", borderRadius: "10px", fontWeight: 700, cursor: "pointer" }}>
+                No
+              </button>
+              <button 
+                onClick={async () => {
+                  setShowSkipDerivativesModal(false);
+                  const updatedSegments = { ...segments, derivatives: false, equity: true };
+                  updateState({ segments: updatedSegments });
+                  try {
+                    await syncProgress({ segments: updatedSegments }, false, "pricing");
+                    addToast("Derivatives segment removed. Financial proof is no longer required.", "success");
+                  } catch(e) {
+                    addToast("Failed to update segments", "error");
+                  }
+                }} 
+                style={{ flex: 1, padding: "12px", background: "var(--wise-danger)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 700, cursor: "pointer" }}
+              >
+                Yes, Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

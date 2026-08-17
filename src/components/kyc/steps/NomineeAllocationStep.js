@@ -47,30 +47,17 @@ export default function NomineeAllocationStep() {
     let val = rawVal === "" ? "" : parseInt(rawVal, 10);
     if (val !== "" && val > 100) val = 100;
     
-    const updated = [...percentages];
-    updated[idx] = val;
-
-    if (val !== "") {
-      if (nominees.length === 2) {
-        const otherIdx = idx === 0 ? 1 : 0;
-        updated[otherIdx] = 100 - val;
-      } else if (nominees.length === 3) {
-        // Proportional adjustment for 3 nominees
-        const others = [0, 1, 2].filter(i => i !== idx);
-        const remaining = 100 - val;
-        const currentOthersSum = (parseInt(percentages[others[0]]) || 0) + (parseInt(percentages[others[1]]) || 0);
-        
-        if (currentOthersSum > 0) {
-          updated[others[0]] = Math.round(((parseInt(percentages[others[0]]) || 0) / currentOthersSum) * remaining);
-          updated[others[1]] = remaining - updated[others[0]];
-        } else {
-          updated[others[0]] = Math.floor(remaining / 2);
-          updated[others[1]] = remaining - updated[others[0]];
-        }
-      }
+    const tempUpdated = [...percentages];
+    tempUpdated[idx] = val;
+    
+    const newTotal = tempUpdated.reduce((sum, v) => sum + (parseInt(v) || 0), 0);
+    
+    if (newTotal > 100) {
+      addToast("Total allocation cannot exceed 100%", "error");
+      return;
     }
-
-    setPercentages(updated);
+    
+    setPercentages(tempUpdated);
   };
 
   const distributeEqually = () => {

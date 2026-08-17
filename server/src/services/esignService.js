@@ -58,7 +58,8 @@ class EsignService {
           identifier: customerIdentifier,
           name: parsedPersonalDetails.fullName || "KYC User",
           reason: "KYC Application Signing",
-          sign_type: "aadhaar"
+          sign_type: "aadhaar",
+          name_match: true
         }
       ],
       expire_in_days: 10,

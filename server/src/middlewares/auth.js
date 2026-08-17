@@ -4,7 +4,7 @@ const prisma = require("../config/db");
 const JWT_SECRET = process.env.JWT_SECRET || "kyc-secret-key-change-in-production";
 
 const auth = async (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
+  const token = req.headers.authorization?.split(" ")[1] || req.query?.token;
   if (!token) return res.status(401).json({ error: "No token provided" });
 
   try {

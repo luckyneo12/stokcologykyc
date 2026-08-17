@@ -82,7 +82,7 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
 
 export default function BankVerificationStep() {
-  const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified } = useKYC();
+  const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified, personalDetails, ocrData } = useKYC();
   
   // Local state for the dropdown selection
   const [method, setMethod, clearMethodDraft] = useLocalDraft("bankMethod", bankDetails.method || "");
@@ -104,6 +104,7 @@ export default function BankVerificationStep() {
 
   const [verificationState, setVerificationState] = useState("idle");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showMismatchModal, setShowMismatchModal] = useState(null);
   const [isFetchingIfsc, setIsFetchingIfsc] = useState(false);
 
   const isAlreadyVerified = !!bankDetails?.accountHolderName && form.accountNumber === bankDetails.accountNumber && form.ifsc === bankDetails.ifsc;
@@ -239,7 +240,7 @@ export default function BankVerificationStep() {
     if (isAlreadyVerified) {
        clearMethodDraft();
        clearFormDraft();
-       nextStep({ bankDetails: { ...form, method } });
+       nextStep({ bankDetails: { ...bankDetails, ...form, method } });
        return;
     }
     
@@ -260,13 +261,21 @@ export default function BankVerificationStep() {
         const accountHolder = result.data.beneficiary_name_with_bank || form.accountHolderName;
 
         if (result.nameMismatch) {
-          addToast("Name not matched penny drop not verified. Proceeding to upload bank proof.", "warning");
-          // Proceed, but keep verified: false so they have to upload proof later
-          update("accountHolderName", accountHolder);
-          markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
-          clearMethodDraft();
-          clearFormDraft();
-          nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: false } });
+          const kycName = personalDetails?.fullName || ocrData?.name || "Unknown";
+          
+          const hashName = (name) => {
+            if (!name) return "";
+            return name.split(" ").map(word => {
+              if (word.length <= 2) return word + "***";
+              return word.substring(0, 2) + "***";
+            }).join(" ");
+          };
+          
+          setShowMismatchModal({
+             kycName,
+             bankName: hashName(accountHolder),
+             accountHolder
+          });
         } else {
           addToast("Name matched. Penny drop verified.", "success");
           update("accountHolderName", accountHolder);
@@ -308,34 +317,49 @@ export default function BankVerificationStep() {
       {/* If no method selected, show the dropdown */}
       {!method ? (
         <>
-          <div className="text-center animate-slide-up" style={{ marginBottom: 30 }}>
-            
-            <h2 className="text-title" style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--text-primary)" }}>Bank Verification</h2>
-            <p className="text-body" style={{ color: "var(--text-secondary)", marginTop: "12px", fontSize: "0.95rem", lineHeight: 1.5, padding: "0 20px" }}>
-              Please provide your bank account details for verification and future fund transfers.
+          <div className="animate-slide-up" style={{ marginBottom: 32 }}>
+            <h1 style={{ fontSize: "3.6rem", fontWeight: 800, color: "#2c5f2d", marginBottom: "8px", letterSpacing: "-1px", whiteSpace: "nowrap" }}>Bank account verification</h1>
+            <p className="text-body" style={{ color: "var(--text-secondary)", fontSize: "1rem" }}>
+              Select a method to verify your bank details
             </p>
           </div>
 
-          <div className="card animate-slide-up" style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: "24px" }}>
-            <div style={{ marginBottom: "24px" }}>
-              <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 600, marginBottom: "8px", display: "block" }}>
-                Want to continue with <span style={{ color: "var(--wise-danger)" }}>*</span>
-              </label>
-              <CustomSelect 
-                value={method}
-                onChange={setMethod}
-                options={["Manual Data Entry"]}
-                placeholder="--Select--"
-              />
+          <div 
+            onClick={() => setMethod("Manual Data Entry")}
+            className="animate-slide-up"
+            style={{ 
+              background: "var(--bg-card)", 
+              border: "1.5px solid var(--border-color)", 
+              borderRadius: "16px",
+              padding: "24px",
+              cursor: "pointer",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              transition: "all 0.2s",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.03)"
+            }}
+            onMouseOver={e => e.currentTarget.style.borderColor = "var(--wise-green)"}
+            onMouseOut={e => e.currentTarget.style.borderColor = "var(--border-color)"}
+          >
+            <div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--text-primary)", margin: "0 0 12px 0" }}>Enter Details Manually</h3>
+              <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", margin: 0 }}>Add your account number, IFSC code manually</p>
             </div>
-             <button 
-               onClick={() => nomineeDetails.opted === 'No' ? goToStep(currentStep - 3) : prevStep()} 
-               className="btn-back"
-               style={{ width: "100%", justifyContent: "center", color: "var(--text-secondary)" }}
-             >
-               Back
-             </button>
+            <div style={{ color: "var(--text-primary)" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
           </div>
+
+          <button 
+            onClick={() => nomineeDetails.opted === 'No' ? goToStep(currentStep - 3) : prevStep()} 
+            className="btn-back animate-slide-up"
+            style={{ width: "100%", justifyContent: "center", color: "var(--text-secondary)", marginTop: "24px", background: "transparent", border: "none", cursor: "pointer", fontSize: "1rem", fontWeight: 700 }}
+          >
+            Back
+          </button>
         </>
       ) : method === "Manual Data Entry" ? (
         <>
@@ -557,6 +581,59 @@ export default function BankVerificationStep() {
               }}
             >
               {verificationState === "verifying" ? "Verifying..." : "Proceed"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Name Mismatch Modal */}
+      {showMismatchModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
+          display: "flex", alignItems: "center", justifyContent: "center",
+          paddingBottom: "40px",
+          zIndex: 1000, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)"
+        }}>
+          <div className="animate-slide-up" style={{ 
+            background: "var(--bg-card)", padding: "32px", borderRadius: "24px", 
+            width: "90%", maxWidth: "380px", textAlign: "center",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
+            border: "1px solid var(--border-color)"
+          }}>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "8px" }}>Penny Drop</p>
+            <h3 style={{ color: "var(--text-primary)", fontSize: "1.1rem", fontWeight: 700, marginBottom: "32px", lineHeight: 1.5 }}>
+              Your name ({showMismatchModal.kycName}) does not match with your Bank Account Name ({showMismatchModal.bankName})
+            </h3>
+            
+            <button 
+              onClick={() => setShowMismatchModal(null)} 
+              className="btn-secondary"
+              style={{ 
+                width: "100%", marginBottom: "12px", height: "56px", borderRadius: "16px",
+                fontWeight: 700, fontSize: "1rem"
+              }}
+            >
+              Modify
+            </button>
+            
+            <button 
+              onClick={() => {
+                const accountHolder = showMismatchModal.accountHolder;
+                setShowMismatchModal(null);
+                addToast("Name not matched penny drop not verified. Proceeding to upload bank proof.", "warning");
+                update("accountHolderName", accountHolder);
+                markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
+                clearMethodDraft();
+                clearFormDraft();
+                nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: false } });
+              }}
+              className="btn-primary"
+              style={{ 
+                width: "100%", height: "56px", borderRadius: "16px",
+                fontWeight: 800, fontSize: "1.1rem"
+              }}
+            >
+              Proceed
             </button>
           </div>
         </div>
