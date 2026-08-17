@@ -1278,6 +1278,34 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       });
     }
 
+    // Extract Selfie Image for Cross-Device Sync before sanitization
+    let globalExtractedSelfieUrl = null;
+    let globalExtractedFaceScore = null;
+    if (payload.type === "SELFIE" || payload.type === "LIVENESS") {
+      const selfieAction = digioResponse.actions?.find(a => 
+         (a.type === "SELFIE" || a.type === "LIVENESS") && 
+         (a.status === "approved" || a.status === "success" || a.status === "requested" || a.status === "approval_pending")
+      );
+      if (selfieAction && selfieAction.details && (selfieAction.details.image || selfieAction.details.photo)) {
+        try {
+          const base64Data = selfieAction.details.image || selfieAction.details.photo;
+          const cleanBase64 = base64Data.replace(/^data:(image|application)\/[a-z0-9.+-]+;base64,/i, "");
+          const { uploadBufferToCloudinary } = require("../utils/cloudinaryHelper");
+          const buffer = Buffer.from(cleanBase64, "base64");
+          const cloudinaryResult = await uploadBufferToCloudinary(buffer, `kyc_selfie_${application.applicationId}_${Date.now()}`, "jpg");
+          globalExtractedSelfieUrl = cloudinaryResult.secure_url;
+          if (selfieAction.details.face_match_score) {
+             globalExtractedFaceScore = selfieAction.details.face_match_score;
+          }
+        } catch (err) {
+          console.error("[Digio Route] Failed to upload extracted selfie to cloudinary:", err.message);
+          globalExtractedSelfieUrl = "__DIGIO_SUCCESS__";
+        }
+      } else if (selfieAction && (selfieAction.status === "approved" || selfieAction.status === "success")) {
+         globalExtractedSelfieUrl = "__DIGIO_SUCCESS__";
+      }
+    }
+
     // Sanitize actions to remove heavy base64 strings before storing in DB
     const sanitizedActions = digioResponse.actions
       ? JSON.parse(JSON.stringify(digioResponse.actions))
@@ -2057,44 +2085,6 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         extractedMedia.video ||
         extractedFaceScore !== null);
 
-    // --- LIVENESS CHECK INJECTION (Skipped for Digio SDK) ---
-    // Since we are now using Digio's official SDK, the liveness check is performed natively on their end.
-    // Running our own passive liveness check here is redundant and causes sandbox failures.
-    /*
-    if (hasSelfieData && isExplicitSelfiePayload) {
-      let livenessBuffer = null;
-      if (safeSelfieDocPath) {
-        try {
-          if (safeSelfieDocPath.startsWith("http")) {
-            const resp = await fetch(safeSelfieDocPath);
-            livenessBuffer = Buffer.from(await resp.arrayBuffer());
-          } else {
-            const absolutePath = path.join(__dirname, "../../", safeSelfieDocPath.replace(/^[\/\\]/, ""));
-            livenessBuffer = fs.readFileSync(absolutePath);
-          }
-        } catch (e) {
-          console.error("[Digio Liveness] Failed to read selfie file:", e.message);
-        }
-      } else if (extractedMedia.image) {
-        const base64Data = extractedMedia.image.replace(/^data:image\/[a-z]+;base64,/, "");
-        livenessBuffer = Buffer.from(base64Data, "base64");
-      }
-
-      if (livenessBuffer) {
-        try {
-          console.log("[Digio Liveness] Running liveness check via Server-Side API...");
-          const livenessResult = await digioClient.checkPassiveLiveness(livenessBuffer, requestId);
-          if (livenessResult.result === "FAIL" || livenessResult.result === "UNKNOWN") {
-            console.warn("[Digio Liveness] Check Failed, but ignoring since SDK already approved.");
-          }
-          console.log("[Digio Liveness] Check passed. Score:", livenessResult.score);
-        } catch (livenessError) {
-          console.error("[Digio Liveness Error]:", livenessError.message);
-        }
-      }
-    }
-    */
-
     const findGeoVal = (obj, keys) => {
       if (!obj || typeof obj !== "object") return undefined;
       for (const k of keys) {
@@ -2141,6 +2131,11 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       }
     } else if (extractedFaceScore !== null) {
       nextSelfieDetails.matchScore = extractedFaceScore;
+    }
+
+    if (globalExtractedSelfieUrl) {
+       nextSelfieDetails.preview = globalExtractedSelfieUrl;
+       if (globalExtractedFaceScore) nextSelfieDetails.matchScore = globalExtractedFaceScore;
     }
 
     await prisma.kycApplication.update({

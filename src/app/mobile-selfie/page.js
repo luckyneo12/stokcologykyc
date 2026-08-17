@@ -124,7 +124,7 @@ function MobileSelfieContent() {
           </div>
           <h1 style={{ fontSize: "1.5rem", marginBottom: 12, color: "var(--text-primary)" }}>Selfie Captured!</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "1rem", lineHeight: 1.5 }}>
-            Your selfie has been successfully captured and synced. You can now close this window and return to your computer to continue.
+            Your selfie has been successfully captured and synced. You can now close this window and return to your device to continue.
           </p>
       </div>
     );
