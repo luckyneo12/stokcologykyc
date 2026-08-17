@@ -170,6 +170,7 @@ export default function DocumentUploadStep() {
   const [qrExpired, setQrExpired] = useState(false);
   const timerRef = useRef(null);
   const selfiePollRef = useRef(null);
+  const currentDigioRequestId = useRef(null);
   const selfieSocketRef = useRef(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -353,8 +354,13 @@ export default function DocumentUploadStep() {
     }
 
     try {
-      // Fetch details from backend via document_id
-      const res = await fetchDigioRequestResponse(response.document_id, "SELFIE");
+      // Fetch details from backend via document_id (or digio_doc_id, or fallback to the saved requestId)
+      const docId = response.document_id || response.digio_doc_id || currentDigioRequestId.current;
+      if (!docId) {
+         addToast("Missing document ID from Digio.", "error");
+         return;
+      }
+      const res = await fetchDigioRequestResponse(docId, "SELFIE");
       if (res?.success) {
          let sd = null;
          if (res.application) {
@@ -407,6 +413,7 @@ export default function DocumentUploadStep() {
 
       const requestData = await createDigioRequest("SELFIE", coords);
       const { requestId, customerIdentifier, accessToken } = requestData;
+      currentDigioRequestId.current = requestId;
 
       const digio = initializeDigio({
         callback: handleInlineSelfieSuccess,
