@@ -163,7 +163,7 @@ export const verifyPanDirect = async (pan, fullName, dob) => {
   }
 };
 
-export const verifyBank = async (accountNumber, ifsc, beneficiaryName) => {
+export const verifyBank = async (accountNumber, ifsc, beneficiaryName, accountType) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/digio/verify-bank`, {
       method: "POST",
@@ -172,6 +172,7 @@ export const verifyBank = async (accountNumber, ifsc, beneficiaryName) => {
         accountNumber,
         ifsc,
         beneficiaryName,
+        accountType,
         applicationId: getApplicationId() || undefined,
       }),
     });

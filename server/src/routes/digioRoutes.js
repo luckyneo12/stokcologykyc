@@ -2271,7 +2271,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 });
 
 router.post("/verify-bank", auth, async (req, res) => {
-  const { accountNumber, ifsc, beneficiaryName, applicationId } =
+  const { accountNumber, ifsc, beneficiaryName, accountType, applicationId } =
     req.body || {};
 
   if (!accountNumber || !ifsc) {
@@ -2295,12 +2295,24 @@ router.post("/verify-bank", auth, async (req, res) => {
     const personalDetails = parseJsonField(application.personalDetails, {});
     const bankDetails = parseJsonField(application.bankDetails, {});
 
-    // Call Bank Service (v4 Penny Drop)
     const result = await bankService.verifyAccount(
       accountNumber,
       ifsc,
       beneficiaryName || personalDetails.fullName,
     );
+
+    // Cross-check account type if provided by user and API
+    if (accountType && (result.account_type || result.accountType || result.bank_account_type)) {
+      const apiType = String(result.account_type || result.accountType || result.bank_account_type).toLowerCase();
+      const userType = String(accountType).toLowerCase();
+      
+      if (apiType.includes('saving') && userType.includes('current')) {
+        return res.json({ success: false, error: `Account type mismatch. You selected Current Account but this is a Savings Account.` });
+      }
+      if (apiType.includes('current') && userType.includes('saving')) {
+        return res.json({ success: false, error: `Account type mismatch. You selected Savings Account but this is a Current Account.` });
+      }
+    }
 
     if (result.verified) {
       // Fetch branch details using IFSC to populate address/city

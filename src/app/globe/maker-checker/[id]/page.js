@@ -80,7 +80,32 @@ const REVIEW_STEPS = [
       ["Segments", formatList(app.segments?.selected || app.segments?.segments || app.segments)],
       ["BSDA", app.bsda],
     ],
-    evidence: () => [],
+    evidence: () => {
+      const brokerageSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300" style="background:white; font-family:sans-serif; border: 1px solid #e5e7eb; border-radius: 8px;">
+  <rect width="100%" height="100%" fill="#ffffff" rx="8" />
+  <text x="24" y="48" font-size="22" font-weight="800" fill="#111827">Brokerage Plan (Standard)</text>
+  <line x1="24" y1="64" x2="476" y2="64" stroke="#e5e7eb" stroke-width="2" />
+  <text x="24" y="104" font-size="16" font-weight="600" fill="#374151">Equity Delivery</text>
+  <text x="476" y="104" font-size="16" font-weight="800" fill="#059669" text-anchor="end">0.30%</text>
+  <line x1="24" y1="120" x2="476" y2="120" stroke="#f3f4f6" stroke-width="1" />
+  
+  <text x="24" y="148" font-size="16" font-weight="600" fill="#374151">Equity Intra Day</text>
+  <text x="476" y="148" font-size="16" font-weight="800" fill="#059669" text-anchor="end">0.03%</text>
+  <line x1="24" y1="164" x2="476" y2="164" stroke="#f3f4f6" stroke-width="1" />
+
+  <text x="24" y="192" font-size="16" font-weight="600" fill="#374151">Equity Futures</text>
+  <text x="476" y="192" font-size="16" font-weight="800" fill="#059669" text-anchor="end">0.03%</text>
+  <line x1="24" y1="208" x2="476" y2="208" stroke="#f3f4f6" stroke-width="1" />
+
+  <text x="24" y="236" font-size="16" font-weight="600" fill="#374151">Futures Option</text>
+  <text x="476" y="236" font-size="16" font-weight="800" fill="#059669" text-anchor="end">50/per lot</text>
+</svg>`;
+      return [
+        { label: "DP Tariff Sheet", src: "/schedule_of_charges.pdf" },
+        { label: "Brokerage Rates", src: `data:image/svg+xml;base64,${btoa(brokerageSvg)}` }
+      ];
+    },
   },
   {
     id: "panVerification",
@@ -1105,8 +1130,8 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) && shouldDisplayAsIframe(label) ? (
-        <object data={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        <object data={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : src.startsWith('/') ? src : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={src.startsWith('data:') ? src : src.startsWith('JVBER') ? `data:application/pdf;base64,${src}` : src.startsWith('/') ? src : `/api/pdf-proxy?url=${encodeURIComponent(src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
@@ -1945,11 +1970,11 @@ export default function AgentReview() {
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
                 {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
                   <object 
-                    data={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
+                    data={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : selectedDocument.src.startsWith('/') ? selectedDocument.src : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} 
                     type="application/pdf"
                     style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
                   >
-                    <embed src={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    <embed src={selectedDocument.src.startsWith('data:') ? selectedDocument.src : selectedDocument.src.startsWith('JVBER') ? `data:application/pdf;base64,${selectedDocument.src}` : selectedDocument.src.startsWith('/') ? selectedDocument.src : `/api/pdf-proxy?url=${encodeURIComponent(selectedDocument.src)}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
                   </object>
                 ) : (
                   <div style={{ 

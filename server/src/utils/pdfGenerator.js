@@ -557,29 +557,30 @@ async function generateKycPdf(applicationData) {
                   imgBytes = Buffer.from(base64Data, 'base64');
                   isPng = imgRelPath.includes('image/png');
                 } else if (imgRelPath.startsWith('http://') || imgRelPath.startsWith('https://')) {
-                  // If it's a cloudinary PDF, safely convert to PNG to bypass pdf-lib signature rejection
-                  if (imgRelPath.includes('cloudinary.com') && imgRelPath.toLowerCase().endsWith('.pdf')) {
-                    imgRelPath = imgRelPath.slice(0, -4) + '.png';
+                  // If it's a cloudinary URL, safely force PNG/JPG format
+                  if (imgRelPath.includes('cloudinary.com')) {
+                    if (imgRelPath.toLowerCase().endsWith('.pdf')) {
+                      imgRelPath = imgRelPath.slice(0, -4) + '.png';
+                    } else if (!imgRelPath.includes('f_jpg') && !imgRelPath.includes('f_png')) {
+                      imgRelPath = imgRelPath.replace('/upload/', '/upload/f_jpg/');
+                    }
                   }
                   console.log(`[PDF Gen] Fetching image from URL: ${imgRelPath}`);
                   try {
-                    const https = require('https');
-                    const http = require('http');
-                    const client = imgRelPath.startsWith('https') ? https : http;
-                    imgBytes = await new Promise((resolve, reject) => {
-                      client.get(imgRelPath, (res) => {
-                        if (res.statusCode >= 200 && res.statusCode < 300) {
-                          const chunks = [];
-                          res.on('data', chunk => chunks.push(chunk));
-                          res.on('end', () => resolve(Buffer.concat(chunks)));
-                        } else {
-                          reject(new Error(`Status Code: ${res.statusCode}`));
-                        }
-                      }).on('error', reject);
+                    const axios = require('axios');
+                    const response = await axios.get(imgRelPath, { 
+                      responseType: 'arraybuffer',
+                      validateStatus: () => true 
                     });
-                    const lowerPath = imgRelPath.toLowerCase();
-                    isPng = lowerPath.endsWith('.png') || imgRelPath.includes('image/png');
-                    isPdf = lowerPath.endsWith('.pdf') || imgRelPath.includes('application/pdf');
+                    
+                    if (response.status >= 200 && response.status < 300) {
+                      imgBytes = Buffer.from(response.data);
+                      const lowerPath = imgRelPath.toLowerCase();
+                      isPng = lowerPath.endsWith('.png') || imgRelPath.includes('image/png') || imgRelPath.includes('f_png');
+                      isPdf = lowerPath.endsWith('.pdf') || imgRelPath.includes('application/pdf');
+                    } else {
+                      console.error(`[PDF Gen] Error fetching image URL: HTTP ${response.status}`);
+                    }
                   } catch (err) {
                     console.error(`[PDF Gen] Error fetching image URL: ${imgRelPath}`, err.message);
                   }

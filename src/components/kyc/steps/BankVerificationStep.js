@@ -254,7 +254,7 @@ export default function BankVerificationStep() {
     setVerificationState("verifying");
     
     try {
-      const result = await verifyBank(form.accountNumber, form.ifsc, null);
+      const result = await verifyBank(form.accountNumber, form.ifsc, null, form.accountType);
 
       if (result.success) {
         setVerificationState("idle");
@@ -447,7 +447,10 @@ export default function BankVerificationStep() {
                   type={showAccountNumber ? "text" : "password"}
                   placeholder="Confirm Account Number" 
                   value={form.confirmAccountNumber} 
-                  onChange={e => update("confirmAccountNumber", e.target.value)} 
+                  onChange={e => {
+                    update("confirmAccountNumber", e.target.value);
+                    if (showAccountNumber) setShowAccountNumber(false);
+                  }}
                   className="input-field" 
                   style={{ 
                     background: "var(--input-bg)", 

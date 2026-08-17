@@ -698,8 +698,12 @@ export default function NomineeStep() {
                     value={nom.relation}
                     placeholder="Choose relation"
                     options={ALL_RELATIONS.filter(rel => {
-                      const selectedByOthers = nominees.filter((n, i) => i !== idx).map(n => n.relation);
-                      return !selectedByOthers.includes(rel) || rel === nom.relation;
+                      const uniqueRelations = ["Mother", "Father", "Grand-father", "Grand-mother"];
+                      if (uniqueRelations.includes(rel)) {
+                        const selectedByOthers = nominees.filter((n, i) => i !== idx).map(n => n.relation);
+                        return !selectedByOthers.includes(rel) || rel === nom.relation;
+                      }
+                      return true;
                     })}
                     onChange={val => updateNominee(idx, "relation", val)}
                     error={errors[`${idx}-relation`]}
@@ -770,6 +774,18 @@ export default function NomineeStep() {
                 </div>
 
                 <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Pincode</label>
+                  <input 
+                    className="input-field" 
+                    placeholder="Pincode" 
+                    value={nom.pincode || ""} 
+                    onChange={e => handlePincodeChange(idx, "pincode", e.target.value)} 
+                    maxLength={6}
+                    disabled={nom.sameAddress}
+                  />
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>City</label>
                   <input 
                     className="input-field" 
@@ -787,18 +803,6 @@ export default function NomineeStep() {
                     placeholder="-- Select State --"
                     options={INDIAN_STATES}
                     onChange={val => updateNominee(idx, "state", val)}
-                    disabled={nom.sameAddress}
-                  />
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Pincode</label>
-                  <input 
-                    className="input-field" 
-                    placeholder="Pincode" 
-                    value={nom.pincode || ""} 
-                    onChange={e => handlePincodeChange(idx, "pincode", e.target.value)} 
-                    maxLength={6}
                     disabled={nom.sameAddress}
                   />
                 </div>
@@ -957,7 +961,7 @@ export default function NomineeStep() {
                     <input 
                       type="tel"
                       name={`guardianMobile_${idx}`}
-                      autocomplete="tel"
+                      autoComplete="tel"
                       className="input-field" 
                       placeholder="Mobile" 
                       value={nom.guardianMobile || ""} 
@@ -1035,6 +1039,19 @@ export default function NomineeStep() {
                   </div>
 
                   <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Pincode <span style={{ color: "var(--wise-danger)" }}>*</span></label>
+                    <input 
+                      className="input-field" 
+                      placeholder="Pincode" 
+                      value={nom.guardianPincode || ""} 
+                      onChange={e => handlePincodeChange(idx, "guardianPincode", e.target.value)} 
+                      maxLength={6}
+                      disabled={nom.guardianSameAddress}
+                      style={{ borderColor: errors[`${idx}-guardianPincode`] ? "var(--wise-danger)" : "var(--border-color)" }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: "16px" }}>
                     <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian City <span style={{ color: "var(--wise-danger)" }}>*</span></label>
                     <input 
                       className="input-field" 
@@ -1055,19 +1072,6 @@ export default function NomineeStep() {
                       onChange={val => updateNominee(idx, "guardianState", val)}
                       disabled={nom.guardianSameAddress}
                       error={errors[`${idx}-guardianState`]}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: "16px" }}>
-                    <label style={{ display: "block", marginBottom: "4px", fontSize: "0.72rem", fontWeight: 700, opacity: 0.85 }}>Guardian Pincode <span style={{ color: "var(--wise-danger)" }}>*</span></label>
-                    <input 
-                      className="input-field" 
-                      placeholder="Pincode" 
-                      value={nom.guardianPincode || ""} 
-                      onChange={e => handlePincodeChange(idx, "guardianPincode", e.target.value)} 
-                      maxLength={6}
-                      disabled={nom.guardianSameAddress}
-                      style={{ borderColor: errors[`${idx}-guardianPincode`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
                   </div>
 

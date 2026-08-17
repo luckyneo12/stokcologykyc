@@ -116,7 +116,7 @@ const REVIEW_STEPS = [
   <text x="476" y="236" font-size="16" font-weight="800" fill="#059669" text-anchor="end">50/per lot</text>
 </svg>`;
       return [
-        { label: "DP Tariff Sheet", src: resolveAssetUrl("/schedule_of_charges.pdf") },
+        { label: "DP Tariff Sheet", src: "/schedule_of_charges.pdf" },
         { label: "Brokerage Rates", src: `data:image/svg+xml;base64,${btoa(brokerageSvg)}` }
       ];
     },
@@ -1189,8 +1189,8 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) && shouldDisplayAsIframe(label) ? (
-        <object data={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        <object data={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src).startsWith('/') ? getSafePreviewUrl(src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src).startsWith('/') ? getSafePreviewUrl(src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
@@ -2106,11 +2106,11 @@ export default function AgentReview() {
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
                 {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
                   <object 
-                    data={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} 
+                    data={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : getSafePreviewUrl(selectedDocument.src).startsWith('/') ? getSafePreviewUrl(selectedDocument.src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} 
                     type="application/pdf"
                     style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
                   >
-                    <embed src={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    <embed src={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : getSafePreviewUrl(selectedDocument.src).startsWith('/') ? getSafePreviewUrl(selectedDocument.src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
                   </object>
                 ) : (
                   <div style={{ 

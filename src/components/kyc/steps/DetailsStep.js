@@ -5,6 +5,7 @@ import { useKYC } from "@/context/KYCContext";
 import { Upload, Check, Loader2, Eye } from "lucide-react";
 import { uploadDocument, resolveAssetUrl } from "@/utils/kycApi";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
+import DocumentPreviewModal from "../DocumentPreviewModal";
 
 const CheckIcon = ({ size = 10, color = "white" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
@@ -740,60 +741,11 @@ export default function DetailsStep() {
         </div>
       </div>
       
-      {previewUrl && typeof document !== 'undefined' && createPortal(
-        <div style={{ 
-          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
-          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-          zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "24px"
-        }} onClick={() => setPreviewUrl(null)}>
-          <div style={{ 
-            width: "100%", maxWidth: "800px", height: "85vh", 
-            background: "var(--bg-elevated, white)", borderRadius: "16px", 
-            display: "flex", flexDirection: "column",
-            boxShadow: "0 24px 48px rgba(0,0,0,0.2)",
-            overflow: "hidden"
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ 
-              display: "flex", justifyContent: "space-between", alignItems: "center", 
-              padding: "16px 24px", borderBottom: "1px solid var(--border-color)",
-              background: "var(--bg-elevated, white)"
-            }}>
-              <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "var(--text-primary, black)" }}>Document Preview</h3>
-              <button 
-                onClick={() => setPreviewUrl(null)} 
-                style={{ 
-                  background: "var(--bg-secondary, #eee)", border: "none", cursor: "pointer", 
-                  width: "36px", height: "36px", borderRadius: "50%",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "var(--text-primary, black)"
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-            <div style={{ flex: 1, overflow: "hidden", background: "var(--bg-secondary, #f9f9f9)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-              {previewUrl && (previewUrl.toLowerCase().includes('.pdf') || previewUrl.startsWith('data:application/pdf')) ? (
-                <iframe 
-                  src={previewUrl} 
-                  style={{ width: "100%", height: "100%", border: "none", borderRadius: "8px" }} 
-                  title="Document Preview"
-                />
-              ) : (
-                <img 
-                  src={previewUrl} 
-                  alt="Document Preview"
-                  style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "8px" }} 
-                />
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <DocumentPreviewModal 
+        isOpen={!!previewUrl} 
+        onClose={() => setPreviewUrl(null)} 
+        documentUrl={previewUrl} 
+      />
 
       {showDDPIWarning && (
         <div style={{
