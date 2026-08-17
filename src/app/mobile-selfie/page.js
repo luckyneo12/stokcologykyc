@@ -35,7 +35,14 @@ function MobileSelfieContent() {
       hasProcessedRedirect.current = true;
       setStatus("processing");
       
-      if (digioMessage.toLowerCase().includes("success") || digioMessage === "Sign completed") {
+      const msgLower = digioMessage.toLowerCase();
+      const isSuccess = 
+        msgLower.includes("success") || 
+        msgLower.includes("completed") || 
+        msgLower.includes("done") || 
+        digioMessage === "Sign completed";
+
+      if (isSuccess) {
         fetchDigioRequestResponse(documentId, "SELFIE")
           .then((res) => {
              if (res?.success) {
