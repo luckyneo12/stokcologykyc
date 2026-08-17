@@ -4,8 +4,7 @@ import { createPortal } from "react-dom";
 import { useKYC } from "@/context/KYCContext";
 import { ArrowLeftIcon } from "../Icons";
 import ImageCropper from "@/components/ui/ImageCropper";
-import SelfieCaptureInline from "../SelfieCaptureInline";
-import { initializeDigio, createDigioRequest } from "@/utils/digio";
+import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
 import { uploadDocument } from "@/utils/kycApi";
 import { io } from "socket.io-client";
@@ -167,6 +166,9 @@ export default function DocumentUploadStep() {
   const [showSelfieCapture, setShowSelfieCapture] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [qrExpired, setQrExpired] = useState(false);
+  const timerRef = useRef(null);
   const selfiePollRef = useRef(null);
   const selfieSocketRef = useRef(null);
 
@@ -285,28 +287,133 @@ export default function DocumentUploadStep() {
   }, [stopSelfieCrossDevicePolling]);
 
   // --- Selfie Logic ---
-  useEffect(() => {
-    if (typeof window !== "undefined") {
+  const generateMobileQR = async () => {
+    try {
       const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
-      if (token && applicationId) {
-        const baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || "https://stokcologykyc.vercel.app";
-        setResumeUrl(`${baseUrl}/resume?token=${token}&appId=${applicationId}`);
-      }
-    }
-  }, [applicationId]);
+      const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
+      if (!token || !activeAppId) return;
 
-  const handleInlineSelfieSuccess = ({ score, selfiePath, localPreview }) => {
-    const fullUrl = localPreview || getFullUrl(selfiePath);
-    setSelfiePreviewUrl(fullUrl);
-    setMatchScore(score);
-    setSelfieError(false);
-    setSelfiePhase("done");
-    setShowSelfieCapture(false);
-    addToast("Selfie verification completed", "success");
-    updateState({
-      selfie: { preview: selfiePath, matchScore: score },
-      selfieDetails: { preview: selfiePath, matchScore: score },
-    });
+      const response = await fetch(`${API_BASE_URL}/api/kyc/mobile-session?applicationId=${activeAppId}`, {
+         headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json();
+      
+      if (data.success && data.token) {
+         const baseUrl = window.location.origin;
+         setResumeUrl(`${baseUrl}/mobile-selfie?token=${data.token}&appId=${activeAppId}`);
+         
+         const expires = new Date(data.expiresAt).getTime();
+         const now = new Date().getTime();
+         let seconds = Math.floor((expires - now) / 1000);
+         if (seconds < 0) seconds = 0;
+         
+         setTimeLeft(seconds);
+         setQrExpired(false);
+         setShowQR(true);
+         
+         if (timerRef.current) clearInterval(timerRef.current);
+         timerRef.current = setInterval(() => {
+            setTimeLeft((prev) => {
+               if (prev <= 1) {
+                  clearInterval(timerRef.current);
+                  setQrExpired(true);
+                  return 0;
+               }
+               return prev - 1;
+            });
+         }, 1000);
+      } else {
+         addToast("Failed to generate QR code session", "error");
+      }
+    } catch (err) {
+       addToast("Error generating QR code", "error");
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const handleInlineSelfieSuccess = async (response) => {
+    // Expected response format from Digio: { error_code, message, document_id }
+    if (response.error_code === "cancel") {
+      addToast("Selfie capture cancelled", "warning");
+      return;
+    }
+    
+    if (response.error_code && response.error_code !== "success") {
+       addToast(`Selfie verification failed: ${response.message}`, "error");
+       return;
+    }
+
+    try {
+      // Fetch details from backend via document_id
+      const res = await fetchDigioRequestResponse(response.document_id, "SELFIE");
+      if (res?.success && res.application) {
+         const sd = typeof res.application.selfieDetails === "string" ? JSON.parse(res.application.selfieDetails) : res.application.selfieDetails;
+         if (sd?.preview) {
+           const fullUrl = getFullUrl(sd.preview);
+           setSelfiePreviewUrl(fullUrl);
+           setMatchScore(sd.matchScore);
+           setSelfieError(false);
+           setSelfiePhase("done");
+           addToast("Selfie verification completed", "success");
+           updateState({
+             selfie: { preview: sd.preview, matchScore: sd.matchScore },
+             selfieDetails: { preview: sd.preview, matchScore: sd.matchScore },
+           });
+         }
+      } else {
+         addToast("Failed to sync selfie results", "error");
+      }
+    } catch (e) {
+      addToast("Error syncing selfie", "error");
+    }
+  };
+
+  const startDesktopSelfie = async () => {
+    try {
+      addToast("Initializing secure camera...", "info");
+      let coords = { lat: null, lng: null };
+      if ("geolocation" in navigator) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
+          });
+          coords.lat = pos.coords.latitude;
+          coords.lng = pos.coords.longitude;
+        } catch (err) {
+          console.warn("Geolocation skipped:", err.message);
+        }
+      }
+
+      const requestData = await createDigioRequest("SELFIE", coords);
+      const { requestId, customerIdentifier, accessToken } = requestData;
+
+      const digio = initializeDigio({
+        callback: handleInlineSelfieSuccess,
+        is_redirection_approach: false // Use iframe/overlay for desktop
+      });
+
+      if (!digio || !requestId) {
+        addToast("Unable to initialize selfie verification flow", "error");
+        return;
+      }
+
+      if (!digio.is_redirection_approach) {
+        digio.init();
+      }
+
+      if (accessToken) {
+        digio.submit(requestId, customerIdentifier, accessToken);
+      } else {
+        digio.submit(requestId, customerIdentifier);
+      }
+    } catch (error) {
+       addToast(error?.message || "Error connecting to verification service", "error");
+    }
   };
 
   // --- Document Logic ---
@@ -630,25 +737,43 @@ export default function DocumentUploadStep() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {!showQR ? (
                     <>
-                      <button className="btn btn-premium" onClick={() => setShowSelfieCapture(true)} style={{ width: "100%", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "800", fontSize: "0.95rem", color: "#000" }}>
-                        Start Selfie Capture
+                      <button className="btn btn-premium" onClick={startDesktopSelfie} style={{ width: "100%", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "800", fontSize: "0.95rem", color: "#000" }}>
+                        {selfiePreviewUrl ? "Retake Selfie Capture" : "Start Selfie Capture"}
                       </button>
-                      <button onClick={() => setShowQR(true)} style={{ width: "100%", background: "transparent", border: "1.5px solid var(--border-color)", color: "var(--text-secondary)", height: "48px", padding: "0 16px", borderRadius: "12px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-secondary)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>
+                      <button onClick={generateMobileQR} style={{ width: "100%", background: "transparent", border: "1.5px solid var(--border-color)", color: "var(--text-secondary)", height: "48px", padding: "0 16px", borderRadius: "12px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-secondary)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>
                         Or scan QR on mobile
                       </button>
+                      {selfiePreviewUrl && (
+                        <button onClick={() => setSelfiePhase("done")} style={{ width: "100%", background: "var(--bg-secondary)", border: "none", color: "var(--text-primary)", height: "44px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", marginTop: "8px", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="var(--bg-secondary)"}>
+                          Cancel Retake
+                        </button>
+                      )}
                     </>
                   ) : (
                     <div style={{ padding: "20px", background: "var(--bg-elevated)", borderRadius: "16px", textAlign: "center", border: "1px solid var(--border-color)" }}>
                       <p style={{ fontSize: "0.85rem", marginBottom: "16px", fontWeight: 600, color: "var(--text-primary)" }}>Scan with your mobile camera</p>
-                      {resumeUrl && (
+                      
+                      {qrExpired ? (
+                        <div style={{ padding: "24px", background: "rgba(247, 85, 85, 0.05)", borderRadius: "12px", marginBottom: "16px", border: "1px solid var(--wise-danger)" }}>
+                           <p style={{ color: "var(--wise-danger)", fontWeight: 600, marginBottom: "12px" }}>QR Code Expired</p>
+                           <button onClick={generateMobileQR} style={{ background: "var(--wise-danger)", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", fontWeight: 600, cursor: "pointer" }}>Generate New QR</button>
+                        </div>
+                      ) : resumeUrl ? (
                         <div style={{ background: "white", padding: "10px", borderRadius: "12px", display: "inline-block", marginBottom: "16px", border: "1px solid #e1e1e1", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
                           <QRCode value={resumeUrl} size={256} ecLevel="L" />
+                          <p style={{ fontSize: "1.2rem", fontWeight: 800, color: "#1a1a1a", marginTop: "12px", letterSpacing: "1px" }}>
+                            {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {!qrExpired && (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10 }}>
+                          <div className="loader" style={{ width: 14, height: 14, borderWidth: 2 }}></div>
+                          <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--wise-green)", margin: 0 }}>Waiting for selfie from your mobile...</p>
                         </div>
                       )}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10 }}>
-                        <div className="loader" style={{ width: 14, height: 14, borderWidth: 2 }}></div>
-                        <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--wise-green)", margin: 0 }}>Waiting for selfie from your mobile...</p>
-                      </div>
+                      
                       <button onClick={() => setShowQR(false)} style={{ width: "100%", background: "var(--bg-secondary)", border: "none", color: "var(--text-primary)", height: "44px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="var(--bg-secondary)"}>
                         Hide QR Code
                       </button>
@@ -677,20 +802,8 @@ export default function DocumentUploadStep() {
                     <button onClick={() => setPreviewModalData({ url: selfiePreviewUrl })} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px", borderRadius: "10px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
                       <Eye size={18} />
                     </button>
-                    <button onClick={async () => {
+                    <button onClick={() => {
                       setSelfiePhase("intro");
-                      setSelfiePreviewUrl(null);
-                      setMatchScore(null);
-                      setSelfieError(false);
-                      updateState({
-                        selfie: { image: null, preview: null, livenessPass: false, matchScore: 0 },
-                        selfieDetails: null
-                      });
-                      try {
-                        await syncProgress({ selfie: { preview: "__CLEARED__", matchScore: 0 } }, false, "documentUpload");
-                      } catch (e) {
-                        console.warn("Failed to clear selfie on backend", e);
-                      }
                     }} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Retake</button>
                   </div>
                 </div>
@@ -825,24 +938,6 @@ export default function DocumentUploadStep() {
           <ArrowLeftIcon size={18} /> Back
         </button>
       </div>
-
-      {showSelfieCapture && (
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, minHeight: "100%", background: "rgba(0,0,0,0.9)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-          <div style={{ width: "100%", maxWidth: "500px", background: "#111", borderRadius: "20px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.8)", border: "1px solid rgba(255,255,255,0.15)", position: "relative", zIndex: 100000 }}>
-            <div style={{ padding: "20px", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0, color: "#fff", fontSize: "1.1rem" }}>Selfie Capture</h3>
-              <button onClick={() => setShowSelfieCapture(false)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", padding: 4 }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <SelfieCaptureInline 
-              applicationId={applicationId} 
-              onSuccess={handleInlineSelfieSuccess} 
-              onCancel={() => setShowSelfieCapture(false)} 
-            />
-          </div>
-        </div>
-      )}
 
       <DocumentPreviewModal 
         isOpen={!!previewModalData} 

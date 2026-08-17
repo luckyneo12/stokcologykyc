@@ -1161,6 +1161,52 @@ const sendWelcome = async (req, res) => {
   }
 };
 
+const generateMobileSession = async (req, res, next) => {
+  try {
+    const { applicationId } = req.query;
+    if (!applicationId) {
+      return res.status(400).json({ success: false, error: "applicationId is required" });
+    }
+    
+    const app = await prisma.kycApplication.findUnique({
+      where: { applicationId }
+    });
+    
+    if (!app || app.userId !== req.user.id) {
+       return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    const jwt = require("jsonwebtoken");
+    const secret = process.env.JWT_SECRET || "your-secret-key";
+    
+    // Create a 5-minute token
+    const token = jwt.sign(
+      { 
+        userId: req.user.id, 
+        applicationId, 
+        purpose: "mobile_selfie",
+        role: "user" 
+      },
+      secret,
+      { expiresIn: "5m" }
+    );
+
+    // Calculate absolute expiration for the frontend
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    
+    res.json({
+      success: true,
+      token,
+      expiresAt,
+      applicationId
+    });
+
+  } catch (error) {
+    console.error("[Mobile Session Error]:", error);
+    res.status(500).json({ success: false, error: "Failed to generate mobile session" });
+  }
+};
+
 module.exports = {
   startKyc,
   getMyApplication,
@@ -1176,4 +1222,5 @@ module.exports = {
   bypassEsign,
   previewPdf,
   sendWelcome,
+  generateMobileSession,
 };

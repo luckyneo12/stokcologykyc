@@ -13,7 +13,8 @@ const {
   downloadPdf,
   bypassEsign,
   previewPdf,
-  sendWelcome
+  sendWelcome,
+  generateMobileSession
 } = require("../controllers/kycController");
 const { auth } = require("../middlewares/auth");
 const upload = require("../middlewares/upload");
@@ -23,6 +24,7 @@ const router = express.Router();
 
 router.post("/start", auth, startKyc);
 router.get("/me", auth, getMyApplication);
+router.get("/mobile-session", auth, generateMobileSession);
 
 // Structured Step Endpoints for Clarity
 router.put("/save/personal-details", auth, saveStep);

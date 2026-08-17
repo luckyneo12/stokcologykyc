@@ -84,11 +84,22 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
   const loadModel = useCallback(async () => {
     try {
       if (!isMounted.current) return;
-      const faceapi = await import("@vladmandic/face-api");
-      faceapiRef.current = faceapi;
       
-      // Load strictly from our local static files - completely impervious to network/firewall blocks
-      await faceapi.nets.tinyFaceDetector.loadFromUri('/face-api-models');
+      // Load script dynamically to avoid Next.js Webpack critical dependency errors
+      if (!window.faceapi) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      faceapiRef.current = window.faceapi;
+      
+      // Load strictly from our local static files
+      await window.faceapi.nets.tinyFaceDetector.loadFromUri('/face-api-models');
       
       if (!isMounted.current) return;
       setModelLoaded(true);
