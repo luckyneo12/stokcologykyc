@@ -223,8 +223,12 @@ export default function DocumentUploadStep() {
       const app = data.application;
       const sd = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : app.selfieDetails;
       if (sd?.preview && sd.preview !== "__CLEARED__") {
-        console.log("[DocUpload] Selfie detected from another device! Updating...");
         const fullUrl = getFullUrl(sd.preview);
+        if (selfiePreviewUrl && fullUrl === selfiePreviewUrl) {
+          // Ignore the old selfie; wait for the new one to be uploaded
+          return;
+        }
+        console.log("[DocUpload] Selfie detected from another device! Updating...");
         setSelfiePreviewUrl(fullUrl);
         setSelfieError(false);
         setMatchScore(sd.matchScore || null);
@@ -239,7 +243,7 @@ export default function DocumentUploadStep() {
     } catch (err) {
       console.warn("[DocUpload] Selfie status check failed:", err.message);
     }
-  }, [applicationId, addToast, updateState]);
+  }, [applicationId, addToast, updateState, selfiePreviewUrl]);
 
   const startSelfieCrossDevicePolling = useCallback(() => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
@@ -351,9 +355,15 @@ export default function DocumentUploadStep() {
     try {
       // Fetch details from backend via document_id
       const res = await fetchDigioRequestResponse(response.document_id, "SELFIE");
-      if (res?.success && res.application) {
-         const sd = typeof res.application.selfieDetails === "string" ? JSON.parse(res.application.selfieDetails) : res.application.selfieDetails;
-         if (sd?.preview) {
+      if (res?.success) {
+         let sd = null;
+         if (res.application) {
+             sd = typeof res.application.selfieDetails === "string" ? JSON.parse(res.application.selfieDetails) : res.application.selfieDetails;
+         } else if (res.updates) {
+             sd = typeof res.updates.selfieDetails === "string" ? JSON.parse(res.updates.selfieDetails) : res.updates.selfieDetails;
+         }
+
+         if (sd?.preview && sd.preview !== "__CLEARED__") {
            const fullUrl = getFullUrl(sd.preview);
            setSelfiePreviewUrl(fullUrl);
            setMatchScore(sd.matchScore);
@@ -364,6 +374,12 @@ export default function DocumentUploadStep() {
              selfie: { preview: sd.preview, matchScore: sd.matchScore },
              selfieDetails: { preview: sd.preview, matchScore: sd.matchScore },
            });
+         } else {
+           // Fallback in case preview URL wasn't generated but Digio approved it
+           setSelfieError(false);
+           setSelfiePhase("done");
+           addToast("Selfie verification completed", "success");
+           updateState({ selfie: { preview: "__DIGIO_SUCCESS__" } });
          }
       } else {
          addToast("Failed to sync selfie results", "error");
