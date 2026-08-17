@@ -1182,7 +1182,7 @@ const generateMobileSession = async (req, res, next) => {
     // Create a 5-minute token
     const token = jwt.sign(
       { 
-        userId: req.user.id, 
+        id: req.user.id, 
         applicationId, 
         purpose: "mobile_selfie",
         role: "user" 
