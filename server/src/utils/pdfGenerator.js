@@ -41,7 +41,12 @@ function getVariableValue(variableName, appData) {
     
     // KYC Mode
     case 'isKycModeNormal': return false;
-    case 'isKycModeEkycOtp': return appData.identityMethod === 'aadhaar' || !!iDetails.aadhaar;
+    case 'isKycModeEkycOtp': {
+      const ocrData = safeJsonParse(appData.ocrData) || {};
+      const isDigilocker = !!(ocrData.digio && (ocrData.digio.DIGILOCKER || ocrData.digio.AADHAAR));
+      if (isDigilocker) return false;
+      return appData.identityMethod === 'aadhaar' || !!iDetails.aadhaar;
+    }
     case 'isKycModeEkycBiometric': return false;
     case 'isKycModeOnlineKyc': {
       const ocrData = safeJsonParse(appData.ocrData) || {};
