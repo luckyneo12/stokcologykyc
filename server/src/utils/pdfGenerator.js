@@ -43,11 +43,15 @@ function getVariableValue(variableName, appData) {
     case 'isKycModeNormal': return false;
     case 'isKycModeEkycOtp': return appData.identityMethod === 'aadhaar' || !!iDetails.aadhaar;
     case 'isKycModeEkycBiometric': return false;
-    case 'isKycModeOnlineKyc': return true;
+    case 'isKycModeOnlineKyc': {
+      const ocrData = safeJsonParse(appData.ocrData) || {};
+      const isDigilocker = !!(ocrData.digio && (ocrData.digio.DIGILOCKER || ocrData.digio.AADHAAR));
+      return !isDigilocker;
+    }
     case 'isKycModeOfflineEkyc': return false;
     case 'isKycModeDigilocker': {
       const ocrData = safeJsonParse(appData.ocrData) || {};
-      return !!(ocrData.digio && ocrData.digio.AADHAAR);
+      return !!(ocrData.digio && (ocrData.digio.DIGILOCKER || ocrData.digio.AADHAAR));
     }
     
     // Standing Instructions
@@ -61,8 +65,8 @@ function getVariableValue(variableName, appData) {
     case 'isStdDocsPhysical': return false;
     case 'isDigitallySignedYes': return true;
     case 'isDigitallySignedNo': return false;
-    case 'isTaxResidencyOtherYes': { const d = safeJsonParse(appData.declarations) || {}; return d.taxResidencyOutside === 'Yes'; }
-    case 'isTaxResidencyOtherNo': { const d = safeJsonParse(appData.declarations) || {}; return d.taxResidencyOutside !== 'Yes'; }
+    case 'isTaxResidencyOtherYes': { const p = safeJsonParse(appData.personalDetails) || {}; return p.taxResidencyOutside === 'Yes'; }
+    case 'isTaxResidencyOtherNo': { const p = safeJsonParse(appData.personalDetails) || {}; return p.taxResidencyOutside !== 'Yes'; }
     
     // Segments
     case 'isSegmentCash': { const s = safeJsonParse(appData.segments) || {}; return s.equity !== false; }
