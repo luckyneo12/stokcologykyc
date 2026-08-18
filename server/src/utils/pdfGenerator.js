@@ -39,6 +39,17 @@ function getVariableValue(variableName, appData) {
     case 'isSmsFacilityYes': return true;
     case 'isSmsFacilityNo': return false;
     
+    // KYC Mode
+    case 'isKycModeNormal': return false;
+    case 'isKycModeEkycOtp': return appData.identityMethod === 'aadhaar' || !!iDetails.aadhaar;
+    case 'isKycModeEkycBiometric': return false;
+    case 'isKycModeOnlineKyc': return true;
+    case 'isKycModeOfflineEkyc': return false;
+    case 'isKycModeDigilocker': {
+      const ocrData = safeJsonParse(appData.ocrData) || {};
+      return !!(ocrData.digio && ocrData.digio.AADHAAR);
+    }
+    
     // Standing Instructions
     case 'isContractNoteElectronic': return true;
     case 'isContractNotePhysical': return false;
@@ -250,14 +261,22 @@ function getVariableValue(variableName, appData) {
     case 'citizenship': return pDetails.citizenship || '';
     case 'taxResidence1': return pDetails.taxResidence1 || '';
     case 'taxId1': return pDetails.taxId1 || '';
+    case 'taxAddress1': return pDetails.taxAddress1 || '';
+    case 'taxIdType1': return pDetails.taxIdType1 || '';
     case 'taxResidence2': return pDetails.taxResidence2 || '';
     case 'taxId2': return pDetails.taxId2 || '';
+    case 'taxAddress2': return pDetails.taxAddress2 || '';
+    case 'taxIdType2': return pDetails.taxIdType2 || '';
     case 'taxResidence3': return pDetails.taxResidence3 || '';
     case 'taxId3': return pDetails.taxId3 || '';
+    case 'taxAddress3': return pDetails.taxAddress3 || '';
+    case 'taxIdType3': return pDetails.taxIdType3 || '';
     case 'ddpi': return pDetails.ddpi || appData.ddpi;
     
     // Declarations
     case 'dis': { const d = safeJsonParse(appData.declarations) || {}; return d.dis || appData.dis; }
+    case 'isDisOption1': { const d = safeJsonParse(appData.declarations) || {}; const val = d.dis || appData.dis; return val === 'Yes' || val === 'Option 1'; }
+    case 'isDisOption2': { const d = safeJsonParse(appData.declarations) || {}; const val = d.dis || appData.dis; return val === 'No' || val === 'Option 2'; }
     case 'receiveCredits': { const d = safeJsonParse(appData.declarations) || {}; return d.receiveCredits; }
     case 'eStatement': { const d = safeJsonParse(appData.declarations) || {}; return d.eStatement; }
     case 'acceptPledgeInstructions': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions; }
@@ -268,6 +287,8 @@ function getVariableValue(variableName, appData) {
     
     // Segments
     case 'bsda': return appData.bsda;
+    case 'isBsdaAvail': return appData.bsda === 'opt-in';
+    case 'isBsdaOptOut': return appData.bsda === 'opt-out';
     case 'segments.equity': { const s = safeJsonParse(appData.segments) || {}; return s.equity ? 'Yes' : 'No'; }
     case 'segments.derivatives': { const s = safeJsonParse(appData.segments) || {}; return s.derivatives ? 'Yes' : 'No'; }
     
@@ -485,8 +506,13 @@ async function generateKycPdf(applicationData) {
 
         const imageVariables = [
           'selfie', 'signature', 'signatureOptOut', 'signatureOptIn', 
-          'esign', 'esignOptOut', 'esignOptIn', 'panImage', 'aadhaarImage', 
-          'bankProof', 'incomeProof', 'pepProof', 'nomineeProof', 'addressProof', 'panDocument'
+          'signatureNominee2', 'signatureNominee3',
+          'esign', 'esignOptOut', 'esignOptIn', 'esignNominee2', 'esignNominee3',
+          'panImage', 'aadhaarImage', 
+          'bankProof', 'incomeProof', 'pepProof', 
+          'nominee1Proof', 'nominee2Proof', 'nominee3Proof', 
+          'guardian1Proof', 'guardian2Proof', 'guardian3Proof', 
+          'addressProof', 'panDocument'
         ];
 
         if (imageVariables.includes(field.variable)) {
@@ -494,22 +520,26 @@ async function generateKycPdf(applicationData) {
           if (field.variable === 'selfie') {
             imgRelPath = (typeof parsedSelfieDetails === 'string' ? parsedSelfieDetails : (parsedSelfieDetails.filePreview || parsedSelfieDetails.path || parsedSelfieDetails.preview)) 
                          || (typeof applicationData.selfie === 'string' ? applicationData.selfie : applicationData.selfie?.preview);
-          } else if (field.variable === 'signature' || field.variable === 'signatureOptOut' || field.variable === 'signatureOptIn') {
+          } else if (field.variable === 'signature' || field.variable === 'signatureOptOut' || field.variable === 'signatureOptIn' || field.variable === 'signatureNominee2' || field.variable === 'signatureNominee3') {
             let shouldShow = false;
             const n = safeJsonParse(applicationData.nomineeDetails) || {};
             if (field.variable === 'signature') shouldShow = true;
             else if (field.variable === 'signatureOptOut' && n.opted === 'No') shouldShow = true;
             else if (field.variable === 'signatureOptIn' && n.opted === 'Yes' && n.nominees && n.nominees.length > 0) shouldShow = true;
+            else if (field.variable === 'signatureNominee2' && n.opted === 'Yes' && n.nominees && n.nominees.length > 1 && n.nominees[1].name) shouldShow = true;
+            else if (field.variable === 'signatureNominee3' && n.opted === 'Yes' && n.nominees && n.nominees.length > 2 && n.nominees[2].name) shouldShow = true;
             
             if (shouldShow) {
               imgRelPath = typeof parsedSignature === 'string' ? parsedSignature : (parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview);
             }
-          } else if (field.variable === 'esign' || field.variable === 'esignOptOut' || field.variable === 'esignOptIn') {
+          } else if (field.variable === 'esign' || field.variable === 'esignOptOut' || field.variable === 'esignOptIn' || field.variable === 'esignNominee2' || field.variable === 'esignNominee3') {
             let shouldShow = false;
             const n = safeJsonParse(applicationData.nomineeDetails) || {};
             if (field.variable === 'esign') shouldShow = true;
             else if (field.variable === 'esignOptOut' && n.opted === 'No') shouldShow = true;
             else if (field.variable === 'esignOptIn' && n.opted === 'Yes' && n.nominees && n.nominees.length > 0) shouldShow = true;
+            else if (field.variable === 'esignNominee2' && n.opted === 'Yes' && n.nominees && n.nominees.length > 1 && n.nominees[1].name) shouldShow = true;
+            else if (field.variable === 'esignNominee3' && n.opted === 'Yes' && n.nominees && n.nominees.length > 2 && n.nominees[2].name) shouldShow = true;
 
             const esignDoc = parsedDocuments.find(d => d.type === 'ESIGN');
             if (shouldShow && esignDoc) {
@@ -536,8 +566,18 @@ async function generateKycPdf(applicationData) {
             imgRelPath = typeof parsedFinancialProof === 'string' ? parsedFinancialProof : (parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview);
           } else if (field.variable === 'pepProof') {
             imgRelPath = typeof parsedPersonalDetails === 'string' ? parsedPersonalDetails : (parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview);
-          } else if (field.variable === 'nomineeProof') {
-            imgRelPath = typeof parsedNomineeDetails === 'string' ? parsedNomineeDetails : (parsedNomineeDetails?.nominees?.[0]?.proofPath || parsedNomineeDetails?.nominees?.[0]?.proofPreview || parsedNomineeDetails?.nominees?.[0]?.preview);
+          } else if (field.variable === 'nominee1Proof') {
+            imgRelPath = parsedNomineeDetails?.nominees?.[0]?.proofPath || parsedNomineeDetails?.nominees?.[0]?.proofPreview || parsedNomineeDetails?.nominees?.[0]?.preview;
+          } else if (field.variable === 'nominee2Proof') {
+            imgRelPath = parsedNomineeDetails?.nominees?.[1]?.proofPath || parsedNomineeDetails?.nominees?.[1]?.proofPreview || parsedNomineeDetails?.nominees?.[1]?.preview;
+          } else if (field.variable === 'nominee3Proof') {
+            imgRelPath = parsedNomineeDetails?.nominees?.[2]?.proofPath || parsedNomineeDetails?.nominees?.[2]?.proofPreview || parsedNomineeDetails?.nominees?.[2]?.preview;
+          } else if (field.variable === 'guardian1Proof') {
+            imgRelPath = parsedNomineeDetails?.nominees?.[0]?.guardianProofPath || parsedNomineeDetails?.nominees?.[0]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[0]?.guardianPreview;
+          } else if (field.variable === 'guardian2Proof') {
+            imgRelPath = parsedNomineeDetails?.nominees?.[1]?.guardianProofPath || parsedNomineeDetails?.nominees?.[1]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[1]?.guardianPreview;
+          } else if (field.variable === 'guardian3Proof') {
+            imgRelPath = parsedNomineeDetails?.nominees?.[2]?.guardianProofPath || parsedNomineeDetails?.nominees?.[2]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[2]?.guardianPreview;
           } else if (field.variable === 'addressProof') {
             const addrDoc = parsedDocuments.find(d => d.path && /address_proof|driving_license|voter|passport/i.test(d.path));
             if (addrDoc) imgRelPath = addrDoc.path;

@@ -53,6 +53,13 @@ const BASE_VARIABLES = [
   { name: 'SMS Facility: Yes (Check)', key: 'isSmsFacilityYes', type: 'checkbox', group: 'Application' },
   { name: 'SMS Facility: No (Check)', key: 'isSmsFacilityNo', type: 'checkbox', group: 'Application' },
   
+  { name: 'KYC Mode: Normal (Check)', key: 'isKycModeNormal', type: 'checkbox', group: 'Application' },
+  { name: 'KYC Mode: EKYC OTP (Check)', key: 'isKycModeEkycOtp', type: 'checkbox', group: 'Application' },
+  { name: 'KYC Mode: EKYC Biometric (Check)', key: 'isKycModeEkycBiometric', type: 'checkbox', group: 'Application' },
+  { name: 'KYC Mode: Online KYC (Check)', key: 'isKycModeOnlineKyc', type: 'checkbox', group: 'Application' },
+  { name: 'KYC Mode: Offline EKYC (Check)', key: 'isKycModeOfflineEkyc', type: 'checkbox', group: 'Application' },
+  { name: 'KYC Mode: Digilocker (Check)', key: 'isKycModeDigilocker', type: 'checkbox', group: 'Application' },
+  
   // Standing Instructions / Preferences
   { name: 'Contract Note: Electronic', key: 'isContractNoteElectronic', type: 'checkbox', group: 'Application' },
   { name: 'Contract Note: Physical', key: 'isContractNotePhysical', type: 'checkbox', group: 'Application' },
@@ -127,10 +134,16 @@ const BASE_VARIABLES = [
   { name: 'Citizenship', key: 'citizenship', type: 'text', group: 'Personal' },
   { name: 'Tax Residence 1 (Country)', key: 'taxResidence1', type: 'text', group: 'Personal' },
   { name: 'Tax Residence 1 (TIN)', key: 'taxId1', type: 'text', group: 'Personal' },
+  { name: 'Tax Residence 1 (Address)', key: 'taxAddress1', type: 'text', group: 'Personal' },
+  { name: 'Tax Residence 1 (Type)', key: 'taxIdType1', type: 'text', group: 'Personal' },
   { name: 'Tax Residence 2 (Country)', key: 'taxResidence2', type: 'text', group: 'Personal' },
   { name: 'Tax Residence 2 (TIN)', key: 'taxId2', type: 'text', group: 'Personal' },
+  { name: 'Tax Residence 2 (Address)', key: 'taxAddress2', type: 'text', group: 'Personal' },
+  { name: 'Tax Residence 2 (Type)', key: 'taxIdType2', type: 'text', group: 'Personal' },
   { name: 'Tax Residence 3 (Country)', key: 'taxResidence3', type: 'text', group: 'Personal' },
   { name: 'Tax Residence 3 (TIN)', key: 'taxId3', type: 'text', group: 'Personal' },
+  { name: 'Tax Residence 3 (Address)', key: 'taxAddress3', type: 'text', group: 'Personal' },
+  { name: 'Tax Residence 3 (Type)', key: 'taxIdType3', type: 'text', group: 'Personal' },
 
   // Regulatory / Profile
   { name: 'Trading Experience', key: 'experience', type: 'text', group: 'Regulatory' },
@@ -150,6 +163,8 @@ const BASE_VARIABLES = [
 
   // Declarations
   { name: 'DIS Preference', key: 'dis', type: 'text', group: 'Declarations' },
+  { name: 'DIS Option 1 (Check)', key: 'isDisOption1', type: 'checkbox', group: 'Declarations' },
+  { name: 'DIS Option 2 (Check)', key: 'isDisOption2', type: 'checkbox', group: 'Declarations' },
   { name: 'Receive Credits', key: 'receiveCredits', type: 'text', group: 'Declarations' },
   { name: 'E-Statement', key: 'eStatement', type: 'text', group: 'Declarations' },
   { name: 'Accept Pledge Inst.', key: 'acceptPledgeInstructions', type: 'text', group: 'Declarations' },
@@ -160,6 +175,8 @@ const BASE_VARIABLES = [
 
   // Segments
   { name: 'BSDA Preference', key: 'bsda', type: 'text', group: 'Segments' },
+  { name: 'BSDA Avail (Check)', key: 'isBsdaAvail', type: 'checkbox', group: 'Segments' },
+  { name: 'BSDA Opt-Out (Check)', key: 'isBsdaOptOut', type: 'checkbox', group: 'Segments' },
   { name: 'Segment - Equity (Text)', key: 'segments.equity', type: 'text', group: 'Segments' },
   { name: 'Segment - Derivatives (Text)', key: 'segments.derivatives', type: 'text', group: 'Segments' },
   { name: 'Segment - Equity (Check)', key: 'isSegmentEquity', type: 'checkbox', group: 'Segments' },
@@ -334,9 +351,13 @@ const BASE_VARIABLES = [
   { name: 'Signature (Always)', key: 'signature', type: 'image', group: 'Images/Signatures' },
   { name: 'Signature (Opt-Out Only)', key: 'signatureOptOut', type: 'image', group: 'Images/Signatures' },
   { name: 'Signature (Opt-In Only)', key: 'signatureOptIn', type: 'image', group: 'Images/Signatures' },
+  { name: 'Signature (Nominee 2 Filled)', key: 'signatureNominee2', type: 'image', group: 'Images/Signatures' },
+  { name: 'Signature (Nominee 3 Filled)', key: 'signatureNominee3', type: 'image', group: 'Images/Signatures' },
   { name: 'E-Sign Image (Always)', key: 'esign', type: 'image', group: 'Images/Signatures' },
   { name: 'E-Sign (Opt-Out Only)', key: 'esignOptOut', type: 'image', group: 'Images/Signatures' },
   { name: 'E-Sign (Opt-In Only)', key: 'esignOptIn', type: 'image', group: 'Images/Signatures' },
+  { name: 'E-Sign (Nominee 2 Filled)', key: 'esignNominee2', type: 'image', group: 'Images/Signatures' },
+  { name: 'E-Sign (Nominee 3 Filled)', key: 'esignNominee3', type: 'image', group: 'Images/Signatures' },
   { name: 'PAN Image', key: 'panImage', type: 'image', group: 'Images/Signatures' },
   { name: 'PAN Document', key: 'panDocument', type: 'image', group: 'Media' },
   { name: 'Aadhaar Image', key: 'aadhaarImage', type: 'image', group: 'Media' },
@@ -344,7 +365,12 @@ const BASE_VARIABLES = [
   { name: 'Income Proof', key: 'incomeProof', type: 'image', group: 'Media' },
   { name: 'Address Proof', key: 'addressProof', type: 'image', group: 'Media' },
   { name: 'PEP Proof', key: 'pepProof', type: 'image', group: 'Media' },
-  { name: 'Nominee Proof Image', key: 'nomineeProof', type: 'image', group: 'Media' },
+  { name: 'Nominee 1 Proof Image', key: 'nominee1Proof', type: 'image', group: 'Media' },
+  { name: 'Nominee 2 Proof Image', key: 'nominee2Proof', type: 'image', group: 'Media' },
+  { name: 'Nominee 3 Proof Image', key: 'nominee3Proof', type: 'image', group: 'Media' },
+  { name: 'Guardian 1 Proof Image', key: 'guardian1Proof', type: 'image', group: 'Media' },
+  { name: 'Guardian 2 Proof Image', key: 'guardian2Proof', type: 'image', group: 'Media' },
+  { name: 'Guardian 3 Proof Image', key: 'guardian3Proof', type: 'image', group: 'Media' },
 ];
 
 // ─── Main Component ──────────────────────────────────────────────────
