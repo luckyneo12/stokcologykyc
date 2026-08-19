@@ -883,13 +883,22 @@ async function generateKycPdf(applicationData) {
       }
     };
 
-    const docsToAppend = [];
-    
-    parsedDocuments.forEach(doc => {
-      if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'DIGILOCKER_DOCUMENT') {
-        docsToAppend.push({ path: doc.path, title: doc.type || 'Document' });
-      }
-    });
+      const docsToAppend = [];
+      const seenTypes = new Set();
+      
+      // Reverse the array so we process the newest documents first
+      [...parsedDocuments].reverse().forEach(doc => {
+        if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'ESIGN_DOCUMENT' && doc.type !== 'DIGILOCKER_DOCUMENT') {
+          // Use the document type as a unique identifier
+          const typeKey = doc.type || doc.name || doc.path;
+          
+          if (!seenTypes.has(typeKey)) {
+            seenTypes.add(typeKey);
+            // unshift puts the newest documents at the front so the chronological order is preserved
+            docsToAppend.unshift({ path: doc.path, title: doc.type || 'Document' });
+          }
+        }
+      });
     
     const panPath = parsedPanUpload?.path || parsedPanUpload?.filePreview || parsedPanUpload?.preview;
     if (panPath) docsToAppend.push({ path: panPath, title: 'PAN Upload' });
