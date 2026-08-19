@@ -1826,7 +1826,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                     const { sendWelcomeEmail } = require("../services/emailService");
                     const pDetails = parseJsonField(appToUpdate.personalDetails, {});
                     if (pDetails.email) {
-                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", {
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", pDetails.pan || "N/A", {
                         filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
                         content: buffer,
                         contentType: "application/pdf"
@@ -1864,7 +1864,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                     const { sendWelcomeEmail } = require("../services/emailService");
                     const pDetails = parseJsonField(appToUpdate.personalDetails, {});
                     if (pDetails.email) {
-                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", {
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", pDetails.pan || "N/A", {
                         filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
                         content: buffer,
                         contentType: "application/pdf"

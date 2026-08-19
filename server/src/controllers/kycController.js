@@ -1152,7 +1152,7 @@ const sendWelcome = async (req, res) => {
       }
     }
 
-    await emailService.sendWelcomeEmail(email, fullName, pdfAttachment);
+    await emailService.sendWelcomeEmail(email, fullName, personalDetails.pan, pdfAttachment);
     
     // Mark email as sent in the database
     stepStatuses.welcomeEmailSent = true;
