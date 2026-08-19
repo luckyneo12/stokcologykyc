@@ -42,6 +42,34 @@ const USER_STEP_LABELS = {
   13: "Aadhaar eSign", 
   14: "Completion"
 };
+const DROPDOWN_OPTIONS = {
+  "personalDetails.gender": ["Male", "Female", "Transgender", "Other"],
+  "personalDetails.maritalStatus": ["Single", "Married", "Others"],
+  "personalDetails.education": ["Below High School", "High School", "Graduate", "Post Graduate", "Professional", "Others"],
+  "personalDetails.annualIncome": ["Below 1 Lac", "1-5 Lacs", "5-10 Lacs", "10-25 Lacs", ">25 Lacs"],
+  "personalDetails.experience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
+  "personalDetails.tradingExperience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
+  "personalDetails.occupation": ["Private Sector", "Public Sector", "Government Service", "Business", "Professional", "Agriculturist", "Retired", "Housewife", "Student", "Others"],
+  "personalDetails.accountSettlement": ["Quarterly", "Monthly"],
+  "personalDetails.smsAlert": ["Yes", "No"],
+  "personalDetails.operateDdpi": ["Yes", "No"],
+  "personalDetails.nsdl4Communication": ["Yes", "No"],
+  "personalDetails.ddpi": ["Yes", "No"],
+  "personalDetails.disBooklet": ["Yes", "No"],
+  "personalDetails.nsdl1ReceiveCredit": ["Yes", "No"],
+  "personalDetails.nsdl2EStatement": ["Yes", "No"],
+  "personalDetails.nsdl3PledgeInstruction": ["Yes", "No"],
+  "personalDetails.politicallyExposed": ["Yes", "No"],
+  "personalDetails.citizenOfIndia": ["Yes", "No"],
+  "personalDetails.taxResidencyOutside": ["Yes", "No"],
+  "personalDetails.pepType": ["--select--", "PEP", "Related to PEP"],
+  "personalDetails.taxExempt": ["--select--", "Yes", "No"],
+  "nomineeDetails.relation": ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Grandson", "Granddaughter", "Others"],
+  "nomineeDetails.guardianRelation": ["Spouse", "Father", "Mother", "Brother", "Sister", "Grandfather", "Grandmother", "Others"],
+  "financialProof.type": ["Bank Statement", "Salary Slip", "ITR", "Net Worth Certificate", "Demat Holding Statement", "Others"],
+  "bsda": ["opt-in", "opt-out"],
+  "segments.selected": ["equity", "equity, derivatives", "derivatives"]
+};
 
 const REVIEW_STEPS = [
   // {
@@ -130,10 +158,10 @@ const REVIEW_STEPS = [
     fields: (app) => {
       const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
       return [
-        ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
-        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
-        ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
-        ["PAN verified", panMatchData.status || app.identityDetails?.panVerified, "identityDetails.panVerified"],
+        ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
+        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
+        ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
+        ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
       ];
     },
     evidence: (app) => [firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document")].filter(Boolean),
@@ -156,28 +184,28 @@ const REVIEW_STEPS = [
 
       if (tab === "pan") {
         return [
-          ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available", "personalDetails.fatherName"],
-          ["Name", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
-          ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A", "identityDetails.pan"],
-          ["Dob1", app.personalDetails?.dob || "N/A", "personalDetails.dob"],
-          ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y", "identityDetails.pan_verification.aadhaar_seeding_status"],
-          ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N", "identityDetails.pan_verification.dob_match"],
-          ["Name status", panMatchData.name_match || panMatchData.name_as_per_pan_match ? "Y" : "N", "identityDetails.pan_verification.name_match"],
-          ["Pan status", panMatchData.status === "VALID" || panMatchData.status === "valid" || app.identityDetails?.panVerified ? "True" : "False", "identityDetails.panVerified"],
+          ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available"],
+          ["Name", app.personalDetails?.fullName || "N/A"],
+          ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
+          ["Dob1", app.personalDetails?.dob || "N/A"],
+          ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y"],
+          ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N"],
+          ["Name status", panMatchData.name_match || panMatchData.name_as_per_pan_match ? "Y" : "N"],
+          ["Pan status", panMatchData.status === "VALID" || panMatchData.status === "valid" || app.identityDetails?.panVerified ? "True" : "False"],
         ];
       }
       return [
-        ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A", "address.line1"],
-        ["Aadhar country", app.address?.country || "India", "address.country"],
-        ["Aadhar dist", app.address?.district || app.address?.city || "N/A", "address.district"],
-        ["Aadhar dob", app.personalDetails?.dob || "N/A", "personalDetails.dob"],
-        ["Aadhar fathername", app.personalDetails?.fatherName || "", "personalDetails.fatherName"],
-        ["Aadhar gender", app.personalDetails?.gender || "N/A", "personalDetails.gender"],
-        ["Aadhar house", app.address?.line1 || "N/A", "address.line1"],
-        ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A", "identityDetails.aadhaarName"],
-        ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A", "identityDetails.aadhaar"],
-        ["Aadhar pincode", app.address?.pincode || "N/A", "address.pincode"],
-        ["Aadhar state", app.address?.state || "N/A", "address.state"]
+        ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A"],
+        ["Aadhar country", app.address?.country || "India"],
+        ["Aadhar dist", app.address?.district || app.address?.city || "N/A"],
+        ["Aadhar dob", app.personalDetails?.dob || "N/A"],
+        ["Aadhar fathername", app.personalDetails?.fatherName || ""],
+        ["Aadhar gender", app.personalDetails?.gender || "N/A"],
+        ["Aadhar house", app.address?.line1 || "N/A"],
+        ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A"],
+        ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A"],
+        ["Aadhar pincode", app.address?.pincode || "N/A"],
+        ["Aadhar state", app.address?.state || "N/A"]
       ];
     },
     evidence: (app, tab = "aadhaar") => {
@@ -194,21 +222,21 @@ const REVIEW_STEPS = [
     evidenceTitle: "KRA Details",
     evidenceHint: "Review the KRA fetched information.",
     fields: (app) => [
-      ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A", "address.line1"],
-      ["Aadhar country", app.address?.country || "India", "address.country"],
-      ["Aadhar dist", app.address?.district || app.address?.city || "N/A", "address.district"],
-      ["Aadhar dob", app.personalDetails?.dob || "N/A", "personalDetails.dob"],
-      ["Aadhar fathername", app.personalDetails?.fatherName || "", "personalDetails.fatherName"],
-      ["Aadhar gender", app.personalDetails?.gender || "N/A", "personalDetails.gender"],
-      ["Aadhar house", app.address?.line1 || "N/A", "address.line1"],
-      ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A", "identityDetails.aadhaarName"],
-      ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A", "identityDetails.aadhaar"],
-      ["Aadhar pincode", app.address?.pincode || "N/A", "address.pincode"],
-      ["Aadhar state", app.address?.state || "N/A", "address.state"],
-      ["Annual income", app.personalDetails?.annualIncome || "N/A", "personalDetails.annualIncome"],
-      ["Locality", app.address?.line2 || app.address?.city || "N/A", "address.line2"],
-      ["Name", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
-      ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A", "identityDetails.pan"]
+      ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A"],
+      ["Aadhar country", app.address?.country || "India"],
+      ["Aadhar dist", app.address?.district || app.address?.city || "N/A"],
+      ["Aadhar dob", app.personalDetails?.dob || "N/A"],
+      ["Aadhar fathername", app.personalDetails?.fatherName || ""],
+      ["Aadhar gender", app.personalDetails?.gender || "N/A"],
+      ["Aadhar house", app.address?.line1 || "N/A"],
+      ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A"],
+      ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A"],
+      ["Aadhar pincode", app.address?.pincode || "N/A"],
+      ["Aadhar state", app.address?.state || "N/A"],
+      ["Annual income", app.personalDetails?.annualIncome || "N/A"],
+      ["Locality", app.address?.line2 || app.address?.city || "N/A"],
+      ["Name", app.personalDetails?.fullName || "N/A"],
+      ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"]
     ],
     evidence: () => [],
   },
@@ -322,31 +350,31 @@ const REVIEW_STEPS = [
     evidenceTitle: "Bank Account Proof",
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
-      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.beneficiaryName"],
-      ["Account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
-      ["IFSC", app.bankDetails?.ifsc || "N/A", "bankDetails.ifsc"],
-      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus || (app.bankDetails?.verified ? "Verified" : "Pending"), "bankDetails.status"],
-      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A", "bankDetails.branch"],
-      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A", "bankDetails.micr"],
-      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A", "bankDetails.verifiedAt"],
-      ["Reenter account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
-      ["Micr1", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A", "bankDetails.micr"],
+      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
+      ["Account number", app.bankDetails?.accountNumber || "N/A"],
+      ["IFSC", app.bankDetails?.ifsc || "N/A"],
+      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus || (app.bankDetails?.verified ? "Verified" : "Pending")],
+      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A"],
+      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
+      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A"],
+      ["Reenter account number", app.bankDetails?.accountNumber || "N/A"],
+      ["Micr1", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
       // ["Bank add", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
       // ["Reject reason bank", app.bankDetails?.rejectReason || app.ocrData?.bank?.rejectReason || "N/A"],
       // ["Rejected by bank", app.bankDetails?.rejectedBy || app.ocrData?.bank?.rejectedBy || "N/A"],
       // ["Rejected timestamp bank", app.bankDetails?.rejectedAt ? new Date(app.bankDetails.rejectedAt).toLocaleString() : app.ocrData?.bank?.rejectedAt || "N/A"],
-      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A", "bankDetails.address"],
-      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A", "bankDetails.bankName"],
-      ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A", "bankDetails.city"],
-      ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A", "bankDetails.district"],
-      ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A", "bankDetails.pincode"],
-      ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A", "bankDetails.state"],
-      ["Bank attached pan", app.identityDetails?.pan || app.personalDetails?.pan || "N/A", "identityDetails.pan"],
-      ["Bank attached aadhar", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : app.identityDetails?.uid ? `xxxxxxxx${app.identityDetails.uid.slice(-4)}` : "N/A", "identityDetails.aadhaar"],
-      ["Name on pan", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A", "identityDetails.pan_name"],
-      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.beneficiaryName"],
-      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A", "bankDetails.name_match_score"],
-      ["Bank Log", JSON.stringify(app.bankDetails || {}), "bankDetails.rawLog"],
+      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
+      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A"],
+      ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A"],
+      ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A"],
+      ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A"],
+      ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A"],
+      ["Bank attached pan", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
+      ["Bank attached aadhar", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : app.identityDetails?.uid ? `xxxxxxxx${app.identityDetails.uid.slice(-4)}` : "N/A"],
+      ["Name on pan", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
+      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
+      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
+      ["Bank Log", JSON.stringify(app.bankDetails || {})],
     ],
     evidence: (app) => [firstMedia(app.bankDetails?.proofPreview || app.bankDetails?.proofPath || app.bankDetails?.proof, "Bank Proof")].filter(Boolean),
   },
@@ -370,12 +398,12 @@ const REVIEW_STEPS = [
     evidenceTitle: "Wet Signature",
     evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
     fields: (app) => [
-      ["Signature captured", app.signature ? "Yes" : "No", "signature.captured"],
+      ["Signature captured", app.signature ? "Yes" : "No"],
       ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
-      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A", "identityDetails.aadhaarName"],
-      ["Name as per pan", app.identityDetails?.panName || "N/A", "identityDetails.panName"],
-      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A", "bankDetails.accountHolderName"],
-      ["Name as per kra", app.personalDetails?.fullName || "N/A", "personalDetails.fullName"],
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+      ["Name as per kra", app.personalDetails?.fullName || "N/A"],
     ],
     evidence: (app) => {
       const panDocs = getAllPanDocuments(app);
@@ -409,12 +437,12 @@ const REVIEW_STEPS = [
     evidenceTitle: "Live Selfie",
     evidenceHint: "Compare live selfie with Aadhaar/PAN photo and face match score.",
     fields: (app) => [
-      ["Face match score", app.faceMatchScore !== null && app.faceMatchScore !== undefined ? `${app.faceMatchScore}%` : "", "faceMatchScore"],
-      ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No", "selfieDetails.captured"],
+      ["Face match score", app.faceMatchScore !== null && app.faceMatchScore !== undefined ? `${app.faceMatchScore}%` : ""],
+      ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
       ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
-      ["Latitude", app.selfieDetails?.latitude || "N/A", "selfieDetails.latitude"],
-      ["Location", app.selfieDetails?.location || "N/A", "selfieDetails.location"],
-      ["Longitude", app.selfieDetails?.longitude || "N/A", "selfieDetails.longitude"],
+      ["Latitude", app.selfieDetails?.latitude || "N/A"],
+      ["Location", app.selfieDetails?.location || "N/A"],
+      ["Longitude", app.selfieDetails?.longitude || "N/A"],
     ],
     evidence: (app) => [
       firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
@@ -709,28 +737,28 @@ function nomineeFields(app) {
       allocation = typeof percentages[index] === 'object' ? (percentages[index].percentage || percentages[index].allocation) : percentages[index];
     }
     const fields = [
-      [`--- NOMINEE ${index + 1} ---`, " "],
-      [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
-      [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
-      [`Nominee ${index + 1} DOB`, nominee.dob],
-      [`Nominee ${index + 1} allocation`, `${allocation}%`],
-      [`Nominee ${index + 1} email`, nominee.email],
-      [`Nominee ${index + 1} mobile`, nominee.mobile],
-      [`Nominee ${index + 1} address`, [nominee.address, nominee.city, nominee.state, nominee.pincode, nominee.country].filter(Boolean).join(", ") || undefined],
-      [`Nominee ${index + 1} proof type`, nominee.proofType],
-      [`Nominee ${index + 1} proof number`, nominee.proofNumber],
+      [`--- NOMINEE ${index + 1} ---`, " ", `nomineeDetails.nominees.${index}._header`],
+      [`Nominee ${index + 1} name`, nominee.name || nominee.fullName, `nomineeDetails.nominees.${index}.name`],
+      [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation, `nomineeDetails.nominees.${index}.relation`],
+      [`Nominee ${index + 1} DOB`, nominee.dob, `nomineeDetails.nominees.${index}.dob`],
+      [`Nominee ${index + 1} allocation`, `${allocation}%`, `nomineeDetails.nominees.${index}.allocation`],
+      [`Nominee ${index + 1} email`, nominee.email, `nomineeDetails.nominees.${index}.email`],
+      [`Nominee ${index + 1} mobile`, nominee.mobile, `nomineeDetails.nominees.${index}.mobile`],
+      [`Nominee ${index + 1} address`, [nominee.address, nominee.city, nominee.state, nominee.pincode, nominee.country].filter(Boolean).join(", ") || undefined, `nomineeDetails.nominees.${index}.address`],
+      [`Nominee ${index + 1} proof type`, nominee.proofType, `nomineeDetails.nominees.${index}.proofType`],
+      [`Nominee ${index + 1} proof number`, nominee.proofNumber, `nomineeDetails.nominees.${index}.proofNumber`],
     ];
     if (nominee.guardianName) {
       fields.push(
-        [`--- GUARDIAN FOR NOMINEE ${index + 1} ---`, " "],
-        [`Guardian ${index + 1} name`, nominee.guardianName],
-        [`Guardian ${index + 1} DOB`, nominee.guardianDob],
-        [`Guardian ${index + 1} relation`, nominee.guardianRelation],
-        [`Guardian ${index + 1} mobile`, nominee.guardianMobile],
-        [`Guardian ${index + 1} email`, nominee.guardianEmail],
-        [`Guardian ${index + 1} address`, [nominee.guardianAddress, nominee.guardianCity, nominee.guardianState, nominee.guardianPincode].filter(Boolean).join(", ")],
-        [`Guardian ${index + 1} proof type`, nominee.guardianProofType],
-        [`Guardian ${index + 1} proof number`, nominee.guardianProofNumber]
+        [`--- GUARDIAN FOR NOMINEE ${index + 1} ---`, " ", `nomineeDetails.nominees.${index}._guardianHeader`],
+        [`Guardian ${index + 1} name`, nominee.guardianName, `nomineeDetails.nominees.${index}.guardianName`],
+        [`Guardian ${index + 1} DOB`, nominee.guardianDob, `nomineeDetails.nominees.${index}.guardianDob`],
+        [`Guardian ${index + 1} relation`, nominee.guardianRelation, `nomineeDetails.nominees.${index}.guardianRelation`],
+        [`Guardian ${index + 1} mobile`, nominee.guardianMobile, `nomineeDetails.nominees.${index}.guardianMobile`],
+        [`Guardian ${index + 1} email`, nominee.guardianEmail, `nomineeDetails.nominees.${index}.guardianEmail`],
+        [`Guardian ${index + 1} address`, [nominee.guardianAddress, nominee.guardianCity, nominee.guardianState, nominee.guardianPincode].filter(Boolean).join(", "), `nomineeDetails.nominees.${index}.guardianAddress`],
+        [`Guardian ${index + 1} proof type`, nominee.guardianProofType, `nomineeDetails.nominees.${index}.guardianProofType`],
+        [`Guardian ${index + 1} proof number`, nominee.guardianProofNumber, `nomineeDetails.nominees.${index}.guardianProofNumber`]
       );
     }
     return fields;
@@ -1283,6 +1311,8 @@ export default function AgentReview() {
   const [rejectStepModal, setRejectStepModal] = useState(null);
   const [stepRejectReason, setStepRejectReason] = useState("");
   const [showRejectionConfirmModal, setShowRejectionConfirmModal] = useState(false);
+  const [successModalData, setSuccessModalData] = useState(null);
+  const [accumulatedEdits, setAccumulatedEdits] = useState({});
   const fileInputRef = useRef(null);
   const mainPreviewRef = useRef(null);
   const modulePreviewRefs = useRef([]);
@@ -1402,6 +1432,12 @@ export default function AgentReview() {
       const data = await res.json();
       if (data.success) {
         showToast(requireEsign ? "Details updated and re-signing requested." : "Details updated successfully.");
+        if (requireEsign) {
+          setSuccessModalData({ ...accumulatedEdits, ...editValues });
+          setAccumulatedEdits({});
+        } else {
+          setAccumulatedEdits(prev => ({ ...prev, ...editValues }));
+        }
         setEditValues({});
         setEditingField(null);
         fetchDetail();
@@ -1946,29 +1982,46 @@ export default function AgentReview() {
                                     <div style={{ flex: 1 }}>
                                       <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                                       {editingField === jsonPath && jsonPath ? (
-                                        <input 
-                                          autoFocus
-                                          className="admin-input"
-                                          style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
-                                          value={currentValue || ""}
-                                          onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
-                                          onBlur={(e) => {
-                                            setEditingField(null);
-                                            if (jsonPath.startsWith("user.eStampAssigned")) {
-                                              const val = e.target.value;
-                                              setEditValues(prev => {
-                                                const next = { ...prev };
-                                                delete next[jsonPath];
-                                                return next;
-                                              });
-                                              autoSaveField(jsonPath, val);
-                                            }
-                                          }}
-                                          onKeyDown={e => { 
-                                            if (e.key === "Enter") {
+                                        DROPDOWN_OPTIONS[jsonPath] ? (
+                                          <select
+                                            autoFocus
+                                            className="admin-input"
+                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                                            value={currentValue || ""}
+                                            onChange={e => {
+                                              setEditValues({ ...editValues, [jsonPath]: e.target.value });
                                               setEditingField(null);
                                               if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                const val = e.currentTarget.value;
+                                                const val = e.target.value;
+                                                setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
+                                                autoSaveField(jsonPath, val);
+                                              }
+                                            }}
+                                            onBlur={(e) => {
+                                              setEditingField(null);
+                                              if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                const val = e.target.value;
+                                                setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
+                                                autoSaveField(jsonPath, val);
+                                              }
+                                            }}
+                                          >
+                                            <option value="">--Select--</option>
+                                            {DROPDOWN_OPTIONS[jsonPath].map(opt => (
+                                              <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <input 
+                                            autoFocus
+                                            className="admin-input"
+                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
+                                            value={currentValue || ""}
+                                            onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
+                                            onBlur={(e) => {
+                                              setEditingField(null);
+                                              if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                const val = e.target.value;
                                                 setEditValues(prev => {
                                                   const next = { ...prev };
                                                   delete next[jsonPath];
@@ -1976,9 +2029,23 @@ export default function AgentReview() {
                                                 });
                                                 autoSaveField(jsonPath, val);
                                               }
-                                            } 
-                                          }}
-                                        />
+                                            }}
+                                            onKeyDown={e => { 
+                                              if (e.key === "Enter") {
+                                                setEditingField(null);
+                                                if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                  const val = e.currentTarget.value;
+                                                  setEditValues(prev => {
+                                                    const next = { ...prev };
+                                                    delete next[jsonPath];
+                                                    return next;
+                                                  });
+                                                  autoSaveField(jsonPath, val);
+                                                }
+                                              } 
+                                            }}
+                                          />
+                                        )
                                       ) : (
                                         <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4 }}>
                                           {label === "Segments" && typeof currentValue === "string" 
@@ -2192,7 +2259,7 @@ export default function AgentReview() {
                <button onClick={() => handleSaveDetails(false)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", borderRadius: 8, fontWeight: 700, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", opacity: submitting || Object.keys(editValues).length === 0 ? 0.5 : 1, transition: "all 0.2s" }}>
                   Save
                </button>
-               <button onClick={() => handleSaveDetails(true)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", opacity: submitting || Object.keys(editValues).length === 0 ? 0.5 : 1, boxShadow: (!submitting && Object.keys(editValues).length > 0) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
+               <button onClick={() => handleSaveDetails(true)} disabled={submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0)} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0) ? "not-allowed" : "pointer", opacity: submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0) ? 0.5 : 1, boxShadow: (!submitting && (Object.keys(editValues).length > 0 || Object.keys(accumulatedEdits).length > 0)) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
                   Save & Generate PDF
                </button>
             </div>
@@ -2300,6 +2367,33 @@ export default function AgentReview() {
               </button>
               <button onClick={handleRejectStep} disabled={submitting || !stepRejectReason.trim()} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#ef4444", color: "var(--bg-primary)", fontWeight: 600, cursor: submitting || !stepRejectReason.trim() ? "not-allowed" : "pointer", opacity: submitting || !stepRejectReason.trim() ? 0.6 : 1 }}>
                 Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {successModalData && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 450, maxWidth: "90%", boxShadow: "0 4px 24px rgba(0,0,0,0.1)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <CheckCircle2 color="var(--wise-green)" size={24} />
+              <h3 style={{ margin: 0, color: "var(--text-primary)" }}>Changes Saved & PDF Generated</h3>
+            </div>
+            <p style={{ margin: "0 0 16px 0", color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: "1.5" }}>
+              The following changes were successfully saved to the database, and the eSign PDF has been automatically regenerated with these new values:
+            </p>
+            <div style={{ background: "var(--bg-secondary)", borderRadius: 8, padding: 12, marginBottom: 20, maxHeight: 200, overflowY: "auto", border: "1px solid var(--border-color)" }}>
+              {Object.entries(successModalData).map(([key, value]) => (
+                <div key={key} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: "0.85rem" }}>
+                  <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>{key.split('.').pop()}</span>
+                  <span style={{ color: "var(--text-primary)", fontWeight: 700, textAlign: "right", maxWidth: "60%", wordBreak: "break-word" }}>{String(value)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={() => setSuccessModalData(null)} style={{ padding: "8px 24px", borderRadius: 6, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>
+                Awesome!
               </button>
             </div>
           </div>

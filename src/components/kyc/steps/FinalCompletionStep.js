@@ -27,10 +27,7 @@ export default function FinalCompletionStep() {
       // Fire off welcome email asynchronously (only once)
       const emailSentKey = `welcome_email_sent_${applicationId}`;
       if (!sessionStorage.getItem(emailSentKey)) {
-        fetch(`${API_BASE_URL}/api/kyc/welcome-email`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${token}` }
-        }).catch(e => console.error("Failed to trigger welcome email", e));
+        // Email trigger moved to backend e-sign webhook for reliability
         sessionStorage.setItem(emailSentKey, "true");
       }
 

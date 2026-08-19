@@ -189,12 +189,12 @@ function getVariableValue(variableName, appData) {
     case 'isOccRetired': return String(pDetails.occupation || '').toLowerCase().includes('retired');
     case 'isOccStudent': return String(pDetails.occupation || '').toLowerCase().includes('student');
     case 'isOccOthers': return String(pDetails.occupation || '').toLowerCase().includes('other');
-    case 'annualIncome': return pDetails.incomeRange || pDetails.annualIncome;
-    case 'isIncomeBelow1Lac': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('below 1') || i.includes('<1'); }
-    case 'isIncome1To5Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('1-5') || i.includes('1 to 5'); }
-    case 'isIncome5To10Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('5-10') || i.includes('5 to 10'); }
-    case 'isIncome10To25Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('10-25') || i.includes('10 to 25'); }
-    case 'isIncomeAbove25Lacs': { const i = String(pDetails.incomeRange || pDetails.annualIncome || '').toLowerCase(); return i.includes('>25') || i.includes('above 25') || i.includes('more than 25'); }
+    case 'annualIncome': return pDetails.annualIncome || pDetails.incomeRange;
+    case 'isIncomeBelow1Lac': { const i = String(pDetails.annualIncome || pDetails.incomeRange || '').toLowerCase(); return i.includes('below 1') || i.includes('<1'); }
+    case 'isIncome1To5Lacs': { const i = String(pDetails.annualIncome || pDetails.incomeRange || '').toLowerCase(); return i.includes('1-5') || i.includes('1 to 5'); }
+    case 'isIncome5To10Lacs': { const i = String(pDetails.annualIncome || pDetails.incomeRange || '').toLowerCase(); return i.includes('5-10') || i.includes('5 to 10'); }
+    case 'isIncome10To25Lacs': { const i = String(pDetails.annualIncome || pDetails.incomeRange || '').toLowerCase(); return i.includes('10-25') || i.includes('10 to 25'); }
+    case 'isIncomeAbove25Lacs': { const i = String(pDetails.annualIncome || pDetails.incomeRange || '').toLowerCase(); return i.includes('>25') || i.includes('above 25') || i.includes('more than 25'); }
     case 'nationality': return pDetails.nationality || 'Indian';
     case 'nationality_indian_tick': return String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
     case 'nationality_other_tick': return String(pDetails.nationality || 'Indian').toLowerCase() !== 'indian';

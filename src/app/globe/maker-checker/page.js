@@ -140,6 +140,7 @@ export default function MakerCheckerDashboard() {
         localStorage.setItem("kycToken", data.token);
         sessionStorage.setItem("kycToken", data.token);
         localStorage.setItem("token", data.token);
+        sessionStorage.removeItem("kyc-progress");
         window.open("/", "_blank");
       } else {
         alert(data.error || "Failed to generate session for user");

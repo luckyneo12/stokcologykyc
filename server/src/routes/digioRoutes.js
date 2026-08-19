@@ -1820,6 +1820,28 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                     data: { documents: JSON.stringify(currentDocs) }
                   });
                   console.log(`[Background] Successfully saved ESIGN document to DB for ${application.applicationId}`);
+                  
+                  // Trigger Welcome Email instantly
+                  try {
+                    const { sendWelcomeEmail } = require("../services/emailService");
+                    const pDetails = parseJsonField(appToUpdate.personalDetails, {});
+                    if (pDetails.email) {
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", {
+                        filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
+                        content: buffer,
+                        contentType: "application/pdf"
+                      });
+                      const sStatuses = parseJsonField(appToUpdate.stepStatuses, {});
+                      sStatuses.welcomeEmailSent = true;
+                      await prisma.kycApplication.update({
+                        where: { applicationId: application.applicationId },
+                        data: { stepStatuses: JSON.stringify(sStatuses) }
+                      });
+                      console.log(`[Background] Sent welcome email for ${application.applicationId}`);
+                    }
+                  } catch (emErr) {
+                    console.error("[Background] Failed to send email:", emErr.message);
+                  }
                 }
               } catch (cloudErr) {
                 console.error("[Background] Failed to upload ESIGN to cloudinary:", cloudErr.message);
@@ -1836,6 +1858,27 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                     where: { applicationId: application.applicationId },
                     data: { documents: JSON.stringify(currentDocs) }
                   });
+                  
+                  // Trigger Welcome Email instantly (fallback route)
+                  try {
+                    const { sendWelcomeEmail } = require("../services/emailService");
+                    const pDetails = parseJsonField(appToUpdate.personalDetails, {});
+                    if (pDetails.email) {
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", {
+                        filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
+                        content: buffer,
+                        contentType: "application/pdf"
+                      });
+                      const sStatuses = parseJsonField(appToUpdate.stepStatuses, {});
+                      sStatuses.welcomeEmailSent = true;
+                      await prisma.kycApplication.update({
+                        where: { applicationId: application.applicationId },
+                        data: { stepStatuses: JSON.stringify(sStatuses) }
+                      });
+                    }
+                  } catch (emErr) {
+                    console.error("[Background] Failed to send email in fallback:", emErr.message);
+                  }
                 }
               }
             }
@@ -2474,19 +2517,41 @@ router.post("/face-match", auth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    // 1. Prepare Selfie and Save to Cloudinary
+    // 1. Prepare Selfie, Perform Liveness Check, and Save to Cloudinary
     let savedSelfiePath = null;
     let cleanSelfie = null;
     if (selfie) {
       cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
       try {
         const selfieBuffer = Buffer.from(cleanSelfie, "base64");
+        
+        // -- LIVENESS CHECK START --
+        console.log(`[FaceMatch] Performing liveness check for ${application.applicationId}...`);
+        const livenessResult = await digioClient.checkPassiveLiveness(selfieBuffer, application.applicationId);
+        console.log(`[FaceMatch] Liveness check response:`, JSON.stringify(livenessResult));
+
+        if (livenessResult.count !== 1) {
+          return res.status(400).json({ 
+            success: false, 
+            error: livenessResult.count === 0 ? "No face detected in selfie." : "Multiple faces detected. Please ensure only you are in the frame." 
+          });
+        }
+
+        if (livenessResult.result === "FAIL" || livenessResult.result === "UNKNOWN") {
+           return res.status(400).json({ 
+             success: false, 
+             error: "Selfie liveness check failed. Spoofing or low quality detected." 
+           });
+        }
+        // -- LIVENESS CHECK END --
+
         console.log(`[FaceMatch] Uploading selfie to Cloudinary for ${application.applicationId}...`);
         const cloudinaryResult = await uploadBufferToCloudinary(selfieBuffer, `kyc_selfie_${application.applicationId}_${Date.now()}`, "jpg");
         savedSelfiePath = cloudinaryResult.secure_url;
         console.log(`[FaceMatch] Live selfie securely saved to Cloudinary: ${savedSelfiePath}`);
       } catch (saveError) {
-        console.error("[FaceMatch] Failed to save live selfie to Cloudinary:", saveError.message);
+        console.error("[FaceMatch] Failed to process selfie (Liveness or Cloudinary):", saveError.message);
+        return res.status(500).json({ success: false, error: "Failed to process selfie verification." });
       }
     }
 

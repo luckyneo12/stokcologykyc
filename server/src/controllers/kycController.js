@@ -441,6 +441,9 @@ const saveStep = async (req, res, next) => {
       } else {
         updateData.currentStep = safeStep;
       }
+      
+      // If data is being saved, clear any previously generated PDF so it regenerates correctly
+      updateData.generatedPdfBase64 = null;
     }
 
     // CRITICAL FIX: Prevent race condition where a lagging saveStep with "pending" overwrites "under_review"
@@ -1030,6 +1033,10 @@ const previewPdf = async (req, res, next) => {
       return res
         .status(404)
         .json({ success: false, error: "Active application not found" });
+    }
+
+    if (app.generatedPdfBase64) {
+      return res.json({ success: true, pdfBase64: app.generatedPdfBase64 });
     }
 
     // Merge latest frontend state with DB state

@@ -5,7 +5,7 @@ import Logo from "../Logo";
 import PdfMobileViewer from "../PdfMobileViewer";
 
 export default function EsignPreviewStep() {
-  const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents, preGeneratedPdf } = useKYC();
+  const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents, preGeneratedPdf, generatedPdfBase64 } = useKYC();
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -33,7 +33,7 @@ export default function EsignPreviewStep() {
       setLoading(true);
       setError(null);
 
-      let pdfBase64 = preGeneratedPdf;
+      let pdfBase64 = generatedPdfBase64 || preGeneratedPdf;
 
       if (!pdfBase64) {
         console.log("[EsignPreview] No pre-generated PDF found, generating now...");

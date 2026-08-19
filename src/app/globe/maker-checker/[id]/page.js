@@ -42,6 +42,35 @@ const USER_STEP_LABELS = {
   14: "Completion"
 };
 
+const DROPDOWN_OPTIONS = {
+  "personalDetails.gender": ["Male", "Female", "Transgender", "Other"],
+  "personalDetails.maritalStatus": ["Single", "Married", "Others"],
+  "personalDetails.education": ["Below High School", "High School", "Graduate", "Post Graduate", "Professional", "Others"],
+  "personalDetails.annualIncome": ["Below 1 Lac", "1-5 Lacs", "5-10 Lacs", "10-25 Lacs", ">25 Lacs"],
+  "personalDetails.experience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
+  "personalDetails.tradingExperience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
+  "personalDetails.occupation": ["Private Sector", "Public Sector", "Government Service", "Business", "Professional", "Agriculturist", "Retired", "Housewife", "Student", "Others"],
+  "personalDetails.accountSettlement": ["Quarterly", "Monthly"],
+  "personalDetails.smsAlert": ["Yes", "No"],
+  "personalDetails.operateDdpi": ["Yes", "No"],
+  "personalDetails.nsdl4Communication": ["Yes", "No"],
+  "personalDetails.ddpi": ["Yes", "No"],
+  "personalDetails.disBooklet": ["Yes", "No"],
+  "personalDetails.nsdl1ReceiveCredit": ["Yes", "No"],
+  "personalDetails.nsdl2EStatement": ["Yes", "No"],
+  "personalDetails.nsdl3PledgeInstruction": ["Yes", "No"],
+  "personalDetails.politicallyExposed": ["Yes", "No"],
+  "personalDetails.citizenOfIndia": ["Yes", "No"],
+  "personalDetails.taxResidencyOutside": ["Yes", "No"],
+  "personalDetails.pepType": ["--select--", "PEP", "Related to PEP"],
+  "personalDetails.taxExempt": ["--select--", "Yes", "No"],
+  "nomineeDetails.relation": ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Grandson", "Granddaughter", "Others"],
+  "nomineeDetails.guardianRelation": ["Spouse", "Father", "Mother", "Brother", "Sister", "Grandfather", "Grandmother", "Others"],
+  "financialProof.type": ["Bank Statement", "Salary Slip", "ITR", "Net Worth Certificate", "Demat Holding Statement", "Others"],
+  "bsda": ["opt-in", "opt-out"],
+  "segments.selected": ["equity", "equity, derivatives", "derivatives"]
+};
+
 const REVIEW_STEPS = [
   // {
   //   id: "phoneVerification",
@@ -116,9 +145,9 @@ const REVIEW_STEPS = [
     fields: (app) => {
       const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
       return [
-        ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
-        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName, "identityDetails.pan_name"],
-        ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob, "identityDetails.dob"],
+        ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
+        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
+        ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
         ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
       ];
     },
@@ -343,9 +372,9 @@ const REVIEW_STEPS = [
     evidenceTitle: "Income / Financial Document",
     evidenceHint: "Review the uploaded bank statement, salary slip, ITR, or other financial proof.",
     fields: (app) => [
-      ["Proof type", app.financialProof?.type || app.financialProof?.documentType],
-      ["Annual income", app.personalDetails?.annualIncome || app.financialProof?.annualIncome],
-      ["Trading experience", app.personalDetails?.tradingExperience],
+      ["Proof type", app.financialProof?.type || app.financialProof?.documentType, "financialProof.type"],
+      ["Annual income", app.personalDetails?.annualIncome || app.financialProof?.annualIncome, "personalDetails.annualIncome"],
+      ["Trading experience", app.personalDetails?.tradingExperience, "personalDetails.tradingExperience"],
     ],
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
   },
@@ -357,7 +386,7 @@ const REVIEW_STEPS = [
     evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
     fields: (app) => [
       ["Signature captured", app.signature ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName],
+      ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
       ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
       ["Name as per pan", app.identityDetails?.panName || "N/A"],
       ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
@@ -383,8 +412,8 @@ const REVIEW_STEPS = [
     evidenceTitle: "PAN Card Image",
     evidenceHint: "Compare the PAN image against the PAN details verified earlier.",
     fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
-      ["Name", app.personalDetails?.fullName],
+      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
+      ["Name", app.personalDetails?.fullName, "personalDetails.fullName"],
     ],
     evidence: (app) => getAllPanDocuments(app),
   },
@@ -680,22 +709,22 @@ function nomineeFields(app) {
     }
     const fields = [
       [`--- NOMINEE ${index + 1} ---`, " "],
-      [`Nominee ${index + 1} name`, nominee.name || nominee.fullName],
-      [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation],
-      [`Nominee ${index + 1} DOB`, nominee.dob],
+      [`Nominee ${index + 1} name`, nominee.name || nominee.fullName, `nomineeDetails.nominees.${index}.name`],
+      [`Nominee ${index + 1} relation`, nominee.relationship || nominee.relation, `nomineeDetails.nominees.${index}.relation`],
+      [`Nominee ${index + 1} DOB`, nominee.dob, `nomineeDetails.nominees.${index}.dob`],
       [`Nominee ${index + 1} allocation`, `${allocation}%`],
     ];
     if (nominee.guardianName) {
       fields.push(
         [`--- GUARDIAN FOR NOMINEE ${index + 1} ---`, " "],
-        [`Guardian ${index + 1} name`, nominee.guardianName],
-        [`Guardian ${index + 1} DOB`, nominee.guardianDob],
-        [`Guardian ${index + 1} relation`, nominee.guardianRelation],
-        [`Guardian ${index + 1} mobile`, nominee.guardianMobile],
-        [`Guardian ${index + 1} email`, nominee.guardianEmail],
+        [`Guardian ${index + 1} name`, nominee.guardianName, `nomineeDetails.nominees.${index}.guardianName`],
+        [`Guardian ${index + 1} DOB`, nominee.guardianDob, `nomineeDetails.nominees.${index}.guardianDob`],
+        [`Guardian ${index + 1} relation`, nominee.guardianRelation, `nomineeDetails.nominees.${index}.guardianRelation`],
+        [`Guardian ${index + 1} mobile`, nominee.guardianMobile, `nomineeDetails.nominees.${index}.guardianMobile`],
+        [`Guardian ${index + 1} email`, nominee.guardianEmail, `nomineeDetails.nominees.${index}.guardianEmail`],
         [`Guardian ${index + 1} address`, [nominee.guardianAddress, nominee.guardianCity, nominee.guardianState, nominee.guardianPincode].filter(Boolean).join(", ")],
-        [`Guardian ${index + 1} proof type`, nominee.guardianProofType],
-        [`Guardian ${index + 1} proof number`, nominee.guardianProofNumber]
+        [`Guardian ${index + 1} proof type`, nominee.guardianProofType, `nomineeDetails.nominees.${index}.guardianProofType`],
+        [`Guardian ${index + 1} proof number`, nominee.guardianProofNumber, `nomineeDetails.nominees.${index}.guardianProofNumber`]
       );
     }
     return fields;
@@ -1827,15 +1856,34 @@ export default function AgentReview() {
                                     <div style={{ flex: 1 }}>
                                       <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                                       {editingField === jsonPath && jsonPath ? (
-                                        <input 
-                                          autoFocus
-                                          className="admin-input"
-                                          style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
-                                          value={currentValue || ""}
-                                          onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
-                                          onBlur={() => setEditingField(null)}
-                                          onKeyDown={e => { if (e.key === "Enter") setEditingField(null); }}
-                                        />
+                                        DROPDOWN_OPTIONS[jsonPath] ? (
+                                          <select
+                                            autoFocus
+                                            className="admin-input"
+                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                                            value={currentValue || ""}
+                                            onChange={e => {
+                                              setEditValues({ ...editValues, [jsonPath]: e.target.value });
+                                              setEditingField(null); // Auto-close on select
+                                            }}
+                                            onBlur={() => setEditingField(null)}
+                                          >
+                                            <option value="">--Select--</option>
+                                            {DROPDOWN_OPTIONS[jsonPath].map(opt => (
+                                              <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <input 
+                                            autoFocus
+                                            className="admin-input"
+                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                                            value={currentValue || ""}
+                                            onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
+                                            onBlur={() => setEditingField(null)}
+                                            onKeyDown={e => { if (e.key === "Enter") setEditingField(null); }}
+                                          />
+                                        )
                                       ) : (
                                         <div style={{ fontSize: "0.8rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 500, minHeight: 18 }}>
                                           {label === "Segments" && typeof currentValue === "string" 

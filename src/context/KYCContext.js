@@ -120,6 +120,7 @@ const INITIAL_STATE = {
   submittedAt: null,
   nsdlResponse: null,
   stepStatuses: {}, // { [reviewStepId]: { status, reason, ... } }
+  generatedPdfBase64: null,
   verifiedSteps: {}, // { [stepIndex]: { fingerprint: string } } — tracks verified API steps to skip on re-navigation
 };
 
@@ -504,12 +505,14 @@ export function KYCProvider({ children }) {
                   nomineeAllocation:
                     app.nomineeAllocation || prev.nomineeAllocation,
                   stepStatuses: app.stepStatuses || prev.stepStatuses,
+                  generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
                 });
               }
 
               // 2. INITIAL LOAD / REFRESH: Always trust server on first load (isPolling is false)
               if (!isPolling) {
                 lastSyncedReviewedAt.current = app.reviewedAt; // Initialize the marker
+                setPreGeneratedPdf(null);
                 return updateSessionStorage({
                   ...prev,
                   applicationId: app.applicationId,
@@ -559,6 +562,7 @@ export function KYCProvider({ children }) {
                   nomineeAllocation:
                     app.nomineeAllocation || prev.nomineeAllocation,
                   stepStatuses: app.stepStatuses || prev.stepStatuses,
+                  generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
                 });
               }
 
@@ -597,6 +601,7 @@ export function KYCProvider({ children }) {
 
                 if (serverIsNewerAdminChange) {
                   lastSyncedReviewedAt.current = app.reviewedAt;
+                  setPreGeneratedPdf(null);
                 }
 
                   // Defensive merge even on background sync
@@ -644,6 +649,7 @@ export function KYCProvider({ children }) {
                     nomineeAllocation:
                       app.nomineeAllocation || prev.nomineeAllocation,
                     stepStatuses: app.stepStatuses || prev.stepStatuses,
+                    generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
                   });
                 }
                 // If server is behind and no admin change, stay where we are (no yank back)
@@ -1256,6 +1262,7 @@ export function KYCProvider({ children }) {
         getBackendPayload,
         markStepVerified,
         preGeneratedPdf,
+        generatedPdfBase64: state.generatedPdfBase64,
         preGeneratePdf,
       }}
     >
