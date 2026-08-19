@@ -227,6 +227,10 @@ export default function NomineeStep() {
             newErrors[errKey] = `${isGuardianField ? "Guardian" : "Nominee"} ID cannot be same as yours`;
           } else if (updated.some((n, i) => i !== idx && (n.proofNumber?.toUpperCase()?.trim() === val || n.guardianProofNumber?.toUpperCase()?.trim() === val))) {
             newErrors[errKey] = "This ID is already used for another nominee/guardian";
+          } else if (!isGuardianField && updated[idx].guardianProofNumber?.toUpperCase()?.trim() === val) {
+            newErrors[errKey] = "Nominee ID cannot be the same as their Guardian's ID";
+          } else if (isGuardianField && updated[idx].proofNumber?.toUpperCase()?.trim() === val) {
+            newErrors[errKey] = "Guardian ID cannot be the same as the Nominee's ID";
           } else {
             const isPAN = currentProofType === "PAN CARD";
             if (isPAN) {
@@ -501,6 +505,9 @@ export default function NomineeStep() {
   const validate = () => {
     const newErrors = {};
     let isValid = true;
+    
+    const userPAN = typeof identityDetails?.pan === "string" ? identityDetails.pan.toUpperCase().trim() : "";
+    const userAadhaar = identityDetails?.aadhaar?.trim();
 
     nominees.forEach((nom, idx) => {
       if (!nom.name?.trim()) { newErrors[`${idx}-name`] = true; isValid = false; }
@@ -515,7 +522,17 @@ export default function NomineeStep() {
       } else {
         const val = nom.proofNumber.toUpperCase().trim();
         const currentProofType = nom.proofType || "PAN CARD";
-        if (currentProofType === "PAN CARD") {
+        
+        if ((val === userPAN && userPAN) || (val === userAadhaar && userAadhaar)) {
+          newErrors[`${idx}-proofNumber`] = "Nominee ID cannot be same as yours";
+          isValid = false;
+        } else if (nominees.some((n, i) => i !== idx && (n.proofNumber?.toUpperCase()?.trim() === val || n.guardianProofNumber?.toUpperCase()?.trim() === val))) {
+          newErrors[`${idx}-proofNumber`] = "This ID is already used for another nominee/guardian";
+          isValid = false;
+        } else if (nom.guardianProofNumber?.toUpperCase()?.trim() === val) {
+          newErrors[`${idx}-proofNumber`] = "Nominee ID cannot be the same as their Guardian's ID";
+          isValid = false;
+        } else if (currentProofType === "PAN CARD") {
           if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(val)) {
             newErrors[`${idx}-proofNumber`] = "Invalid PAN format";
             isValid = false;
@@ -570,7 +587,17 @@ export default function NomineeStep() {
         } else {
           const val = nom.guardianProofNumber.toUpperCase().trim();
           const currentGuardianProofType = nom.guardianProofType || "PAN CARD";
-          if (currentGuardianProofType === "PAN CARD") {
+          
+          if ((val === userPAN && userPAN) || (val === userAadhaar && userAadhaar)) {
+            newErrors[`${idx}-guardianProofNumber`] = "Guardian ID cannot be same as yours";
+            isValid = false;
+          } else if (nominees.some((n, i) => i !== idx && (n.proofNumber?.toUpperCase()?.trim() === val || n.guardianProofNumber?.toUpperCase()?.trim() === val))) {
+            newErrors[`${idx}-guardianProofNumber`] = "This ID is already used for another nominee/guardian";
+            isValid = false;
+          } else if (nom.proofNumber?.toUpperCase()?.trim() === val) {
+            newErrors[`${idx}-guardianProofNumber`] = "Guardian ID cannot be the same as the Nominee's ID";
+            isValid = false;
+          } else if (currentGuardianProofType === "PAN CARD") {
             if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(val)) {
               newErrors[`${idx}-guardianProofNumber`] = "Invalid PAN format";
               isValid = false;
