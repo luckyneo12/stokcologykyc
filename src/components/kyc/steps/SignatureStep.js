@@ -38,7 +38,7 @@ export default function SignatureStep() {
   const [isCropping, setIsCropping] = useState(false);
   
   // Crop rectangle in percentages
-  const [cropRect, setCropRect] = useState({ top: 10, left: 10, bottom: 90, right: 90 });
+  const [cropRect, setCropRect] = useState({ top: 0, left: 0, bottom: 100, right: 100 });
   const [dragInfo, setDragInfo] = useState({ isDragging: false, mode: null, startX: 0, startY: 0, startRect: null });
   
   const [fileName, setFileName] = useState("");
@@ -153,7 +153,7 @@ export default function SignatureStep() {
           setFilePreview(event.target.result);
         }
         setIsCropping(true);
-        setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
+        setCropRect({ top: 0, left: 0, bottom: 100, right: 100 });
       };
       img.src = event.target.result;
     };
@@ -179,7 +179,7 @@ export default function SignatureStep() {
       ctx.drawImage(img, -img.width / 2, -img.height / 2);
       
       setFilePreview(canvas.toDataURL("image/png"));
-      setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
+      setCropRect({ top: 0, left: 0, bottom: 100, right: 100 });
     };
     img.src = filePreview;
   };
@@ -209,7 +209,7 @@ export default function SignatureStep() {
   };
 
   const resetCrop = () => {
-    setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
+    setCropRect({ top: 0, left: 0, bottom: 100, right: 100 });
   };
 
   const handleReset = () => {

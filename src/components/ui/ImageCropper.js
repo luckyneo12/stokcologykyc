@@ -13,7 +13,7 @@ const RotateRightIcon = () => (
 );
 
 export default function ImageCropper({ filePreview, setFilePreview, onCropApply, onCancel, cropLabel }) {
-  const [cropRect, setCropRect] = useState({ top: 10, left: 10, bottom: 90, right: 90 });
+  const [cropRect, setCropRect] = useState({ top: 0, left: 0, bottom: 100, right: 100 });
   const [dragInfo, setDragInfo] = useState({ isDragging: false, mode: null, startX: 0, startY: 0, startRect: null });
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -103,7 +103,7 @@ export default function ImageCropper({ filePreview, setFilePreview, onCropApply,
       ctx.rotate((angle * Math.PI) / 180);
       ctx.drawImage(img, -img.width / 2, -img.height / 2);
       setFilePreview(canvas.toDataURL("image/jpeg", 0.7));
-      setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
+      setCropRect({ top: 0, left: 0, bottom: 100, right: 100 });
     };
     img.src = filePreview;
   };
@@ -150,7 +150,7 @@ export default function ImageCropper({ filePreview, setFilePreview, onCropApply,
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <button className="btn btn-primary" onClick={applyCrop} style={{ width: "100%", padding: "14px" }}>Apply Crop</button>
         <div style={{ display: "flex", gap: "12px" }}>
-          <button className="btn btn-secondary" onClick={() => setCropRect({ top: 10, left: 10, bottom: 90, right: 90 })} style={{ flex: 1, fontSize: "0.8rem" }}>Reset Box</button>
+          <button className="btn btn-secondary" onClick={() => setCropRect({ top: 0, left: 0, bottom: 100, right: 100 })} style={{ flex: 1, fontSize: "0.8rem" }}>Reset Box</button>
           <button className="btn btn-secondary" onClick={onCancel} style={{ flex: 1, fontSize: "0.8rem", color: "var(--wise-danger)" }}>Cancel</button>
         </div>
       </div>

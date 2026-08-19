@@ -29,7 +29,7 @@ export default function PanUploadStep() {
 
   const [isCropping, setIsCropping] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [cropRect, setCropRect] = useState({ top: 10, left: 10, bottom: 90, right: 90 });
+  const [cropRect, setCropRect] = useState({ top: 0, left: 0, bottom: 100, right: 100 });
   const [dragInfo, setDragInfo] = useState({ isDragging: false, mode: null, startX: 0, startY: 0, startRect: null });
   
   const fileInputRef = useRef(null);
@@ -155,7 +155,7 @@ export default function PanUploadStep() {
       setFilePreview(resultDataUrl);
       setIsAnalyzing(false);
       setIsCropping(true);
-      setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
+      setCropRect({ top: 0, left: 0, bottom: 100, right: 100 });
     };
     reader.readAsDataURL(file);
   };
@@ -176,7 +176,7 @@ export default function PanUploadStep() {
       ctx.rotate((angle * Math.PI) / 180);
       ctx.drawImage(img, -img.width / 2, -img.height / 2);
       setFilePreview(canvas.toDataURL("image/png"));
-      setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
+      setCropRect({ top: 0, left: 0, bottom: 100, right: 100 });
     };
     img.src = filePreview;
   };
@@ -200,7 +200,7 @@ export default function PanUploadStep() {
     img.src = filePreview;
   };
 
-  const resetCrop = () => setCropRect({ top: 10, left: 10, bottom: 90, right: 90 });
+  const resetCrop = () => setCropRect({ top: 0, left: 0, bottom: 100, right: 100 });
 
   const handleReset = () => {
     setFilePreview(null);
