@@ -339,7 +339,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
   const bulkAction = async (status) => {
     const ids = [...bulk];
     for (const id of ids) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await updateStatus(id, status);
     }
     setBulk([]);

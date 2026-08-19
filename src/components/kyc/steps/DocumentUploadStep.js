@@ -153,6 +153,11 @@ export default function DocumentUploadStep() {
   const [rawPanImage, setRawPanImage] = useState(null);
   const panInputRef = useRef(null);
 
+  // Derived states for Financial Proof Requirements
+  const isHighIncome = personalDetails?.annualIncome === "More Than 25 Lac";
+  const isDerivatives = segments?.derivatives;
+  const isFinProofRequired = isHighIncome || isDerivatives;
+
   // Selfie State
   const isSelfieDone = Boolean(
     (selfie?.preview && selfie.preview !== "__CLEARED__") || 
@@ -540,12 +545,8 @@ export default function DocumentUploadStep() {
       addToast("Name mismatch on bank account. Please upload a Bank Proof (Cancelled Cheque / Statement)", "error");
       return;
     }
-    
-    const isHighIncome = personalDetails?.annualIncome === "More Than 25 Lac";
-    const isDerivatives = segments?.derivatives;
-    const requiresFinProof = isHighIncome || isDerivatives;
 
-    if (requiresFinProof && (!finType || !finPreview)) {
+    if (isFinProofRequired && (!finType || !finPreview)) {
       let reason = "";
       if (isDerivatives && isHighIncome) reason = "opted for F&O trading and reported High Income";
       else if (isDerivatives) reason = "opted for F&O (Derivatives) trading";
@@ -915,8 +916,9 @@ export default function DocumentUploadStep() {
                 }}
                 options={finOptions}
                 placeholder="-- Select Income Proof --"
+                disabled={!isFinProofRequired}
               />
-              <input type="file" ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
+              <input type="file" disabled={!isFinProofRequired} ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
               
               {finPreview ? (
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-elevated)", padding: "10px", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
@@ -928,11 +930,11 @@ export default function DocumentUploadStep() {
                     <button onClick={() => setPreviewModalData({ url: finPreview })} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px", borderRadius: "10px", color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>
                       <Eye size={18} />
                     </button>
-                    <button onClick={() => finInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Replace</button>
+                    <button disabled={!isFinProofRequired} onClick={() => finInputRef.current.click()} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: !isFinProofRequired ? "not-allowed" : "pointer", opacity: !isFinProofRequired ? 0.5 : 1, transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => !(!isFinProofRequired) && (e.currentTarget.style.background = "var(--border-color)")} onMouseOut={e => !(!isFinProofRequired) && (e.currentTarget.style.background = "var(--bg-secondary)")}>Replace</button>
                   </div>
                 </div>
               ) : (
-                <button onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: "pointer", border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--wise-green)"} onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border-color)"}>
+                <button disabled={!isFinProofRequired} onClick={() => finInputRef.current.click()} style={{ width: "100%", background: "var(--bg-elevated)", color: "var(--text-primary)", height: "56px", padding: "0 20px", borderRadius: "14px", fontWeight: "700", fontSize: "0.95rem", cursor: !isFinProofRequired ? "not-allowed" : "pointer", opacity: !isFinProofRequired ? 0.5 : 1, border: "1.5px dashed var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "all 0.2s" }} onMouseOver={(e) => !(!isFinProofRequired) && (e.currentTarget.style.borderColor = "var(--wise-green)")} onMouseOut={(e) => !(!isFinProofRequired) && (e.currentTarget.style.borderColor = "var(--border-color)")}>
                   <UploadIcon /> Upload Proof
                 </button>
               )}

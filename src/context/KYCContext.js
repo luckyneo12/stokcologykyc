@@ -428,7 +428,14 @@ export function KYCProvider({ children }) {
             // instead of forcibly recalculating it every time.
 
             setHasSynced(true);
-            setState((prev) => {
+            setState((rawPrev) => {
+              // 0. RESET STATE ON NEW APPLICATION
+              // If the application ID changed (e.g. user logged in with different number in same tab),
+              // we MUST NOT merge the new empty application into the old populated state!
+              const prev = rawPrev.applicationId && rawPrev.applicationId !== app.applicationId
+                ? { ...INITIAL_STATE, isRestoring: true, hasSynced: true }
+                : rawPrev;
+
               // Detect if anything critical actually changed
               const stepChanged = app.currentStep !== prev.currentStep;
               const statusChanged = app.status !== prev.status;

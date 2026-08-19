@@ -85,8 +85,7 @@ export default function BankVerificationStep() {
   const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified, personalDetails, ocrData } = useKYC();
   
   // Local state for the dropdown selection
-  const [method, setMethod, clearMethodDraft] = useLocalDraft("bankMethod", bankDetails.method || "");
-  const [form, setForm, clearFormDraft] = useLocalDraft("bankForm", {
+    const [form, setForm, clearFormDraft] = useLocalDraft("bankForm", {
     accountNumber: bankDetails.accountNumber || "",
     ifsc: bankDetails.ifsc || "",
     bankName: bankDetails.bankName || "",
@@ -107,7 +106,43 @@ export default function BankVerificationStep() {
   const [showMismatchModal, setShowMismatchModal] = useState(null);
   const [isFetchingIfsc, setIsFetchingIfsc] = useState(false);
 
-  const isAlreadyVerified = !!bankDetails?.accountHolderName && form.accountNumber === bankDetails.accountNumber && form.ifsc === bankDetails.ifsc;
+  const isAlreadyProcessed = !!bankDetails?.accountHolderName && form.accountNumber === bankDetails.accountNumber && form.ifsc === bankDetails.ifsc;
+  
+  const handleReset = () => {
+    clearFormDraft();
+    setForm({
+      accountNumber: "",
+      ifsc: "",
+      bankName: "",
+      upiId: "",
+      micr: "",
+      accountType: "",
+      branch: "",
+      address: "",
+      city: "",
+      district: "",
+      state: "",
+      confirmAccountNumber: ""
+    });
+    updateNested("bankDetails", {
+      method: "Manual Data Entry",
+      accountNumber: "",
+      ifsc: "",
+      bankName: "",
+      upiId: "",
+      micr: "",
+      accountType: "",
+      branch: "",
+      address: "",
+      city: "",
+      district: "",
+      state: "",
+      accountHolderName: "",
+      verified: false
+    });
+    setVerificationState("idle");
+    addToast("Bank form reset for testing.", "success");
+  };
 
   useEffect(() => {
     const fetchBankDetails = async () => {
@@ -206,9 +241,7 @@ export default function BankVerificationStep() {
         }
         return prev;
       });
-      if (bankDetails.method && bankDetails.method !== method) {
-        setMethod(bankDetails.method);
-      }
+      
     }
   }, [bankDetails]);
 
@@ -217,30 +250,22 @@ export default function BankVerificationStep() {
   };
 
   const validateBankDetails = () => {
-    if (!method) {
-      addToast("Please select a verification method", "error");
+    if (!form.accountNumber || !form.ifsc || !form.accountType) {
+      addToast("Please fill all bank details", "error");
       return false;
     }
-
-    if (method === "Manual Data Entry") {
-      if (!form.accountNumber || !form.ifsc || !form.accountType) {
-        addToast("Please fill all bank details", "error");
-        return false;
-      }
-      if (form.accountNumber !== form.confirmAccountNumber) {
-        addToast("Account numbers do not match", "error");
-        return false;
-      }
+    if (form.accountNumber !== form.confirmAccountNumber) {
+      addToast("Account numbers do not match", "error");
+      return false;
     }
     return true;
   };
 
   const handleSubmit = () => {
     if (!validateBankDetails()) return;
-    if (isAlreadyVerified) {
-       clearMethodDraft();
+    if (isAlreadyProcessed) {
        clearFormDraft();
-       nextStep({ bankDetails: { ...bankDetails, ...form, method } });
+       nextStep({ bankDetails: { ...bankDetails, ...form, method: "Manual Data Entry" } });
        return;
     }
     
@@ -281,9 +306,8 @@ export default function BankVerificationStep() {
           update("accountHolderName", accountHolder);
           // Record verification fingerprint so this step auto-skips on re-navigation
           markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
-          clearMethodDraft();
           clearFormDraft();
-          nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: true } });
+          nextStep({ bankDetails: { ...form, method: "Manual Data Entry", accountHolderName: accountHolder, verified: true } });
         }
       } else {
         setVerificationState("idle");
@@ -314,56 +338,15 @@ export default function BankVerificationStep() {
   return (
     <div className="container-sm">
       
-      {/* If no method selected, show the dropdown */}
-      {!method ? (
-        <>
-          <div className="animate-slide-up" style={{ marginBottom: 32 }}>
-            <h1 style={{ fontSize: "3.6rem", fontWeight: 800, color: "#2c5f2d", marginBottom: "8px", letterSpacing: "-1px", whiteSpace: "nowrap" }}>Bank account verification</h1>
-            <p className="text-body" style={{ color: "var(--text-secondary)", fontSize: "1rem" }}>
-              Select a method to verify your bank details
-            </p>
-          </div>
+      
+          <div className="text-center animate-slide-up" style={{ marginBottom: 32, position: "relative" }}>
+            <button 
+              onClick={handleReset} 
+              style={{ position: "absolute", right: 0, top: 0, color: "var(--wise-danger)", background: "transparent", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700, padding: "4px 8px", borderRadius: "8px" }}
+            >
+              Reset Test
+            </button>
 
-          <div 
-            onClick={() => setMethod("Manual Data Entry")}
-            className="animate-slide-up"
-            style={{ 
-              background: "var(--bg-card)", 
-              border: "1.5px solid var(--border-color)", 
-              borderRadius: "16px",
-              padding: "24px",
-              cursor: "pointer",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              transition: "all 0.2s",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.03)"
-            }}
-            onMouseOver={e => e.currentTarget.style.borderColor = "var(--wise-green)"}
-            onMouseOut={e => e.currentTarget.style.borderColor = "var(--border-color)"}
-          >
-            <div>
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--text-primary)", margin: "0 0 12px 0" }}>Enter Details Manually</h3>
-              <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", margin: 0 }}>Add your account number, IFSC code manually</p>
-            </div>
-            <div style={{ color: "var(--text-primary)" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </div>
-          </div>
-
-          <button 
-            onClick={() => nomineeDetails.opted === 'No' ? goToStep(currentStep - 3) : prevStep()} 
-            className="btn-back animate-slide-up"
-            style={{ width: "100%", justifyContent: "center", color: "var(--text-secondary)", marginTop: "24px", background: "transparent", border: "none", cursor: "pointer", fontSize: "1rem", fontWeight: 700 }}
-          >
-            Back
-          </button>
-        </>
-      ) : method === "Manual Data Entry" ? (
-        <>
-          <div className="text-center animate-slide-up" style={{ marginBottom: 32 }}>
             
             <h1 className="text-section" style={{ fontSize: "2.4rem", marginBottom: 16, color: "var(--text-primary)" }}>Bank Details</h1>
           </div>
@@ -493,56 +476,18 @@ export default function BankVerificationStep() {
                 onClick={handleSubmit} 
                 style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
               >
-                {verificationState === "verifying" ? "Verifying..." : isAlreadyVerified ? "Verified - Continue" : "Submit"}
+               {verificationState === "verifying" ? "Verifying..." : isAlreadyProcessed ? (bankDetails?.verified ? "Verified - Continue" : "Mismatched - Continue") : "Submit"}
               </button>
 
               <button 
-                onClick={() => setMethod("")} 
+                onClick={() => nomineeDetails?.opted === 'No' ? goToStep(currentStep - 3) : prevStep()} 
                 className="btn-back"
-                style={{ color: "var(--text-secondary)" }}
+                style={{ color: "var(--text-secondary)", background: "transparent", border: "none", cursor: "pointer", fontSize: "1rem", fontWeight: 700, marginTop: "8px" }}
               >
                 Back
               </button>
             </div>
-
           </div>
-        </>
-      ) : (
-        <>
-          <div className="text-center animate-slide-up" style={{ marginBottom: 30 }}>
-            <h2 className="text-title" style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--text-primary)" }}>Bank Verification</h2>
-          </div>
-          <div className="glass-card animate-slide-up" style={{ padding: "32px", borderRadius: "24px", background: "var(--bg-card)", border: "1px solid var(--border-color)", filter: showSubmitConfirm ? "blur(2px)" : "none", pointerEvents: showSubmitConfirm ? "none" : "auto" }}>
-            <div style={{ marginBottom: "32px" }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--text-primary)", fontWeight: 600, marginBottom: "6px", display: "block" }}>
-                UPI ID <span style={{ color: "var(--wise-danger)" }}>*</span>
-              </label>
-              <input 
-                placeholder="e.g. yourname@okaxis" 
-                value={form.upiId} 
-                onChange={e => update("upiId", e.target.value)} 
-                style={{ ...inputStyle, background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }} 
-              />
-            </div>
-            <div>
-              <button 
-                className="btn-primary" 
-                onClick={handleSubmit} 
-                style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
-              >
-                {verificationState === "verifying" ? "Verifying..." : isAlreadyVerified ? "Verified - Continue" : "Submit"}
-              </button>
-              <button 
-                onClick={() => setMethod("")} 
-                className="btn-back"
-                style={{ width: "100%", justifyContent: "center", marginTop: "12px", color: "var(--text-secondary)" }}
-              >
-                Back to Methods
-              </button>
-            </div>
-          </div>
-        </>
-      )}
 
       {/* Penny Drop Verified Modal Overlay */}
       {showSubmitConfirm && (
@@ -626,9 +571,8 @@ export default function BankVerificationStep() {
                 addToast("Name not matched penny drop not verified. Proceeding to upload bank proof.", "warning");
                 update("accountHolderName", accountHolder);
                 markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
-                clearMethodDraft();
                 clearFormDraft();
-                nextStep({ bankDetails: { ...form, method, accountHolderName: accountHolder, verified: false } });
+                nextStep({ bankDetails: { ...form, method: "Manual Data Entry", accountHolderName: accountHolder, verified: false } });
               }}
               className="btn-primary"
               style={{ 

@@ -2416,7 +2416,7 @@ router.post("/verify-bank", auth, async (req, res) => {
         data: serializeJsonFields(
           {
             bankDetails: nextBankDetails,
-            currentStep: Math.max(application.currentStep || 0, 11), // Bank step is 11
+            currentStep: isNameMatched ? Math.max(application.currentStep || 0, 11) : application.currentStep, // Advance only if verified
           },
           ["bankDetails"],
         ),

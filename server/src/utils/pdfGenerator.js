@@ -850,24 +850,67 @@ async function generateKycPdf(applicationData) {
     const appendDocument = async (docPathRel, title) => {
       if (!docPathRel) return;
       try {
-        const cleanPath = docPathRel.startsWith('/') ? docPathRel.substring(1) : docPathRel;
-        const docPath = path.join(__dirname, '../../', cleanPath);
-        if (!fs.existsSync(docPath)) return;
+        let bytes;
+        let lowerPath = docPathRel.toLowerCase();
+        let isPdf = lowerPath.endsWith('.pdf') || docPathRel.includes('application/pdf') || docPathRel.includes('f_pdf');
+        let isPng = lowerPath.endsWith('.png') || docPathRel.includes('image/png') || docPathRel.includes('f_png');
+        
+        if (docPathRel.startsWith('http://') || docPathRel.startsWith('https://')) {
+          const axios = require('axios');
+          const response = await axios.get(docPathRel, { responseType: 'arraybuffer' });
+          if (response.status === 200) {
+            bytes = response.data;
+            const contentType = response.headers['content-type'] || '';
+            if (contentType.includes('pdf')) isPdf = true;
+            if (contentType.includes('png')) isPng = true;
+          } else {
+            console.error(`[PDF Gen] Error fetching doc URL: HTTP ${response.status}`);
+            return;
+          }
+        } else {
+          const cleanPath = docPathRel.startsWith('/') ? docPathRel.substring(1) : docPathRel;
+          const docPath = path.join(__dirname, '../../', cleanPath);
+          if (!fs.existsSync(docPath)) return;
+          bytes = fs.readFileSync(docPath);
+          lowerPath = docPath.toLowerCase();
+          isPdf = lowerPath.endsWith('.pdf');
+          isPng = lowerPath.endsWith('.png');
+        }
 
-        const bytes = fs.readFileSync(docPath);
-        const lowerPath = docPath.toLowerCase();
-
-        if (lowerPath.endsWith('.pdf')) {
+        if (isPdf) {
           const externalPdf = await PDFDocument.load(bytes);
           const copied = await pdfDoc.copyPages(externalPdf, externalPdf.getPageIndices());
-          copied.forEach((p) => pdfDoc.addPage(p));
-        } else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.png')) {
-          const img = lowerPath.endsWith('.png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+          copied.forEach((p, idx) => {
+            const addedPage = pdfDoc.addPage(p);
+            if (title) {
+              const { width: pWidth, height: pHeight } = addedPage.getSize();
+              const pageTitle = copied.length > 1 ? `${title.toUpperCase()} (PAGE ${idx + 1} OF ${copied.length})` : title.toUpperCase();
+              const textWidth = boldFont.widthOfTextAtSize(pageTitle, 14);
+              // Draw white background for text readability over PDFs
+              addedPage.drawRectangle({ x: pWidth - textWidth - 55, y: pHeight - 65, width: textWidth + 10, height: 20, color: rgb(1,1,1) });
+              addedPage.drawText(pageTitle, { x: pWidth - textWidth - 50, y: pHeight - 50, size: 14, font: boldFont, color: rgb(0,0,0) });
+            }
+          });
+        } else if (isPng || lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || docPathRel.includes('image/')) {
+          let img;
+          try {
+            img = isPng ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+          } catch (e1) {
+            try {
+              // Fallback in case the extension doesn't match the actual format
+              img = isPng ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
+            } catch (e2) {
+              console.error(`[PDF Gen] Failed to embed image ${docPathRel}`);
+              return;
+            }
+          }
           const imgPage = pdfDoc.addPage([595.28, 841.89]); // A4
           const { width: pWidth, height: pHeight } = imgPage.getSize();
           
           if (title) {
-            imgPage.drawText(title.toUpperCase(), { x: 50, y: pHeight - 50, size: 14, font: boldFont, color: rgb(0,0,0) });
+            const pageTitle = title.toUpperCase();
+            const textWidth = boldFont.widthOfTextAtSize(pageTitle, 14);
+            imgPage.drawText(pageTitle, { x: pWidth - textWidth - 50, y: pHeight - 50, size: 14, font: boldFont, color: rgb(0,0,0) });
           }
 
           const imgDims = img.scaleToFit(pWidth - 100, pHeight - 100);

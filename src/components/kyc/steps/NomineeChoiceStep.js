@@ -6,7 +6,7 @@ import Logo from "../Logo";
 
 export default function NomineeChoiceStep() {
   const { nomineeDetails, updateNested, nextStep, prevStep, goToStep, currentStep } = useKYC();
-  const [opted, setOpted, clearOptedDraft] = useLocalDraft("nomineeOpted", nomineeDetails?.opted || "Yes");
+  const [opted, setOpted, clearOptedDraft] = useLocalDraft("nomineeOpted", nomineeDetails?.opted || "No");
   const [confirmed, setConfirmed, clearConfirmedDraft] = useLocalDraft("nomineeConfirmed", false);
   const [mounted, setMounted] = useState(false);
 
