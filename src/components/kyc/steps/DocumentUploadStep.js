@@ -118,8 +118,20 @@ export default function DocumentUploadStep() {
     financialProof, signature, panUpload, selfie, personalDetails, 
     segments, bankDetails, updateState, nextStep, prevStep, addToast, 
     applicationId, setApplicationId, syncProgress,
-    preGeneratePdf
+    preGeneratePdf, rejectionMode, stepStatuses, rejectedStepsList
   } = useKYC();
+
+  const isRejection = Boolean(rejectionMode);
+  const isDocRejected = (stepId) => {
+    if (!isRejection) return false;
+    if (rejectedStepsList?.some(r => r.stepId === stepId)) return true;
+    return stepStatuses?.[stepId]?.status === "rejected";
+  };
+  const getDocRejectionReason = (stepId) => {
+    const inList = rejectedStepsList?.find(r => r.stepId === stepId);
+    if (inList?.reason) return inList.reason;
+    return stepStatuses?.[stepId]?.reason || "";
+  };
   
   // Helper to ensure relative URLs load from backend on port 5000
   const getFullUrl = (url) => {
@@ -625,15 +637,48 @@ export default function DocumentUploadStep() {
         </p>
       </div>
 
+      {isRejection && (isDocRejected("panUpload") || isDocRejected("signature") || isDocRejected("ipv") || isDocRejected("financialProof") || isDocRejected("bankVerification")) && (
+        <div className="animate-slide-up" style={{
+          background: "rgba(239, 68, 68, 0.08)",
+          border: "1.5px solid rgba(239, 68, 68, 0.3)",
+          borderRadius: "16px",
+          padding: "16px 20px",
+          marginBottom: "24px",
+          display: "flex",
+          alignItems: "center",
+          gap: "14px"
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 800, color: "var(--wise-danger)", fontSize: "0.95rem" }}>
+              Action Required: Re-upload Rejected Documents
+            </p>
+            <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+              Please re-upload the documents highlighted below that were rejected during verification. Documents that were already approved do not need to be uploaded again.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="card animate-slide-up" style={{ padding: "0", borderRadius: "24px", border: "1px solid var(--border-color)", background: "var(--bg-card)", display: "flex", flexDirection: "column", boxShadow: "0 10px 40px rgba(0,0,0,0.03)" }}>
         
         {/* PAN Section */}
         <div className={`doc-row ${panPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "16px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "24px" }}>
             <div style={{ flex: "1 1 300px" }}>
-              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)", flexWrap: "wrap" }}>
                 <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>1</span>
                 PAN Card <span style={{ color: "var(--wise-danger)" }}>*</span>
+                {isRejection && isDocRejected("panUpload") && (
+                  <span style={{ background: "rgba(239, 68, 68, 0.15)", color: "#ef4444", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    Rejected {getDocRejectionReason("panUpload") ? `— ${getDocRejectionReason("panUpload")}` : ""}
+                  </span>
+                )}
+                {isRejection && !isDocRejected("panUpload") && panPreview && (
+                  <span style={{ background: "rgba(159, 232, 112, 0.15)", color: "var(--wise-green)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    ✓ Approved
+                  </span>
+                )}
               </h3>
               <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Upload a clear picture of your PAN card.</p>
             </div>
@@ -690,9 +735,19 @@ export default function DocumentUploadStep() {
         <div className={`doc-row ${sigPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "16px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "24px" }}>
             <div style={{ flex: "1 1 300px" }}>
-              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)", flexWrap: "wrap" }}>
                 <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>2</span>
                 Signature <span style={{ color: "var(--wise-danger)" }}>*</span>
+                {isRejection && isDocRejected("signature") && (
+                  <span style={{ background: "rgba(239, 68, 68, 0.15)", color: "#ef4444", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    Rejected {getDocRejectionReason("signature") ? `— ${getDocRejectionReason("signature")}` : ""}
+                  </span>
+                )}
+                {isRejection && !isDocRejected("signature") && sigPreview && (
+                  <span style={{ background: "rgba(159, 232, 112, 0.15)", color: "var(--wise-green)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    ✓ Approved
+                  </span>
+                )}
               </h3>
               <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Upload a clear image of your signature on blank white paper.</p>
             </div>
@@ -749,9 +804,19 @@ export default function DocumentUploadStep() {
         <div className={`doc-row ${selfiePhase === "done" ? "completed" : ""}`} style={{ padding: "32px 24px", borderBottom: needsBankProof ? "1px solid var(--border-color)" : "none", display: "flex", flexDirection: "column", gap: "16px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: "24px" }}>
             <div style={{ flex: "1 1 300px" }}>
-              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)", flexWrap: "wrap" }}>
                 <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>3</span>
                 Selfie Verification <span style={{ color: "var(--wise-danger)" }}>*</span>
+                {isRejection && isDocRejected("ipv") && (
+                  <span style={{ background: "rgba(239, 68, 68, 0.15)", color: "#ef4444", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    Rejected {getDocRejectionReason("ipv") ? `— ${getDocRejectionReason("ipv")}` : ""}
+                  </span>
+                )}
+                {isRejection && !isDocRejected("ipv") && selfiePhase === "done" && (
+                  <span style={{ background: "rgba(159, 232, 112, 0.15)", color: "var(--wise-green)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    ✓ Approved
+                  </span>
+                )}
               </h3>
               <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Complete a live face verification securely via Digio.</p>
             </div>
@@ -893,13 +958,23 @@ export default function DocumentUploadStep() {
         <div className={`doc-row ${finPreview ? "completed" : ""}`} style={{ padding: "32px 24px", borderTop: needsBankProof ? "none" : "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "16px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: "24px" }}>
             <div style={{ flex: "1 1 300px" }}>
-              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)" }}>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px", color: "var(--text-primary)", flexWrap: "wrap" }}>
                 <span className="doc-number" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 700 }}>4</span>
                 Financial Proof 
                 { (personalDetails?.annualIncome === "More Than 25 Lac" || segments?.derivatives) ? (
                   <span style={{ color: "var(--wise-danger)" }}>*</span>
                 ) : (
                   <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 700, background: "var(--bg-secondary)", padding: "4px 10px", borderRadius: "14px" }}>Optional</span>
+                )}
+                {isRejection && isDocRejected("financialProof") && (
+                  <span style={{ background: "rgba(239, 68, 68, 0.15)", color: "#ef4444", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    Rejected {getDocRejectionReason("financialProof") ? `— ${getDocRejectionReason("financialProof")}` : ""}
+                  </span>
+                )}
+                {isRejection && !isDocRejected("financialProof") && finPreview && (
+                  <span style={{ background: "rgba(159, 232, 112, 0.15)", color: "var(--wise-green)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700 }}>
+                    ✓ Approved
+                  </span>
                 )}
               </h3>
               <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Required for F&O Trading or High Income categories.</p>

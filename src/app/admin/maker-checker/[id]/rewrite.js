@@ -73,7 +73,8 @@ export default function AgentReview() {
   // Collect all documents
   const allDocumentsMap = new Map();
   unlockedSteps.forEach((step) => {
-    const activeTab = step.tabs ? step.tabs[0].id : null;
+    const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+    const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
     const ev = step.evidence(app, activeTab);
     ev.forEach((doc) => {
       if (doc && doc.src && !allDocumentsMap.has(doc.src)) {
@@ -89,7 +90,8 @@ export default function AgentReview() {
     } else {
       setExpandedModule(step.id);
       // Auto-select first document related to this step
-      const activeTab = step.tabs ? step.tabs[0].id : null;
+      const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+      const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
       const stepDocs = step.evidence(app, activeTab);
       if (stepDocs && stepDocs.length > 0) {
         setSelectedDocument(stepDocs[0]);
@@ -142,7 +144,8 @@ export default function AgentReview() {
           <div style={{ flex: 1, overflowY: "auto" }}>
             {unlockedSteps.map((step) => {
               const isExpanded = expandedModule === step.id;
-              const activeTab = step.tabs ? step.tabs[0].id : null;
+              const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+              const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
               const fields = step.fields(app, activeTab).filter(([, value]) => value !== undefined && value !== null && value !== "");
               const isRejected = statuses[step.id]?.status === "rejected";
 

@@ -17,7 +17,7 @@ export default function ResumePage() {
         sessionStorage.setItem("kycApplicationId", appId);
         
         // This simulates a fresh load which will make KYCContext auto-sync and jump to the right step
-        router.replace("/");
+        router.replace(`/?token=${encodeURIComponent(token)}`);
       } else {
         setError("Invalid resume link. Missing token or application ID.");
       }

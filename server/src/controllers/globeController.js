@@ -142,10 +142,14 @@ class GlobeController {
       const limit = parseInt(req.query.limit) || 10;
       const skip = (page - 1) * limit;
       const globeStatus = req.query.globeStatus;
+      const stage = req.query.stage;
 
       const whereClause = { status: "verified" };
       if (globeStatus && globeStatus !== "all") {
         whereClause.globeStatus = globeStatus;
+      }
+      if (stage && stage !== "all" && !isNaN(parseInt(stage))) {
+        whereClause.currentStep = parseInt(stage);
       }
 
       const search = req.query.search;

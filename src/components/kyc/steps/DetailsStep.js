@@ -198,8 +198,15 @@ const CheckboxItem = ({ label, value, onChange, disabled }) => {
 };
 
 export default function DetailsStep() {
-  const { personalDetails, updateNested, nextStep, prevStep, addToast, syncProgress } = useKYC();
+  const { personalDetails, updateNested, nextStep, prevStep, addToast, syncProgress, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
   const [form, setForm, clearFormDraft] = useLocalDraft("details", personalDetails);
+
+  const isRejection = Boolean(rejectionMode);
+  const isPersonalDetailsRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "personalDetails") ||
+    stepStatuses?.personalDetails?.status === "rejected"
+  );
+  const rejectionReasonText = rejectedStepsList?.find(r => r.stepId === "personalDetails")?.reason || stepStatuses?.personalDetails?.reason || "";
 
   const lastAutoSaveValues = useRef(form || {});
   const initializedForm = useRef(false);
@@ -322,6 +329,28 @@ export default function DetailsStep() {
       </div>
 
       <div className="animate-slide-up">
+        {isPersonalDetailsRejected && (
+          <div style={{
+            background: "rgba(239, 68, 68, 0.08)",
+            border: "1.5px solid rgba(239, 68, 68, 0.3)",
+            borderRadius: "16px",
+            padding: "16px 20px",
+            marginBottom: "24px",
+            display: "flex",
+            alignItems: "center",
+            gap: "14px"
+          }}>
+            <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 800, color: "var(--wise-danger)", fontSize: "0.95rem" }}>
+                Personal Details Rejected
+              </p>
+              <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+                {rejectionReasonText ? `Reason: ${rejectionReasonText}. ` : ""}Please fill in your correct details and proceed.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="form-grid">
 

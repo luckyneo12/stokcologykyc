@@ -41,6 +41,7 @@ export default function MakerCheckerDashboard() {
   const [kycs, setKycs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -61,10 +62,11 @@ export default function MakerCheckerDashboard() {
     "Name": 180,
     "Client Code": 120
   };
-  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Step", "Stage", "Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date"];
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Step", "Stage", "Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date"];
   const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "Status", "E-Stamp", "Start Date", "eSign Date", "Date"]);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [stageFilterOpen, setStageFilterOpen] = useState(false);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
 
   const scrollRef = useDragScroll();
@@ -119,6 +121,9 @@ export default function MakerCheckerDashboard() {
       }
       if (!e.target.closest('.filter-dropdown-container')) {
         setFilterOpen(false);
+      }
+      if (!e.target.closest('.stage-dropdown-container')) {
+        setStageFilterOpen(false);
       }
       if (!e.target.closest('.status-dropdown-container')) {
         setOpenStatusMenuId(null);
@@ -257,6 +262,7 @@ export default function MakerCheckerDashboard() {
     try {
       const url = new URL(`${API_BASE_URL}/api/agent/applications`);
       if (filter !== "all") url.searchParams.append("status", filter);
+      if (stageFilter !== "all") url.searchParams.append("stage", stageFilter);
       if (search) url.searchParams.append("search", search);
       url.searchParams.append("page", page);
       url.searchParams.append("limit", 15);
@@ -289,6 +295,16 @@ export default function MakerCheckerDashboard() {
             let parsedEsign = {};
             try { parsedEsign = typeof app.esignDetails === "string" ? JSON.parse(app.esignDetails) : (app.esignDetails || {}); } catch(e) {}
             
+            let parsedBank = {};
+            try { parsedBank = typeof app.bankDetails === "string" ? JSON.parse(app.bankDetails) : (app.bankDetails || {}); } catch(e) {}
+            
+            let parsedAddress = {};
+            try { parsedAddress = typeof app.address === "string" ? JSON.parse(app.address) : (app.address || {}); } catch(e) {}
+            
+            let parsedNominee = {};
+            try { parsedNominee = typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails) : (app.nomineeDetails || {}); } catch(e) {}
+
+            
             return {
             id: app.applicationId,
             dbId: app.id,
@@ -309,6 +325,21 @@ export default function MakerCheckerDashboard() {
             startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
             esignDate: parsedEsign.timestamp || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
             submittedAt: new Date(app.updatedAt || app.createdAt).toLocaleString(),
+            aadhaar: parsedIdentity.aadhaar ? `xxxxxxxx${parsedIdentity.aadhaar.slice(-4)}` : parsedIdentity.uid ? `xxxxxxxx${parsedIdentity.uid.slice(-4)}` : "N/A",
+            dob: parsedPersonal.dob || parsedIdentity.dob || "N/A",
+            gender: parsedPersonal.gender || "N/A",
+            fatherName: parsedPersonal.fatherName || "N/A",
+            motherName: parsedPersonal.motherName || "N/A",
+            bankName: parsedBank.bankName || "N/A",
+            accountNo: parsedBank.accountNumber || "N/A",
+            ifsc: parsedBank.ifsc || "N/A",
+            nominees: Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : 0,
+            address: [parsedAddress.line1, parsedAddress.line2, parsedAddress.line3].filter(Boolean).join(", ") || "N/A",
+            city: parsedAddress.city || "N/A",
+            state: parsedAddress.state || "N/A",
+            pincode: parsedAddress.pincode || "N/A",
+            occupation: parsedPersonal.occupation || "N/A",
+            annualIncome: parsedPersonal.annualIncome || "N/A",
           };});
           setKycs(mapped);
         }
@@ -322,21 +353,25 @@ export default function MakerCheckerDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, search]);
+  }, [filter, search, stageFilter]);
+
+  useEffect(() => {
+    if (loadingAuth || !isAuthenticated) return;
+    const t = setTimeout(() => {
+      fetchApplications();
+    }, 500);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    if (loadingAuth || !isAuthenticated) return;
+    fetchApplications();
+  }, [filter, stageFilter, page, loadingAuth, isAuthenticated]);
 
   const fetchRef = useRef(fetchApplications);
   useEffect(() => {
     fetchRef.current = fetchApplications;
   }, [fetchApplications]);
-
-  useEffect(() => {
-    if (loadingAuth || !isAuthenticated) return;
-    
-    const t = setTimeout(() => {
-      fetchApplications();
-    }, 500);
-    return () => clearTimeout(t);
-  }, [filter, search, page, loadingAuth, isAuthenticated]);
 
   useEffect(() => {
     if (loadingAuth || !isAuthenticated) return;
@@ -363,6 +398,21 @@ export default function MakerCheckerDashboard() {
       if (col === "Status") return k.status;
       if (col === "Globe Status") return k.globeStatus;
       if (col === "E-Stamp") return k.eStamp;
+      if (col === "Aadhaar") return k.aadhaar;
+      if (col === "DOB") return `"${k.dob || ""}"`;
+      if (col === "Gender") return k.gender;
+      if (col === "Father Name") return `"${k.fatherName || ""}"`;
+      if (col === "Mother Name") return `"${k.motherName || ""}"`;
+      if (col === "Bank Name") return `"${k.bankName || ""}"`;
+      if (col === "Account No") return `"${k.accountNo || ""}"`;
+      if (col === "IFSC") return k.ifsc;
+      if (col === "Nominees") return k.nominees;
+      if (col === "Address") return `"${k.address || ""}"`;
+      if (col === "City") return `"${k.city || ""}"`;
+      if (col === "State") return `"${k.state || ""}"`;
+      if (col === "Pincode") return k.pincode;
+      if (col === "Occupation") return `"${k.occupation || ""}"`;
+      if (col === "Annual Income") return `"${k.annualIncome || ""}"`;
       if (col === "Date") return `"${k.submittedAt || ""}"`;
       return "";
     }));
@@ -468,6 +518,61 @@ export default function MakerCheckerDashboard() {
                     </div>
                   )}
                 </div>
+
+                <div className="stage-dropdown-container" style={{ position: "relative", width: "220px" }}>
+                  <button 
+                    onClick={() => setStageFilterOpen(!stageFilterOpen)}
+                    style={{ 
+                      width: "100%", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", 
+                      background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, 
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                      {stageFilter === "all" ? "All Stages" : (STEP_LABELS[stageFilter] || `Step ${stageFilter}`)}
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: stageFilterOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </button>
+                  {stageFilterOpen && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", maxHeight: "400px", overflowY: "auto" }}>
+                      <div 
+                        onClick={() => { setStageFilter("all"); setStageFilterOpen(false); }}
+                        style={{ 
+                          padding: "10px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: stageFilter === "all" ? 700 : 500,
+                          color: stageFilter === "all" ? "var(--wise-green)" : "var(--text-primary)",
+                          background: stageFilter === "all" ? "rgba(48, 164, 108, 0.1)" : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          transition: "background 0.2s ease"
+                        }}
+                        onMouseEnter={(e) => { if (stageFilter !== "all") e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                        onMouseLeave={(e) => { if (stageFilter !== "all") e.currentTarget.style.background = "transparent"; }}
+                      >
+                        All Stages
+                        {stageFilter === "all" && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                      </div>
+                      {Object.entries(STEP_LABELS).filter(([num]) => num !== "0").map(([num, label]) => (
+                        <div 
+                          key={num}
+                          onClick={() => { setStageFilter(num); setStageFilterOpen(false); }}
+                          style={{ 
+                            padding: "10px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: stageFilter === num ? 700 : 500,
+                            color: stageFilter === num ? "var(--wise-green)" : "var(--text-primary)",
+                            background: stageFilter === num ? "rgba(48, 164, 108, 0.1)" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            transition: "background 0.2s ease"
+                          }}
+                          onMouseEnter={(e) => { if (stageFilter !== num) e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                          onMouseLeave={(e) => { if (stageFilter !== num) e.currentTarget.style.background = "transparent"; }}
+                        >
+                          {label}
+                          {stageFilter === num && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 
                 <div className="columns-dropdown-container" style={{ position: "relative", marginLeft: "auto" }}>
                   <button 
@@ -482,7 +587,7 @@ export default function MakerCheckerDashboard() {
                     Columns
                   </button>
                   {columnsOpen && (
-                    <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 200, padding: "8px 0" }}>
+                    <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 200, padding: "8px 0", maxHeight: "400px", overflowY: "auto" }}>
                       <div style={{ padding: "4px 16px", fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", borderBottom: "1px solid var(--border-color)", paddingBottom: 8, marginBottom: 4 }}>Toggle Columns</div>
                       {ALL_COLUMNS.map(col => (
                         <label key={col} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", cursor: PERMANENT_COLUMNS.includes(col) ? "not-allowed" : "pointer", fontSize: "0.85rem", color: "var(--text-primary)", opacity: PERMANENT_COLUMNS.includes(col) ? 0.6 : 1 }}>
@@ -580,6 +685,21 @@ export default function MakerCheckerDashboard() {
                           {visibleColumns.includes("Number") && <td style={{ fontWeight: 600 }}>{k.number}</td>}
                           {visibleColumns.includes("Email") && <td style={{ fontSize: "0.82rem", color: "var(--text-primary)" }}>{k.email}</td>}
                           {visibleColumns.includes("PAN") && <td style={{ fontWeight: 600 }}>{k.pan}</td>}
+                          {visibleColumns.includes("Aadhaar") && <td style={{ fontWeight: 600 }}>{k.aadhaar}</td>}
+                          {visibleColumns.includes("DOB") && <td style={{ fontSize: "0.82rem" }}>{k.dob}</td>}
+                          {visibleColumns.includes("Gender") && <td style={{ fontSize: "0.82rem", textTransform: "capitalize" }}>{k.gender}</td>}
+                          {visibleColumns.includes("Father Name") && <td style={{ fontSize: "0.82rem" }}>{k.fatherName}</td>}
+                          {visibleColumns.includes("Mother Name") && <td style={{ fontSize: "0.82rem" }}>{k.motherName}</td>}
+                          {visibleColumns.includes("Bank Name") && <td style={{ fontSize: "0.82rem", fontWeight: 600 }}>{k.bankName}</td>}
+                          {visibleColumns.includes("Account No") && <td style={{ fontSize: "0.82rem", fontFamily: "monospace" }}>{k.accountNo}</td>}
+                          {visibleColumns.includes("IFSC") && <td style={{ fontSize: "0.82rem", fontFamily: "monospace" }}>{k.ifsc}</td>}
+                          {visibleColumns.includes("Nominees") && <td style={{ fontSize: "0.82rem", textAlign: "center" }}>{k.nominees}</td>}
+                          {visibleColumns.includes("Address") && <td style={{ fontSize: "0.82rem", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={k.address}>{k.address}</td>}
+                          {visibleColumns.includes("City") && <td style={{ fontSize: "0.82rem" }}>{k.city}</td>}
+                          {visibleColumns.includes("State") && <td style={{ fontSize: "0.82rem" }}>{k.state}</td>}
+                          {visibleColumns.includes("Pincode") && <td style={{ fontSize: "0.82rem" }}>{k.pincode}</td>}
+                          {visibleColumns.includes("Occupation") && <td style={{ fontSize: "0.82rem" }}>{k.occupation}</td>}
+                          {visibleColumns.includes("Annual Income") && <td style={{ fontSize: "0.82rem" }}>{k.annualIncome}</td>}
                           {visibleColumns.includes("Step") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                             Step {k.stepNum || 0}/14
                           </td>}

@@ -195,15 +195,15 @@ const REVIEW_STEPS = [
         ];
       }
       return [
-        ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A"],
+        ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A"],
         ["Aadhar country", app.address?.country || "India"],
         ["Aadhar dist", app.address?.district || app.address?.city || "N/A"],
         ["Aadhar dob", app.personalDetails?.dob || "N/A"],
         ["Aadhar fathername", app.personalDetails?.fatherName || ""],
         ["Aadhar gender", app.personalDetails?.gender || "N/A"],
-        ["Aadhar house", app.address?.line1 || "N/A"],
-        ["Aadhar name", app.identityDetails?.aadhaarName || app.personalDetails?.fullName || "N/A"],
+        // ["Aadhar house", app.address?.line1 || "N/A"],
         ["Aadhar no", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : "N/A"],
+        ["Aadhar address", [app.address?.line1, app.address?.line2, app.address?.line3, app.address?.city, app.address?.state].filter(Boolean).join(" ") || "N/A"],
         ["Aadhar pincode", app.address?.pincode || "N/A"],
         ["Aadhar state", app.address?.state || "N/A"]
       ];
@@ -215,7 +215,7 @@ const REVIEW_STEPS = [
       ].filter(Boolean);
     },
   },
-  {
+  /* {
     id: "kra_fetch_new",
     kycIndex: 5.5,
     title: "kra_fetch_new",
@@ -239,7 +239,7 @@ const REVIEW_STEPS = [
       ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"]
     ],
     evidence: () => [],
-  },
+  }, */
   {
     id: "personalDetails",
     kycIndex: 6,
@@ -317,8 +317,13 @@ const REVIEW_STEPS = [
     title: "Nominee Details",
     evidenceTitle: "Nominee Identity Proof",
     evidenceHint: "Check nominee name, relation, date of birth, guardian details, and allocation.",
-    fields: (app) => nomineeFields(app),
-    evidence: (app) => nomineeEvidence(app),
+    tabs: (app) => {
+      const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
+      if (nominees.length <= 1) return null;
+      return nominees.map((_, i) => ({ id: `nominee_${i}`, label: `Nominee ${i + 1}` }));
+    },
+    fields: (app, tab) => nomineeFields(app, tab),
+    evidence: (app, tab) => nomineeEvidence(app, tab),
   },
   // {
   //   id: "nomineeAllocation",
@@ -353,12 +358,27 @@ const REVIEW_STEPS = [
       ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
       ["Account number", app.bankDetails?.accountNumber || "N/A"],
       ["IFSC", app.bankDetails?.ifsc || "N/A"],
-      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus || (app.bankDetails?.verified ? "Verified" : "Pending")],
+      ["Penny drop status", (() => {
+        const bd = app.bankDetails;
+        if (!bd) return "No";
+        
+        const isVerified = bd.verified === true || (bd.status && ["Verified", "VALID", "SUCCESS"].includes(bd.status.toString()));
+        const nameMatch = bd.nameMatch !== undefined ? bd.nameMatch : bd.name_match;
+        const isMismatch = (nameMatch === false || nameMatch === "no" || bd.isNameMismatch === true);
+        
+        if (isVerified) {
+          return isMismatch ? "Yes (Mismatch)" : "Yes";
+        }
+        
+        if (bd.bankRequestId || bd.verifiedAt || nameMatch !== undefined) {
+          if (isMismatch) return "Yes (Mismatch)";
+        }
+        
+        return "No";
+      })()],
       ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A"],
       ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
       ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A"],
-      ["Reenter account number", app.bankDetails?.accountNumber || "N/A"],
-      ["Micr1", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
       // ["Bank add", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
       // ["Reject reason bank", app.bankDetails?.rejectReason || app.ocrData?.bank?.rejectReason || "N/A"],
       // ["Rejected by bank", app.bankDetails?.rejectedBy || app.ocrData?.bank?.rejectedBy || "N/A"],
@@ -369,8 +389,6 @@ const REVIEW_STEPS = [
       ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A"],
       ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A"],
       ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A"],
-      ["Bank attached pan", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
-      ["Bank attached aadhar", app.identityDetails?.aadhaar ? `xxxxxxxx${app.identityDetails.aadhaar.slice(-4)}` : app.identityDetails?.uid ? `xxxxxxxx${app.identityDetails.uid.slice(-4)}` : "N/A"],
       ["Name on pan", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
       ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
       ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
@@ -437,16 +455,19 @@ const REVIEW_STEPS = [
     evidenceTitle: "Live Selfie",
     evidenceHint: "Compare live selfie with Aadhaar/PAN photo and face match score.",
     fields: (app) => [
-      ["Face match score", app.faceMatchScore !== null && app.faceMatchScore !== undefined ? `${app.faceMatchScore}%` : ""],
+      ["Face match score", app.selfieDetails?.faceMatchScore != null ? `${app.selfieDetails.faceMatchScore}%` : app.selfieDetails?.matchScore != null ? `${app.selfieDetails.matchScore}%` : "Not Captured"],
+      ["Liveness check", app.selfieDetails?.livenessScore != null ? `Pass (${app.selfieDetails.livenessScore}%)` : app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Pass" : "Not Captured"],
       ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
       ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
-      ["Latitude", app.selfieDetails?.latitude || "N/A"],
+      ["Latitude", app.selfieDetails?.lat || app.selfieDetails?.latitude || "N/A"],
       ["Location", app.selfieDetails?.location || "N/A"],
-      ["Longitude", app.selfieDetails?.longitude || "N/A"],
+      ["Longitude", app.selfieDetails?.lng || app.selfieDetails?.longitude || "N/A"],
+      ["Capture Date", app.selfieDetails?.extractedAt ? new Date(app.selfieDetails.extractedAt).toLocaleString('en-GB') : app.selfieDetails?.updatedAt ? new Date(app.selfieDetails.updatedAt).toLocaleString('en-GB') : "N/A"],
     ],
     evidence: (app) => [
       firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
-      findDocument(app, ["aadhaar", "photo", "digilocker"], "Reference Photo", ["pan"]),
+      firstMedia(app.selfieDetails?.videoPath, "Liveness Video"),
+      findDocument(app, ["aadhaar", "photo", "digilocker"], "Aadhar photo", ["pan"]),
       firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document"),
     ].filter(Boolean),
   },
@@ -719,7 +740,7 @@ function nomineeSummary(app) {
   return "";
 }
 
-function nomineeFields(app) {
+function nomineeFields(app, tab) {
   const preference = app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app);
   const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
   const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
@@ -731,7 +752,14 @@ function nomineeFields(app) {
 
   if (!nominees.length) return [...baseFields, ["Nominee details", "No nominee details submitted"]];
   
+  let targetIndex = -1;
+  if (tab && tab.startsWith("nominee_")) {
+    targetIndex = parseInt(tab.replace("nominee_", ""), 10);
+  }
+
   const detailedFields = nominees.flatMap((nominee, index) => {
+    if (targetIndex !== -1 && index !== targetIndex) return [];
+    
     let allocation = "N/A";
     if (Array.isArray(percentages) && percentages[index] !== undefined) {
       allocation = typeof percentages[index] === 'object' ? (percentages[index].percentage || percentages[index].allocation) : percentages[index];
@@ -767,9 +795,28 @@ function nomineeFields(app) {
   return [...baseFields, ...detailedFields];
 }
 
-function nomineeEvidence(app) {
+function nomineeEvidence(app, tab) {
   const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
-  return nominees.map((nominee, index) => firstMedia(nominee.guardianProofPath || nominee.proofPath || nominee.proofPreview, `Nominee ${index + 1} Proof`)).filter(Boolean);
+  let targetIndex = -1;
+  if (tab && tab.startsWith("nominee_")) {
+    targetIndex = parseInt(tab.replace("nominee_", ""), 10);
+  }
+  
+  if (targetIndex !== -1) {
+    const nominee = nominees[targetIndex];
+    if (nominee) {
+      return [
+        firstMedia(nominee.proofPath || nominee.proofPreview, `Nominee ${targetIndex + 1} Proof`),
+        firstMedia(nominee.guardianProofPath, `Nominee ${targetIndex + 1} Guardian Proof`)
+      ].filter(Boolean);
+    }
+    return [];
+  }
+
+  return nominees.flatMap((nominee, index) => [
+    firstMedia(nominee.proofPath || nominee.proofPreview, `Nominee ${index + 1} Proof`),
+    firstMedia(nominee.guardianProofPath, `Nominee ${index + 1} Guardian Proof`)
+  ]).filter(Boolean);
 }
 
 function allocationTotal(app) {
@@ -804,6 +851,11 @@ function getSafePreviewUrl(src) {
 function isPdf(src) {
   const safeSrc = getSafePreviewUrl(src);
   return safeSrc?.startsWith("data:application/pdf") || safeSrc?.toLowerCase().endsWith(".pdf");
+}
+
+function isVideo(src) {
+  const safeSrc = getSafePreviewUrl(src);
+  return safeSrc?.startsWith("data:video/") || safeSrc?.toLowerCase().endsWith(".mp4") || safeSrc?.toLowerCase().endsWith(".webm") || safeSrc?.includes("/video/upload/");
 }
 
 function shouldDisplayAsIframe(label) {
@@ -953,6 +1005,8 @@ function EvidencePanel({ step, app }) {
               <div style={{ height: 420, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fa" }}>
                 {isPdf(item.src) ? (
                   <PdfThumbnail src={item.src} />
+                ) : isVideo(item.src) ? (
+                  <video src={item.src} controls style={{ width: "100%", height: "100%", objectFit: "contain", padding: 14 }} />
                 ) : (
                   <img src={item.src} alt={item.label || "Evidence"} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 14 }} />
                 )}
@@ -1091,10 +1145,15 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   const isRejected = info.status === "rejected";
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
-  const [activeTab, setActiveTab] = useState(step.tabs ? step.tabs[0].id : null);
+  
+  const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+  const [activeTabState, setActiveTabState] = useState(null);
 
-  const evidence = step.evidence(app, activeTab);
-  const fields = step.fields(app, activeTab);
+  const activeTab = activeTabState || (resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null);
+  const currentTab = (resolvedTabs && resolvedTabs.find(t => t.id === activeTab)) ? activeTab : (resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null);
+
+  const evidence = step.evidence(app, currentTab);
+  const fields = step.fields(app, currentTab);
 
   return (
     <div className="card" style={{ padding: 24, borderRadius: 12, marginBottom: 20, border: isApproved ? "2px solid #dcfce7" : isRejected ? "2px solid #fee2e2" : "1px solid var(--border-color)", background: "var(--bg-primary)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", transition: "all 0.3s ease" }}>
@@ -1115,10 +1174,10 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
         </div>
       </div>
 
-      {step.tabs && (
+      {resolvedTabs && resolvedTabs.length > 0 && (
         <div style={{ display: "flex", gap: 12, marginBottom: 20, borderBottom: "1px solid var(--border-color)", paddingBottom: 10 }}>
-          {step.tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: "8px 16px", borderRadius: 8, background: activeTab === tab.id ? "var(--wise-dark-green)" : "var(--bg-secondary)", color: activeTab === tab.id ? "var(--bg-primary)" : "var(--text-primary)", fontWeight: 800, border: "none", cursor: "pointer", transition: "0.2s" }}>
+          {resolvedTabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTabState(tab.id)} style={{ padding: "8px 16px", borderRadius: 8, background: currentTab === tab.id ? "var(--wise-dark-green)" : "var(--bg-secondary)", color: currentTab === tab.id ? "var(--bg-primary)" : "var(--text-primary)", fontWeight: 800, border: "none", cursor: "pointer", transition: "0.2s" }}>
               {tab.label}
             </button>
           ))}
@@ -1153,6 +1212,8 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
                     <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fa" }}>
                       {isPdf(item.src) ? (
                         <PdfThumbnail src={item.src} />
+                      ) : isVideo(item.src) ? (
+                        <video src={item.src} style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
                       ) : (
                         <img src={item.src} alt="Evidence" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                       )}
@@ -1257,7 +1318,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
             transition: isDragging ? "none" : "transform 0.2s ease",
             height: "100%", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none"
           }}>
-            {isPdf(src) ? <PdfThumbnail src={getSafePreviewUrl(src)} /> : <img src={getSafePreviewUrl(src)} alt="Preview" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: 4 }} />}
+            {isPdf(src) ? <PdfThumbnail src={getSafePreviewUrl(src)} /> : isVideo(src) ? <video src={getSafePreviewUrl(src)} controls autoPlay loop muted style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: 4, pointerEvents: "auto" }} /> : <img src={getSafePreviewUrl(src)} alt="Preview" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: 4 }} />}
           </div>
         </div>
       )}
@@ -1295,6 +1356,7 @@ export default function AgentReview() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarActiveTabs, setSidebarActiveTabs] = useState({});
 
   const [expandedModule, setExpandedModule] = useState(null);
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -1736,14 +1798,25 @@ export default function AgentReview() {
     } else {
       setExpandedModule(step.id);
       // Auto-select first document related to this step
-      const activeTab = step.tabs ? step.tabs[0].id : null;
-      const stepDocs = step.evidence(app, activeTab);
+      const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+      const initialTabId = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
+      const activeTabId = sidebarActiveTabs[step.id] || initialTabId;
+      if (initialTabId && !sidebarActiveTabs[step.id]) {
+        setSidebarActiveTabs(prev => ({ ...prev, [step.id]: initialTabId }));
+      }
+      const stepDocs = step.evidence(app, activeTabId);
       if (stepDocs && stepDocs.length > 0) {
         setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
         setPreviewZoom(1);
         setPreviewRotation(0);
         setPreviewOffset({ x: 0, y: 0 });
       }
+      setTimeout(() => {
+        const el = document.getElementById(`module-${step.id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 50);
     }
   };
 
@@ -1836,17 +1909,18 @@ export default function AgentReview() {
             <LayoutTemplate size={18} color="var(--text-primary)" />
             <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Modules</span>
           </div>
-          <div className="premium-sidebar-list" style={{ flex: 1, overflowY: "auto" }}>
+          <div className="premium-sidebar-list" style={{ flex: 1, overflowY: "auto", paddingBottom: "60vh" }}>
             {unlockedSteps.map((step) => {
               const isExpanded = expandedModule === step.id;
-              const activeTab = step.tabs ? step.tabs[0].id : null;
+              const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+              const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
               const fields = step.fields(app, activeTab).filter(([, value]) => value !== undefined && value !== null && value !== "");
               const isRejected = statuses[step.id]?.status === "rejected";
               const isModified = isRejected && app.isResubmitted;
               const displayAsRejected = isRejected && !app.isResubmitted;
 
               return (
-                <div key={step.id} className={`premium-sidebar-module ${isExpanded ? 'active' : ''}`}>
+                <div id={`module-${step.id}`} key={step.id} className={`premium-sidebar-module ${isExpanded ? 'active' : ''}`}>
                   <div 
                     onClick={() => handleModuleClick(step)}
                     className="premium-sidebar-module-header"
@@ -1912,35 +1986,46 @@ export default function AgentReview() {
                       flexDirection: "column",
                       gap: "16px"
                     }}>
-                      {(step.tabs || [{ id: null, label: null }]).map((tab, tabIndex) => {
-                        const tabFields = step.fields(app, tab.id).filter(([, value]) => {
-                          if (value === undefined || value === null || value === "") return false;
-                          const str = String(value).trim();
-                          if (str === "N/A" || str === "--select--") return false;
-                          return true;
-                        });
-                        
-                        if (isRejected && statuses[step.id]?.reason && (!step.tabs || tabIndex === step.tabs.length - 1)) {
-                          tabFields.push(
-                            [`--- REJECTION DETAILS ---`, " "],
-                            [`Reject Reason ${step.title}`, statuses[step.id].reason],
-                            [`Rejected Timestamp ${step.title}`, statuses[step.id].reviewedAt ? new Date(statuses[step.id].reviewedAt).toLocaleString() : "N/A"]
-                          );
-                        }
+                      {(() => {
+                        const sections = resolvedTabs && resolvedTabs.length > 0
+                          ? resolvedTabs.map(t => ({
+                              id: t.id,
+                              label: t.label,
+                              isActive: sidebarActiveTabs[step.id] === t.id,
+                              fields: step.fields(app, t.id)
+                            }))
+                          : [{
+                              id: null,
+                              label: null,
+                              isActive: true,
+                              fields: step.fields(app, null)
+                            }];
 
-                        if (tabFields.length === 0) {
-                          if (step.tabs) return null;
-                          return <div key="empty" style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>No details available.</div>;
-                        }
                         return (
-                          <div key={tab.id || "default"} style={{ marginBottom: step.tabs && tabIndex < step.tabs.length - 1 ? 16 : 0 }}>
-                            {tab.label && (
-                              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 8, textTransform: "uppercase", borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>
-                                {tab.label}
-                              </div>
-                            )}
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                              {tabFields.map(([label, value, jsonPath]) => {
+                          <div style={{ display: "flex", flexDirection: "column", gap: resolvedTabs && resolvedTabs.length > 0 ? 12 : 16 }}>
+                            {sections.map((section, index) => {
+                              const tabFields = section.fields.filter(([, value]) => {
+                                if (value === undefined || value === null || value === "") return false;
+                                const str = String(value).trim();
+                                if (str === "N/A" || str === "--select--") return false;
+                                return true;
+                              });
+
+                              if (isRejected && statuses[step.id]?.reason && index === sections.length - 1) {
+                                tabFields.push(
+                                  [`--- REJECTION DETAILS ---`, " "],
+                                  [`Reject Reason ${step.title}`, statuses[step.id].reason],
+                                  [`Rejected Timestamp ${step.title}`, statuses[step.id].reviewedAt ? new Date(statuses[step.id].reviewedAt).toLocaleString() : "N/A"]
+                                );
+                              }
+
+                              const renderFieldBlock = () => {
+                                if (tabFields.length === 0) {
+                                  return <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: section.label ? 16 : 0 }}>No details available.</div>;
+                                }
+                                return (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: section.label ? 16 : 0 }}>
+                                    {tabFields.map(([label, value, jsonPath]) => {
                                 const isDivider = label.startsWith("---");
                                 if (isDivider) {
                                   const headerText = label.replace(/-/g, "").trim();
@@ -2062,9 +2147,65 @@ export default function AgentReview() {
                                 );
                               })}
                             </div>
+                          );
+                        };
+
+                        if (!section.label) {
+                          return <div key="default">{renderFieldBlock()}</div>;
+                        }
+
+                        return (
+                          <div id={`accordion-${step.id}-${section.id}`} key={section.id} style={{ 
+                            border: `1px solid ${section.isActive ? 'var(--wise-dark-green)' : 'var(--border-color)'}`, 
+                            borderRadius: 8, 
+                            overflow: "hidden",
+                            background: "var(--bg-primary)",
+                            boxShadow: section.isActive ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
+                            transition: "all 0.2s"
+                          }}>
+                            <div 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const isCurrentlyActive = section.isActive;
+                                setSidebarActiveTabs(prev => ({...prev, [step.id]: isCurrentlyActive ? null : section.id})); 
+                                if (!isCurrentlyActive) {
+                                  const stepDocs = step.evidence(app, section.id);
+                                  if (stepDocs && stepDocs.length > 0) {
+                                    setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
+                                    setPreviewZoom(1); setPreviewRotation(0); setPreviewOffset({ x: 0, y: 0 });
+                                  }
+                                  setTimeout(() => {
+                                    const el = document.getElementById(`accordion-${step.id}-${section.id}`);
+                                    if (el) {
+                                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                  }, 50);
+                                }
+                              }}
+                              style={{ 
+                                padding: "12px 16px", 
+                                display: "flex", 
+                                justifyContent: "space-between", 
+                                alignItems: "center", 
+                                cursor: "pointer",
+                                background: section.isActive ? "var(--wise-dark-green)" : "var(--bg-secondary)",
+                                color: section.isActive ? "white" : "var(--text-primary)",
+                                fontWeight: 800,
+                                fontSize: "0.85rem",
+                                borderBottom: section.isActive ? "1px solid var(--border-color)" : "none"
+                              }}
+                            >
+                              <span>{section.label}</span>
+                              {section.isActive ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </div>
+                            
+                            {section.isActive && renderFieldBlock()}
                           </div>
                         );
                       })}
+                    </div>
+                  );
+                })()}
                     </div>
                   )}
                 </div>
@@ -2192,6 +2333,12 @@ export default function AgentReview() {
                   }}>
                     {isPdf(selectedDocument.src) ? (
                       <PdfThumbnail src={getSafePreviewUrl(selectedDocument.src)} />
+                    ) : isVideo(selectedDocument.src) ? (
+                      <video 
+                        src={getSafePreviewUrl(selectedDocument.src)} 
+                        controls autoPlay loop 
+                        style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", pointerEvents: "auto" }} 
+                      />
                     ) : (
                       <img 
                         src={getSafePreviewUrl(selectedDocument.src)} 

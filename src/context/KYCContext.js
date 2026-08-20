@@ -122,7 +122,28 @@ const INITIAL_STATE = {
   stepStatuses: {}, // { [reviewStepId]: { status, reason, ... } }
   generatedPdfBase64: null,
   verifiedSteps: {}, // { [stepIndex]: { fingerprint: string } } — tracks verified API steps to skip on re-navigation
+  rejectionMode: false, // true when user accessed via rejection email magic link
+  rejectedStepsList: [], // list of rejected steps with { stepId, type, reason }
 };
+
+function decodeJwtPayload(token) {
+  try {
+    if (!token) return null;
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
 
 const STEPS = [
   { id: "welcome", label: "Welcome" },
@@ -520,11 +541,79 @@ export function KYCProvider({ children }) {
               if (!isPolling) {
                 lastSyncedReviewedAt.current = app.reviewedAt; // Initialize the marker
                 setPreGeneratedPdf(null);
+
+                const isRejectionMode =
+                  sessionStorage.getItem("kycRejectionMode") === "true" ||
+                  prev.rejectionMode ||
+                  Boolean(decodeJwtPayload(activeToken)?.rejectionMode);
+
+                let rejList = prev.rejectedStepsList || [];
+                if (rejList.length === 0) {
+                  try {
+                    rejList = JSON.parse(
+                      sessionStorage.getItem("kycRejectedSteps") || "[]"
+                    );
+                  } catch (e) {
+                    rejList = [];
+                  }
+                }
+
+                let parsedStatuses = {};
+                if (app.stepStatuses) {
+                  try {
+                    parsedStatuses =
+                      typeof app.stepStatuses === "string"
+                        ? JSON.parse(app.stepStatuses)
+                        : app.stepStatuses;
+                  } catch (e) {
+                    parsedStatuses = {};
+                  }
+                }
+
+                const isStepRejected = (stepName) => {
+                  if (!isRejectionMode) return false;
+                  if (rejList.some((r) => r.stepId === stepName)) return true;
+                  return parsedStatuses[stepName]?.status === "rejected";
+                };
+
+                // Clear stale local drafts for rejected steps
+                if (typeof window !== "undefined" && isRejectionMode) {
+                  const appId = app.applicationId;
+                  if (isStepRejected("personalDetails"))
+                    localStorage.removeItem(`kyc-draft-${appId}-details`);
+                  if (isStepRejected("bankVerification"))
+                    localStorage.removeItem(`kyc-draft-${appId}-bankForm`);
+                  if (
+                    isStepRejected("nomineeDetails") ||
+                    isStepRejected("nomineeChoice")
+                  ) {
+                    localStorage.removeItem(`kyc-draft-${appId}-nominees`);
+                    localStorage.removeItem(`kyc-draft-${appId}-nomineeOpted`);
+                    localStorage.removeItem(`kyc-draft-${appId}-nomineeConfirmed`);
+                  }
+                  if (isStepRejected("panVerification")) {
+                    localStorage.removeItem(`kyc-draft-${appId}-pan`);
+                    localStorage.removeItem(`kyc-draft-${appId}-panFullName`);
+                    localStorage.removeItem(`kyc-draft-${appId}-panDob`);
+                  }
+                  if (isStepRejected("digilocker")) {
+                    localStorage.removeItem(`kyc-draft-${appId}-address`);
+                  }
+                  if (isStepRejected("pricingSelection")) {
+                    localStorage.removeItem(`kyc-draft-${appId}-pricingSegments`);
+                    localStorage.removeItem(`kyc-draft-${appId}-pricingBsda`);
+                    localStorage.removeItem(`kyc-draft-${appId}-pricingBrokerageAccepted`);
+                    localStorage.removeItem(`kyc-draft-${appId}-pricingTariffAccepted`);
+                  }
+                }
+
                 return updateSessionStorage({
                   ...prev,
                   applicationId: app.applicationId,
                   currentStep: app.currentStep,
                   status: app.status,
+                  rejectionMode: isRejectionMode,
+                  rejectedStepsList: rejList,
                   rejectionReason:
                     app.rejectionReason !== undefined
                       ? app.rejectionReason
@@ -541,35 +630,67 @@ export function KYCProvider({ children }) {
                   otpVerified: app.currentStep > 1 ? true : prev.otpVerified,
                   emailVerified:
                     app.currentStep > 2 ? true : prev.emailVerified,
-                  panVerified: app.currentStep > 4 ? true : prev.panVerified,
-                  personalDetails: {
-                    ...prev.personalDetails,
-                    ...(app.personalDetails || {}),
-                  },
-                  identityDetails: {
-                    ...prev.identityDetails,
-                    ...(app.identityDetails || {}),
-                  },
-                  address: { ...prev.address, ...(app.address || {}) },
-                  bankDetails: {
-                    ...prev.bankDetails,
-                    ...(app.bankDetails || {}),
-                  },
-                  ocrData: { ...prev.ocrData, ...(app.ocrData || {}) },
-                  selfie: { ...prev.selfie, ...(app.selfieDetails || {}) },
-                  signature: { ...prev.signature, ...(app.signature || {}) },
-                  panUpload: { ...prev.panUpload, ...(app.panUpload || {}) },
-                  financialProof: {
-                    ...prev.financialProof,
-                    ...(app.financialProof || {}),
-                  },
-                  segments: app.segments || prev.segments,
-                  bsda: app.bsda || prev.bsda,
-                  nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
-                  nomineeAllocation:
-                    app.nomineeAllocation || prev.nomineeAllocation,
+                  panVerified: isStepRejected("panVerification")
+                    ? false
+                    : app.currentStep > 4
+                    ? true
+                    : prev.panVerified,
+                  personalDetails: isStepRejected("personalDetails")
+                    ? INITIAL_STATE.personalDetails
+                    : {
+                        ...prev.personalDetails,
+                        ...(app.personalDetails || {}),
+                      },
+                  identityDetails: isStepRejected("panVerification")
+                    ? { ...prev.identityDetails, pan: "" }
+                    : {
+                        ...prev.identityDetails,
+                        ...(app.identityDetails || {}),
+                      },
+                  address: isStepRejected("digilocker")
+                    ? INITIAL_STATE.address
+                    : { ...prev.address, ...(app.address || {}) },
+                  bankDetails: isStepRejected("bankVerification")
+                    ? INITIAL_STATE.bankDetails
+                    : {
+                        ...prev.bankDetails,
+                        ...(app.bankDetails || {}),
+                      },
+                  ocrData: isStepRejected("panVerification")
+                    ? INITIAL_STATE.ocrData
+                    : { ...prev.ocrData, ...(app.ocrData || {}) },
+                  selfie: isStepRejected("ipv")
+                    ? INITIAL_STATE.selfie
+                    : { ...prev.selfie, ...(app.selfieDetails || {}) },
+                  signature: isStepRejected("signature")
+                    ? INITIAL_STATE.signature
+                    : { ...prev.signature, ...(app.signature || {}) },
+                  panUpload: isStepRejected("panUpload")
+                    ? INITIAL_STATE.panUpload
+                    : { ...prev.panUpload, ...(app.panUpload || {}) },
+                  financialProof: isStepRejected("financialProof")
+                    ? INITIAL_STATE.financialProof
+                    : {
+                        ...prev.financialProof,
+                        ...(app.financialProof || {}),
+                      },
+                  segments: isStepRejected("pricingSelection")
+                    ? INITIAL_STATE.segments
+                    : app.segments || prev.segments,
+                  bsda: isStepRejected("pricingSelection")
+                    ? INITIAL_STATE.bsda
+                    : app.bsda || prev.bsda,
+                  nomineeDetails:
+                    isStepRejected("nomineeDetails") ||
+                    isStepRejected("nomineeChoice")
+                      ? INITIAL_STATE.nomineeDetails
+                      : app.nomineeDetails || prev.nomineeDetails,
+                  nomineeAllocation: isStepRejected("nomineeAllocation")
+                    ? INITIAL_STATE.nomineeAllocation
+                    : app.nomineeAllocation || prev.nomineeAllocation,
                   stepStatuses: app.stepStatuses || prev.stepStatuses,
-                  generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
+                  generatedPdfBase64:
+                    app.generatedPdfBase64 || prev.generatedPdfBase64,
                 });
               }
 
@@ -740,9 +861,29 @@ export function KYCProvider({ children }) {
       sessionStorage.setItem("kycToken", magicToken);
       window.history.replaceState({}, document.title, window.location.pathname);
 
+      const decoded = decodeJwtPayload(magicToken);
+      const isRejection = Boolean(decoded?.rejectionMode);
+      const rejSteps = decoded?.rejectedSteps || [];
+
+      if (isRejection) {
+        sessionStorage.setItem("kycRejectionMode", "true");
+        sessionStorage.setItem(
+          "kycRejectedSteps",
+          JSON.stringify(rejSteps)
+        );
+      } else {
+        sessionStorage.removeItem("kycRejectionMode");
+        sessionStorage.removeItem("kycRejectedSteps");
+      }
+
       // Set restoring immediately so KYCJourney shows the loading spinner
       // instead of flashing step 1 while we fetch the application
-      setState((prev) => ({ ...prev, isRestoring: true }));
+      setState((prev) => ({
+        ...prev,
+        rejectionMode: isRejection,
+        rejectedStepsList: rejSteps,
+        isRestoring: true,
+      }));
 
       // Fetch /api/kyc/me to get the application id
       fetch(`${API_BASE_URL}/api/kyc/me`, {
@@ -773,6 +914,30 @@ export function KYCProvider({ children }) {
       console.log(
         `[KYC Init] Found tab session for ${savedApplicationId}. Refreshing...`,
       );
+      const decoded = decodeJwtPayload(token);
+      const isRejection = Boolean(
+        decoded?.rejectionMode ||
+          sessionStorage.getItem("kycRejectionMode") === "true"
+      );
+      let rejSteps = decoded?.rejectedSteps || [];
+      if (rejSteps.length === 0) {
+        try {
+          rejSteps = JSON.parse(
+            sessionStorage.getItem("kycRejectedSteps") || "[]"
+          );
+        } catch (e) {
+          rejSteps = [];
+        }
+      }
+
+      if (isRejection) {
+        setState((prev) => ({
+          ...prev,
+          rejectionMode: true,
+          rejectedStepsList: rejSteps,
+        }));
+      }
+
       refreshProgress(savedApplicationId, token);
     } else {
       // No active tab session, stop the restoring spinner

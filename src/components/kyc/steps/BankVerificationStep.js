@@ -82,8 +82,15 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
 
 export default function BankVerificationStep() {
-  const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified, personalDetails, ocrData } = useKYC();
+  const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified, personalDetails, ocrData, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
   
+  const isRejection = Boolean(rejectionMode);
+  const isBankRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "bankVerification") ||
+    stepStatuses?.bankVerification?.status === "rejected"
+  );
+  const bankRejectionReason = rejectedStepsList?.find(r => r.stepId === "bankVerification")?.reason || stepStatuses?.bankVerification?.reason || "";
+
   // Local state for the dropdown selection
     const [form, setForm, clearFormDraft] = useLocalDraft("bankForm", {
     accountNumber: bankDetails.accountNumber || "",
@@ -339,19 +346,42 @@ export default function BankVerificationStep() {
     <div className="container-sm">
       
       
-          <div className="text-center animate-slide-up" style={{ marginBottom: 32, position: "relative" }}>
-            <button 
-              onClick={handleReset} 
-              style={{ position: "absolute", right: 0, top: 0, color: "var(--wise-danger)", background: "transparent", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700, padding: "4px 8px", borderRadius: "8px" }}
-            >
-              Reset Test
-            </button>
+      <div className="text-center animate-slide-up" style={{ marginBottom: 32, position: "relative" }}>
+        <button 
+          onClick={handleReset} 
+          style={{ position: "absolute", right: 0, top: 0, color: "var(--wise-danger)", background: "transparent", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700, padding: "4px 8px", borderRadius: "8px" }}
+        >
+          Reset Test
+        </button>
 
-            
-            <h1 className="text-section" style={{ fontSize: "2.4rem", marginBottom: 16, color: "var(--text-primary)" }}>Bank Details</h1>
+        
+        <h1 className="text-section" style={{ fontSize: "2.4rem", marginBottom: 16, color: "var(--text-primary)" }}>Bank Details</h1>
+      </div>
+
+      {isBankRejected && (
+        <div className="animate-slide-up" style={{
+          background: "rgba(239, 68, 68, 0.08)",
+          border: "1.5px solid rgba(239, 68, 68, 0.3)",
+          borderRadius: "16px",
+          padding: "16px 20px",
+          marginBottom: "24px",
+          display: "flex",
+          alignItems: "center",
+          gap: "14px"
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 800, color: "var(--wise-danger)", fontSize: "0.95rem" }}>
+              Bank Verification Rejected
+            </p>
+            <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+              {bankRejectionReason ? `Reason: ${bankRejectionReason}. ` : ""}Please enter your correct bank account details to verify.
+            </p>
           </div>
+        </div>
+      )}
 
-          <div className="card animate-slide-up" style={{ 
+      <div className="card animate-slide-up" style={{ 
             background: "var(--bg-card)", 
             border: "1px solid var(--border-color)", 
             borderRadius: "24px",

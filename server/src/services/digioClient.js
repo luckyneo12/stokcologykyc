@@ -172,6 +172,41 @@ class DigioClient {
       throw error;
     }
   }
+
+  /**
+   * FaceMatch API
+   * Ref: v3/client/kyc/facematch
+   * @param {Buffer} fileBuffer1 - Binary image buffer (e.g. ID card)
+   * @param {Buffer} fileBuffer2 - Binary image buffer (e.g. Selfie)
+   * @param {string} requestId - Unique request ID for traceability
+   * @param {number} minimumMatch - Minimum threshold (in percentage)
+   */
+  async checkFaceMatch(fileBuffer1, fileBuffer2, requestId, minimumMatch = 40) {
+    const FormData = require("form-data");
+    const form = new FormData();
+    form.append("file1", fileBuffer1, { filename: "source.jpg", contentType: "image/jpeg" });
+    form.append("file2", fileBuffer2, { filename: "selfie.jpg", contentType: "image/jpeg" });
+    form.append("minimum_match", String(minimumMatch));
+    form.append("unique_request_id", requestId);
+
+    const fullUrl = `${this.http.defaults.baseURL}v3/client/kyc/facematch`;
+    console.log(`[Digio API Request] POST ${fullUrl} (FaceMatch Check)`);
+
+    try {
+      const response = await axios.post(fullUrl, form, {
+        headers: {
+          ...form.getHeaders(),
+          Authorization: `Basic ${this.auth}`
+        },
+        timeout: 30000
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || {};
+      console.error(`Digio API Error [FaceMatch Check]:`, JSON.stringify(errorData, null, 2) || error.message);
+      throw error;
+    }
+  }
 }
 
 module.exports = new DigioClient();

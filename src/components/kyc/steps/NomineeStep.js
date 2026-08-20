@@ -115,8 +115,16 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 };
 
 export default function NomineeStep() {
-  const { nomineeDetails, address: userAddress, identityDetails, personalDetails, ocrData, nextStep, prevStep, addToast } = useKYC();
+  const { nomineeDetails, address: userAddress, identityDetails, personalDetails, ocrData, nextStep, prevStep, addToast, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
   
+  const isRejection = Boolean(rejectionMode);
+  const isNomineeRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "nomineeDetails" || r.stepId === "nomineeChoice") ||
+    stepStatuses?.nomineeDetails?.status === "rejected" ||
+    stepStatuses?.nomineeChoice?.status === "rejected"
+  );
+  const nomineeRejectionReason = rejectedStepsList?.find(r => r.stepId === "nomineeDetails" || r.stepId === "nomineeChoice")?.reason || stepStatuses?.nomineeDetails?.reason || "";
+
   const initialNominees = Array.isArray(nomineeDetails?.nominees) && nomineeDetails.nominees.length > 0 ? nomineeDetails.nominees : [createEmptyNominee()];
   const [draftNominees, setNominees, clearNomineesDraft] = useLocalDraft("nominees", initialNominees);
   const nominees = Array.isArray(draftNominees) && draftNominees.length > 0 ? draftNominees : [createEmptyNominee()];
@@ -634,6 +642,28 @@ export default function NomineeStep() {
       </div>
 
       <div className="animate-slide-up">
+        {isNomineeRejected && (
+          <div style={{
+            background: "rgba(239, 68, 68, 0.08)",
+            border: "1.5px solid rgba(239, 68, 68, 0.3)",
+            borderRadius: "16px",
+            padding: "16px 20px",
+            marginBottom: "24px",
+            display: "flex",
+            alignItems: "center",
+            gap: "14px"
+          }}>
+            <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 800, color: "var(--wise-danger)", fontSize: "0.95rem" }}>
+                Nominee Details Rejected
+              </p>
+              <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+                {nomineeRejectionReason ? `Reason: ${nomineeRejectionReason}. ` : ""}Please fill in your correct nominee details and proceed.
+              </p>
+            </div>
+          </div>
+        )}
         
         {nominees.map((nom, idx) => (
           <div key={idx} style={{ 

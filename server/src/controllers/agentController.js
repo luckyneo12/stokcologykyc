@@ -5,7 +5,7 @@ const { z } = require("zod");
 const getAssignedApplications = async (req, res, next) => {
   try {
     const agentId = Number(req.user.id);
-    const { status = "all", search = "", page = 1, limit = 15 } = req.query;
+    const { status = "all", search = "", page = 1, limit = 15, stage = "all" } = req.query;
     
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const take = Math.min(Math.max(parseInt(limit, 10) || 15, 1), 200);
@@ -28,6 +28,10 @@ const getAssignedApplications = async (req, res, next) => {
       } else {
         where.status = normalizedStatus;
       }
+    }
+
+    if (stage !== "all" && !isNaN(parseInt(stage))) {
+      where.currentStep = parseInt(stage);
     }
 
     if (search) {
@@ -310,6 +314,10 @@ const REVIEW_STEP_TO_KYC_INDEX = {
   completion: 14,
 };
 
+// Document-type review steps — rejection of these only clears the specific document,
+// not the entire DocumentUploadStep form. All other steps are "module" rejections.
+const DOCUMENT_REVIEW_STEPS = ["financialProof", "signature", "panUpload", "ipv"];
+
 /**
  * Sends a rejection email to the KYC user and resets the application
  * so the user can modify only the rejected steps + re-eSign.
@@ -375,9 +383,21 @@ const requestModifications = async (req, res, next) => {
     });
 
     // Build the modification link — the user's KYC portal
+    // Embed rejection metadata in the JWT so the frontend can detect rejection mode
+    // and know exactly which steps to blank (module vs document)
     const jwt = require("jsonwebtoken");
     const magicToken = jwt.sign(
-      { id: app.user.id, phone: app.user.phone, role: app.user.role || "user" },
+      {
+        id: app.user.id,
+        phone: app.user.phone,
+        role: app.user.role || "user",
+        rejectionMode: true,
+        rejectedSteps: rejectedEntries.map(e => ({
+          stepId: e.stepId,
+          type: DOCUMENT_REVIEW_STEPS.includes(e.stepId) ? "document" : "module",
+          reason: e.reason
+        }))
+      },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );

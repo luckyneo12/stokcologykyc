@@ -7,7 +7,15 @@ import { ZapIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon } from "../Icon
 import Logo from "../Logo";
 
 export default function PricingStep() {
-  const { segments, bsda, updateState, nextStep, prevStep, theme, addToast, emailVerified, syncProgress } = useKYC();
+  const { segments, bsda, updateState, nextStep, prevStep, theme, addToast, emailVerified, syncProgress, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
+  const isRejection = Boolean(rejectionMode);
+  const isPricingRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "pricingSelection") ||
+    stepStatuses?.pricingSelection?.status === "rejected"
+  );
+  const pricingRejectionReason = rejectedStepsList?.find(r => r.stepId === "pricingSelection")?.reason || stepStatuses?.pricingSelection?.reason || "";
+
   const [selectedSegments, setSelectedSegments, clearSegmentsDraft] = useLocalDraft("pricingSegments", segments || { equity: true, derivatives: false });
   const [bsdaPreference, setBsdaPreference, clearBsdaDraft] = useLocalDraft("pricingBsda", bsda || "opt-in");
   const [showModal, setShowModal] = useState(false);
@@ -103,6 +111,29 @@ export default function PricingStep() {
         <h2 className="text-section" style={{ marginBottom: 16 }}>Segments & Pricing</h2>
         <p className="text-body" style={{ fontWeight: 600 }}>Please select the Trading preferences you wish to continue with</p>
       </div>
+
+      {isPricingRejected && (
+        <div className="animate-slide-up" style={{
+          background: "rgba(239, 68, 68, 0.08)",
+          border: "1.5px solid rgba(239, 68, 68, 0.3)",
+          borderRadius: "16px",
+          padding: "16px 20px",
+          marginBottom: "24px",
+          display: "flex",
+          alignItems: "center",
+          gap: "14px"
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 800, color: "var(--wise-danger)", fontSize: "0.95rem" }}>
+              Pricing Selection Rejected
+            </p>
+            <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+              {pricingRejectionReason ? `Reason: ${pricingRejectionReason}. ` : ""}Please select your trading preferences and accept the plans.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="card animate-slide-up">
         <div style={{ marginBottom: 28 }}>

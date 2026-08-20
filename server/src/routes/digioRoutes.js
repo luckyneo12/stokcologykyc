@@ -229,6 +229,40 @@ function serializeJsonFields(data, keys) {
   return next;
 }
 
+function extractLivenessScoreFromDigioResponse(digioResponse) {
+  const scoreCandidates = [];
+
+  const pushNormalized = (value) => {
+    if (value === null || value === undefined) return;
+    const num = Number(value);
+    if (Number.isNaN(num)) return;
+    if (num <= 1) {
+      scoreCandidates.push(Math.round(num * 100));
+    } else {
+      scoreCandidates.push(Math.round(num));
+    }
+  };
+
+  pushNormalized(digioResponse?.liveness_score);
+  pushNormalized(digioResponse?.livenessScore);
+
+  if (Array.isArray(digioResponse?.actions)) {
+    for (const action of digioResponse.actions) {
+      pushNormalized(action?.liveness_score);
+      pushNormalized(action?.details?.liveness_score);
+      
+      // If the action type is explicitly LIVENESS, the generic score is likely the liveness score
+      if (String(action?.type || "").toUpperCase() === "LIVENESS") {
+        pushNormalized(action?.score);
+        pushNormalized(action?.details?.score);
+      }
+    }
+  }
+
+  if (!scoreCandidates.length) return null;
+  return Math.max(...scoreCandidates);
+}
+
 function extractFaceScoreFromDigioResponse(digioResponse) {
   const scoreCandidates = [];
 
@@ -1264,6 +1298,14 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         `[Digio Route] Fetching KYC Request Response for ${requestId}`,
       );
       digioResponse = await digioClient.getKycRequestResponse(requestId);
+      // Log SELFIE action details (excluding base64 data) for score diagnostics
+      if (payload.type === "SELFIE" || payload.type === "LIVENESS") {
+        const safeActions = (digioResponse.actions || []).map(a => {
+          const { image, photo, image_data, file_data, ...safe } = (a.details || {});
+          return { type: a.type, status: a.status, score: a.score, liveness_score: a.liveness_score, file_id: a.file_id, detailKeys: Object.keys(a.details || {}), safeDetails: safe };
+        });
+        console.log(`[Digio SELFIE Response] status=${digioResponse.status}, actions:`, JSON.stringify(safeActions, null, 2));
+      }
     }
 
     const application = await getOrCreateDraftApplication({
@@ -1978,7 +2020,8 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     // 4. Final Database Sync
     let nextSelfieDetails = parseJsonField(application.selfieDetails, {});
-    const extractedFaceScore = extractFaceScoreFromDigioResponse(digioResponse);
+    let extractedFaceScore = extractFaceScoreFromDigioResponse(digioResponse);
+    let extractedLivenessScore = extractLivenessScoreFromDigioResponse(digioResponse);
     const extractMediaFromDigio = (response) => {
       const media = { image: null, video: null };
       const isUrl = (value) =>
@@ -2043,9 +2086,12 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     // Explicitly attempt to download selfie file if action contains file_id
     let downloadedSelfiePath = null;
+    let downloadedVideoPath = null;
     if (selfieActions && selfieActions.length > 0) {
       for (const action of selfieActions) {
         const mediaId = action.file_id || action.execution_request_id;
+        const videoId = action.video_id || action.recording_id || action.liveness_video_file_id || action.liveness_video_id || (action.details && (action.details.video_id || action.details.liveness_video_file_id || action.details.recording_id));
+
         if (mediaId && !downloadedSelfiePath) {
           try {
             console.log(
@@ -2072,6 +2118,25 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
               `[Digio Extraction] Failed to download selfie media_id ${mediaId}:`,
               err.message,
             );
+          }
+        }
+
+        if (videoId && !downloadedVideoPath) {
+          try {
+            console.log(`[Digio Extraction] Downloading selfie video using video_id: ${videoId}`);
+            const response = await digioClient.downloadKycMedia(videoId);
+            const mediaBuffer = response.data;
+            if (mediaBuffer && (mediaBuffer.byteLength > 0 || mediaBuffer.length > 0)) {
+              const publicId = `selfie_video_${application.applicationId}_${Date.now()}`;
+              console.log(`[Digio Extraction] Uploading selfie video to Cloudinary...`);
+              
+              const cloudinaryResult = await uploadBufferToCloudinary(Buffer.from(mediaBuffer), publicId, "mp4");
+              downloadedVideoPath = cloudinaryResult.secure_url;
+              
+              console.log(`[Digio Extraction] Saved downloaded selfie video to Cloudinary: ${downloadedVideoPath}`);
+            }
+          } catch (err) {
+            console.error(`[Digio Extraction] Failed to download selfie video ${videoId}:`, err.message);
           }
         }
       }
@@ -2126,6 +2191,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       (safeSelfieDocPath ||
         extractedMedia.image ||
         extractedMedia.video ||
+        downloadedVideoPath ||
         extractedFaceScore !== null);
 
     const findGeoVal = (obj, keys) => {
@@ -2151,12 +2217,16 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
           extractedMedia.image ||
           nextSelfieDetails.preview ||
           null,
-        ...(extractedMedia.video ? { videoPath: extractedMedia.video } : {}),
+        ...(downloadedVideoPath || extractedMedia.video ? { videoPath: downloadedVideoPath || extractedMedia.video } : {}),
         extractedAt: new Date().toISOString(),
         requestId,
         ...(extractedFaceScore !== null
           ? { matchScore: extractedFaceScore }
           : {}),
+        ...(extractedLivenessScore !== null
+          ? { livenessScore: extractedLivenessScore }
+          : {}),
+        ...(downloadedSelfiePath ? { path: downloadedSelfiePath } : {}),
       };
 
       if (geoLat || geoLng) {
@@ -2171,6 +2241,117 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         nextSelfieDetails.lng = geoLng;
         nextSelfieDetails.latitude = geoLat;
         nextSelfieDetails.longitude = geoLng;
+      }
+
+      // -- MANUAL FACEMATCH & LIVENESS FALLBACK FOR WEBHOOK --
+      if (extractedFaceScore === null || extractedLivenessScore === null) {
+         const finalSelfieUrl = safeSelfieDocPath || extractedMedia.image || downloadedSelfiePath || (globalExtractedSelfieUrl && globalExtractedSelfieUrl !== "__DIGIO_SUCCESS__" ? globalExtractedSelfieUrl : null);
+         let existingAadhaarPhoto = null;
+         try {
+           const docs = Array.isArray(previousDocuments) ? previousDocuments : JSON.parse(application.documents || "[]");
+           console.log(`[FaceMatch Fallback] Searching ${docs.length} documents for source photo. Types: ${docs.map(d => d.type).join(', ')}`);
+           const isImageDoc = (doc) => {
+             const docType = String(doc.type || "").toUpperCase();
+             const docPath = String(doc.path || "").toLowerCase();
+             // Match by type
+             if (docType === "PHOTO" || docType.includes("PHOTO")) return true;
+             // Match by file extension (local files)
+             if (/\.(png|jpe?g|webp)$/i.test(docPath)) return true;
+             // Match Cloudinary image URLs (they may not have extensions)
+             if (docPath.includes("cloudinary") && docPath.includes("/image/upload/")) return true;
+             return false;
+           };
+           existingAadhaarPhoto = docs.find(isImageDoc)?.path || null;
+           console.log(`[FaceMatch Fallback] Found source photo from documents: ${existingAadhaarPhoto || 'NONE'}`);
+         } catch(e) {
+           console.warn(`[FaceMatch Fallback] Error searching documents:`, e.message);
+         }
+         
+         let sourcePhotoUrl = aadhaarPhotoPath || existingAadhaarPhoto;
+         if (!sourcePhotoUrl && application.panUpload) {
+           try {
+             const parsedPan = JSON.parse(application.panUpload);
+             sourcePhotoUrl = parsedPan.filePreview || parsedPan.url || application.panUpload;
+           } catch(e) {
+             sourcePhotoUrl = application.panUpload;
+           }
+         }
+         if (!sourcePhotoUrl) {
+           console.warn(`[FaceMatch Fallback] No source photo URL found. aadhaarPhotoPath=${aadhaarPhotoPath}, panUpload=${!!application.panUpload}`);
+         } else {
+           console.log(`[FaceMatch Fallback] Using source photo: ${sourcePhotoUrl}`);
+         }
+         if (finalSelfieUrl) {
+           try {
+             console.log(`[Webhook] Scores missing from webhook payload. Fetching manually from: ${finalSelfieUrl}`);
+             let selfieBuffer;
+             if (finalSelfieUrl.startsWith('/uploads/')) {
+               const localPath = path.join(__dirname, "../..", finalSelfieUrl);
+               if (fs.existsSync(localPath)) {
+                 selfieBuffer = fs.readFileSync(localPath);
+               } else {
+                 throw new Error(`Local selfie file not found: ${localPath}`);
+               }
+             } else {
+               const axios = require("axios");
+               const selfieRes = await axios.get(finalSelfieUrl, { responseType: "arraybuffer", timeout: 15000 });
+               selfieBuffer = Buffer.from(selfieRes.data, "binary");
+             }
+             
+             const uniqueLivenessId = `${application.applicationId}_L_${Date.now()}`;
+             if (extractedLivenessScore === null) {
+               const livenessResult = await digioClient.checkPassiveLiveness(selfieBuffer, uniqueLivenessId);
+               if (livenessResult?.score !== undefined) {
+                  const num = Number(livenessResult.score);
+                  const genuineScore = Math.round(num * (num <= 1 ? 100 : 1));
+                  extractedLivenessScore = genuineScore;
+                  nextSelfieDetails.livenessScore = genuineScore;
+                  console.log(`[Webhook] Manual Liveness Score obtained: ${genuineScore}%`);
+               }
+             }
+             
+             const uniqueFaceId = `${application.applicationId}_F_${Date.now()}`;
+             if (extractedFaceScore === null && sourcePhotoUrl) {
+               let sourceBuffer;
+               if (sourcePhotoUrl.startsWith('/uploads/')) {
+                  const localPath = path.join(__dirname, "../..", sourcePhotoUrl);
+                  if (fs.existsSync(localPath)) sourceBuffer = fs.readFileSync(localPath);
+               } else {
+                  const axios = require("axios");
+                  const sourceRes = await axios.get(sourcePhotoUrl, { responseType: "arraybuffer", timeout: 15000 });
+                  sourceBuffer = Buffer.from(sourceRes.data, "binary");
+               }
+               
+               if (sourceBuffer) {
+                   const faceMatchResult = await digioClient.checkFaceMatch(sourceBuffer, selfieBuffer, uniqueFaceId);
+                   console.log(`[Webhook] FaceMatch API raw response:`, JSON.stringify(faceMatchResult));
+                   // The API may return score at top level or nested
+                   const fmScore = faceMatchResult?.score 
+                     ?? faceMatchResult?.confidence
+                     ?? faceMatchResult?.similarity 
+                     ?? faceMatchResult?.face_match_score
+                     ?? faceMatchResult?.match_score
+                     ?? faceMatchResult?.match_confidence
+                     ?? faceMatchResult?.data?.score
+                     ?? faceMatchResult?.result?.score;
+                   if (fmScore !== undefined && fmScore !== null) {
+                      const num = Number(fmScore);
+                      if (!Number.isNaN(num)) {
+                        const genuineScore = Math.round(num * (num <= 1 ? 100 : 1));
+                        extractedFaceScore = genuineScore;
+                        nextSelfieDetails.matchScore = genuineScore;
+                        nextSelfieDetails.faceMatchScore = genuineScore;
+                        console.log(`[Webhook] Manual FaceMatch Score obtained: ${genuineScore}%`);
+                      }
+                   } else {
+                      console.warn(`[Webhook] FaceMatch API returned no recognizable score field`);
+                   }
+                }
+             }
+           } catch (fmErr) {
+             console.error(`[Webhook] Manual fallback API failed:`, fmErr.message);
+           }
+         }
       }
     } else if (extractedFaceScore !== null) {
       nextSelfieDetails.matchScore = extractedFaceScore;
@@ -2200,10 +2381,14 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                 ...(extractedFaceScore !== null
                   ? { faceMatchScore: extractedFaceScore }
                   : {}),
+
               }
-            : extractedFaceScore !== null
-              ? { faceMatchScore: extractedFaceScore }
-              : {}),
+            : {
+                ...(extractedFaceScore !== null
+                  ? { faceMatchScore: extractedFaceScore }
+                  : {}),
+
+              }),
           currentStep: Math.max(application.currentStep, STEP_BY_REQUEST_TYPE[payload.type] || 4),
         },
         [
@@ -2290,6 +2475,10 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       success: true,
       applicationId: application.applicationId,
       requestId,
+      score: nextSelfieDetails.matchScore || null,
+      faceMatchScore: nextSelfieDetails.matchScore || null,
+      livenessScore: nextSelfieDetails.livenessScore || null,
+      selfiePath: nextSelfieDetails.preview || null,
       updates: {
         identityDetails: nextIdentityDetails,
         personalDetails: nextPersonalDetails,
@@ -2520,14 +2709,17 @@ router.post("/face-match", auth, async (req, res) => {
     // 1. Prepare Selfie, Perform Liveness Check, and Save to Cloudinary
     let savedSelfiePath = null;
     let cleanSelfie = null;
+    let livenessResult = null;
+    let genuineLivenessScore = null;
     if (selfie) {
       cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
       try {
         const selfieBuffer = Buffer.from(cleanSelfie, "base64");
         
         // -- LIVENESS CHECK START --
+        const uniqueLivenessId = `${application.applicationId}_L_${Date.now()}`;
         console.log(`[FaceMatch] Performing liveness check for ${application.applicationId}...`);
-        const livenessResult = await digioClient.checkPassiveLiveness(selfieBuffer, application.applicationId);
+        livenessResult = await digioClient.checkPassiveLiveness(selfieBuffer, uniqueLivenessId);
         console.log(`[FaceMatch] Liveness check response:`, JSON.stringify(livenessResult));
 
         if (livenessResult.count !== 1) {
@@ -2544,6 +2736,11 @@ router.post("/face-match", auth, async (req, res) => {
            });
         }
         // -- LIVENESS CHECK END --
+        if (livenessResult.score !== undefined) {
+          const num = Number(livenessResult.score);
+          genuineLivenessScore = Math.round(num * (num <= 1 ? 100 : 1));
+          console.log(`[FaceMatch] Genuine Liveness Score: ${genuineLivenessScore}%`);
+        }
 
         console.log(`[FaceMatch] Uploading selfie to Cloudinary for ${application.applicationId}...`);
         const cloudinaryResult = await uploadBufferToCloudinary(selfieBuffer, `kyc_selfie_${application.applicationId}_${Date.now()}`, "jpg");
@@ -2555,20 +2752,70 @@ router.post("/face-match", auth, async (req, res) => {
       }
     }
 
-    // 2. Bypass Digio completely, use a high confidence mock score
-    const mockScore = 85 + Math.floor(Math.random() * 10);
+    // 2. Fetch Source Document Photo and Check FaceMatch
+    let genuineFaceMatchScore = null;
+    try {
+      let existingAadhaarPhoto = null;
+      try {
+        const docs = JSON.parse(application.documents || "[]");
+        existingAadhaarPhoto = docs.find((doc) => {
+          const docType = String(doc.type || "").toUpperCase();
+          const docPath = String(doc.path || "").toLowerCase();
+          if (docType === "PHOTO" || docType.includes("PHOTO")) return true;
+          if (/\.(png|jpe?g|webp)$/i.test(docPath)) return true;
+          if (docPath.includes("cloudinary") && docPath.includes("/image/upload/")) return true;
+          return false;
+        })?.path || null;
+      } catch(e) {}
+
+      let sourcePhotoUrl = existingAadhaarPhoto;
+      if (!sourcePhotoUrl && application.panUpload) {
+        try {
+          const parsedPan = JSON.parse(application.panUpload);
+          sourcePhotoUrl = parsedPan.filePreview || parsedPan.url || application.panUpload;
+        } catch(e) {
+          sourcePhotoUrl = application.panUpload;
+        }
+      }
+      if (sourcePhotoUrl && savedSelfiePath) {
+        console.log(`[FaceMatch] Fetching source document photo for face match from ${sourcePhotoUrl}`);
+        const axios = require("axios");
+        const sourceRes = await axios.get(sourcePhotoUrl, { responseType: "arraybuffer", timeout: 15000 });
+        const sourceBuffer = Buffer.from(sourceRes.data, "binary");
+        const selfieBuffer = Buffer.from(cleanSelfie, "base64");
+        
+        console.log(`[FaceMatch] Calling true Digio checkFaceMatch API...`);
+        const uniqueFaceId = `${application.applicationId}_F_${Date.now()}`;
+        const faceMatchResult = await digioClient.checkFaceMatch(sourceBuffer, selfieBuffer, uniqueFaceId);
+        console.log(`[FaceMatch] API raw response:`, JSON.stringify(faceMatchResult));
+        const fmScore = faceMatchResult?.score ?? faceMatchResult?.confidence ?? faceMatchResult?.similarity ?? faceMatchResult?.match_score;
+        if (fmScore !== undefined && fmScore !== null) {
+           const num = Number(fmScore);
+           genuineFaceMatchScore = Math.round(num * (num <= 1 ? 100 : 1));
+           console.log(`[FaceMatch] Genuine Score obtained: ${genuineFaceMatchScore}%`);
+        } else {
+           console.log(`[FaceMatch] API returned no explicit score:`, JSON.stringify(faceMatchResult));
+        }
+      } else {
+        console.warn(`[FaceMatch] Skipping genuine face match: Missing source photo or selfie.`);
+      }
+    } catch (fmError) {
+      console.error(`[FaceMatch] Genuine FaceMatch API check failed:`, fmError.message);
+    }
     
-    // 3. Update Database with the mock score and the captured image
+    // 3. Update Database with the true score and the captured image
     await prisma.kycApplication.update({
       where: { id: application.id },
       data: serializeJsonFields({
-        faceMatchScore: mockScore,
+        ...(genuineFaceMatchScore !== null ? { faceMatchScore: genuineFaceMatchScore } : {}),
+
         ...(savedSelfiePath ? {
           selfie: savedSelfiePath,
           selfieDetails: {
             ...parseJsonField(application.selfieDetails, {}),
             preview: savedSelfiePath,
-            matchScore: mockScore,
+            ...(genuineFaceMatchScore !== null ? { matchScore: genuineFaceMatchScore } : {}),
+            ...(genuineLivenessScore !== null ? { livenessScore: genuineLivenessScore } : {}),
             source: "IPV_LIVE_CAPTURE_BYPASS",
             updatedAt: new Date().toISOString(),
           },
@@ -2596,14 +2843,15 @@ router.post("/face-match", auth, async (req, res) => {
       action: "face_match_performed",
       details: {
         applicationId: application.applicationId,
-        score: mockScore,
-        status: "success (bypassed)",
+        faceMatchScore: genuineFaceMatchScore,
+        livenessScore: genuineLivenessScore,
+        status: "success",
         selfieSaved: !!savedSelfiePath,
       },
       ipAddress: req.ip,
     });
 
-    return res.json({ success: true, score: mockScore, selfiePath: savedSelfiePath, isMock: true });
+    return res.json({ success: true, score: genuineFaceMatchScore, faceMatchScore: genuineFaceMatchScore, livenessScore: genuineLivenessScore, selfiePath: savedSelfiePath });
   } catch (error) {
     console.error("[FaceMatch] Route Error:", error.message);
     return res.status(500).json({ success: false, error: "Server Error" });

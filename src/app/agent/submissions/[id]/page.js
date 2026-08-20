@@ -249,7 +249,24 @@ const REVIEW_STEPS = [
       ["City", app.bankDetails?.city],
       ["District", app.bankDetails?.district],
       ["State", app.bankDetails?.state],
-      ["Verification status", app.bankDetails?.status || app.bankDetails?.verificationStatus],
+      ["Penny drop status", (() => {
+        const bd = app.bankDetails;
+        if (!bd) return "No";
+        
+        const isVerified = bd.verified === true || (bd.status && ["Verified", "VALID", "SUCCESS"].includes(bd.status.toString()));
+        const nameMatch = bd.nameMatch !== undefined ? bd.nameMatch : bd.name_match;
+        const isMismatch = (nameMatch === false || nameMatch === "no" || bd.isNameMismatch === true);
+        
+        if (isVerified) {
+          return isMismatch ? "Yes (Mismatch)" : "Yes";
+        }
+        
+        if (bd.bankRequestId || bd.verifiedAt || nameMatch !== undefined) {
+          if (isMismatch) return "Yes (Mismatch)";
+        }
+        
+        return "No";
+      })()],
     ],
     evidence: (app) => [firstMedia(app.bankDetails?.proofPreview || app.bankDetails?.proofPath || app.bankDetails?.proof, "Bank Proof")].filter(Boolean),
   },
@@ -583,9 +600,28 @@ function nomineeFields(app) {
   return [...baseFields, ...detailedFields];
 }
 
-function nomineeEvidence(app) {
+function nomineeEvidence(app, tab) {
   const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
-  return nominees.map((nominee, index) => firstMedia(nominee.guardianProofPath || nominee.proofPath || nominee.proofPreview, `Nominee ${index + 1} Proof`)).filter(Boolean);
+  let targetIndex = -1;
+  if (tab && tab.startsWith("nominee_")) {
+    targetIndex = parseInt(tab.replace("nominee_", ""), 10);
+  }
+  
+  if (targetIndex !== -1) {
+    const nominee = nominees[targetIndex];
+    if (nominee) {
+      return [
+        firstMedia(nominee.proofPath || nominee.proofPreview, `Nominee ${targetIndex + 1} Proof`),
+        firstMedia(nominee.guardianProofPath, `Nominee ${targetIndex + 1} Guardian Proof`)
+      ].filter(Boolean);
+    }
+    return [];
+  }
+
+  return nominees.flatMap((nominee, index) => [
+    firstMedia(nominee.proofPath || nominee.proofPreview, `Nominee ${index + 1} Proof`),
+    firstMedia(nominee.guardianProofPath, `Nominee ${index + 1} Guardian Proof`)
+  ]).filter(Boolean);
 }
 
 function allocationTotal(app) {
@@ -894,10 +930,14 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   const isRejected = info.status === "rejected";
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
-  const [activeTab, setActiveTab] = useState(step.tabs ? step.tabs[0].id : null);
+  const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+  const [activeTabState, setActiveTabState] = useState(null);
 
-  const evidence = step.evidence(app, activeTab);
-  const rawFields = step.fields(app, activeTab);
+  const activeTab = activeTabState || (resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null);
+  const currentTab = (resolvedTabs && resolvedTabs.find(t => t.id === activeTab)) ? activeTab : (resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null);
+
+  const evidence = step.evidence(app, currentTab);
+  const rawFields = step.fields(app, currentTab);
   const fields = [...rawFields];
   if (isRejected && info?.reason) {
     fields.push(
@@ -926,10 +966,10 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
         </div>
       </div>
 
-      {step.tabs && (
+      {resolvedTabs && resolvedTabs.length > 0 && (
         <div style={{ display: "flex", gap: 12, marginBottom: 20, borderBottom: "1px solid var(--border-color)", paddingBottom: 10 }}>
-          {step.tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: "8px 16px", borderRadius: 8, background: activeTab === tab.id ? "var(--wise-dark-green)" : "var(--bg-secondary)", color: activeTab === tab.id ? "white" : "var(--text-primary)", fontWeight: 800, border: "none", cursor: "pointer", transition: "0.2s" }}>
+          {resolvedTabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTabState(tab.id)} style={{ padding: "8px 16px", borderRadius: 8, background: currentTab === tab.id ? "var(--wise-dark-green)" : "var(--bg-secondary)", color: currentTab === tab.id ? "white" : "var(--text-primary)", fontWeight: 800, border: "none", cursor: "pointer", transition: "0.2s" }}>
               {tab.label}
             </button>
           ))}

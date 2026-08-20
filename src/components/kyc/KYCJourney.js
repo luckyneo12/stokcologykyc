@@ -22,7 +22,7 @@ import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 
 export default function KYCJourney() {
-  const { currentStep, steps, isRestoring, prevStep, STEPS, stepStatuses, rejectionReason, submittedAt, isResubmitted, goToStep } = useKYC();
+  const { currentStep, steps, isRestoring, prevStep, STEPS, stepStatuses, rejectionReason, submittedAt, isResubmitted, goToStep, rejectionMode } = useKYC();
   const router = useRouter();
   const pathname = usePathname();
   const TOTAL_STEPS = (steps.length > 0 ? steps.length : STEPS.length) - 1;
@@ -218,7 +218,9 @@ export default function KYCJourney() {
               </div>
 
               <div className="desktop-only" style={{ marginBottom: 24 }}>
-                <span className="stage-badge">CURRENT STAGE</span>
+                <span className="stage-badge" style={rejectionMode ? { background: "rgba(239, 68, 68, 0.2)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.4)" } : undefined}>
+                  {rejectionMode ? "CORRECTION MODE" : "CURRENT STAGE"}
+                </span>
                 <h3 className="stage-title text-glow">
                    {steps[currentStep]?.label || "Processing"}
                 </h3>
