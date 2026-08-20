@@ -68,6 +68,18 @@ export default function DigilockerStep() {
             matches: { name: isNameMatch, dob: isDobMatch }
           });
 
+          // Check if PAN returned from DigiLocker differs from Step 4 PAN
+          const step4Pan = formatPanValue(identityDetails?.manualPan || identityDetails?.pan);
+          const dlPan = formatPanValue(result.updates.identityDetails?.pan);
+
+          if (dlPan && step4Pan && dlPan !== step4Pan) {
+            console.warn(`[KYC Validation] PAN Mismatch: Step 4 PAN (${step4Pan}) != DigiLocker PAN (${dlPan})`);
+            addToast(`PAN mismatch! The PAN fetched from DigiLocker (${dlPan}) does not match the PAN entered in Step 4 (${step4Pan}). Please re-verify.`, "error");
+            goToStep(4);
+            setLoading(false);
+            return;
+          }
+
           if (!isNameMatch || !isDobMatch) {
             const reason = !isNameMatch ? "Name mismatch" : "DOB mismatch";
             addToast(`Aadhaar details (${reason}) do not match with PAN. Please re-verify.`, "error");
@@ -85,7 +97,9 @@ export default function DigilockerStep() {
             identityDetails: { 
               ...identityDetails, 
               ...result.updates.identityDetails,
-              pan: formatPanValue(result.updates.identityDetails?.pan) || formatPanValue(identityDetails?.pan),
+              manualPan: step4Pan || formatPanValue(identityDetails?.pan),
+              digilockerPan: dlPan || formatPanValue(result.updates.identityDetails?.pan) || "",
+              pan: dlPan || step4Pan || formatPanValue(identityDetails?.pan),
             },
             personalDetails: { 
               ...personalDetails, 

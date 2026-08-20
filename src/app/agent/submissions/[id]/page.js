@@ -87,7 +87,7 @@ const REVIEW_STEPS = [
     evidenceTitle: "PAN Data",
     evidenceHint: "Match PAN number, name, and date of birth with uploaded PAN evidence when available.",
     fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
+      ["PAN number", app.identityDetails?.manualPan || app.identityDetails?.pan || app.personalDetails?.pan],
       ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
       ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
       ["PAN verified", app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified],
@@ -107,12 +107,13 @@ const REVIEW_STEPS = [
     fields: (app, tab = "aadhaar") => {
       if (tab === "pan") {
         return [
-          ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
+          ["PAN number", app.identityDetails?.digilockerPan || app.identityDetails?.pan || app.personalDetails?.pan],
           ["Name on PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
           ["Father's Name", app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName],
           ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
           ["Aadhaar Seeding Status", app.identityDetails?.pan_verification?.aadhaar_seeding_status],
           ["PAN verified", app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified],
+          ...(app.identityDetails?.manualPan && app.identityDetails?.digilockerPan ? [["PAN match status", app.identityDetails?.panMismatch ? "MISMATCH" : "MATCHED"]] : []),
         ];
       }
       return [
@@ -139,21 +140,21 @@ const REVIEW_STEPS = [
     evidenceTitle: "Extracted Documents",
     evidenceHint: "Compare details with the Aadhaar photo, Aadhaar document, and PAN document.",
     fields: (app) => [
-      ["Full name", app.personalDetails?.fullName, "personalDetails.fullName"],
       ["Father/Spouse name", app.personalDetails?.fatherName || app.personalDetails?.spouseName, "personalDetails.fatherName"],
       ["Mother's name", app.personalDetails?.motherName, "personalDetails.motherName"],
-      ["Date of birth", app.personalDetails?.dob, "personalDetails.dob"],
       ["Gender", app.personalDetails?.gender, "personalDetails.gender"],
       ["Marital status", app.personalDetails?.maritalStatus, "personalDetails.maritalStatus"],
       ["Education", app.personalDetails?.education, "personalDetails.education"],
       ["Annual income", app.personalDetails?.annualIncome, "personalDetails.annualIncome"],
       ["Trading experience", app.personalDetails?.experience, "personalDetails.experience"],
-      ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
+      ["Clientcode", app.clientCode || "N/A"],
+      ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
+      ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
+      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
+      ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
+      ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
       ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A"],
-      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
-      ["Namematch1", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
-      ["Dobmatch1", app.identityDetails?.dob || app.personalDetails?.dob || "N/A"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER"],
       ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
 
@@ -166,21 +167,20 @@ const REVIEW_STEPS = [
       ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
       ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
       ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
-      ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
+
       ["State code", app.address?.state || "N/A"],
-      ["Clientcode", app.clientCode || "N/A"],
-      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
-      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
-      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
-      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
-      ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
-      ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
-      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
-      ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
+
       ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
       ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
       ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
       ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
+      ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
+
+      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
+      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
+      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
+      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
     ],
     evidence: (app) => [
       findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
@@ -240,9 +240,9 @@ const REVIEW_STEPS = [
     evidenceTitle: "Bank Account Proof",
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
-      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName],
-      ["Account number", app.bankDetails?.accountNumber],
-      ["IFSC", app.bankDetails?.ifsc],
+      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName, "bankDetails.accountHolderName"],
+      ["Account number", app.bankDetails?.accountNumber, "bankDetails.accountNumber"],
+      ["IFSC", app.bankDetails?.ifsc, "bankDetails.ifsc"],
       ["Bank name", app.bankDetails?.bankName],
       ["Branch", app.bankDetails?.branch],
       ["Address", app.bankDetails?.address],

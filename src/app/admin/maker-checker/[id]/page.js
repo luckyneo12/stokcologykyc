@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   BadgeCheck,
   CheckCircle2,
+  Circle,
   Clock3,
   ExternalLink,
   FileText,
@@ -17,7 +18,7 @@ import {
   X,
   Mail,
   User, Phone,
-  ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download
+  ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download, Copy, Check
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -158,7 +159,7 @@ const REVIEW_STEPS = [
     fields: (app) => {
       const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
       return [
-        ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
+        ["PAN number", app.identityDetails?.manualPan || app.identityDetails?.pan || app.personalDetails?.pan],
         ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
         ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
         ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
@@ -186,12 +187,13 @@ const REVIEW_STEPS = [
         return [
           ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available"],
           ["Name", app.personalDetails?.fullName || "N/A"],
-          ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
+          ["Pan number", app.identityDetails?.digilockerPan || app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
           ["Dob1", app.personalDetails?.dob || "N/A"],
           ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y"],
           ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N"],
           ["Name status", panMatchData.name_match || panMatchData.name_as_per_pan_match ? "Y" : "N"],
           ["Pan status", panMatchData.status === "VALID" || panMatchData.status === "valid" || app.identityDetails?.panVerified ? "True" : "False"],
+          ...(app.identityDetails?.manualPan && app.identityDetails?.digilockerPan ? [["PAN match status", app.identityDetails?.panMismatch ? "MISMATCH" : "MATCHED"]] : []),
         ];
       }
       return [
@@ -247,21 +249,21 @@ const REVIEW_STEPS = [
     evidenceTitle: "Extracted Documents",
     evidenceHint: "Compare details with the Aadhaar photo, Aadhaar document, and PAN document.",
     fields: (app) => [
-      ["Full name", app.personalDetails?.fullName, "personalDetails.fullName"],
       ["Father/Spouse name", app.personalDetails?.fatherName || app.personalDetails?.spouseName, "personalDetails.fatherName"],
       ["Mother's name", app.personalDetails?.motherName, "personalDetails.motherName"],
-      ["Date of birth", app.personalDetails?.dob, "personalDetails.dob"],
       ["Gender", app.personalDetails?.gender, "personalDetails.gender"],
       ["Marital status", app.personalDetails?.maritalStatus, "personalDetails.maritalStatus"],
       ["Education", app.personalDetails?.education, "personalDetails.education"],
       ["Annual income", app.personalDetails?.annualIncome, "personalDetails.annualIncome"],
       ["Trading experience", app.personalDetails?.experience, "personalDetails.experience"],
-      ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
+      ["Clientcode", app.clientCode || "N/A", "clientCode"],
+      ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
+      ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
+      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
+      ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
+      ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
       ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
-      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
-      ["Namematch1", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A", "identityDetails.pan_name"],
-      ["Dobmatch1", app.identityDetails?.dob || app.personalDetails?.dob || "N/A", "identityDetails.dob"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
       ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
 
@@ -274,21 +276,20 @@ const REVIEW_STEPS = [
       ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
       ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
       ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
-      ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
+
       ["State code", app.address?.state || "N/A", "address.state"],
-      ["Clientcode", app.clientCode || "N/A", "clientCode"],
-      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
-      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
-      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
-      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
-      ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
-      ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
-      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
-      ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
+
       ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
       ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
       ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
       ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
+      ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
+
+      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
+      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
+      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
+      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
     ],
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
@@ -355,9 +356,9 @@ const REVIEW_STEPS = [
     evidenceTitle: "Bank Account Proof",
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
-      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
-      ["Account number", app.bankDetails?.accountNumber || "N/A"],
-      ["IFSC", app.bankDetails?.ifsc || "N/A"],
+      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.accountHolderName"],
+      ["Account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
+      ["IFSC", app.bankDetails?.ifsc || "N/A", "bankDetails.ifsc"],
       ["Penny drop status", (() => {
         const bd = app.bankDetails;
         if (!bd) return "No";
@@ -1358,7 +1359,7 @@ export default function AgentReview() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarActiveTabs, setSidebarActiveTabs] = useState({});
 
-  const [expandedModule, setExpandedModule] = useState(null);
+  const [expandedModule, setExpandedModule] = useState({});
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewRotation, setPreviewRotation] = useState(0);
@@ -1373,8 +1374,19 @@ export default function AgentReview() {
   const [rejectStepModal, setRejectStepModal] = useState(null);
   const [stepRejectReason, setStepRejectReason] = useState("");
   const [showRejectionConfirmModal, setShowRejectionConfirmModal] = useState(false);
+  const [documentRejections, setDocumentRejections] = useState({});
+  const [rejectDocumentModal, setRejectDocumentModal] = useState(null);
+  const [documentRejectReason, setDocumentRejectReason] = useState("");
   const [successModalData, setSuccessModalData] = useState(null);
   const [accumulatedEdits, setAccumulatedEdits] = useState({});
+  const [copiedKey, setCopiedKey] = useState(null);
+  const handleCopy = (e, text, key) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (!text || text === "N/A" || text === "Pending" || text === "—") return;
+    navigator.clipboard.writeText(String(text));
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
   const fileInputRef = useRef(null);
   const mainPreviewRef = useRef(null);
   const modulePreviewRefs = useRef([]);
@@ -1469,6 +1481,14 @@ export default function AgentReview() {
           console.error("Failed to parse visited steps", e);
         }
       }
+      const storedDocs = localStorage.getItem(`documentRejections_${id}`);
+      if (storedDocs) {
+        try {
+          setDocumentRejections(JSON.parse(storedDocs));
+        } catch (e) {
+          console.error("Failed to parse document rejections", e);
+        }
+      }
     }
   }, [id]);
 
@@ -1477,6 +1497,12 @@ export default function AgentReview() {
       localStorage.setItem(`visitedSteps_${id}`, JSON.stringify(Array.from(visitedSteps)));
     }
   }, [visitedSteps, id]);
+
+  useEffect(() => {
+    if (id) {
+      localStorage.setItem(`documentRejections_${id}`, JSON.stringify(documentRejections));
+    }
+  }, [documentRejections, id]);
 
   const handleSaveDetails = async (requireEsign = false) => {
     if (Object.keys(editValues).length === 0) {
@@ -1637,8 +1663,15 @@ export default function AgentReview() {
       const data = await res.json();
       if (data.success) {
         showToast(`Step ${rejectStepModal.title} rejected.`, "error");
+        const stepId = rejectStepModal.id;
         setRejectStepModal(null);
         setStepRejectReason("");
+        setVisitedSteps(prev => {
+          const next = new Set(prev);
+          next.delete(stepId);
+          if (id) localStorage.setItem(`visitedSteps_${id}`, JSON.stringify(Array.from(next)));
+          return next;
+        });
         fetchDetail();
       } else {
         showToast(data.error || "Failed to reject step.", "error");
@@ -1663,6 +1696,11 @@ export default function AgentReview() {
       const data = await res.json();
       if (data.success) {
         showToast(`Rejection removed for ${stepTitle}.`, "success");
+        setVisitedSteps(prev => {
+          const next = new Set(prev).add(stepId);
+          if (id) localStorage.setItem(`visitedSteps_${id}`, JSON.stringify(Array.from(next)));
+          return next;
+        });
         fetchDetail();
       } else {
         showToast(data.error || "Failed to remove rejection.", "error");
@@ -1698,6 +1736,13 @@ export default function AgentReview() {
       const data = await res.json();
       if (data.success) {
         showToast("Document replaced successfully");
+        const docName = selectedDocument.label || selectedDocument.type || "Document";
+        const newSrc = data.filePath;
+        if (newSrc) {
+          setSelectedDocument(prev => prev ? { ...prev, src: newSrc, preview: newSrc } : null);
+        }
+        setEditValues(prev => ({ ...prev, [`Uploaded ${docName}`]: file.name }));
+        setAccumulatedEdits(prev => ({ ...prev, [`Uploaded ${docName}`]: file.name }));
         fetchDetail();
       } else {
         showToast(data.error || "Failed to upload document", "error");
@@ -1792,32 +1837,44 @@ export default function AgentReview() {
   });
 
   const handleModuleClick = (step) => {
-    setVisitedSteps(prev => new Set(prev).add(step.id));
-    if (expandedModule === step.id) {
-      setExpandedModule(null);
-    } else {
-      setExpandedModule(step.id);
-      // Auto-select first document related to this step
-      const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
-      const initialTabId = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
-      const activeTabId = sidebarActiveTabs[step.id] || initialTabId;
-      if (initialTabId && !sidebarActiveTabs[step.id]) {
-        setSidebarActiveTabs(prev => ({ ...prev, [step.id]: initialTabId }));
-      }
-      const stepDocs = step.evidence(app, activeTabId);
-      if (stepDocs && stepDocs.length > 0) {
-        setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
-        setPreviewZoom(1);
-        setPreviewRotation(0);
-        setPreviewOffset({ x: 0, y: 0 });
-      }
-      setTimeout(() => {
-        const el = document.getElementById(`module-${step.id}`);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setVisitedSteps(prev => {
+      const next = new Set(prev).add(step.id);
+      if (id) localStorage.setItem(`visitedSteps_${id}`, JSON.stringify(Array.from(next)));
+      return next;
+    });
+    
+    setExpandedModule(prev => {
+      const isCurrentlyExpanded = !!prev[step.id];
+      
+      if (!isCurrentlyExpanded) {
+        // Auto-select first document related to this step
+        const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
+        const initialTabId = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
+        const activeTabId = sidebarActiveTabs[step.id] || initialTabId;
+        
+        if (initialTabId && !sidebarActiveTabs[step.id]) {
+          setSidebarActiveTabs(prevTabs => ({ ...prevTabs, [step.id]: initialTabId }));
         }
-      }, 50);
-    }
+        
+        const stepDocs = step.evidence(app, activeTabId);
+        if (stepDocs && stepDocs.length > 0) {
+          setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
+          setPreviewZoom(1);
+          setPreviewRotation(0);
+          setPreviewOffset({ x: 0, y: 0 });
+        }
+        
+        setTimeout(() => {
+          const el = document.getElementById(`module-${step.id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
+      }
+      
+      return {
+        ...prev,
+        [step.id]: !isCurrentlyExpanded
+      };
+    });
   };
 
   const handleDocumentClick = (doc) => {
@@ -1863,14 +1920,37 @@ export default function AgentReview() {
               <span style={{ padding: "2px 6px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: "bold", textTransform: "uppercase" }}>Pending Review</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", marginTop: 2 }}>
-              <div style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>
-                {app.applicationId}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: "bold", letterSpacing: "0.5px", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                  {app.applicationId}
+                </span>
+                <button onClick={(e) => handleCopy(e, app.applicationId, 'app-id')} title="Copy App ID" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === 'app-id' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                  {copiedKey === 'app-id' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                </button>
+                {app.clientCode && (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8, background: "rgba(159, 232, 112, 0.15)", padding: "1px 6px", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700, color: "var(--text-primary)", userSelect: "text", cursor: "text" }}>
+                    CC: {app.clientCode}
+                    <button onClick={(e) => handleCopy(e, app.clientCode, 'app-cc')} title="Copy Client Code" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-cc' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                      {copiedKey === 'app-cc' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                    </button>
+                  </span>
+                )}
               </div>
               {app.user?.eStampAssigned?.certificateNo && (
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4, display: "flex", gap: 12 }}>
-                  <span><strong style={{ color: "var(--text-primary)" }}>Cert No:</strong> {app.user.eStampAssigned.certificateNo}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, userSelect: "text", cursor: "text" }}>
+                    <strong style={{ color: "var(--text-primary)" }}>Cert No:</strong> {app.user.eStampAssigned.certificateNo}
+                    <button onClick={(e) => handleCopy(e, app.user.eStampAssigned.certificateNo, 'app-cert')} title="Copy Cert No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-cert' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                      {copiedKey === 'app-cert' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                    </button>
+                  </span>
                   {app.user.eStampAssigned.serialNo && (
-                    <span><strong style={{ color: "var(--text-primary)" }}>Serial No:</strong> {app.user.eStampAssigned.serialNo}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, userSelect: "text", cursor: "text" }}>
+                      <strong style={{ color: "var(--text-primary)" }}>Serial No:</strong> {app.user.eStampAssigned.serialNo}
+                      <button onClick={(e) => handleCopy(e, app.user.eStampAssigned.serialNo, 'app-serial')} title="Copy Serial No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-serial' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                        {copiedKey === 'app-serial' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                      </button>
+                    </span>
                   )}
                 </div>
               )}
@@ -1911,67 +1991,68 @@ export default function AgentReview() {
           </div>
           <div className="premium-sidebar-list" style={{ flex: 1, overflowY: "auto", paddingBottom: "60vh" }}>
             {unlockedSteps.map((step) => {
-              const isExpanded = expandedModule === step.id;
+              const isExpanded = !!expandedModule[step.id];
               const resolvedTabs = typeof step.tabs === 'function' ? step.tabs(app) : step.tabs;
               const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
               const fields = step.fields(app, activeTab).filter(([, value]) => value !== undefined && value !== null && value !== "");
               const isRejected = statuses[step.id]?.status === "rejected";
               const isModified = isRejected && app.isResubmitted;
               const displayAsRejected = isRejected && !app.isResubmitted;
+              const isVisited = visitedSteps.has(step.id);
 
               return (
                 <div id={`module-${step.id}`} key={step.id} className={`premium-sidebar-module ${isExpanded ? 'active' : ''}`}>
                   <div 
                     onClick={() => handleModuleClick(step)}
                     className="premium-sidebar-module-header"
+                    style={{ padding: "8px 14px" }}
                   >
+                    {/* Left: Checkbox / Visited Icon + Title + Badges */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : isModified ? "#ca8a04" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
-                      {step.title}
-                      {displayAsRejected && (
-                        <span 
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (isRejected) handleUnrejectStep(step.id, step.title);
-                          }}
-                          style={{ cursor: "context-menu", padding: "2px 6px", background: "#fef2f2", color: "#dc2626", fontSize: "0.6rem", borderRadius: 4, fontWeight: "bold", border: "1px solid #fecaca" }}
-                          title="Right-click to Undo Rejection"
-                        >
-                          REJECTED
-                        </span>
+                      {isVisited && !displayAsRejected ? (
+                        <CheckCircle2 size={16} color="#16a34a" style={{ flexShrink: 0 }} title="Visited" />
+                      ) : (
+                        <Circle size={16} color="var(--text-muted)" style={{ opacity: 0.35, flexShrink: 0 }} title="Not visited" />
                       )}
-                      {isModified && (
-                        <span 
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (isRejected) handleUnrejectStep(step.id, step.title);
-                          }}
-                          style={{ cursor: "context-menu", padding: "2px 6px", background: "#fefce8", color: "#ca8a04", fontSize: "0.6rem", borderRadius: 4, fontWeight: "bold", border: "1px solid #fef08a" }}
-                          title="Right-click to Undo Rejection"
-                        >
-                          MODIFIED
-                        </span>
-                      )}
+                      <span>{step.title}</span>
                     </div>
+
+                    {/* Right: Expand Chevron + Reject Block Button */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       {isExpanded ? <ChevronDown size={18} color="var(--text-muted)" /> : <ChevronRight size={18} color="var(--text-muted)" />}
-                      <span 
-                        onClick={(e) => { e.stopPropagation(); setRejectStepModal(step); setStepRejectReason(""); }}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (displayAsRejected || isRejected) {
+                            setStepRejectReason(statuses[step.id]?.reason || "");
+                          } else {
+                            setStepRejectReason("");
+                          }
+                          setRejectStepModal(step);
+                        }}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (isRejected) {
-                            handleUnrejectStep(step.id, step.title);
-                          }
+                          if (isRejected) handleUnrejectStep(step.id, step.title);
                         }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "4px 7px",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          border: displayAsRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: displayAsRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          color: displayAsRejected ? "#ffffff" : "#ef4444",
+                          transition: "all 0.2s",
+                          boxShadow: displayAsRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
+                        }}
+                        title={displayAsRejected ? "Rejected (Click to modify reason)" : isModified ? "User Modified (Click to Reject)" : "Reject Step"}
                       >
-                        {visitedSteps.has(step.id) && !isRejected ? (
-                          <CheckCircle2 size={16} color="#16a34a" style={{ cursor: "pointer" }} title="Visited (Click to Reject)" />
-                        ) : (
-                          <Ban size={16} color={displayAsRejected ? "#dc2626" : isModified ? "#ca8a04" : "#ef4444"} style={{ cursor: "pointer", opacity: (displayAsRejected || isModified) ? 1 : 0.6 }} title={displayAsRejected ? "Rejected (Right-click to Undo)" : isModified ? "Modified (Right-click to Undo)" : "Reject Step"} />
-                        )}
-                      </span>
+                        <Ban size={13} color={displayAsRejected ? "#ffffff" : "#ef4444"} />
+                      </button>
                     </div>
                   </div>
                   
@@ -2132,17 +2213,29 @@ export default function AgentReview() {
                                           />
                                         )
                                       ) : (
-                                        <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4 }}>
+                                        <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                                           {label === "Segments" && typeof currentValue === "string" 
                                             ? currentValue.split(",").join(", ") 
-                                            : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? currentValue : String(currentValue)) : "")
+                                            : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? JSON.stringify(currentValue) : String(currentValue)) : "")
                                           }
                                         </div>
                                       )}
                                     </div>
-                                    {jsonPath && (
-                                      <Edit2 onClick={() => setEditingField(jsonPath)} size={14} color="var(--text-muted)" style={{ cursor: "pointer", marginTop: 14 }} />
-                                    )}
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
+                                      {currentValue && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => handleCopy(e, currentValue, `field-${label}`)}
+                                          title={`Copy ${label}`}
+                                          style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `field-${label}` ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}
+                                        >
+                                          {copiedKey === `field-${label}` ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                                        </button>
+                                      )}
+                                      {jsonPath && (
+                                        <Edit2 onClick={() => setEditingField(jsonPath)} size={14} color="var(--text-muted)" style={{ cursor: "pointer" }} />
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -2233,8 +2326,25 @@ export default function AgentReview() {
                     className={`premium-sidebar-item ${isSelected ? 'active' : ''}`}
                     style={{ color: isSelected ? "var(--wise-green)" : "var(--text-primary)" }}
                   >
-                    <span style={{ fontSize: "0.75rem", fontWeight: 500 }}>{doc.label || "Document"}</span>
-                    <Paperclip size={14} color={isSelected ? "#16a34a" : "var(--text-muted)"} />
+                    <span style={{ fontSize: "0.75rem", fontWeight: 500, flex: 1 }}>{doc.label || "Document"}</span>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <Paperclip size={14} color={isSelected ? "#16a34a" : "var(--text-muted)"} />
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (documentRejections[doc.src]) {
+                            setDocumentRejectReason(documentRejections[doc.src]);
+                          } else {
+                            setDocumentRejectReason("");
+                          }
+                          setRejectDocumentModal(doc);
+                        }}
+                        style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        title={documentRejections[doc.src] ? "Rejected (Click to modify reason)" : "Reject Document"}
+                      >
+                        <Ban size={14} color={documentRejections[doc.src] ? "#ef4444" : "#fca5a5"} />
+                      </div>
+                    </div>
                   </div>
                 );
               })
@@ -2415,46 +2525,182 @@ export default function AgentReview() {
         </div>
       </div>
 
+      {/* Document Rejection Modal */}
+      {rejectDocumentModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 10005, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 400, maxWidth: "90%", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)" }}>Reject Document: {rejectDocumentModal.label || "Document"}</h3>
+            <textarea
+              className="admin-input"
+              autoFocus
+              onFocus={e => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+              placeholder={`Provide a reason for rejecting this document...`}
+              value={documentRejectReason}
+              onChange={e => setDocumentRejectReason(e.target.value)}
+              style={{ width: "100%", minHeight: 100, padding: 12, borderRadius: 8, border: "1px solid var(--border-color)", marginBottom: 16 }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button onClick={() => setRejectDocumentModal(null)} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)" }}>
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  setDocumentRejections(prev => ({ ...prev, [rejectDocumentModal.src]: documentRejectReason.trim() }));
+                  setRejectDocumentModal(null);
+                }} 
+                disabled={!documentRejectReason.trim()} 
+                style={{ 
+                  padding: "8px 18px", 
+                  borderRadius: 8, 
+                  border: "none", 
+                  background: !documentRejectReason.trim() ? "#e2e8f0" : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", 
+                  color: !documentRejectReason.trim() ? "#94a3b8" : "#ffffff", 
+                  fontWeight: 700, 
+                  cursor: !documentRejectReason.trim() ? "not-allowed" : "pointer",
+                  boxShadow: !documentRejectReason.trim() ? "none" : "0 4px 14px rgba(239, 68, 68, 0.4)",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rejectStepModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 10005, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--bg-card)", padding: 32, borderRadius: 16, width: 420, maxWidth: "90%", boxShadow: "var(--card-shadow)", border: "1px solid var(--border-color)" }}>
+            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)", fontSize: "1.2rem", fontWeight: 800 }}>Reject Step: {rejectStepModal.title}</h3>
+            <textarea
+              className="admin-input"
+              autoFocus
+              onFocus={e => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+              placeholder={`Provide a reason for rejecting the ${rejectStepModal.title} step...`}
+              value={stepRejectReason}
+              onChange={e => setStepRejectReason(e.target.value)}
+              style={{ width: "100%", minHeight: 120, padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", marginBottom: 24, fontSize: "0.95rem" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button onClick={() => setRejectStepModal(null)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}>
+                Cancel
+              </button>
+              <button 
+                onClick={handleRejectStep} 
+                disabled={submitting || !stepRejectReason.trim()} 
+                style={{ 
+                  padding: "10px 22px", 
+                  borderRadius: 8, 
+                  border: "none", 
+                  background: (submitting || !stepRejectReason.trim()) ? "#e2e8f0" : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", 
+                  color: (submitting || !stepRejectReason.trim()) ? "#94a3b8" : "#ffffff", 
+                  fontWeight: 700, 
+                  cursor: (submitting || !stepRejectReason.trim()) ? "not-allowed" : "pointer", 
+                  transition: "all 0.2s ease", 
+                  boxShadow: (submitting || !stepRejectReason.trim()) ? "none" : "0 4px 14px rgba(239, 68, 68, 0.4)" 
+                }}
+              >
+                Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showRejectionConfirmModal && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 600, maxWidth: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
-            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)" }}>Confirm Rejection</h3>
-            <p style={{ margin: "0 0 16px 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--bg-card)", padding: 32, borderRadius: 16, width: 500, maxWidth: "90%", boxShadow: "var(--card-shadow)", border: "1px solid var(--border-color)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)", fontSize: "1.2rem", fontWeight: 800 }}>Confirm Rejection</h3>
+            <p style={{ margin: "0 0 16px 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
               The following steps have been marked as rejected. Please review them before sending the rejection email.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+            <div className="premium-sidebar-list" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24, overflowY: "auto", paddingRight: 8 }}>
               {Object.entries(getStepStatuses(app))
                 .filter(([key, status]) => status?.status === "rejected")
                 .map(([key, status]) => {
                   const stepObj = REVIEW_STEPS.find(s => s.id === key);
                   return (
-                    <div key={key} style={{ background: "var(--bg-secondary)", padding: 12, borderRadius: 8, border: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div key={key} style={{ background: "var(--bg-secondary)", padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
-                        <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.9rem", marginBottom: 4 }}>
+                        <div style={{ fontWeight: 800, color: "var(--text-primary)", fontSize: "0.95rem", marginBottom: 4 }}>
                           {stepObj?.label || key}
                         </div>
                         <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                          <span style={{ fontWeight: 600, color: "#ef4444" }}>Reason:</span> {status.reason || "No reason provided"}
+                          <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>Reason:</span> {status.reason || "No reason provided"}
                         </div>
                       </div>
-                      <button 
-                        onClick={() => handleUnrejectStep(key, stepObj?.label || key)}
-                        disabled={submitting}
-                        style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, fontSize: "0.8rem", cursor: submitting ? "not-allowed" : "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}
-                      >
-                        Remove Rejection
-                      </button>
+                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                        <button 
+                          onClick={() => {
+                            setStepRejectReason(status.reason || "");
+                            setRejectStepModal({ id: key, title: stepObj?.label || key });
+                          }}
+                          disabled={submitting}
+                          style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}
+                        >
+                          Edit
+                        </button>
+                        <button 
+                          onClick={() => handleUnrejectStep(key, stepObj?.label || key)}
+                          disabled={submitting}
+                          style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "#ef4444", transition: "all 0.2s" }}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
-              {Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && (
+              
+              {Object.entries(documentRejections).map(([src, reason]) => {
+                const doc = allDocuments.find(d => d.src === src);
+                return (
+                  <div key={src} style={{ background: "var(--bg-secondary)", padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: "var(--text-primary)", fontSize: "0.95rem", marginBottom: 4 }}>
+                        {doc?.label || "Document"}
+                      </div>
+                      <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                        <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>Reason:</span> {reason || "No reason provided"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                      <button 
+                        onClick={() => {
+                          setDocumentRejectReason(reason);
+                          setRejectDocumentModal(doc);
+                        }}
+                        disabled={submitting}
+                        style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setDocumentRejections(prev => {
+                            const next = { ...prev };
+                            delete next[src];
+                            return next;
+                          });
+                        }}
+                        disabled={submitting}
+                        style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "#ef4444", transition: "all 0.2s" }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0 && (
                 <div style={{ padding: 16, textAlign: "center", color: "var(--text-muted)", fontSize: "0.9rem", fontStyle: "italic" }}>
-                  No rejected steps remain.
+                  No rejected steps or documents remain.
                 </div>
               )}
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-              <button onClick={() => setShowRejectionConfirmModal(false)} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: "auto" }}>
+              <button onClick={() => setShowRejectionConfirmModal(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}>
                 Cancel
               </button>
               <button 
@@ -2462,8 +2708,18 @@ export default function AgentReview() {
                   setShowRejectionConfirmModal(false);
                   handleSendRejectionMail();
                 }} 
-                disabled={submitting || Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0} 
-                style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 600, cursor: (submitting || Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0) ? "not-allowed" : "pointer", opacity: (submitting || Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0) ? 0.6 : 1 }}
+                disabled={submitting || (Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0)} 
+                style={{ 
+                  padding: "10px 22px", 
+                  borderRadius: 8, 
+                  border: "none", 
+                  background: (submitting || (Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0)) ? "#e2e8f0" : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", 
+                  color: (submitting || (Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0)) ? "#94a3b8" : "#ffffff", 
+                  fontWeight: 700, 
+                  cursor: (submitting || (Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0)) ? "not-allowed" : "pointer", 
+                  transition: "all 0.2s ease", 
+                  boxShadow: (submitting || (Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0)) ? "none" : "0 4px 14px rgba(239, 68, 68, 0.4)" 
+                }}
               >
                 Confirm & Send Email
               </button>
@@ -2479,6 +2735,7 @@ export default function AgentReview() {
             <textarea
               className="admin-input"
               autoFocus
+              onFocus={e => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
               placeholder="Provide a reason for rejecting the application..."
               value={globalRejectReason}
               onChange={e => setGlobalRejectReason(e.target.value)}
@@ -2496,29 +2753,6 @@ export default function AgentReview() {
         </div>
       )}
 
-      {rejectStepModal && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 400, maxWidth: "90%", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
-            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)" }}>Reject Step: {rejectStepModal.title}</h3>
-            <textarea
-              className="admin-input"
-              autoFocus
-              placeholder={`Provide a reason for rejecting the ${rejectStepModal.title}...`}
-              value={stepRejectReason}
-              onChange={e => setStepRejectReason(e.target.value)}
-              style={{ width: "100%", minHeight: 100, padding: 12, borderRadius: 8, border: "1px solid var(--border-color)", marginBottom: 16 }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-              <button onClick={() => setRejectStepModal(null)} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)" }}>
-                Cancel
-              </button>
-              <button onClick={handleRejectStep} disabled={submitting || !stepRejectReason.trim()} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#ef4444", color: "var(--bg-primary)", fontWeight: 600, cursor: submitting || !stepRejectReason.trim() ? "not-allowed" : "pointer", opacity: submitting || !stepRejectReason.trim() ? 0.6 : 1 }}>
-                Confirm Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {successModalData && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>

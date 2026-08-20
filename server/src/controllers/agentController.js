@@ -12,7 +12,7 @@ const getAssignedApplications = async (req, res, next) => {
     const skip = (pageNum - 1) * take;
 
     const where = {};
-    if (req.user.role !== "admin") {
+    if (req.user.role === "agent") {
       where.assignedCrmAgentId = agentId;
     }
     
@@ -36,12 +36,37 @@ const getAssignedApplications = async (req, res, next) => {
 
     if (search) {
       const q = String(search).trim();
-      where.OR = [
-        { applicationId: { contains: q } },
-        { user: { phone: { contains: q } } },
-        { user: { email: { contains: q } } },
-        { personalDetails: { contains: q } }
-      ];
+      const terms = Array.from(new Set([
+        q,
+        q.toLowerCase(),
+        q.toUpperCase(),
+        q.charAt(0).toUpperCase() + q.slice(1).toLowerCase()
+      ]));
+
+      const searchConditions = [];
+      for (const term of terms) {
+        searchConditions.push(
+          { applicationId: { contains: term } },
+          { clientCode: { contains: term } },
+          { personalDetails: { contains: term } },
+          { identityDetails: { contains: term } },
+          { bankDetails: { contains: term } },
+          { address: { contains: term } },
+          { nomineeDetails: { contains: term } },
+          { rejectionReason: { contains: term } },
+          { globeRemarks: { contains: term } },
+          { user: { email: { contains: term } } },
+          { user: { phone: { contains: term } } },
+          { user: { eStamp: { contains: term } } },
+          { user: { boid: { contains: term } } }
+        );
+      }
+
+      if (!isNaN(parseInt(q, 10)) && String(parseInt(q, 10)) === q) {
+        searchConditions.push({ userId: parseInt(q, 10) });
+      }
+
+      where.OR = searchConditions;
     }
 
     const [applications, total] = await Promise.all([
@@ -60,13 +85,18 @@ const getAssignedApplications = async (req, res, next) => {
           clientCode: true,
           personalDetails: true,
           identityDetails: true,
+          bankDetails: true,
+          address: true,
+          nomineeDetails: true,
+          esignDetails: true,
+          ocrData: true,
           stepStatuses: true,
           globeStatus: true,
           isResubmitted: true,
           riskScore: true,
           faceMatchScore: true,
           assignedCrmAgentId: true,
-          user: { select: { email: true, phone: true, eStamp: true, eStampAssigned: { select: { serialNo: true } } } }
+          user: { select: { email: true, phone: true, eStamp: true, eStampAssigned: { select: { serialNo: true, certificateNo: true } } } }
         }
       }),
       prisma.kycApplication.count({ where })

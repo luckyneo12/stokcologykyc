@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useDragScroll } from "@/utils/useDragScroll";
-import "@/app/admin/admin.css";
+import "../globe-table.css";
 
 function formatTimePending(createdAt) {
   const diffMs = Date.now() - new Date(createdAt).getTime();
@@ -58,8 +58,14 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
-
-  const scrollRef = useDragScroll();
+  const [copiedKey, setCopiedKey] = useState(null);
+  const handleCopy = (e, text, key) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (!text || text === "N/A" || text === "Pending" || text === "—") return;
+    navigator.clipboard.writeText(String(text));
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -282,11 +288,17 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                 const displayKycId = app.applicationId || app.id;
 
                 return (
-                  <tr key={routeId} style={{ cursor: "pointer" }} onClick={(e) => {
-                    if (!e.target.closest('.action-menu-container') && !e.target.closest('button')) {
-                      window.location.href = `/globe/maker-checker/${routeId}`;
-                    }
-                  }}>
+                  <tr 
+                    key={routeId} 
+                    style={{ cursor: "pointer", userSelect: "text", WebkitUserSelect: "text" }} 
+                    onClick={(e) => {
+                      const sel = window.getSelection();
+                      if (sel && sel.toString().length > 0) return;
+                      if (!e.target.closest('.action-menu-container') && !e.target.closest('button')) {
+                        window.location.href = `/globe/maker-checker/${routeId}`;
+                      }
+                    }}
+                  >
                     {visibleColumns.includes("S.No.") && (
                       <td style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text-muted)", ...getStickyStyle("S.No.") }}>
                         {index + 1}
@@ -303,12 +315,65 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                         )}
                       </div>
                     </td>)}
-                    {visibleColumns.includes("Name") && <td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", ...getStickyStyle("Name") }}>{name}</td>}
-                    {visibleColumns.includes("Client Code") && <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)", ...getStickyStyle("Client Code") }}>{app.clientCode || "N/A"}</td>}
-                    {visibleColumns.includes("KYC ID") && <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{displayKycId}</td>}
-                    {visibleColumns.includes("Number") && <td style={{ fontWeight: 600 }}>{number}</td>}
-                    {visibleColumns.includes("Email") && <td style={{ fontSize: "0.82rem", color: "var(--text-primary)" }}>{email}</td>}
-                    {visibleColumns.includes("PAN") && <td style={{ fontWeight: 600 }}>{pan}</td>}
+                    {visibleColumns.includes("Name") && <td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Name") }}>{name}</td>}
+                    {visibleColumns.includes("Client Code") && (
+                      <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Client Code") }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{app.clientCode || "N/A"}</span>
+                          {app.clientCode && app.clientCode !== "N/A" && (
+                            <button onClick={(e) => handleCopy(e, app.clientCode, `cc-${routeId}`)} title="Copy Client Code" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `cc-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                              {copiedKey === `cc-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.includes("KYC ID") && (
+                      <td style={{ fontWeight: 800, fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{displayKycId}</span>
+                          <button onClick={(e) => handleCopy(e, displayKycId, `id-${routeId}`)} title="Copy KYC ID" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `id-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                            {copiedKey === `id-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.includes("Number") && (
+                      <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{number}</span>
+                          {number && number !== "N/A" && (
+                            <button onClick={(e) => handleCopy(e, number, `phone-${routeId}`)} title="Copy Phone Number" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `phone-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                              {copiedKey === `phone-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.includes("Email") && (
+                      <td style={{ fontSize: "0.82rem", color: "var(--text-primary)", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{email}</span>
+                          {email && email !== "N/A" && (
+                            <button onClick={(e) => handleCopy(e, email, `email-${routeId}`)} title="Copy Email" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `email-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                              {copiedKey === `email-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.includes("PAN") && (
+                      <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{pan}</span>
+                          {pan && pan !== "N/A" && (
+                            <button onClick={(e) => handleCopy(e, pan, `pan-${routeId}`)} title="Copy PAN" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `pan-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                              {copiedKey === `pan-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     {visibleColumns.includes("Step") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                       Step {stepNum}/14
                     </td>}
@@ -333,7 +398,18 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                     {visibleColumns.includes("Time Pending") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 600 }}>
                       {isPending ? formatTimePending(app.createdAt) : "-"}
                     </td>}
-                    {visibleColumns.includes("E-Stamp") && <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem" }}>{eStamp}</td>}
+                    {visibleColumns.includes("E-Stamp") && (
+                      <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{eStamp}</span>
+                          {eStamp && eStamp !== "N/A" && (
+                            <button onClick={(e) => handleCopy(e, eStamp, `estamp-${routeId}`)} title="Copy E-Stamp" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estamp-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                              {copiedKey === `estamp-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     {visibleColumns.includes("Start Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{startDate}</td>}
                     {visibleColumns.includes("eSign Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{esignDate}</td>}
                     {visibleColumns.includes("Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{submittedAt}</td>}

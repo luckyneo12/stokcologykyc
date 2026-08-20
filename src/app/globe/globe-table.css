@@ -1,5 +1,10 @@
 
-:root {
+:root,
+.globe-portal-theme {
+  --wise-green: #9fe870 !important;
+  --wise-green-hover: #8ed85f !important;
+  --wise-dark-green: #1a4d1a !important;
+  --wise-green-alpha: rgba(159, 232, 112, 0.15) !important;
   --accent-blue: #3b82f6;
   --accent-blue-bg: rgba(59, 130, 246, 0.1);
   --accent-yellow: #f59e0b;

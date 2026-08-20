@@ -1,4 +1,5 @@
 import "../globals.css";
+import "./globe-table.css";
 
 export const metadata = {
   title: "Globe UAT - Dashboard",
@@ -7,7 +8,7 @@ export const metadata = {
 
 export default function GlobeLayout({ children }) {
   return (
-    <>
+    <div className="globe-portal-theme" style={{ minHeight: "100vh", width: "100%" }}>
       <script
         dangerouslySetInnerHTML={{
           __html: `
@@ -20,6 +21,6 @@ export default function GlobeLayout({ children }) {
         }}
       />
       {children}
-    </>
+    </div>
   );
 }

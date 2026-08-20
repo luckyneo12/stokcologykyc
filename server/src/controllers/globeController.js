@@ -152,15 +152,39 @@ class GlobeController {
         whereClause.currentStep = parseInt(stage);
       }
 
-      const search = req.query.search;
+      const search = req.query.search ? String(req.query.search).trim() : "";
       if (search) {
-        whereClause.OR = [
-          { applicationId: { contains: search } },
-          { clientCode: { contains: search } },
-          { user: { email: { contains: search } } },
-          { user: { phone: { contains: search } } },
-          { personalDetails: { contains: search } },
-        ];
+        const terms = Array.from(new Set([
+          search,
+          search.toLowerCase(),
+          search.toUpperCase(),
+          search.charAt(0).toUpperCase() + search.slice(1).toLowerCase()
+        ]));
+
+        const searchConditions = [];
+        for (const term of terms) {
+          searchConditions.push(
+            { applicationId: { contains: term } },
+            { clientCode: { contains: term } },
+            { personalDetails: { contains: term } },
+            { identityDetails: { contains: term } },
+            { bankDetails: { contains: term } },
+            { address: { contains: term } },
+            { nomineeDetails: { contains: term } },
+            { rejectionReason: { contains: term } },
+            { globeRemarks: { contains: term } },
+            { user: { email: { contains: term } } },
+            { user: { phone: { contains: term } } },
+            { user: { eStamp: { contains: term } } },
+            { user: { boid: { contains: term } } }
+          );
+        }
+
+        if (!isNaN(parseInt(search, 10)) && String(parseInt(search, 10)) === search) {
+          searchConditions.push({ userId: parseInt(search, 10) });
+        }
+
+        whereClause.OR = searchConditions;
       }
 
       console.log(`[Globe API] fetching getPendingKYCs. globeStatus=${globeStatus}, search=${search}`);
@@ -175,7 +199,7 @@ class GlobeController {
                 phone: true, 
                 email: true,
                 eStamp: true,
-                eStampAssigned: { select: { serialNo: true } }
+                eStampAssigned: { select: { serialNo: true, certificateNo: true } }
               },
             },
           },

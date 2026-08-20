@@ -90,7 +90,7 @@ export default function PanStep() {
         clearDobDraft();
         
         nextStep({
-          identityDetails: { ...identityDetails, pan: pan.toUpperCase() },
+          identityDetails: { ...identityDetails, pan: pan.toUpperCase(), manualPan: pan.toUpperCase() },
           personalDetails: { 
             ...personalDetails, 
             dob, 

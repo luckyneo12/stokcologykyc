@@ -57,8 +57,8 @@ const { updateApplicationDetails, uploadAdminDocument, generateUserToken } = req
 router.put("/application/:id/update-details", adminAuth, updateApplicationDetails);
 router.post("/application/:id/generate-token", adminAuth, generateUserToken);
 
-// Upload document from admin portal
-const localUpload = require("../middlewares/localUpload");
-router.post("/application/:id/upload-document", adminAuth, localUpload.single("document"), uploadAdminDocument);
+// Upload document from admin portal (Cloudinary)
+const upload = require("../middlewares/upload");
+router.post("/application/:id/upload-document", adminAuth, upload.single("document"), uploadAdminDocument);
 
 module.exports = router;

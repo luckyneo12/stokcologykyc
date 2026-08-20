@@ -25,4 +25,13 @@ router.put("/kycs/:id/status", globeController.updateGlobeStatus);
 
 router.get("/application/:id", getApplicationById);
 
+const { updateApplicationDetails, uploadAdminDocument } = require("../controllers/adminController");
+const { requestModifications, reviewStep } = require("../controllers/agentController");
+const upload = require("../middlewares/upload");
+
+router.put("/application/:id/update-details", updateApplicationDetails);
+router.post("/application/:id/request-modifications", requestModifications);
+router.post("/application/:id/upload-document", upload.single("document"), uploadAdminDocument);
+router.post("/kyc/:id/step/:stepName/review", reviewStep);
+
 module.exports = router;

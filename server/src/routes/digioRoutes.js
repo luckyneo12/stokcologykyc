@@ -1139,6 +1139,7 @@ router.post("/verify-pan", auth, async (req, res) => {
       // Update application state
       const nextIdentityDetails = mergeJson(application.identityDetails, {
         pan: pan.toUpperCase(),
+        manualPan: pan.toUpperCase(),
         pan_name: result.data.name_at_pan || fullName, // Use name from Digio if available
       });
 
@@ -1507,9 +1508,11 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         nextIdentityDetails.aadhaar = String(aadhaarDetails.id_number).trim();
       }
       if (panDetails?.id_number) {
-        nextIdentityDetails.pan =
+        const extractedPanNum =
           extractPanNumber(panDetails.id_number) ||
           String(panDetails.id_number).trim().toUpperCase();
+        nextIdentityDetails.digilockerPan = extractedPanNum;
+        nextIdentityDetails.pan = extractedPanNum;
       }
       if (aadhaarDetails?.name) {
         nextIdentityDetails.aadhaarName = aadhaarDetails.name;
@@ -1529,10 +1532,30 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       }
     }
 
+    const existingManualPan =
+      nextIdentityDetails.manualPan ||
+      (typeof application.identityDetails === "object"
+        ? application.identityDetails?.manualPan || application.identityDetails?.pan
+        : null);
+    if (existingManualPan) {
+      nextIdentityDetails.manualPan = existingManualPan;
+    }
+    if (
+      nextIdentityDetails.digilockerPan &&
+      existingManualPan &&
+      nextIdentityDetails.digilockerPan !== existingManualPan
+    ) {
+      nextIdentityDetails.panMismatch = true;
+    }
+
     if (extractedAadhaar && !nextIdentityDetails.aadhaar)
       nextIdentityDetails.aadhaar = extractedAadhaar;
-    if (extractedPan && !nextIdentityDetails.pan)
+    if (extractedPan && !nextIdentityDetails.pan) {
       nextIdentityDetails.pan = extractedPan;
+      if (!nextIdentityDetails.digilockerPan && payload.type === "DIGILOCKER") {
+        nextIdentityDetails.digilockerPan = extractedPan;
+      }
+    }
     if (extractedName) {
       nextPersonalDetails.fullName = extractedName;
       if (

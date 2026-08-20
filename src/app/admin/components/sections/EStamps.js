@@ -3,8 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
-import { UploadCloud, CheckCircle, Clock, Archive, Search, Eye, Edit2, Trash2, FileText, Image as ImageIcon } from "lucide-react";
-import { useDragScroll } from "@/utils/useDragScroll";
+import { UploadCloud, CheckCircle, Clock, Archive, Search, Eye, Edit2, Trash2, FileText, Image as ImageIcon, Copy, Check } from "lucide-react";
 
 export default function EStamps({ searchQuery, onSearchChange }) {
   const router = useRouter();
@@ -12,6 +11,7 @@ export default function EStamps({ searchQuery, onSearchChange }) {
   useEffect(() => setMounted(true), []);
   const [eStamps, setEStamps] = useState([]);
   const [stats, setStats] = useState({ totalUploaded: 0, totalUsed: 0, totalLeft: 0 });
+  const [copiedKey, setCopiedKey] = useState(null);
   
   const [localSearch, setLocalSearch] = useState("");
   const search = searchQuery !== undefined ? searchQuery : localSearch;
@@ -20,6 +20,13 @@ export default function EStamps({ searchQuery, onSearchChange }) {
   const [statusFilter, setStatusFilter] = useState("assigned"); // "all", "assigned", "available"
   
   const [loading, setLoading] = useState(true);
+
+  const handleCopy = (text, key) => {
+    if (!text || text === "Unextracted" || text === "—") return;
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
 
   // Bulk Upload State
   const [showModal, setShowModal] = useState(false);
@@ -37,8 +44,6 @@ export default function EStamps({ searchQuery, onSearchChange }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isUpdating, setIsUpdating] = useState(false);
-
-  const scrollRef = useDragScroll();
 
   const fetchEStamps = async () => {
     setLoading(true);
@@ -403,8 +408,8 @@ export default function EStamps({ searchQuery, onSearchChange }) {
       </div>
 
       <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "var(--card-shadow)" }}>
-        <div ref={scrollRef} style={{ overflowX: "auto" }}>
-          <table className="admin-table">
+        <div style={{ overflowX: "auto", userSelect: "text", WebkitUserSelect: "text" }}>
+          <table className="admin-table" style={{ userSelect: "text", WebkitUserSelect: "text" }}>
             <thead>
               <tr>
                 <th style={{ paddingLeft: 24, width: 80 }}>Preview</th>
@@ -434,14 +439,56 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                         </div>
                       )}
                     </td>
-                    <td>
-                      <div style={{ fontWeight: 800, fontSize: "0.95rem", color: stamp.certificateNo ? "var(--text-primary)" : "var(--text-muted)" }}>
-                        {stamp.certificateNo || "Unextracted"}
+                    <td style={{ userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 800, fontSize: "0.95rem", color: stamp.certificateNo ? "var(--text-primary)" : "var(--text-muted)", userSelect: "text", WebkitUserSelect: "text" }}>
+                          {stamp.certificateNo || "Unextracted"}
+                        </span>
+                        {stamp.certificateNo && (
+                          <button
+                            onClick={() => handleCopy(stamp.certificateNo, `cert-${stamp.id}`)}
+                            title="Copy Certificate Number"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "2px 4px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              color: copiedKey === `cert-${stamp.id}` ? "#16a34a" : "var(--text-muted)",
+                              borderRadius: 4,
+                              transition: "color 0.15s"
+                            }}
+                          >
+                            {copiedKey === `cert-${stamp.id}` ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                          </button>
+                        )}
                       </div>
                     </td>
-                    <td>
-                      <div style={{ fontWeight: 700, fontSize: "0.9rem", color: stamp.serialNo ? "var(--text-secondary)" : "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                        {stamp.serialNo || "—"}
+                    <td style={{ userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.9rem", color: stamp.serialNo ? "var(--text-secondary)" : "var(--text-muted)", fontFamily: "var(--font-mono)", userSelect: "text", WebkitUserSelect: "text" }}>
+                          {stamp.serialNo || "—"}
+                        </span>
+                        {stamp.serialNo && (
+                          <button
+                            onClick={() => handleCopy(stamp.serialNo, `serial-${stamp.id}`)}
+                            title="Copy Serial Number"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "2px 4px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              color: copiedKey === `serial-${stamp.id}` ? "#16a34a" : "var(--text-muted)",
+                              borderRadius: 4,
+                              transition: "color 0.15s"
+                            }}
+                          >
+                            {copiedKey === `serial-${stamp.id}` ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td>
@@ -449,11 +496,11 @@ export default function EStamps({ searchQuery, onSearchChange }) {
                         {stamp.status.toUpperCase()}
                       </span>
                     </td>
-                    <td>
+                    <td style={{ userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                       {stamp.status === "assigned" ? (
                         <div>
-                          <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.85rem" }}>{stamp.userName}</div>
-                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{stamp.kycApplicationId || stamp.assignedTo}</div>
+                          <div style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.85rem", userSelect: "text" }}>{stamp.userName}</div>
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)", userSelect: "text" }}>{stamp.kycApplicationId || stamp.assignedTo}</div>
                         </div>
                       ) : (
                         <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600 }}>—</span>

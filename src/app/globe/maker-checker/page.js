@@ -52,6 +52,14 @@ export default function MakerCheckerDashboard() {
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const handleCopy = (e, text, key) => {
+    e.stopPropagation();
+    if (!text || text === "N/A" || text === "—") return;
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
 
   const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code"];
   const PERMANENT_WIDTHS = {
@@ -318,48 +326,67 @@ export default function MakerCheckerDashboard() {
             try { parsedBank = typeof app.bankDetails === "string" ? JSON.parse(app.bankDetails) : (app.bankDetails || {}); } catch(e) {}
             
             let parsedAddress = {};
-            try { parsedAddress = typeof app.address === "string" ? JSON.parse(app.address) : (app.address || {}); } catch(e) {}
+            try { 
+              parsedAddress = typeof app.address === "string" ? JSON.parse(app.address) : (app.address || parsedPersonal.address || {}); 
+              if (typeof parsedAddress === "string") {
+                try { parsedAddress = JSON.parse(parsedAddress); } catch(e) {}
+              }
+            } catch(e) {}
             
             let parsedNominee = {};
             try { parsedNominee = typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails) : (app.nomineeDetails || {}); } catch(e) {}
 
-            
+            const aadhaarRaw = parsedIdentity.aadhaarNumber || parsedIdentity.aadhaar || parsedIdentity.uid || parsedIdentity.maskedAadhaar || parsedPersonal.aadhaar || "";
+            const aadhaarFormatted = aadhaarRaw ? (String(aadhaarRaw).length >= 4 ? `xxxxxxxx${String(aadhaarRaw).slice(-4)}` : String(aadhaarRaw)) : "N/A";
+
+            const rawAddr = [
+              parsedAddress.line1 || parsedAddress.addressLine1 || (typeof parsedAddress === "object" ? parsedAddress.address : null),
+              parsedAddress.line2 || parsedAddress.addressLine2,
+              parsedAddress.line3 || parsedAddress.addressLine3,
+              parsedAddress.street || parsedAddress.locality
+            ].filter(Boolean).join(", ") || (typeof parsedAddress === "string" ? parsedAddress : "") || parsedPersonal.address || "N/A";
+
+            const rawCity = parsedAddress.city || parsedAddress.district || parsedPersonal.city || parsedPersonal.district || "N/A";
+            const rawState = parsedAddress.state || parsedPersonal.state || "N/A";
+            const rawPincode = parsedAddress.pincode || parsedAddress.pinCode || parsedAddress.zip || parsedPersonal.pincode || parsedPersonal.pinCode || "N/A";
+
             return {
-            id: app.applicationId,
-            dbId: app.id,
-            clientCode: app.clientCode,
-            number: app.user?.phone || "N/A",
-            email: app.user?.email || parsedPersonal.email || "N/A",
-            name: parsedPersonal.fullName || parsedPersonal.name || "N/A",
-            pan: parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || "N/A",
-            eStamp: app.user?.eStampAssigned?.serialNo || app.user?.eStamp || "N/A",
-            stepNum: app.currentStep || 0,
-            stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
-            type: "Full KYC",
-            status: app.status,
-            globeStatus: app.globeStatus || "pending",
-            isResubmitted: app.isResubmitted,
-            riskScore: app.riskScore || 0,
-            faceMatch: app.faceMatchScore || 0,
-            startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
-            esignDate: parsedEsign.timestamp || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
-            submittedAt: new Date(app.updatedAt || app.createdAt).toLocaleString(),
-            aadhaar: parsedIdentity.aadhaar ? `xxxxxxxx${parsedIdentity.aadhaar.slice(-4)}` : parsedIdentity.uid ? `xxxxxxxx${parsedIdentity.uid.slice(-4)}` : "N/A",
-            dob: parsedPersonal.dob || parsedIdentity.dob || "N/A",
-            gender: parsedPersonal.gender || "N/A",
-            fatherName: parsedPersonal.fatherName || "N/A",
-            motherName: parsedPersonal.motherName || "N/A",
-            bankName: parsedBank.bankName || "N/A",
-            accountNo: parsedBank.accountNumber || "N/A",
-            ifsc: parsedBank.ifsc || "N/A",
-            nominees: Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : 0,
-            address: [parsedAddress.line1, parsedAddress.line2, parsedAddress.line3].filter(Boolean).join(", ") || "N/A",
-            city: parsedAddress.city || "N/A",
-            state: parsedAddress.state || "N/A",
-            pincode: parsedAddress.pincode || "N/A",
-            occupation: parsedPersonal.occupation || "N/A",
-            annualIncome: parsedPersonal.annualIncome || "N/A",
-          };});
+              id: app.applicationId,
+              dbId: app.id,
+              clientCode: app.clientCode,
+              number: app.user?.phone || parsedPersonal.phone || parsedPersonal.mobile || "N/A",
+              email: app.user?.email || parsedPersonal.email || "N/A",
+              name: parsedPersonal.fullName || parsedPersonal.name || parsedIdentity.name || "N/A",
+              pan: parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || parsedPersonal.panNumber || "N/A",
+              eStamp: app.user?.eStampAssigned?.serialNo || app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A",
+              stepNum: app.currentStep || 0,
+              stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
+              type: "Full KYC",
+              status: app.status,
+              globeStatus: app.globeStatus || "pending",
+              isResubmitted: app.isResubmitted,
+              riskScore: app.riskScore || 0,
+              faceMatch: app.faceMatchScore || 0,
+              startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
+              esignDate: parsedEsign.timestamp || parsedEsign.signedAt || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
+              submittedAt: new Date(app.updatedAt || app.createdAt).toLocaleString(),
+              aadhaar: aadhaarFormatted,
+              dob: parsedPersonal.dob || parsedPersonal.dateOfBirth || parsedIdentity.dob || "N/A",
+              gender: parsedPersonal.gender || parsedIdentity.gender || "N/A",
+              fatherName: parsedPersonal.fatherName || parsedPersonal.father_name || parsedPersonal.father || "N/A",
+              motherName: parsedPersonal.motherName || parsedPersonal.mother_name || parsedPersonal.mother || "N/A",
+              bankName: parsedBank.bankName || parsedBank.bank_name || parsedBank.name || "N/A",
+              accountNo: parsedBank.accountNumber || parsedBank.account_number || parsedBank.accountNo || "N/A",
+              ifsc: parsedBank.ifsc || parsedBank.ifscCode || parsedBank.ifsc_code || "N/A",
+              nominees: Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : (parsedNominee.nominees ? 1 : 0),
+              address: rawAddr,
+              city: rawCity,
+              state: rawState,
+              pincode: rawPincode,
+              occupation: parsedPersonal.occupation || "N/A",
+              annualIncome: parsedPersonal.annualIncome || parsedPersonal.annual_income || "N/A",
+            };
+          });
           setKycs(mapped);
         }
       }
@@ -501,7 +528,7 @@ export default function MakerCheckerDashboard() {
             <div className="admin-animate">
               {/* Controls */}
               <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-                <input className="admin-input" placeholder="Search by name or ID..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 260 }} />
+                <input className="admin-input" placeholder="Search by name, ID, phone, PAN, bank, eStamp..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 320 }} />
                 <div className="filter-dropdown-container" style={{ position: "relative", width: "220px" }}>
                   <button 
                     onClick={() => setFilterOpen(!filterOpen)}
@@ -671,7 +698,15 @@ export default function MakerCheckerDashboard() {
                           </td>
                         </tr>
                       ) : kycs.map((k, index) => (
-                        <tr key={k.id} onClick={() => router.push(`/globe/maker-checker/${k.id}`)} style={{ cursor: "pointer" }}>
+                        <tr 
+                          key={k.id} 
+                          onClick={() => {
+                            const sel = window.getSelection();
+                            if (sel && sel.toString().length > 0) return;
+                            router.push(`/globe/maker-checker/${k.id}`);
+                          }} 
+                          style={{ cursor: "pointer", userSelect: "text", WebkitUserSelect: "text" }}
+                        >
                           {visibleColumns.includes("S.No.") && (
                             <td style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text-muted)", ...getStickyStyle("S.No.") }}>
                               {(page - 1) * 15 + index + 1}
@@ -699,27 +734,102 @@ export default function MakerCheckerDashboard() {
                               )}
                             </div>
                           </td>)}
-                          {visibleColumns.includes("Name") && <td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", ...getStickyStyle("Name") }}>{k.name}</td>}
-                          {visibleColumns.includes("Client Code") && <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)", ...getStickyStyle("Client Code") }}>{k.clientCode || "N/A"}</td>}
-                          {visibleColumns.includes("KYC ID") && <td style={{ fontWeight: 800, fontSize: "0.82rem" }}>{k.id}</td>}
-                          {visibleColumns.includes("Number") && <td style={{ fontWeight: 600 }}>{k.number}</td>}
-                          {visibleColumns.includes("Email") && <td style={{ fontSize: "0.82rem", color: "var(--text-primary)" }}>{k.email}</td>}
-                          {visibleColumns.includes("PAN") && <td style={{ fontWeight: 600 }}>{k.pan}</td>}
-                          {visibleColumns.includes("Aadhaar") && <td style={{ fontWeight: 600 }}>{k.aadhaar}</td>}
-                          {visibleColumns.includes("DOB") && <td style={{ fontSize: "0.82rem" }}>{k.dob}</td>}
-                          {visibleColumns.includes("Gender") && <td style={{ fontSize: "0.82rem", textTransform: "capitalize" }}>{k.gender}</td>}
-                          {visibleColumns.includes("Father Name") && <td style={{ fontSize: "0.82rem" }}>{k.fatherName}</td>}
-                          {visibleColumns.includes("Mother Name") && <td style={{ fontSize: "0.82rem" }}>{k.motherName}</td>}
-                          {visibleColumns.includes("Bank Name") && <td style={{ fontSize: "0.82rem", fontWeight: 600 }}>{k.bankName}</td>}
-                          {visibleColumns.includes("Account No") && <td style={{ fontSize: "0.82rem", fontFamily: "monospace" }}>{k.accountNo}</td>}
-                          {visibleColumns.includes("IFSC") && <td style={{ fontSize: "0.82rem", fontFamily: "monospace" }}>{k.ifsc}</td>}
-                          {visibleColumns.includes("Nominees") && <td style={{ fontSize: "0.82rem", textAlign: "center" }}>{k.nominees}</td>}
-                          {visibleColumns.includes("Address") && <td style={{ fontSize: "0.82rem", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={k.address}>{k.address}</td>}
-                          {visibleColumns.includes("City") && <td style={{ fontSize: "0.82rem" }}>{k.city}</td>}
-                          {visibleColumns.includes("State") && <td style={{ fontSize: "0.82rem" }}>{k.state}</td>}
-                          {visibleColumns.includes("Pincode") && <td style={{ fontSize: "0.82rem" }}>{k.pincode}</td>}
-                          {visibleColumns.includes("Occupation") && <td style={{ fontSize: "0.82rem" }}>{k.occupation}</td>}
-                          {visibleColumns.includes("Annual Income") && <td style={{ fontSize: "0.82rem" }}>{k.annualIncome}</td>}
+                          {visibleColumns.includes("Name") && <td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Name") }}>{k.name}</td>}
+                          {visibleColumns.includes("Client Code") && (
+                            <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Client Code") }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.clientCode || "N/A"}</span>
+                                {k.clientCode && k.clientCode !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.clientCode, `cc-${k.id}`)} title="Copy Client Code" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `cc-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `cc-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("KYC ID") && (
+                            <td style={{ fontWeight: 800, fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.id}</span>
+                                <button onClick={(e) => handleCopy(e, k.id, `id-${k.id}`)} title="Copy KYC ID" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `id-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                  {copiedKey === `id-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("Number") && (
+                            <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.number}</span>
+                                {k.number && k.number !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.number, `phone-${k.id}`)} title="Copy Phone Number" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `phone-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `phone-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("Email") && (
+                            <td style={{ fontSize: "0.82rem", color: "var(--text-primary)", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.email}</span>
+                                {k.email && k.email !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.email, `email-${k.id}`)} title="Copy Email" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `email-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `email-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("PAN") && (
+                            <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.pan}</span>
+                                {k.pan && k.pan !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.pan, `pan-${k.id}`)} title="Copy PAN" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `pan-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `pan-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("Aadhaar") && <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.aadhaar}</td>}
+                          {visibleColumns.includes("DOB") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.dob}</td>}
+                          {visibleColumns.includes("Gender") && <td style={{ fontSize: "0.82rem", textTransform: "capitalize", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.gender}</td>}
+                          {visibleColumns.includes("Father Name") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.fatherName}</td>}
+                          {visibleColumns.includes("Mother Name") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.motherName}</td>}
+                          {visibleColumns.includes("Bank Name") && <td style={{ fontSize: "0.82rem", fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.bankName}</td>}
+                          {visibleColumns.includes("Account No") && (
+                            <td style={{ fontSize: "0.82rem", fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.accountNo}</span>
+                                {k.accountNo && k.accountNo !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.accountNo, `acc-${k.id}`)} title="Copy Account No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `acc-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `acc-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("IFSC") && (
+                            <td style={{ fontSize: "0.82rem", fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.ifsc}</span>
+                                {k.ifsc && k.ifsc !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.ifsc, `ifsc-${k.id}`)} title="Copy IFSC" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `ifsc-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `ifsc-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("Nominees") && <td style={{ fontSize: "0.82rem", textAlign: "center", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.nominees}</td>}
+                          {visibleColumns.includes("Address") && <td style={{ fontSize: "0.82rem", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }} title={k.address}>{k.address}</td>}
+                          {visibleColumns.includes("City") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.city}</td>}
+                          {visibleColumns.includes("State") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.state}</td>}
+                          {visibleColumns.includes("Pincode") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.pincode}</td>}
+                          {visibleColumns.includes("Occupation") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.occupation}</td>}
+                          {visibleColumns.includes("Annual Income") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.annualIncome}</td>}
                           {visibleColumns.includes("Step") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                             Step {k.stepNum || 0}/14
                           </td>}
@@ -749,7 +859,7 @@ export default function MakerCheckerDashboard() {
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: openStatusMenuId === k.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </div>
                                 {openStatusMenuId === k.id && (
-                                  <div style={{ position: "absolute", top: (index >= kycs.length - 3 && kycs.length > 3) ? "auto" : "100%", bottom: (index >= kycs.length - 3 && kycs.length > 3) ? "100%" : "auto", marginTop: (index >= kycs.length - 3 && kycs.length > 3) ? 0 : 4, marginBottom: (index >= kycs.length - 3 && kycs.length > 3) ? 4 : 0, left: 0, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px", minWidth: "120px" }}>
+                                  <div style={{ position: "absolute", top: (index >= kycs.length - 3 && kycs.length > 3) ? "auto" : "100%", bottom: (index >= kycs.length - 3 && kycs.length > 3) ? "100%" : "auto", left: 0, minWidth: "160px", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px" }}>
                                     {[
                                       { value: "pending", label: "PENDING" },
                                       { value: "approved", label: "APPROVED" },
@@ -781,7 +891,18 @@ export default function MakerCheckerDashboard() {
                               </div>
                             </div>
                           </td>}
-                          {visibleColumns.includes("E-Stamp") && <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem" }}>{k.eStamp}</td>}
+                          {visibleColumns.includes("E-Stamp") && (
+                            <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.eStamp}</span>
+                                {k.eStamp && k.eStamp !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.eStamp, `estamp-${k.id}`)} title="Copy E-Stamp" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estamp-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `estamp-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
                           {visibleColumns.includes("Start Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.startDate}</td>}
                           {visibleColumns.includes("eSign Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.esignDate}</td>}
                           {visibleColumns.includes("Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.submittedAt}</td>}

@@ -78,12 +78,37 @@ const getApplications = async (req, res, next) => {
 
     if (search) {
       const q = String(search).trim();
-      where.OR = [
-        { applicationId: { contains: q } },
-        { user: { phone: { contains: q } } },
-        { user: { email: { contains: q } } },
-        { personalDetails: { contains: q } }
-      ];
+      const terms = Array.from(new Set([
+        q,
+        q.toLowerCase(),
+        q.toUpperCase(),
+        q.charAt(0).toUpperCase() + q.slice(1).toLowerCase()
+      ]));
+
+      const searchConditions = [];
+      for (const term of terms) {
+        searchConditions.push(
+          { applicationId: { contains: term } },
+          { clientCode: { contains: term } },
+          { personalDetails: { contains: term } },
+          { identityDetails: { contains: term } },
+          { bankDetails: { contains: term } },
+          { address: { contains: term } },
+          { nomineeDetails: { contains: term } },
+          { rejectionReason: { contains: term } },
+          { globeRemarks: { contains: term } },
+          { user: { email: { contains: term } } },
+          { user: { phone: { contains: term } } },
+          { user: { eStamp: { contains: term } } },
+          { user: { boid: { contains: term } } }
+        );
+      }
+
+      if (!isNaN(parseInt(q, 10)) && String(parseInt(q, 10)) === q) {
+        searchConditions.push({ userId: parseInt(q, 10) });
+      }
+
+      where.OR = searchConditions;
     }
 
     // Optimization: Only fetch fields needed for the list view
@@ -101,8 +126,13 @@ const getApplications = async (req, res, next) => {
           updatedAt: true,
           createdAt: true,
           clientCode: true,
-          personalDetails: true, // Needed for name
-          identityDetails: true, // Needed for PAN/Aadhaar status
+          personalDetails: true,
+          identityDetails: true,
+          bankDetails: true,
+          address: true,
+          nomineeDetails: true,
+          esignDetails: true,
+          ocrData: true,
           isResubmitted: true,
           assignedCrmAgentId: true,
           globeStatus: true,
@@ -112,7 +142,7 @@ const getApplications = async (req, res, next) => {
               phone: true,
               email: true,
               eStamp: true,
-              eStampAssigned: { select: { serialNo: true } }
+              eStampAssigned: { select: { serialNo: true, certificateNo: true } }
             }
           }
         }
@@ -1246,6 +1276,36 @@ const updateApplicationDetails = async (req, res, next) => {
        });
     }
 
+    if (nextData.personalDetails && app.userId) {
+      const pd = nextData.personalDetails;
+      if (pd.ddpi === "Yes") {
+        const existingStamp = await prisma.eStamp.findUnique({
+          where: { assignedTo: app.userId },
+        });
+        if (!existingStamp) {
+          const availableStamp = await prisma.eStamp.findFirst({
+            where: { status: "available" },
+          });
+          if (availableStamp) {
+            await prisma.eStamp.update({
+              where: { id: availableStamp.id },
+              data: { status: "assigned", assignedTo: app.userId },
+            });
+          }
+        }
+      } else if (pd.ddpi === "No" || pd.ddpi === false || pd.ddpi === "false") {
+        const existingStamp = await prisma.eStamp.findUnique({
+          where: { assignedTo: app.userId },
+        });
+        if (existingStamp) {
+          await prisma.eStamp.update({
+            where: { id: existingStamp.id },
+            data: { status: "available", assignedTo: null },
+          });
+        }
+      }
+    }
+
     if (requireEsign) {
       // We force re-sign
       updatePayload.currentStep = 12; // eSign preview
@@ -1354,7 +1414,7 @@ const uploadAdminDocument = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    const filePath = `/uploads/${req.file.filename}`;
+    const filePath = req.file.path || req.file.secure_url || (req.file.filename ? `/uploads/${req.file.filename}` : "");
     const updatePayload = {};
 
     // Map the documentType (label from UI) to the correct DB JSON field
