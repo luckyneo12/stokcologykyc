@@ -165,7 +165,16 @@ const REVIEW_STEPS = [
         ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
       ];
     },
-    evidence: (app) => [firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document")].filter(Boolean),
+    evidence: (app) => {
+      const allPans = getAllPanDocuments(app);
+      if (allPans.length > 1) {
+        return [
+          { ...allPans[0], label: "Uploaded PAN Card" },
+          { ...allPans[1], label: "DigiLocker PAN" }
+        ];
+      }
+      return allPans;
+    },
   },
   {
     id: "digilocker",
@@ -386,10 +395,10 @@ const REVIEW_STEPS = [
       // ["Rejected timestamp bank", app.bankDetails?.rejectedAt ? new Date(app.bankDetails.rejectedAt).toLocaleString() : app.ocrData?.bank?.rejectedAt || "N/A"],
       ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
       ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A"],
-      ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A"],
-      ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A"],
-      ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A"],
-      ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A"],
+      ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A", null, true],
+      ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A", null, true],
+      ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A", null, true],
+      ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A", null, true],
       ["Name on pan", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.panName || "N/A"],
       ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
       ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
@@ -405,10 +414,22 @@ const REVIEW_STEPS = [
     evidenceHint: "Review the uploaded bank statement, salary slip, ITR, or other financial proof.",
     fields: (app) => [
       ["Proof type", app.financialProof?.type || app.financialProof?.documentType, "financialProof.type"],
-      ["Annual income", app.personalDetails?.annualIncome || app.financialProof?.annualIncome, "personalDetails.annualIncome"],
       ["Trading experience", app.personalDetails?.tradingExperience, "personalDetails.tradingExperience"],
     ],
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
+  },
+  {
+    id: "nameMatch",
+    kycIndex: 11.5,
+    title: "Name",
+    evidenceTitle: "Name Verification",
+    evidenceHint: "Review the name from all sources.",
+    fields: (app) => [
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+    ],
+    evidence: () => [],
   },
   {
     id: "signature",
@@ -418,11 +439,6 @@ const REVIEW_STEPS = [
     evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
     fields: (app) => [
       ["Signature captured", app.signature ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
-      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
-      ["Name as per pan", app.identityDetails?.panName || "N/A"],
-      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
-      ["Name as per kra", app.personalDetails?.fullName || "N/A"],
     ],
     evidence: (app) => {
       const panDocs = getAllPanDocuments(app);
@@ -437,7 +453,7 @@ const REVIEW_STEPS = [
       return [signatureDoc].filter(Boolean);
     },
   },
-  {
+  /* {
     id: "panUpload",
     kycIndex: 13,
     title: "PAN Card Upload",
@@ -447,8 +463,17 @@ const REVIEW_STEPS = [
       ["PAN number", app.personalDetails?.pan || app.identityDetails?.pan, "personalDetails.pan"],
       ["Name", app.personalDetails?.fullName, "personalDetails.fullName"],
     ],
-    evidence: (app) => getAllPanDocuments(app),
-  },
+    evidence: (app) => {
+      const allPans = getAllPanDocuments(app);
+      if (allPans.length > 1) {
+        return [
+          { ...allPans[0], label: "Uploaded PAN Card" },
+          { ...allPans[1], label: "DigiLocker PAN" }
+        ];
+      }
+      return allPans;
+    },
+  }, */
   {
     id: "ipv",
     kycIndex: 14,
@@ -884,13 +909,18 @@ function openInNewTab(src) {
 }
 
 function FieldGrid({ fields }) {
-  const rows = fields.filter(([, value]) => value !== undefined && value !== null && value !== "");
-  if (!rows.length) {
+  const [showExtra, setShowExtra] = useState(false);
+  const allRows = fields.filter(([, value]) => value !== undefined && value !== null && value !== "");
+  const hasExtra = allRows.some(r => r[3] === true);
+  const rows = showExtra ? allRows : allRows.filter(r => r[3] !== true);
+
+  if (!allRows.length) {
     return <div style={{ color: "var(--text-muted)", fontWeight: 700 }}>No submitted values for this step yet.</div>;
   }
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-      {rows.map(([label, value], i) => {
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+        {rows.map(([label, value], i) => {
         const isShiny = label === "Certificate No" || label === "Serial No";
         const isCert = label === "Certificate No";
         const isDivider = label.startsWith("---");
@@ -970,6 +1000,32 @@ function FieldGrid({ fields }) {
           </div>
         );
       })}
+      </div>
+      {hasExtra && (
+        <button
+          onClick={() => setShowExtra(!showExtra)}
+          style={{
+            alignSelf: "flex-start",
+            padding: "6px 14px",
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border-color)",
+            borderRadius: 6,
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            cursor: "pointer",
+            color: "var(--text-primary)",
+            transition: "all 0.2s ease",
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = "var(--border-color)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = "var(--bg-secondary)";
+          }}
+        >
+          {showExtra ? "Show Less" : "Show More Details"}
+        </button>
+      )}
     </div>
   );
 }
@@ -1359,6 +1415,7 @@ export default function AgentReview() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarActiveTabs, setSidebarActiveTabs] = useState({});
   const [showTaxResidency, setShowTaxResidency] = useState(false);
+  const [showExtraBankDetails, setShowExtraBankDetails] = useState(false);
 
   const [expandedModule, setExpandedModule] = useState({});
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -1779,14 +1836,7 @@ export default function AgentReview() {
     const panDocs = getAllPanDocuments(app);
     panDocs.forEach(doc => pushDoc(doc, "panUpload"));
 
-    // eSigned PDF
-    const esignPath = app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
-                      findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
-                      (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
-                      app.generatedPdfBase64;
-    if (esignPath) {
-      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
-    }
+
 
     // PEP Document
     const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
@@ -1817,6 +1867,15 @@ export default function AgentReview() {
     // Assigned E-Stamp
     if (app.user?.eStampAssigned?.fileUrl) {
       pushDoc(firstMedia(app.user.eStampAssigned.fileUrl, "Assigned E-Stamp"), "esignPreview");
+    }
+
+    // eSigned PDF
+    const esignPath = app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
+                      findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
+                      (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+                      app.generatedPdfBase64;
+    if (esignPath) {
+      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
     }
 
     return docs;
@@ -1863,11 +1922,6 @@ export default function AgentReview() {
           setPreviewRotation(0);
           setPreviewOffset({ x: 0, y: 0 });
         }
-        
-        setTimeout(() => {
-          const el = document.getElementById(`module-${step.id}`);
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 50);
       }
       
       return {
@@ -2117,15 +2171,20 @@ export default function AgentReview() {
                                   "Country birth1", "Citizen1"
                                 ];
                                 const taxResidencyFields = [];
-                                const filteredTabFields = tabFields.filter(([label, value, jsonPath]) => {
+                                const extraBankFields = [];
+                                const filteredTabFields = tabFields.filter(([label, value, jsonPath, isExtraBank]) => {
                                   if (isTaxResidencyOutside && TAX_LABELS.includes(label)) {
                                     taxResidencyFields.push([label, value, jsonPath]);
+                                    return false;
+                                  }
+                                  if (isExtraBank === true) {
+                                    extraBankFields.push([label, value, jsonPath]);
                                     return false;
                                   }
                                   return true;
                                 });
 
-                                if (filteredTabFields.length === 0 && taxResidencyFields.length === 0) {
+                                if (filteredTabFields.length === 0 && taxResidencyFields.length === 0 && extraBankFields.length === 0) {
                                   return <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: section.label ? 16 : 0 }}>No details available.</div>;
                                 }
                                 
@@ -2290,6 +2349,29 @@ export default function AgentReview() {
                                         )}
                                       </div>
                                     )}
+
+                                    {extraBankFields.length > 0 && (
+                                      <div style={{ marginTop: 4, padding: "8px", background: "var(--bg-secondary)", borderRadius: 8, border: "1px dashed var(--border-color)" }}>
+                                        <button 
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); setShowExtraBankDetails(prev => !prev); }}
+                                          style={{
+                                            width: "100%", padding: "8px", borderRadius: 4, background: "transparent",
+                                            color: "var(--text-primary)", border: "none",
+                                            fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center"
+                                          }}
+                                        >
+                                          <span>Additional Bank Details</span>
+                                          <span>{showExtraBankDetails ? "▲" : "▼"}</span>
+                                        </button>
+                                        
+                                        {showExtraBankDetails && (
+                                          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+                                            {extraBankFields.map(renderField)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 );
     
@@ -2319,12 +2401,6 @@ export default function AgentReview() {
                                     setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
                                     setPreviewZoom(1); setPreviewRotation(0); setPreviewOffset({ x: 0, y: 0 });
                                   }
-                                  setTimeout(() => {
-                                    const el = document.getElementById(`accordion-${step.id}-${section.id}`);
-                                    if (el) {
-                                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                    }
-                                  }, 50);
                                 }
                               }}
                               style={{ 
@@ -2461,7 +2537,7 @@ export default function AgentReview() {
                  <span style={{ fontWeight: 600, fontSize: "1.1rem" }}>NO DOCUMENT</span>
                  <span style={{ fontSize: "0.9rem" }}>uploaded</span>
               </div>
-            ) : selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1 ? (
+            ) : selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1 ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "row", gap: 16, padding: 16, overflow: "hidden" }}>
                 {REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).map((doc, idx) => (
                   <div key={`${selectedDocument.stepKey}-${idx}`} ref={el => modulePreviewRefs.current[idx] = el} style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)", borderRadius: 8, border: "1px solid var(--border-color)", overflow: "hidden" }}>

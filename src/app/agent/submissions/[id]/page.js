@@ -42,15 +42,26 @@ const USER_STEP_LABELS = {
 
 const REVIEW_STEPS = [
   {
+    id: "nameMatch",
+    kycIndex: 11.5,
+    title: "Name",
+    evidenceTitle: "Name Verification",
+    evidenceHint: "Review the name from all sources.",
+    fields: (app) => [
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+    ],
+    evidence: () => [],
+  },
+  {
     id: "signature",
     kycIndex: 12,
     title: "Signature Upload",
     evidenceTitle: "Wet Signature",
     evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
     fields: (app) => [
-      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
-      ["Name as per pan", app.identityDetails?.panName || "N/A"],
-      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+      ["Signature captured", app.signature ? "Yes" : "No"],
     ],
     evidence: (app) => {
       const panDocs = getAllPanDocuments(app);
@@ -308,9 +319,8 @@ const REVIEW_STEPS = [
     evidenceTitle: "Income / Financial Document",
     evidenceHint: "Review the uploaded bank statement, salary slip, ITR, or other financial proof.",
     fields: (app) => [
-      ["Proof type", app.financialProof?.type || app.financialProof?.documentType],
-      ["Annual income", app.personalDetails?.annualIncome || app.financialProof?.annualIncome],
-      ["Trading experience", app.personalDetails?.tradingExperience],
+      ["Proof type", app.financialProof?.type || app.financialProof?.documentType, "financialProof.type"],
+      ["Trading experience", app.personalDetails?.tradingExperience, "personalDetails.tradingExperience"],
     ],
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
   },
