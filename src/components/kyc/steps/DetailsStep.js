@@ -265,6 +265,7 @@ export default function DetailsStep() {
           placeOfBirth: "",
           taxExemptReason: "",
         }));
+        }
         initializedForm.current = true;
       } else if (isPepProofRejected) {
         // ONLY pepProof was rejected. Keep the rest of the form, just blank the proof.
