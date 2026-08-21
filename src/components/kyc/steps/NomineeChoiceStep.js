@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import Logo from "../Logo";
