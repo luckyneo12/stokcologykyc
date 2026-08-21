@@ -442,9 +442,34 @@ const requestModifications = async (req, res, next) => {
         try { appDocuments = JSON.parse(app.documents); } catch (e) { appDocuments = []; }
       }
 
+      // Parse known application fields so we can match document paths
+      // that aren't stored in the documents array (e.g. nominee proofs, guardian proofs)
+      let parsedNomineeDetails = {};
+      try { parsedNomineeDetails = typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails) : (app.nomineeDetails || {}); } catch (e) {}
+      let parsedPersonalDetails = {};
+      try { parsedPersonalDetails = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch (e) {}
+      let parsedFinancialProof = {};
+      try { parsedFinancialProof = typeof app.financialProof === "string" ? JSON.parse(app.financialProof) : (app.financialProof || {}); } catch (e) {}
+      let parsedSignature = {};
+      try { parsedSignature = typeof app.signature === "string" ? JSON.parse(app.signature) : (app.signature || {}); } catch (e) {}
+      let parsedPanUpload = {};
+      try { parsedPanUpload = typeof app.panUpload === "string" ? JSON.parse(app.panUpload) : (app.panUpload || {}); } catch (e) {}
+      let parsedSelfieDetails = {};
+      try { parsedSelfieDetails = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : (app.selfieDetails || {}); } catch (e) {}
+      let parsedBankDetails = {};
+      try { parsedBankDetails = typeof app.bankDetails === "string" ? JSON.parse(app.bankDetails) : (app.bankDetails || {}); } catch (e) {}
+
+      // Helper: check if a document path matches the given src
+      const pathMatches = (fieldPath, src) => {
+        if (!fieldPath || !src) return false;
+        // Normalize: strip domain/protocol for comparison
+        const normalize = (p) => (p || "").replace(/^https?:\/\/[^/]+/, "").replace(/^\/+/, "");
+        return normalize(fieldPath) === normalize(src) || fieldPath === src;
+      };
+
       for (const [docSrc, reason] of Object.entries(documentRejections)) {
         if (!reason) continue;
-        // Try to find matching document to get its type/label
+        // Try to find matching document in the documents array first
         const matchedDoc = appDocuments.find(d => d.url === docSrc || d.path === docSrc);
         let docStepId = null;
         let docLabel = "Document";
@@ -476,6 +501,60 @@ const requestModifications = async (req, res, next) => {
           docLabel = matchedDoc.label || matchedDoc.type || "Document";
         }
 
+        // If not found in documents array, check against known application fields
+        if (!docStepId) {
+          // Check nominee and guardian proofs
+          const nominees = Array.isArray(parsedNomineeDetails.nominees) ? parsedNomineeDetails.nominees : [];
+          for (let i = 0; i < nominees.length; i++) {
+            const nom = nominees[i];
+            if (pathMatches(nom.proofPath, docSrc) || pathMatches(nom.proofPreview, docSrc) || pathMatches(nom.proof, docSrc)) {
+              docStepId = `nominee${i + 1}Proof`;
+              docLabel = `Nominee ${i + 1} Document`;
+              break;
+            }
+            if (pathMatches(nom.guardianProofPath, docSrc) || pathMatches(nom.guardianProofPreview, docSrc) || pathMatches(nom.guardianProof, docSrc)) {
+              docStepId = `guardian${i + 1}Proof`;
+              docLabel = `Nominee ${i + 1} Guardian Document`;
+              break;
+            }
+          }
+
+          // Check financial proof
+          if (!docStepId && (pathMatches(parsedFinancialProof.filePreview, docSrc) || pathMatches(parsedFinancialProof.path, docSrc) || pathMatches(parsedFinancialProof.preview, docSrc))) {
+            docStepId = "financialProof";
+            docLabel = "Financial Proof";
+          }
+
+          // Check signature
+          if (!docStepId && (pathMatches(parsedSignature.filePreview, docSrc) || pathMatches(parsedSignature.path, docSrc) || pathMatches(parsedSignature.preview, docSrc) || pathMatches(app.signature, docSrc))) {
+            docStepId = "signature";
+            docLabel = "Signature";
+          }
+
+          // Check PAN upload
+          if (!docStepId && (pathMatches(parsedPanUpload.filePreview, docSrc) || pathMatches(parsedPanUpload.path, docSrc) || pathMatches(parsedPanUpload.preview, docSrc))) {
+            docStepId = "panUpload";
+            docLabel = "PAN Card Upload";
+          }
+
+          // Check selfie/IPV
+          if (!docStepId && (pathMatches(parsedSelfieDetails.preview, docSrc) || pathMatches(parsedSelfieDetails.path, docSrc) || pathMatches(app.selfie, docSrc))) {
+            docStepId = "ipv";
+            docLabel = "Live Selfie";
+          }
+
+          // Check bank proof
+          if (!docStepId && (pathMatches(parsedBankDetails.proofPreview, docSrc) || pathMatches(parsedBankDetails.proofPath, docSrc) || pathMatches(parsedBankDetails.proof, docSrc))) {
+            docStepId = "bankVerification";
+            docLabel = "Bank Proof";
+          }
+
+          // Check PEP proof
+          if (!docStepId && (pathMatches(parsedPersonalDetails.pepProof, docSrc) || pathMatches(parsedPersonalDetails.pepProofPreview, docSrc))) {
+            docStepId = "pepProof";
+            docLabel = "PEP Proof";
+          }
+        }
 
         // Determine a step ID for this document
         const finalStepId = docStepId || "documentUpload";
@@ -553,7 +632,7 @@ const requestModifications = async (req, res, next) => {
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-    const frontendUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const modifyLink = `${frontendUrl}/?token=${magicToken}`;
 
     // Send the email
