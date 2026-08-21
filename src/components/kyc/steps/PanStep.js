@@ -29,10 +29,30 @@ const formatPanValue = (value) => {
 };
 
 export default function PanStep() {
-  const { personalDetails, identityDetails, panVerified, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId, markStepVerified } = useKYC();
-  const [pan, setPan, clearPanDraft] = useLocalDraft("pan", formatPanValue(identityDetails.manualPan || identityDetails.pan));
-  const [fullName, setFullName, clearFullNameDraft] = useLocalDraft("panFullName", personalDetails.manualFullName || personalDetails.fullName || "");
-  const [dob, setDob, clearDobDraft] = useLocalDraft("panDob", personalDetails.manualDob || personalDetails.dob || "");
+  const { personalDetails, identityDetails, correctionDraft, panVerified, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId, markStepVerified, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+
+  const isRejection = Boolean(rejectionMode);
+  const isPanRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "panDetails" || r.stepId === "panUpload") ||
+    stepStatuses?.panDetails?.status === "rejected" ||
+    stepStatuses?.panUpload?.status === "rejected"
+  );
+
+  const initialPan = isPanRejected && correctionDraft?.identityDetails?.manualPan !== undefined
+    ? correctionDraft.identityDetails.manualPan
+    : (isPanRejected ? "" : (identityDetails.manualPan || identityDetails.pan));
+    
+  const initialFullName = isPanRejected && correctionDraft?.personalDetails?.manualFullName !== undefined
+    ? correctionDraft.personalDetails.manualFullName
+    : (isPanRejected ? "" : (personalDetails.manualFullName || personalDetails.fullName || ""));
+    
+  const initialDob = isPanRejected && correctionDraft?.personalDetails?.manualDob !== undefined
+    ? correctionDraft.personalDetails.manualDob
+    : (isPanRejected ? "" : (personalDetails.manualDob || personalDetails.dob || ""));
+
+  const [pan, setPan, clearPanDraft] = useLocalDraft("pan", formatPanValue(initialPan));
+  const [fullName, setFullName, clearFullNameDraft] = useLocalDraft("panFullName", initialFullName);
+  const [dob, setDob, clearDobDraft] = useLocalDraft("panDob", initialDob);
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [digioLoading, setDigioLoading] = useState(false);
@@ -45,25 +65,25 @@ export default function PanStep() {
   }, []);
 
   useEffect(() => {
-    const normalizedPan = formatPanValue(identityDetails.manualPan || identityDetails.pan);
+    const normalizedPan = formatPanValue(initialPan);
     if (normalizedPan && normalizedPan !== pan) {
       setPan(normalizedPan);
     }
-  }, [identityDetails.pan]);
+  }, [initialPan]);
 
   useEffect(() => {
-    const normalizedName = personalDetails.manualFullName || personalDetails.fullName;
+    const normalizedName = initialFullName;
     if (normalizedName && normalizedName !== fullName) {
       setFullName(normalizedName);
     }
-  }, [personalDetails.manualFullName, personalDetails.fullName]);
+  }, [initialFullName]);
 
   useEffect(() => {
-    const normalizedDob = personalDetails.manualDob || personalDetails.dob;
+    const normalizedDob = initialDob;
     if (normalizedDob && normalizedDob !== dob) {
       setDob(normalizedDob);
     }
-  }, [personalDetails.manualDob, personalDetails.dob]);
+  }, [initialDob]);
 
   const handleVerify = async () => {
     // Validation
@@ -103,18 +123,36 @@ export default function PanStep() {
         clearFullNameDraft();
         clearDobDraft();
         
-        nextStep({
-          identityDetails: { ...identityDetails, pan: pan.toUpperCase(), manualPan: pan.toUpperCase() },
-          personalDetails: { 
-            ...personalDetails, 
-            dob, 
-            manualDob: dob,
-            fullName: fullName.toUpperCase(), 
-            manualFullName: fullName.toUpperCase(),
-            ...(extractedFatherName ? { fatherName: extractedFatherName } : {}) 
-          },
-          panVerified: true
-        });
+        if (isPanRejected) {
+          updateState({
+            correctionDraft: {
+              ...(correctionDraft || {}),
+              identityDetails: { ...identityDetails, pan: pan.toUpperCase(), manualPan: pan.toUpperCase() },
+              personalDetails: {
+                ...personalDetails,
+                dob,
+                manualDob: dob,
+                fullName: fullName.toUpperCase(),
+                manualFullName: fullName.toUpperCase(),
+                ...(extractedFatherName ? { fatherName: extractedFatherName } : {})
+              }
+            }
+          });
+          nextStep();
+        } else {
+          nextStep({
+            identityDetails: { ...identityDetails, pan: pan.toUpperCase(), manualPan: pan.toUpperCase() },
+            personalDetails: { 
+              ...personalDetails, 
+              dob, 
+              manualDob: dob,
+              fullName: fullName.toUpperCase(), 
+              manualFullName: fullName.toUpperCase(),
+              ...(extractedFatherName ? { fatherName: extractedFatherName } : {}) 
+            },
+            panVerified: true
+          });
+        }
       } else {
         const msg = result.message || "PAN verification failed";
         addToast(msg, "error");

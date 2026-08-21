@@ -80,6 +80,7 @@ model KycApplication {
   pushedToBackofficeAt                 DateTime?
   clientCode                           String?
   esignDetails                         String?   @db.LongText
+  correctionDraft                      String?   @db.LongText
   User_KycApplication_assignedToToUser User?     @relation("KycApplication_assignedToToUser", fields: [assignedTo], references: [id])
   reviewer                             User?     @relation("ReviewedBy", fields: [reviewedBy], references: [id])
   user                                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -73,6 +73,19 @@ const DROPDOWN_OPTIONS = {
 };
 
 const REVIEW_STEPS = [
+  {
+    id: "nameMatch",
+    kycIndex: 11.5,
+    title: "Name",
+    evidenceTitle: "Name Verification",
+    evidenceHint: "Review the name from all sources.",
+    fields: (app) => [
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+    ],
+    evidence: () => [],
+  },
   // {
   //   id: "phoneVerification",
   //   kycIndex: 1,
@@ -418,19 +431,7 @@ const REVIEW_STEPS = [
     ],
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
   },
-  {
-    id: "nameMatch",
-    kycIndex: 11.5,
-    title: "Name",
-    evidenceTitle: "Name Verification",
-    evidenceHint: "Review the name from all sources.",
-    fields: (app) => [
-      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
-      ["Name as per pan", app.identityDetails?.panName || "N/A"],
-      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
-    ],
-    evidence: () => [],
-  },
+
   {
     id: "signature",
     kycIndex: 12,
@@ -2299,7 +2300,7 @@ export default function AgentReview() {
                                         <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                                           {label === "Segments" && typeof currentValue === "string" 
                                             ? currentValue.split(",").join(", ") 
-                                            : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? JSON.stringify(currentValue) : String(currentValue)) : "")
+                                            : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? (currentValue.$$typeof ? currentValue : (() => { try { return JSON.stringify(currentValue); } catch(e) { return "[Object]"; } })()) : String(currentValue)) : "")
                                           }
                                         </div>
                                       )}

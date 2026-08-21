@@ -25,15 +25,37 @@ const UploadIcon = () => (
 );
 
 export default function SignatureStep() {
-  const { signature, updateNested, nextStep, prevStep, addToast } = useKYC();
-  const [filePreview, setFilePreview] = useState(signature?.filePreview || null);
+  const { signature, correctionDraft, updateNested, nextStep, prevStep, addToast, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
+  const isRejection = Boolean(rejectionMode);
+  const isSignatureRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "signature") ||
+    stepStatuses?.signature?.status === "rejected"
+  );
+  
+  const initialSignature = isSignatureRejected && correctionDraft?.signature
+    ? correctionDraft.signature
+    : signature;
+
+  const [filePreview, setFilePreview] = useState(initialSignature?.filePreview || null);
+
+  const rejectionCleared = useRef(false);
+
+  useEffect(() => {
+    if (isSignatureRejected && !rejectionCleared.current) {
+      rejectionCleared.current = true;
+      if (!correctionDraft?.signature) {
+        setFilePreview(null);
+      }
+    }
+  }, [isSignatureRejected, correctionDraft]);
   
   // Sync with context if it updates (e.g. after server sync)
   useEffect(() => {
-    if (signature?.filePreview && !filePreview) {
-      setFilePreview(signature.filePreview);
+    if (initialSignature?.filePreview && !filePreview) {
+      setFilePreview(initialSignature.filePreview);
     }
-  }, [signature?.filePreview]);
+  }, [initialSignature?.filePreview]);
 
   const [isCropping, setIsCropping] = useState(false);
   
@@ -228,7 +250,12 @@ export default function SignatureStep() {
       return;
     }
     
-    updateNested("signature", { filePreview });
+    const payloadData = { filePreview };
+    if (isSignatureRejected) {
+      updateNested("correctionDraft", { signature: payloadData });
+    } else {
+      updateNested("signature", payloadData);
+    }
     nextStep();
   };
 

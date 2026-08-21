@@ -3,7 +3,18 @@ import { useState, useEffect } from "react";
 import { useKYC } from "@/context/KYCContext";
 
 export default function NomineeAllocationStep() {
-  const { nomineeDetails, nomineeAllocation, updateNested, nextStep, prevStep, addToast } = useKYC();
+  const { nomineeDetails, nomineeAllocation, correctionDraft, updateNested, nextStep, prevStep, addToast, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
+  const isRejection = Boolean(rejectionMode);
+  const isNomineeRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "nomineeAllocation" || r.stepId === "nomineeDetails") ||
+    stepStatuses?.nomineeAllocation?.status === "rejected" ||
+    stepStatuses?.nomineeDetails?.status === "rejected"
+  );
+  
+  const initialAllocation = isNomineeRejected && correctionDraft?.nomineeAllocation
+    ? correctionDraft.nomineeAllocation
+    : nomineeAllocation;
   
   const nominees = nomineeDetails?.nominees || [];
   // Function to calculate equal split
@@ -15,7 +26,7 @@ export default function NomineeAllocationStep() {
   };
 
   const [percentages, setPercentages] = useState(() => {
-    const existing = nomineeAllocation?.percentages || [];
+    const existing = initialAllocation?.percentages || [];
     const totalExisting = existing.reduce((sum, v) => sum + (parseInt(v) || 0), 0);
     
     // Use existing only if it matches count AND is valid 100%
@@ -67,11 +78,16 @@ export default function NomineeAllocationStep() {
   };
 
   const handleNext = () => {
-    if (!isValid) {
+    if (nomineeDetails?.opted !== "No" && !isValid) {
       addToast(`Total allocation must be exactly 100% (Current: ${total}%)`, "error");
       return;
     }
-    nextStep({ nomineeAllocation: { percentages } });
+    const payloadData = { percentages };
+    if (isNomineeRejected) {
+      nextStep({ correctionDraft: { ...(correctionDraft || {}), nomineeAllocation: payloadData } });
+    } else {
+      nextStep({ nomineeAllocation: payloadData });
+    }
   };
 
   if (nomineeDetails?.opted === "No") {

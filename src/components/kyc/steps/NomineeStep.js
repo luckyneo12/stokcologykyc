@@ -115,7 +115,7 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 };
 
 export default function NomineeStep() {
-  const { nomineeDetails, address: userAddress, identityDetails, personalDetails, ocrData, nextStep, prevStep, addToast, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  const { nomineeDetails, correctionDraft, address: userAddress, identityDetails, personalDetails, ocrData, nextStep, prevStep, addToast, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
   
   const isRejection = Boolean(rejectionMode);
   const isNomineeRejected = isRejection && (
@@ -125,8 +125,11 @@ export default function NomineeStep() {
   );
   const nomineeRejectionReason = rejectedStepsList?.find(r => r.stepId === "nomineeDetails" || r.stepId === "nomineeChoice")?.reason || stepStatuses?.nomineeDetails?.reason || "";
 
-  const initialNominees = Array.isArray(nomineeDetails?.nominees) && nomineeDetails.nominees.length > 0 ? nomineeDetails.nominees : [createEmptyNominee()];
-  const [draftNominees, setNominees, clearNomineesDraft] = useLocalDraft("nominees", initialNominees);
+  const initialData = isNomineeRejected && Array.isArray(correctionDraft?.nomineeDetails?.nominees) && correctionDraft.nomineeDetails.nominees.length > 0
+    ? correctionDraft.nomineeDetails.nominees
+    : (Array.isArray(nomineeDetails?.nominees) && nomineeDetails.nominees.length > 0 ? nomineeDetails.nominees : [createEmptyNominee()]);
+
+  const [draftNominees, setNominees, clearNomineesDraft] = useLocalDraft("nominees", initialData);
   const nominees = Array.isArray(draftNominees) && draftNominees.length > 0 ? draftNominees : [createEmptyNominee()];
   
   const rejectionCleared = useRef(false);
@@ -135,26 +138,35 @@ export default function NomineeStep() {
   useEffect(() => {
     if (isRejection && !rejectionCleared.current && rejectedStepsList?.length > 0) {
       rejectionCleared.current = true;
-      let needsUpdate = false;
-      const updatedNominees = JSON.parse(JSON.stringify(nominees));
+      
+      if (correctionDraft?.nomineeDetails?.nominees) return;
 
-      for (let i = 0; i < updatedNominees.length; i++) {
-        if (rejectedStepsList.some(r => r.stepId === `nominee${i + 1}Proof`)) {
-          updatedNominees[i].proofPath = "";
-          needsUpdate = true;
-        }
-        if (rejectedStepsList.some(r => r.stepId === `guardian${i + 1}Proof`)) {
-          updatedNominees[i].guardianProofPath = "";
-          needsUpdate = true;
-        }
-      }
+      const isModuleRejected = rejectedStepsList?.some(r => r.stepId === "nomineeDetails" || r.stepId === "nomineeChoice");
 
-      // Also handle module-level rejection if requested (currently we just clear the draft so they start fresh or keep old data? The user specifically asked to NOT clear info if document is rejected. If module is rejected, we keep the previous behavior which retains the draft for them to edit).
-      if (needsUpdate) {
-        setNominees(updatedNominees);
+      if (isModuleRejected) {
+        clearNomineesDraft();
+        setNominees([createEmptyNominee()]);
+      } else {
+        let needsUpdate = false;
+        const updatedNominees = JSON.parse(JSON.stringify(nominees));
+
+        for (let i = 0; i < updatedNominees.length; i++) {
+          if (rejectedStepsList.some(r => r.stepId === `nominee${i + 1}Proof`)) {
+            updatedNominees[i].proofPath = "";
+            needsUpdate = true;
+          }
+          if (rejectedStepsList.some(r => r.stepId === `guardian${i + 1}Proof`)) {
+            updatedNominees[i].guardianProofPath = "";
+            needsUpdate = true;
+          }
+        }
+
+        if (needsUpdate) {
+          setNominees(updatedNominees);
+        }
       }
     }
-  }, [isRejection, rejectedStepsList, nominees, setNominees]);
+  }, [isRejection, rejectedStepsList, nominees, setNominees, correctionDraft]);
 
   
   const ALL_RELATIONS = [
@@ -659,7 +671,12 @@ export default function NomineeStep() {
       return;
     }
     clearNomineesDraft();
-    nextStep({ nomineeDetails: { ...nomineeDetails, numberOfNominees: nominees.length.toString(), nominees } });
+    const payloadData = { ...nomineeDetails, numberOfNominees: nominees.length.toString(), nominees };
+    if (isNomineeRejected) {
+      nextStep({ correctionDraft: { ...(correctionDraft || {}), nomineeDetails: payloadData } });
+    } else {
+      nextStep({ nomineeDetails: payloadData });
+    }
   };
 
   return (

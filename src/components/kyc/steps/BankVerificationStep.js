@@ -82,7 +82,7 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
 
 export default function BankVerificationStep() {
-  const { nomineeDetails, currentStep, goToStep, bankDetails, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified, personalDetails, ocrData, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  const { nomineeDetails, currentStep, goToStep, bankDetails, correctionDraft, updateNested, nextStep, prevStep, addToast, setApplicationId, markStepVerified, personalDetails, ocrData, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
   
   const isRejection = Boolean(rejectionMode);
   const isBankRejected = isRejection && (
@@ -91,20 +91,24 @@ export default function BankVerificationStep() {
   );
   const bankRejectionReason = rejectedStepsList?.find(r => r.stepId === "bankVerification")?.reason || stepStatuses?.bankVerification?.reason || "";
 
+  const initialData = isBankRejected && correctionDraft?.bankDetails
+    ? correctionDraft.bankDetails
+    : bankDetails;
+
   // Local state for the dropdown selection
-    const [form, setForm, clearFormDraft] = useLocalDraft("bankForm", {
-    accountNumber: bankDetails.accountNumber || "",
-    ifsc: bankDetails.ifsc || "",
-    bankName: bankDetails.bankName || "",
-    upiId: bankDetails.upiId || "",
-    micr: bankDetails.micr || "",
-    accountType: bankDetails.accountType || "",
-    branch: bankDetails.branch || "",
-    address: bankDetails.address || "",
-    city: bankDetails.city || "",
-    district: bankDetails.district || "",
-    state: bankDetails.state || "",
-    confirmAccountNumber: bankDetails.accountNumber || ""
+  const [form, setForm, clearFormDraft] = useLocalDraft("bankForm", {
+    accountNumber: initialData.accountNumber || "",
+    ifsc: initialData.ifsc || "",
+    bankName: initialData.bankName || "",
+    upiId: initialData.upiId || "",
+    micr: initialData.micr || "",
+    accountType: initialData.accountType || "",
+    branch: initialData.branch || "",
+    address: initialData.address || "",
+    city: initialData.city || "",
+    district: initialData.district || "",
+    state: initialData.state || "",
+    confirmAccountNumber: initialData.accountNumber || ""
   });
   const [showAccountNumber, setShowAccountNumber] = useState(false);
 
@@ -150,6 +154,31 @@ export default function BankVerificationStep() {
     setVerificationState("idle");
     addToast("Bank form reset for testing.", "success");
   };
+
+  const rejectionCleared = useRef(false);
+
+  useEffect(() => {
+    if (isBankRejected && !rejectionCleared.current) {
+      rejectionCleared.current = true;
+      if (!correctionDraft?.bankDetails) {
+        clearFormDraft();
+        setForm({
+          accountNumber: "",
+          ifsc: "",
+          bankName: "",
+          upiId: "",
+          micr: "",
+          accountType: "",
+          branch: "",
+          address: "",
+          city: "",
+          district: "",
+          state: "",
+          confirmAccountNumber: ""
+        });
+      }
+    }
+  }, [isBankRejected, correctionDraft]);
 
   useEffect(() => {
     const fetchBankDetails = async () => {
@@ -272,7 +301,12 @@ export default function BankVerificationStep() {
     if (!validateBankDetails()) return;
     if (isAlreadyProcessed) {
        clearFormDraft();
-       nextStep({ bankDetails: { ...bankDetails, ...form, method: "Manual Data Entry" } });
+       const payloadData = { ...bankDetails, ...form, method: "Manual Data Entry" };
+       if (isBankRejected) {
+         nextStep({ correctionDraft: { ...(correctionDraft || {}), bankDetails: payloadData } });
+       } else {
+         nextStep({ bankDetails: payloadData });
+       }
        return;
     }
     
@@ -314,7 +348,12 @@ export default function BankVerificationStep() {
           // Record verification fingerprint so this step auto-skips on re-navigation
           markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
           clearFormDraft();
-          nextStep({ bankDetails: { ...form, method: "Manual Data Entry", accountHolderName: accountHolder, verified: true } });
+          const payloadData = { ...form, method: "Manual Data Entry", accountHolderName: accountHolder, verified: true };
+          if (isBankRejected) {
+            nextStep({ correctionDraft: { ...(correctionDraft || {}), bankDetails: payloadData } });
+          } else {
+            nextStep({ bankDetails: payloadData });
+          }
         }
       } else {
         setVerificationState("idle");

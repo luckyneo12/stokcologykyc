@@ -124,6 +124,7 @@ const INITIAL_STATE = {
   verifiedSteps: {}, // { [stepIndex]: { fingerprint: string } } — tracks verified API steps to skip on re-navigation
   rejectionMode: false, // true when user accessed via rejection email magic link
   rejectedStepsList: [], // list of rejected steps with { stepId, type, reason }
+  correctionDraft: null, // Stores draft values for rejected steps
 };
 
 function decodeJwtPayload(token) {
@@ -628,69 +629,36 @@ export function KYCProvider({ children }) {
                       : prev.isResubmitted,
                   isRestoring: false,
                   otpVerified: app.currentStep > 1 ? true : prev.otpVerified,
-                  emailVerified:
-                    app.currentStep > 2 ? true : prev.emailVerified,
-                  panVerified: isStepRejected("panVerification")
-                    ? false
-                    : app.currentStep > 4
-                    ? true
-                    : prev.panVerified,
-                  personalDetails: isStepRejected("personalDetails")
-                    ? INITIAL_STATE.personalDetails
-                    : {
-                        ...prev.personalDetails,
-                        ...(app.personalDetails || {}),
-                      },
-                  identityDetails: isStepRejected("panVerification")
-                    ? { ...prev.identityDetails, pan: "" }
-                    : {
-                        ...prev.identityDetails,
-                        ...(app.identityDetails || {}),
-                      },
-                  address: isStepRejected("digilocker")
-                    ? INITIAL_STATE.address
-                    : { ...prev.address, ...(app.address || {}) },
-                  bankDetails: isStepRejected("bankVerification")
-                    ? INITIAL_STATE.bankDetails
-                    : {
-                        ...prev.bankDetails,
-                        ...(app.bankDetails || {}),
-                      },
-                  ocrData: isStepRejected("panVerification")
-                    ? INITIAL_STATE.ocrData
-                    : { ...prev.ocrData, ...(app.ocrData || {}) },
-                  selfie: isStepRejected("ipv")
-                    ? INITIAL_STATE.selfie
-                    : { ...prev.selfie, ...(app.selfieDetails || {}) },
-                  signature: isStepRejected("signature")
-                    ? INITIAL_STATE.signature
-                    : { ...prev.signature, ...(app.signature || {}) },
-                  panUpload: isStepRejected("panUpload")
-                    ? INITIAL_STATE.panUpload
-                    : { ...prev.panUpload, ...(app.panUpload || {}) },
-                  financialProof: isStepRejected("financialProof")
-                    ? INITIAL_STATE.financialProof
-                    : {
-                        ...prev.financialProof,
-                        ...(app.financialProof || {}),
-                      },
-                  segments: isStepRejected("pricingSelection")
-                    ? INITIAL_STATE.segments
-                    : app.segments || prev.segments,
-                  bsda: isStepRejected("pricingSelection")
-                    ? INITIAL_STATE.bsda
-                    : app.bsda || prev.bsda,
-                  nomineeDetails:
-                    isStepRejected("nomineeDetails") ||
-                    isStepRejected("nomineeChoice")
-                      ? INITIAL_STATE.nomineeDetails
-                      : app.nomineeDetails || prev.nomineeDetails,
-                  nomineeAllocation: isStepRejected("nomineeAllocation")
-                    ? INITIAL_STATE.nomineeAllocation
-                    : app.nomineeAllocation || prev.nomineeAllocation,
+                  emailVerified: app.currentStep > 2 ? true : prev.emailVerified,
+                  panVerified: app.currentStep > 4 ? true : prev.panVerified,
+                  correctionDraft: app.correctionDraft ? (typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft) : prev.correctionDraft,
+                  personalDetails: {
+                    ...prev.personalDetails,
+                    ...(app.personalDetails || {}),
+                  },
+                  identityDetails: {
+                    ...prev.identityDetails,
+                    ...(app.identityDetails || {}),
+                  },
+                  address: { ...prev.address, ...(app.address || {}) },
+                  bankDetails: {
+                    ...prev.bankDetails,
+                    ...(app.bankDetails || {}),
+                  },
+                  ocrData: { ...prev.ocrData, ...(app.ocrData || {}) },
+                  selfie: { ...prev.selfie, ...(app.selfieDetails || {}) },
+                  signature: { ...prev.signature, ...(app.signature || {}) },
+                  panUpload: { ...prev.panUpload, ...(app.panUpload || {}) },
+                  financialProof: {
+                    ...prev.financialProof,
+                    ...(app.financialProof || {}),
+                  },
+                  segments: app.segments || prev.segments,
+                  bsda: app.bsda || prev.bsda,
+                  nomineeDetails: app.nomineeDetails || prev.nomineeDetails,
+                  nomineeAllocation: app.nomineeAllocation || prev.nomineeAllocation,
                   stepStatuses: app.stepStatuses || prev.stepStatuses,
-                  generatedPdfBase64:
-                    app.generatedPdfBase64 || prev.generatedPdfBase64,
+                  generatedPdfBase64: app.generatedPdfBase64 || prev.generatedPdfBase64,
                 });
               }
 
@@ -1011,6 +979,10 @@ export function KYCProvider({ children }) {
           payload[key] = transform ? transform(snapshot[key]) : snapshot[key];
         }
       };
+
+      if (snapshot.rejectionMode && snapshot.correctionDraft !== undefined) {
+        payload.correctionDraft = snapshot.correctionDraft;
+      }
 
       addIfRelevant("personalDetails");
       addIfRelevant("identityMethod");

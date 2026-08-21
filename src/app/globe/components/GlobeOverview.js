@@ -2,6 +2,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts';
+import { useRouter } from 'next/navigation';
 
 const COLORS = ['#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6'];
 
@@ -32,6 +33,7 @@ const StatCard = ({ label, value, color, onClick }) => (
 );
 
 export default function GlobeOverview({ kpis, onNavigate }) {
+  const router = useRouter();
   if (!kpis) return <div style={{ padding: 40, color: "var(--text-muted)", fontWeight: 600 }}>Loading analytics...</div>;
 
   return (
@@ -48,7 +50,7 @@ export default function GlobeOverview({ kpis, onNavigate }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24, marginBottom: 40 }}>
-        <StatCard label="Total Received" value={kpis.totalKyc} color="#8b5cf6" onClick={() => onNavigate && onNavigate("all")} />
+        <StatCard label="Total Received" value={kpis.totalKyc} color="#8b5cf6" onClick={() => router.push("/globe/maker-checker")} />
         <StatCard label="Total Pending" value={kpis.statusDistribution?.find(s => s.name === "Pending")?.value || 0} color="#3b82f6" onClick={() => onNavigate && onNavigate("pending")} />
         <StatCard label="Approved (All Time)" value={kpis.approvedByGlobe} color="#10b981" onClick={() => onNavigate && onNavigate("approved")} />
         <StatCard label="Rejected (All Time)" value={kpis.rejectedByGlobe} color="#ef4444" onClick={() => onNavigate && onNavigate("rejected")} />

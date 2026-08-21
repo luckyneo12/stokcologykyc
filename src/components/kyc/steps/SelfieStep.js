@@ -17,7 +17,14 @@ function isMobileDevice() {
 }
 
 export default function SelfieStep() {
-  const { nextStep, prevStep, addToast, setApplicationId, applicationId, updateState } = useKYC();
+  const { nextStep, prevStep, addToast, setApplicationId, applicationId, updateState, updateNested, correctionDraft, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
+  const isRejection = Boolean(rejectionMode);
+  const isSelfieRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "ipv" || r.stepId === "selfie") ||
+    stepStatuses?.ipv?.status === "rejected" ||
+    stepStatuses?.selfie?.status === "rejected"
+  );
   const [phase, setPhase] = useState("intro"); // intro | processing | done | mobileCompleted
   const [matchScore, setMatchScore] = useState(null);
   const [showQR, setShowQR] = useState(false);
@@ -42,13 +49,19 @@ export default function SelfieStep() {
       const result = await fetchDigioRequestResponse(requestId, "SELFIE");
       if (result?.success) {
         setMatchScore(result.score || result.faceMatchScore || 0);
-        updateState({
-          selfieDetails: {
-            preview: result.selfiePath,
-            matchScore: result.score,
-          },
-          selfie: { preview: result.selfiePath },
-        });
+        const payloadData = {
+          preview: result.selfiePath,
+          matchScore: result.score,
+        };
+        
+        if (isSelfieRejected) {
+          updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: result.selfiePath } });
+        } else {
+          updateState({
+            selfieDetails: payloadData,
+            selfie: { preview: result.selfiePath },
+          });
+        }
       }
       addToast("Selfie verification completed", "success");
 
@@ -107,22 +120,43 @@ export default function SelfieStep() {
       if (!data.success || !data.application) return;
 
       const app = data.application;
-      const selfieDetails =
+      let selfieDetails =
         typeof app.selfieDetails === "string"
           ? JSON.parse(app.selfieDetails)
           : app.selfieDetails;
+
+      let draftObj = {};
+      if (app.correctionDraft) {
+        try { draftObj = typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft; } catch (e) {}
+      }
+
+      if (isSelfieRejected) {
+        if (draftObj?.selfieDetails) {
+          selfieDetails = draftObj.selfieDetails;
+        } else {
+          selfieDetails = null; // Do not use the old rejected selfie
+        }
+      }
 
       // If selfie has been captured (preview path exists), auto-advance
       if (selfieDetails?.preview) {
         console.log("[SelfieStep] Selfie detected from another device! Auto-advancing...");
         setMatchScore(selfieDetails.matchScore || null);
-        updateState({
-          selfieDetails: {
-            preview: selfieDetails.preview,
-            matchScore: selfieDetails.matchScore,
-          },
-          selfie: { preview: selfieDetails.preview },
-        });
+        
+        const payloadData = {
+          preview: selfieDetails.preview,
+          matchScore: selfieDetails.matchScore,
+        };
+        
+        if (isSelfieRejected) {
+          updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: selfieDetails.preview } });
+        } else {
+          updateState({
+            selfieDetails: payloadData,
+            selfie: { preview: selfieDetails.preview },
+          });
+        }
+        
         addToast("Selfie captured on your mobile device!", "success");
         stopCrossDevicePolling();
         setPhase("done");

@@ -74,6 +74,19 @@ const DROPDOWN_OPTIONS = {
 
 const REVIEW_STEPS = [
   {
+    id: "nameMatch",
+    kycIndex: 11.5,
+    title: "Name",
+    evidenceTitle: "Name Verification",
+    evidenceHint: "Review the name from all sources.",
+    fields: (app) => [
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+    ],
+    evidence: () => [],
+  },
+  {
     id: "pricingSelection",
     kycIndex: 3,
     title: "Pricing Plan",
@@ -399,19 +412,7 @@ const REVIEW_STEPS = [
     ],
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
   },
-  {
-    id: "nameMatch",
-    kycIndex: 11.5,
-    title: "Name",
-    evidenceTitle: "Name Verification",
-    evidenceHint: "Review the name from all sources.",
-    fields: (app) => [
-      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
-      ["Name as per pan", app.identityDetails?.panName || "N/A"],
-      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
-    ],
-    evidence: () => [],
-  },
+
   {
     id: "signature",
     kycIndex: 12,
@@ -1628,7 +1629,7 @@ export default function AgentReview() {
       const data = await res.json();
       if (data.success) {
         showToast("Rejection email sent and application returned to user.");
-        // We no longer clear local document rejections here so they remain visible in the UI
+        setDocumentRejections({});
         fetchDetail();
       } else {
         showToast(data.error || "Failed to send rejection email.", "error");

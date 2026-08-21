@@ -18,14 +18,36 @@ const RotateRightIcon = () => (
 );
 
 export default function PanUploadStep() {
-  const { panUpload, updateNested, nextStep, prevStep, addToast } = useKYC();
-  const [filePreview, setFilePreview] = useState(panUpload?.filePreview || null);
+  const { panUpload, correctionDraft, updateNested, nextStep, prevStep, addToast, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
+  const isRejection = Boolean(rejectionMode);
+  const isPanRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "panUpload") ||
+    stepStatuses?.panUpload?.status === "rejected"
+  );
+
+  const initialPanUpload = isPanRejected && correctionDraft?.panUpload
+    ? correctionDraft.panUpload
+    : panUpload;
+
+  const [filePreview, setFilePreview] = useState(initialPanUpload?.filePreview || null);
   
   useEffect(() => {
-    if (panUpload?.filePreview && !filePreview) {
-      setFilePreview(panUpload.filePreview);
+    if (initialPanUpload?.filePreview && !filePreview) {
+      setFilePreview(initialPanUpload.filePreview);
     }
-  }, [panUpload?.filePreview]);
+  }, [initialPanUpload?.filePreview]);
+
+  const rejectionCleared = useRef(false);
+
+  useEffect(() => {
+    if (isPanRejected && !rejectionCleared.current) {
+      rejectionCleared.current = true;
+      if (!correctionDraft?.panUpload) {
+        setFilePreview(null);
+      }
+    }
+  }, [isPanRejected, correctionDraft]);
 
   const [isCropping, setIsCropping] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -222,7 +244,12 @@ export default function PanUploadStep() {
     
     setSubmitting(true);
     try {
-      updateNested("panUpload", { filePreview });
+      const payloadData = { filePreview };
+      if (isPanRejected) {
+        updateNested("correctionDraft", { panUpload: payloadData });
+      } else {
+        updateNested("panUpload", payloadData);
+      }
       nextStep();
     } catch (err) {
       setSubmitting(false);

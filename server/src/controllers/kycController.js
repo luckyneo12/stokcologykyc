@@ -45,6 +45,7 @@ const SAFE_PATCH_KEYS = new Set([
   "submittedAt",
   "segments",
   "bsda",
+  "correctionDraft",
 ]);
 
 const JSON_FIELD_KEYS = new Set([
@@ -58,6 +59,7 @@ const JSON_FIELD_KEYS = new Set([
   "panUpload",
   "signature",
   "financialProof",
+  "correctionDraft",
   "selfieDetails",
   "documents",
   "nsdlRequest",
@@ -749,6 +751,7 @@ const submitKyc = async (req, res, next) => {
         submittedAt: new Date(),
         // Flag as resubmitted if this application was previously reviewed
         ...(app.reviewedAt ? { isResubmitted: true } : {}),
+        correctionDraft: null,
         personalDetails: mergedPersonalDetails,
         identityMethod: data?.identityMethod || app.identityMethod,
         identityDetails: mergedIdentityDetails,

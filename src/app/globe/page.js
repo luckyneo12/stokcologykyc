@@ -130,7 +130,7 @@ export default function GlobePage() {
         {/* Dynamic Content */}
         <div style={{ padding: "40px 48px", maxWidth: "1600px", margin: "0 auto", animation: "fadeIn 0.4s ease forwards" }}>
           {activeSection === "overview" && <GlobeOverview kpis={kpis} onNavigate={handleNavigate} />}
-          {["pending", "approved", "rejected"].includes(activeSection) && <GlobeReviewQueue applications={applications} handleAction={handleAction} activeSection={activeSection} />}
+          {["all", "pending", "approved", "rejected"].includes(activeSection) && <GlobeReviewQueue applications={applications} handleAction={handleAction} activeSection={activeSection} />}
         </div>
       </main>
 

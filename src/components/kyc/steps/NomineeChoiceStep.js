@@ -5,8 +5,20 @@ import { useLocalDraft } from "@/hooks/useLocalDraft";
 import Logo from "../Logo";
 
 export default function NomineeChoiceStep() {
-  const { nomineeDetails, updateNested, nextStep, prevStep, goToStep, currentStep } = useKYC();
-  const [opted, setOpted, clearOptedDraft] = useLocalDraft("nomineeOpted", nomineeDetails?.opted || "No");
+  const { nomineeDetails, correctionDraft, updateNested, nextStep, prevStep, goToStep, currentStep, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
+  const isRejection = Boolean(rejectionMode);
+  const isNomineeRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "nomineeChoice" || r.stepId === "nomineeDetails") ||
+    stepStatuses?.nomineeChoice?.status === "rejected" ||
+    stepStatuses?.nomineeDetails?.status === "rejected"
+  );
+  
+  const initialOpted = isNomineeRejected && correctionDraft?.nomineeDetails?.opted !== undefined
+    ? correctionDraft.nomineeDetails.opted
+    : (nomineeDetails?.opted || "No");
+
+  const [opted, setOpted, clearOptedDraft] = useLocalDraft("nomineeOpted", initialOpted);
   const [confirmed, setConfirmed, clearConfirmedDraft] = useLocalDraft("nomineeConfirmed", false);
   const [mounted, setMounted] = useState(false);
 
@@ -20,17 +32,40 @@ export default function NomineeChoiceStep() {
     }
   }, [nomineeDetails.opted]);
 
+  const rejectionCleared = useRef(false);
+
+  useEffect(() => {
+    if (isNomineeRejected && !rejectionCleared.current) {
+      rejectionCleared.current = true;
+      if (correctionDraft?.nomineeDetails?.opted === undefined) {
+         clearOptedDraft();
+         clearConfirmedDraft();
+         setOpted("No");
+         setConfirmed(false);
+      }
+    }
+  }, [isNomineeRejected, correctionDraft]);
+
   const handleNext = () => {
     if (opted === "No" && !confirmed) return;
 
     clearOptedDraft();
     clearConfirmedDraft();
-    const updates = { nomineeDetails: { ...nomineeDetails, opted } };
+    const payloadData = { ...nomineeDetails, opted };
+    
     if (opted === "No") {
       // Skip Nominee and Allocation steps
-      goToStep(currentStep + 3, updates);
+      if (isNomineeRejected) {
+         goToStep(currentStep + 3, { correctionDraft: { ...(correctionDraft || {}), nomineeDetails: payloadData } });
+      } else {
+         goToStep(currentStep + 3, { nomineeDetails: payloadData });
+      }
     } else {
-      nextStep(updates);
+      if (isNomineeRejected) {
+         nextStep({ correctionDraft: { ...(correctionDraft || {}), nomineeDetails: payloadData } });
+      } else {
+         nextStep({ nomineeDetails: payloadData });
+      }
     }
   };
 

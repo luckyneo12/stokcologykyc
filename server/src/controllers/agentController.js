@@ -530,6 +530,7 @@ const requestModifications = async (req, res, next) => {
         status: "pending",
         isResubmitted: false,
         currentStep: firstRejectedKycIndex,
+        correctionDraft: "{}",
       },
     });
 

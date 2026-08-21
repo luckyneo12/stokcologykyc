@@ -199,9 +199,8 @@ const CheckboxItem = ({ label, value, onChange, disabled }) => {
 };
 
 export default function DetailsStep() {
-  const { personalDetails, updateNested, nextStep, prevStep, addToast, syncProgress, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
-  const [form, setForm, clearFormDraft] = useLocalDraft("details", personalDetails);
-
+  const { personalDetails, correctionDraft, updateNested, nextStep, prevStep, addToast, syncProgress, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
   const isRejection = Boolean(rejectionMode);
   // Module-level rejection (blanks entire form)
   const isPersonalDetailsRejected = isRejection && (
@@ -210,6 +209,12 @@ export default function DetailsStep() {
   );
   // Document-level rejection (blanks only PEP proof)
   const isPepProofRejected = isRejection && rejectedStepsList?.some(r => r.stepId === "pepProof");
+
+  const initialData = isPersonalDetailsRejected && correctionDraft?.personalDetails
+    ? correctionDraft.personalDetails
+    : personalDetails;
+
+  const [form, setForm, clearFormDraft] = useLocalDraft("details", initialData);
 
   const rejectionReasonText = rejectedStepsList?.find(r => r.stepId === "personalDetails")?.reason || stepStatuses?.personalDetails?.reason || "";
 
@@ -222,32 +227,34 @@ export default function DetailsStep() {
     if (isRejection && !rejectionCleared.current) {
       if (isPersonalDetailsRejected) {
         rejectionCleared.current = true;
-        clearFormDraft(); // Clear localStorage draft
-        // Keep DigiLocker-sourced/extracted fields and revert dropdowns to default values
-        setForm(prev => ({
-          // Preserve read-only & extracted fields
-          fullName: prev?.fullName || "",
-          dob: prev?.dob || "",
-          email: prev?.email || "",
-          fatherName: prev?.fatherName || "",
-          gender: prev?.gender || "",
-          
-          // Restore Default Values for Dropdowns
-          citizenOfIndia: "Yes",
-          politicallyExposed: "No",
-          taxResidencyOutside: "No",
-          taxExempt: "No",
-          ddpiOptIn: "Yes",
-          
-          // Blank purely user-editable fields
-          prefix: "",
-          motherName: "",
-          maritalStatus: "",
-          education: "",
-          occupation: "",
-          annualIncome: "",
-          experience: "",
-          pepType: "",
+        // ONLY BLANK IF CORRECTION DRAFT IS EMPTY
+        if (!correctionDraft?.personalDetails) {
+          clearFormDraft(); // Clear localStorage draft
+          // Keep DigiLocker-sourced/extracted fields and revert dropdowns to default values
+          setForm(prev => ({
+            // Preserve read-only & extracted fields
+            fullName: prev?.fullName || "",
+            dob: prev?.dob || "",
+            email: prev?.email || "",
+            fatherName: prev?.fatherName || "",
+            gender: prev?.gender || "",
+            
+            // Restore Default Values for Dropdowns
+            citizenOfIndia: "Yes",
+            politicallyExposed: "No",
+            taxResidencyOutside: "No",
+            taxExempt: "No",
+            ddpiOptIn: "Yes",
+            
+            // Blank purely user-editable fields
+            prefix: "",
+            motherName: "",
+            maritalStatus: "",
+            education: "",
+            occupation: "",
+            annualIncome: "",
+            experience: "",
+            pepType: "",
           pepProof: "",
           countryOfBirth: "",
           citizenship: "",
@@ -387,7 +394,11 @@ export default function DetailsStep() {
       return;
     }
     clearFormDraft();
-    nextStep({ personalDetails: form });
+    if (isPersonalDetailsRejected) {
+      nextStep({ correctionDraft: { ...(correctionDraft || {}), personalDetails: form } });
+    } else {
+      nextStep({ personalDetails: form });
+    }
   };
 
   return (

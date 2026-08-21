@@ -59,15 +59,21 @@ function stripDataUri(value) {
   
   if (raw.startsWith("/uploads/")) {
     try {
-      const filePath = path.join(__dirname, "../../", raw.replace(/^\//, ""));
-      if (fs.existsSync(filePath)) {
-        return fs.readFileSync(filePath, "base64");
+      const rootPath = path.join(__dirname, "../../", raw.replace(/^\//, ""));
+      const publicPath = path.join(__dirname, "../../public", raw.replace(/^\//, ""));
+      if (fs.existsSync(rootPath)) {
+        return "data:image/jpeg;base64," + fs.readFileSync(rootPath, "base64");
+      } else if (fs.existsSync(publicPath)) {
+        return "data:image/jpeg;base64," + fs.readFileSync(publicPath, "base64");
       }
     } catch (err) {
       console.warn("Could not read local file for base64 conversion:", raw, err.message);
     }
+    return null;
   }
 
+  // The manual explicitly shows pure base64 without prefixes
+  // Example: "DocData": "iVBORw0KGgo..."
   const commaIndex = raw.indexOf(",");
   return raw.startsWith("data:") && commaIndex >= 0 ? raw.slice(commaIndex + 1) : raw;
 }
@@ -612,7 +618,7 @@ class BackofficeService {
         FirmID: BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
         NomineeType: "N",
-        Relation: mapRelation(nominee.relation),
+        Relation: mapRelation(nominee.relation).substring(0, 5),
         PreFix: nominee.prefix || null,
         Name: buildString(nominee.name),
         FatherSpouse: "F",
@@ -667,7 +673,7 @@ class BackofficeService {
           FirmID: BACKOFFICE_FIRM_ID,
           ClientCode: clientCode,
           NomineeType: "NG",
-          Relation: mapRelation(nominee.guardianRelation),
+          Relation: mapRelation(nominee.guardianRelation).substring(0, 5),
           PreFix: null,
           Name: buildString(nominee.guardianName),
           FatherSpouse: "F",
@@ -717,20 +723,27 @@ class BackofficeService {
       return entries;
     }) : [];
 
-    const documentEntries = [];
+    const documentEntriesMap = new Map();
     const addDocument = (documentId, name, value) => {
       const docData = stripDataUri(value);
       if (!docData) return;
-      documentEntries.push({
-        ClientCode: clientCode,
-        DocumentID: documentId,
-        DocumentName: name,
-        DocumentFileName: name,
-        Remarks: null,
-        DataAvilable: "Y",
-        FilePath: null,
-        DocData: docData,
-      });
+      
+      const safeName = buildString(Array.isArray(name) ? name[0] : name) || "document";
+      const safeDocId = buildString(Array.isArray(documentId) ? documentId[0] : documentId) || "OTHER";
+
+      // Deduplicate by DocumentID to prevent backoffice grouping bugs
+      if (!documentEntriesMap.has(safeDocId)) {
+        documentEntriesMap.set(safeDocId, {
+          ClientCode: clientCode,
+          DocumentID: safeDocId,
+          DocumentName: safeName,
+          DocumentFileName: safeName,
+          Remarks: null,
+          DataAvilable: null, // Match UserManual.pdf (was "Y")
+          FilePath: docData,  // Pass the URL to FilePath
+          DocData: null,      // Force null to see if backend throws NullReferenceException
+        });
+      }
     };
 
     addDocument("SIGN", "signature.jpeg", signature.filePreview || signature.preview || signature.image);
@@ -802,6 +815,8 @@ class BackofficeService {
         NomineeDetail: nomineeEntries,
       },
     };
+
+    const documentEntries = Array.from(documentEntriesMap.values());
 
     if (documentEntries.length) {
       payload.ClientDocumentDetail = documentEntries;

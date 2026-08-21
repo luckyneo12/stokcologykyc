@@ -5,9 +5,20 @@ import { ArrowLeftIcon } from "../Icons";
 import Logo from "../Logo";
 
 export default function FinancialProofStep() {
-  const { financialProof, personalDetails, updateNested, nextStep, prevStep, addToast } = useKYC();
-  const [type, setType] = useState(financialProof?.type || "");
-  const [filePreview, setFilePreview] = useState(financialProof?.filePreview || null);
+  const { financialProof, correctionDraft, personalDetails, updateNested, nextStep, prevStep, addToast, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  
+  const isRejection = Boolean(rejectionMode);
+  const isFinancialRejected = isRejection && (
+    rejectedStepsList?.some(r => r.stepId === "financialProof") ||
+    stepStatuses?.financialProof?.status === "rejected"
+  );
+
+  const initialFinancialProof = isFinancialRejected && correctionDraft?.financialProof
+    ? correctionDraft.financialProof
+    : financialProof;
+
+  const [type, setType] = useState(initialFinancialProof?.type || "");
+  const [filePreview, setFilePreview] = useState(initialFinancialProof?.filePreview || null);
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [pendingEncryptedFile, setPendingEncryptedFile] = useState(null);
@@ -16,9 +27,21 @@ export default function FinancialProofStep() {
 
   // Sync with context if it updates (e.g. after server sync)
   useEffect(() => {
-    if (financialProof?.type && !type) setType(financialProof.type);
-    if (financialProof?.filePreview && !filePreview) setFilePreview(financialProof.filePreview);
-  }, [financialProof]);
+    if (initialFinancialProof?.type && !type) setType(initialFinancialProof.type);
+    if (initialFinancialProof?.filePreview && !filePreview) setFilePreview(initialFinancialProof.filePreview);
+  }, [initialFinancialProof]);
+
+  const rejectionCleared = useRef(false);
+
+  useEffect(() => {
+    if (isFinancialRejected && !rejectionCleared.current) {
+      rejectionCleared.current = true;
+      if (!correctionDraft?.financialProof) {
+        setFilePreview(null);
+        setType("");
+      }
+    }
+  }, [isFinancialRejected, correctionDraft]);
 
   const fileInputRef = useRef(null);
 
@@ -103,8 +126,12 @@ export default function FinancialProofStep() {
       addToast("Please upload the document", "error");
       return;
     }
-    
-    updateNested("financialProof", { type, filePreview });
+    const payloadData = { type, filePreview };
+    if (isFinancialRejected) {
+      updateNested("correctionDraft", { financialProof: payloadData });
+    } else {
+      updateNested("financialProof", payloadData);
+    }
     nextStep();
   };
 
