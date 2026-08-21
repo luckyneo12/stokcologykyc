@@ -50,7 +50,7 @@ export default function GlobeOverview({ kpis, onNavigate }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24, marginBottom: 40 }}>
-        <StatCard label="Total Received" value={kpis.totalKyc} color="#8b5cf6" onClick={() => router.push("/globe/maker-checker")} />
+        <StatCard label="Total Received" value={kpis.totalKyc} color="#8b5cf6" onClick={() => { window.location.href = "/globe/maker-checker"; }} />
         <StatCard label="Total Pending" value={kpis.statusDistribution?.find(s => s.name === "Pending")?.value || 0} color="#3b82f6" onClick={() => onNavigate && onNavigate("pending")} />
         <StatCard label="Approved (All Time)" value={kpis.approvedByGlobe} color="#10b981" onClick={() => onNavigate && onNavigate("approved")} />
         <StatCard label="Rejected (All Time)" value={kpis.rejectedByGlobe} color="#ef4444" onClick={() => onNavigate && onNavigate("rejected")} />

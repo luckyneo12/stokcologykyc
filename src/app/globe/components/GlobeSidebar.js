@@ -120,7 +120,7 @@ export default function GlobeSidebar({ active, onNavigate, collapsed, onToggle }
               key={item.id}
               onClick={() => {
                 if (item.id === "maker_checker") {
-                  router.push("/globe/maker-checker");
+                  window.location.href = "/globe/maker-checker";
                 } else {
                   if (typeof onNavigate === 'function') onNavigate(item.id);
                   else router.push(`/globe`);
