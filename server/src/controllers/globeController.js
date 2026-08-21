@@ -254,14 +254,20 @@ class GlobeController {
         });
       }
 
+      const globeUserEmail = req.user.email || `Globe User ${userId}`;
       await prisma.auditLog.create({
         data: {
           action: "GLOBE_APPROVED_KYC",
-          details: JSON.stringify({ message: `KYC Application ${application.applicationId} approved by Globe user` }),
-          targetId: id.toString(),
+          details: JSON.stringify({ 
+            message: `Globe reviewer (${globeUserEmail}) approved application ${application.applicationId}`,
+            applicationId: application.applicationId,
+            globeStatus: "approved",
+            actor: globeUserEmail
+          }),
+          targetId: String(application.applicationId || id),
           targetType: "KycApplication",
           userId: userId,
-          ipAddress: req.ip || req.connection.remoteAddress,
+          ipAddress: req.ip || req.connection?.remoteAddress,
         },
       });
 
@@ -305,14 +311,21 @@ class GlobeController {
         });
       }
 
+      const globeUserEmail = req.user.email || `Globe User ${userId}`;
       await prisma.auditLog.create({
         data: {
           action: "GLOBE_REJECTED_KYC",
-          details: JSON.stringify({ message: `KYC Application ${application.applicationId} rejected by Globe user. Reason: ${remarks}` }),
-          targetId: id.toString(),
+          details: JSON.stringify({ 
+            message: `Globe reviewer (${globeUserEmail}) rejected application ${application.applicationId}. Reason: ${remarks}`,
+            applicationId: application.applicationId,
+            reason: remarks,
+            globeStatus: "rejected",
+            actor: globeUserEmail
+          }),
+          targetId: String(application.applicationId || id),
           targetType: "KycApplication",
           userId: userId,
-          ipAddress: req.ip || req.connection.remoteAddress,
+          ipAddress: req.ip || req.connection?.remoteAddress,
         },
       });
 
@@ -343,24 +356,16 @@ class GlobeController {
         return res.status(400).json({ success: false, message: "Only approved applications can be pushed to backoffice" });
       }
 
-      // Check if client code exists (via NSDL response or app ID)
       const clientCode = backofficeService.deriveClientCode(application);
       
       let existingData = {};
       try {
-        // Fetch existing data if needed, or send empty
-        // existingData = await backofficeService.fetchExistingClientDetail(clientCode);
       } catch (err) {
         console.warn("Could not fetch existing data, continuing with empty context", err.message);
       }
 
       const payload = backofficeService.buildModificationPayload(application, existingData, clientCode);
-
-      // Make the actual push
       const response = await backofficeService.submitClientModification(clientCode, payload);
-
-      // Check success response based on their API standard (assuming status is success or similar)
-      // Usually checking if no error thrown is a good start, but some APIs return 200 with error details.
       
       const updatedApplication = await prisma.kycApplication.update({
         where: { id: parseInt(id) },
@@ -370,14 +375,20 @@ class GlobeController {
         },
       });
 
+      const globeUserEmail = req.user.email || `Globe User ${userId}`;
       await prisma.auditLog.create({
         data: {
           action: "GLOBE_PUSHED_BACKOFFICE",
-          details: `KYC Application ${application.applicationId} pushed to Backoffice`,
-          targetId: id.toString(),
+          details: JSON.stringify({
+            message: `Globe reviewer (${globeUserEmail}) pushed application ${application.applicationId} to Backoffice`,
+            applicationId: application.applicationId,
+            clientCode,
+            actor: globeUserEmail
+          }),
+          targetId: String(application.applicationId || id),
           targetType: "KycApplication",
           userId: userId,
-          ipAddress: req.ip || req.connection.remoteAddress,
+          ipAddress: req.ip || req.connection?.remoteAddress,
         },
       });
 
@@ -415,14 +426,21 @@ class GlobeController {
         },
       });
 
+      const globeUserEmail = req.user.email || `Globe User ${userId}`;
       await prisma.auditLog.create({
         data: {
           action: `GLOBE_STATUS_${globeStatus.toUpperCase()}`,
-          details: JSON.stringify({ message: `KYC Application ${application.applicationId} globe status updated to ${globeStatus}${remarks ? '. Reason: ' + remarks : ''}` }),
-          targetId: id.toString(),
+          details: JSON.stringify({ 
+            message: `Globe reviewer (${globeUserEmail}) updated status of application ${application.applicationId} to ${globeStatus}${remarks ? '. Reason: ' + remarks : ''}`,
+            applicationId: application.applicationId,
+            globeStatus,
+            remarks: remarks || null,
+            actor: globeUserEmail
+          }),
+          targetId: String(application.applicationId || id),
           targetType: "KycApplication",
           userId: userId,
-          ipAddress: req.ip || req.connection.remoteAddress,
+          ipAddress: req.ip || req.connection?.remoteAddress,
         },
       });
 

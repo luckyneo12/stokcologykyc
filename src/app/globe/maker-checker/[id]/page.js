@@ -51,15 +51,15 @@ const DROPDOWN_OPTIONS = {
   "personalDetails.experience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
   "personalDetails.tradingExperience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
   "personalDetails.occupation": ["Private Sector", "Public Sector", "Government Service", "Business", "Professional", "Agriculturist", "Retired", "Housewife", "Student", "Others"],
-  "personalDetails.accountSettlement": ["Quarterly", "Monthly"],
+  "personalDetails.settlement": ["Quarterly", "Monthly"],
   "personalDetails.smsAlert": ["Yes", "No"],
-  "personalDetails.operateDdpi": ["Yes", "No"],
-  "personalDetails.nsdl4Communication": ["Yes", "No"],
+  "personalDetails.operatedThroughDDPI": ["Yes", "No"],
+  "personalDetails.receiveAnnualReports": ["Yes", "No"],
   "personalDetails.ddpi": ["Yes", "No"],
-  "personalDetails.disBooklet": ["Yes", "No"],
-  "personalDetails.nsdl1ReceiveCredit": ["Yes", "No"],
-  "personalDetails.nsdl2EStatement": ["Yes", "No"],
-  "personalDetails.nsdl3PledgeInstruction": ["Yes", "No"],
+  "personalDetails.dis": ["Yes", "No"],
+  "personalDetails.receiveCredits": ["Yes", "No"],
+  "personalDetails.eStatement": ["Yes", "No"],
+  "personalDetails.acceptPledgeInstructions": ["Yes", "No"],
   "personalDetails.politicallyExposed": ["Yes", "No"],
   "personalDetails.citizenOfIndia": ["Yes", "No"],
   "personalDetails.taxResidencyOutside": ["Yes", "No"],
@@ -262,10 +262,10 @@ const REVIEW_STEPS = [
       ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
-      ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
+      ["Operate ddpi", app.personalDetails?.operatedThroughDDPI || "Yes", "personalDetails.operatedThroughDDPI"],
       ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
-      ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
+      ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
       ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
       ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
@@ -285,11 +285,11 @@ const REVIEW_STEPS = [
       ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
       ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
 
-      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
-      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
-      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
-      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
-      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
+      ["Nsdl4 communication in electronic form", app.personalDetails?.receiveAnnualReports || "Yes", "personalDetails.receiveAnnualReports"],
+      ["Nsdl1 receive credit", app.personalDetails?.receiveCredits || "Yes", "personalDetails.receiveCredits"],
+      ["Nsdl2 e statement", app.personalDetails?.eStatement || "Yes", "personalDetails.eStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.acceptPledgeInstructions || "No", "personalDetails.acceptPledgeInstructions"],
+      ["Dis booklet", app.personalDetails?.dis || "No", "personalDetails.dis"],
     ],
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
@@ -1358,6 +1358,7 @@ export default function AgentReview() {
   const [toast, setToast] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarActiveTabs, setSidebarActiveTabs] = useState({});
+  const [showTaxResidency, setShowTaxResidency] = useState(false);
 
   const [expandedModule, setExpandedModule] = useState({});
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -1776,16 +1777,12 @@ export default function AgentReview() {
     panDocs.forEach(doc => pushDoc(doc, "panUpload"));
 
     // eSigned PDF
-    let esignDoc = null;
-    try {
-      const docs = Array.isArray(app.documents) ? app.documents : (app.documents ? JSON.parse(app.documents) : []);
-      esignDoc = docs.find(doc => doc.type === "ESIGN" || (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")));
-    } catch(e) {}
-    
-    if (esignDoc) {
-      pushDoc(firstMedia(esignDoc.path, "eSigned PDF"), "aadhaarEsign");
-    } else if (app.generatedPdfBase64) {
-      pushDoc(firstMedia(app.generatedPdfBase64, "eSigned PDF (Unsigned)"), "aadhaarEsign");
+    const esignPath = app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
+                      findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
+                      (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+                      app.generatedPdfBase64;
+    if (esignPath) {
+      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
     }
 
     // PEP Document
@@ -2105,12 +2102,29 @@ export default function AgentReview() {
                               }
 
                               const renderFieldBlock = () => {
-                                if (tabFields.length === 0) {
+                                const isTaxResidencyOutside = app.personalDetails?.taxResidencyOutside === "Yes";
+                                const TAX_LABELS = [
+                                  "Country of tax residence1", "Tax payer identification number1",
+                                  "Country of tax residence2", "Tax payer identification number2",
+                                  "Country tax residence3", "Tax payer identification number3",
+                                  "Place of birth", "Tax exempt", "Tax exempt reason",
+                                  "Country birth1", "Citizen1"
+                                ];
+                                const taxResidencyFields = [];
+                                const filteredTabFields = tabFields.filter(([label, value, jsonPath]) => {
+                                  if (isTaxResidencyOutside && TAX_LABELS.includes(label)) {
+                                    taxResidencyFields.push([label, value, jsonPath]);
+                                    return false;
+                                  }
+                                  return true;
+                                });
+
+                                if (filteredTabFields.length === 0 && taxResidencyFields.length === 0) {
                                   return <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: section.label ? 16 : 0 }}>No details available.</div>;
                                 }
-                                return (
-                                  <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: section.label ? 16 : 0 }}>
-                                    {tabFields.map(([label, value, jsonPath]) => {
+                                
+                                const renderField = ([label, value, jsonPath]) => {
+                                  
                                 const isDivider = label.startsWith("---");
                                 if (isDivider) {
                                   const headerText = label.replace(/-/g, "").trim();
@@ -2242,9 +2256,37 @@ export default function AgentReview() {
                                     </div>
                                   </div>
                                 );
-                              })}
-                            </div>
-                          );
+                              
+                                };
+                                return (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: section.label ? 16 : 0 }}>
+                                    {filteredTabFields.map(renderField)}
+                                    
+                                    {isTaxResidencyOutside && taxResidencyFields.length > 0 && (
+                                      <div style={{ marginTop: 4, padding: "8px", background: "var(--bg-secondary)", borderRadius: 8, border: "1px dashed var(--border-color)" }}>
+                                        <button 
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); setShowTaxResidency(prev => !prev); }}
+                                          style={{
+                                            width: "100%", padding: "8px", borderRadius: 4, background: "transparent",
+                                            color: "var(--text-primary)", border: "none",
+                                            fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center"
+                                          }}
+                                        >
+                                          <span>Tax Residency Details</span>
+                                          <span>{showTaxResidency ? "▲" : "▼"}</span>
+                                        </button>
+                                        
+                                        {showTaxResidency && (
+                                          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+                                            {taxResidencyFields.map(renderField)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+    
                         };
 
                         if (!section.label) {

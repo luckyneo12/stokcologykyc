@@ -1,10 +1,18 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X as CloseIcon, ExternalLink } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, documentType }) {
-  if (!isOpen || !documentUrl) return null;
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!isOpen || !documentUrl || !mounted) return null;
 
   const isPdf = documentUrl.toLowerCase().endsWith(".pdf") || documentType === "application/pdf" || documentUrl.startsWith("data:application/pdf");
 
@@ -17,12 +25,12 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
     iframeSrc = `${API_BASE}/api/kyc/proxy-pdf?url=${encodeURIComponent(documentUrl)}&token=${encodeURIComponent(token || "")}`;
   }
 
-  return (
+  return createPortal(
     <div style={{
       position: "fixed",
       top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: "rgba(0,0,0,0.75)",
-      zIndex: 9999,
+      zIndex: 999999,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -120,7 +128,8 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
           from { opacity: 0; transform: translateY(20px); }
           to { opacity: 1; transform: translateY(0); }
         }
-      `}} />
-    </div>
+      ` }} />
+    </div>,
+    document.body
   );
 }

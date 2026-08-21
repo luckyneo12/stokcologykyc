@@ -75,7 +75,21 @@ export default function DigilockerStep() {
           if (dlPan && step4Pan && dlPan !== step4Pan) {
             console.warn(`[KYC Validation] PAN Mismatch: Step 4 PAN (${step4Pan}) != DigiLocker PAN (${dlPan})`);
             addToast(`PAN mismatch! The PAN fetched from DigiLocker (${dlPan}) does not match the PAN entered in Step 4 (${step4Pan}). Please re-verify.`, "error");
-            goToStep(4);
+            
+            // Clear Aadhaar state so they can't bypass with the 'Continue' button
+            updateState({
+              identityDetails: {
+                ...identityDetails,
+                aadhaar: null
+              },
+              aadhaarVerified: false,
+              panVerified: false
+            });
+
+            setTimeout(() => {
+              goToStep(4);
+            }, 500);
+
             setLoading(false);
             return;
           }
@@ -83,7 +97,21 @@ export default function DigilockerStep() {
           if (!isNameMatch || !isDobMatch) {
             const reason = !isNameMatch ? "Name mismatch" : "DOB mismatch";
             addToast(`Aadhaar details (${reason}) do not match with PAN. Please re-verify.`, "error");
-            goToStep(4);
+            
+            // Clear Aadhaar state so they can't bypass with the 'Continue' button
+            updateState({
+              identityDetails: {
+                ...identityDetails,
+                aadhaar: null
+              },
+              aadhaarVerified: false,
+              panVerified: false
+            });
+
+            setTimeout(() => {
+              goToStep(4);
+            }, 500);
+
             setLoading(false);
             return;
           }

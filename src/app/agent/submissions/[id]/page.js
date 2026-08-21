@@ -42,6 +42,30 @@ const USER_STEP_LABELS = {
 
 const REVIEW_STEPS = [
   {
+    id: "signature",
+    kycIndex: 12,
+    title: "Signature Upload",
+    evidenceTitle: "Wet Signature",
+    evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
+    fields: (app) => [
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+    ],
+    evidence: (app) => {
+      const panDocs = getAllPanDocuments(app);
+      const manualPan = panDocs.find(p => p.label === "Uploaded PAN Card") || panDocs[0];
+      const signatureDoc = firstMedia(app.signature, "Signature");
+      if (manualPan && signatureDoc) {
+        return [
+          signatureDoc,
+          { ...manualPan, defaultZoom: 2.5, defaultOffset: { x: 0, y: -150 } }
+        ];
+      }
+      return [signatureDoc].filter(Boolean);
+    },
+  },
+  {
     id: "phoneVerification",
     kycIndex: 1,
     title: "Phone Verification",
@@ -153,10 +177,10 @@ const REVIEW_STEPS = [
       ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
-      ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
+      ["Operate ddpi", app.personalDetails?.operatedThroughDDPI || "Yes", "personalDetails.operatedThroughDDPI"],
       ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER"],
-      ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
+      ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
       ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
       ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
@@ -176,11 +200,11 @@ const REVIEW_STEPS = [
       ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
       ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
 
-      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
-      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
-      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
-      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
-      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
+      ["Nsdl4 communication in electronic form", app.personalDetails?.receiveAnnualReports || "Yes", "personalDetails.receiveAnnualReports"],
+      ["Nsdl1 receive credit", app.personalDetails?.receiveCredits || "Yes", "personalDetails.receiveCredits"],
+      ["Nsdl2 e statement", app.personalDetails?.eStatement || "Yes", "personalDetails.eStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.acceptPledgeInstructions || "No", "personalDetails.acceptPledgeInstructions"],
+      ["Dis booklet", app.personalDetails?.dis || "No", "personalDetails.dis"],
     ],
     evidence: (app) => [
       findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),
@@ -240,10 +264,17 @@ const REVIEW_STEPS = [
     evidenceTitle: "Bank Account Proof",
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
-      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName, "bankDetails.accountHolderName"],
-      ["Account number", app.bankDetails?.accountNumber, "bankDetails.accountNumber"],
-      ["IFSC", app.bankDetails?.ifsc, "bankDetails.ifsc"],
-      ["Bank name", app.bankDetails?.bankName],
+      ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.accountHolderName"],
+      ["Account type", (() => {
+        const at = app.bankDetails?.accountType || app.bankDetails?.accType;
+        if (!at) return "N/A";
+        if (at === "10" || at === 10 || String(at).toLowerCase().includes("sav")) return "Saving Account";
+        if (at === "11" || at === 11 || String(at).toLowerCase().includes("curr")) return "Current Account";
+        return String(at);
+      })(), "bankDetails.accountType"],
+      ["Account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
+      ["IFSC", app.bankDetails?.ifsc || "N/A", "bankDetails.ifsc"],
+      ["Bank name", app.bankDetails?.bankName || "N/A"],
       ["Branch", app.bankDetails?.branch],
       ["Address", app.bankDetails?.address],
       ["City", app.bankDetails?.city],
@@ -282,29 +313,6 @@ const REVIEW_STEPS = [
       ["Trading experience", app.personalDetails?.tradingExperience],
     ],
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
-  },
-  {
-    id: "signature",
-    kycIndex: 12,
-    title: "Signature Upload",
-    evidenceTitle: "Wet Signature",
-    evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
-    fields: (app) => [
-      ["Signature captured", app.signature ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName],
-    ],
-    evidence: (app) => {
-      const panDocs = getAllPanDocuments(app);
-      const manualPan = panDocs.find(p => p.label === "Uploaded PAN Card") || panDocs[0];
-      const signatureDoc = firstMedia(app.signature, "Signature");
-      if (manualPan && signatureDoc) {
-        return [
-          signatureDoc,
-          { ...manualPan, defaultZoom: 2.5, defaultOffset: { x: 0, y: -150 } }
-        ];
-      }
-      return [signatureDoc].filter(Boolean);
-    },
   },
   {
     id: "panUpload",
@@ -348,6 +356,37 @@ const REVIEW_STEPS = [
     ],
     evidence: (app) => [firstMedia(app.user?.eStampAssigned?.fileUrl, "Assigned E-Stamp")].filter(Boolean),
   },
+  {
+    id: "esignPreview",
+    kycIndex: 16,
+    title: "eSign",
+    evidenceTitle: "eSigned Document",
+    evidenceHint: "Review the e-signed application and signer details.",
+    fields: (app) => [
+      ["eSigner Name", app.esignDetails?.signerName || app.esignDetails?.name || app.ocrData?.digio?.ESIGN?.signerName || app.personalDetails?.fullName || app.user?.name || "Pending", "esignDetails.name"],
+      ["eSign Date & Time", (() => {
+        const dt = app.esignDetails?.signedAt || app.esignDetails?.completedAt || app.esignDetails?.updatedAt || app.ocrData?.digio?.ESIGN?.updatedAt || app.ocrData?.digio?.ESIGN?.createdAt || (app.currentStep >= 13 ? (app.submittedAt || app.updatedAt) : null);
+        if (!dt) return "Pending";
+        try {
+          return new Date(dt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        } catch(e) {
+          return String(dt);
+        }
+      })()],
+      ["IP Address", app.esignDetails?.ip || "Pending", "esignDetails.ip"],
+      ["Latitude", app.esignDetails?.lat || "Pending", "esignDetails.lat"],
+      ["Longitude", app.esignDetails?.lng || "Pending", "esignDetails.lng"],
+    ],
+    evidence: (app) => [
+      firstMedia(
+        app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
+        findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
+        (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase() === "ESIGN")?.path) ||
+        app.generatedPdfBase64,
+        "eSigned PDF"
+      )
+    ].filter(Boolean),
+  }
 ];
 
 function PdfThumbnail({ src }) {

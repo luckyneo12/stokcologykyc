@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useDragScroll } from "@/utils/useDragScroll";
 import "../globe-table.css";
 
 function formatTimePending(createdAt) {
@@ -252,7 +251,7 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
       </div>
 
       <div className="admin-table-container">
-        <div ref={scrollRef} style={{ overflowX: "auto", minHeight: (!applications || applications.length < 4) ? "300px" : "auto" }}>
+        <div style={{ overflowX: "auto", minHeight: (!applications || applications.length < 4) ? "300px" : "auto" }}>
           <table className="admin-table">
             <thead>
               <tr>
@@ -396,7 +395,7 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                       </span>
                     </td>}
                     {visibleColumns.includes("Time Pending") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 600 }}>
-                      {isPending ? formatTimePending(app.createdAt) : "-"}
+                      {isPending ? formatTimePending(app.updatedAt || app.createdAt) : "-"}
                     </td>}
                     {visibleColumns.includes("E-Stamp") && (
                       <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>

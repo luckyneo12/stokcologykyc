@@ -241,7 +241,7 @@ function mergeJson(existing, patch, path = "") {
   return result;
 }
 
-async function writeAuditLog({ userId, action, details, ipAddress }) {
+async function writeAuditLog({ userId, action, details, ipAddress, targetId, targetType, oldValue, newValue }) {
   try {
     await prisma.auditLog.create({
       data: {
@@ -249,6 +249,10 @@ async function writeAuditLog({ userId, action, details, ipAddress }) {
         action,
         details: serializeJsonField(details),
         ipAddress,
+        targetId: targetId || (details && details.applicationId ? String(details.applicationId) : null),
+        targetType: targetType || (details && details.applicationId ? "KycApplication" : null),
+        oldValue: oldValue ? (typeof oldValue === "object" ? JSON.stringify(oldValue) : String(oldValue)) : null,
+        newValue: newValue ? (typeof newValue === "object" ? JSON.stringify(newValue) : String(newValue)) : null,
       },
     });
   } catch (error) {
@@ -502,11 +506,13 @@ const saveStep = async (req, res, next) => {
         }
       }
 
-      // Generate Client Code if not exists and PAN is provided
+      // Generate Client Code if not exists, PAN is provided, and Aadhaar is verified (Digilocker complete)
       if (!app.clientCode && updateData.identityDetails) {
         const idDetails = parseJsonField(updateData.identityDetails);
         const panValue = idDetails?.pan || idDetails?.panNumber;
-        if (panValue && typeof panValue === "string" && panValue.length >= 3) {
+        const isAadhaarVerified = updateData.aadhaarVerified === true || updateData.aadhaarVerified === "true" || app.aadhaarVerified === true || !!idDetails?.aadhaar;
+        
+        if (isAadhaarVerified && panValue && typeof panValue === "string" && panValue.length >= 3) {
           const prefix = panValue.substring(0, 3).toUpperCase();
           let uniqueClientCode = null;
           let attempts = 0;
@@ -601,16 +607,20 @@ const saveStep = async (req, res, next) => {
         });
     }
 
+    const stepLabel = step || `Step ${updateData.currentStep ?? app.currentStep}`;
     await writeAuditLog({
       userId: req.user.id,
-      action: "kyc_step_saved",
+      action: step ? `USER_SAVED_${String(step).toUpperCase()}` : "USER_SAVED_STEP",
       details: {
+        message: `Applicant saved ${stepLabel} for application ${applicationId}`,
         applicationId,
         step: step || null,
         stepIndex: updateData.currentStep ?? app.currentStep,
         patchedKeys: Object.keys(updateData),
       },
       ipAddress: req.ip,
+      targetId: applicationId,
+      targetType: "KycApplication",
     });
 
     // Notify staff room and specific application room
@@ -775,8 +785,15 @@ const submitKyc = async (req, res, next) => {
 
     await writeAuditLog({
       userId: req.user.id,
-      action: "kyc_submitted",
-      details: { applicationId, clientId },
+      action: "USER_APPLICATION_SUBMITTED",
+      details: {
+        message: `Applicant completed and submitted final KYC Application ${applicationId}`,
+        applicationId,
+        clientId: clientId || null,
+        status: "under_review",
+      },
+      targetId: applicationId,
+      targetType: "KycApplication",
       ipAddress: req.ip,
     });
 
@@ -1152,7 +1169,14 @@ const sendWelcome = async (req, res) => {
       }
     }
 
-    await emailService.sendWelcomeEmail(email, fullName, personalDetails.pan, pdfAttachment);
+    const identityDetails = typeof app.identityDetails === "string" 
+      ? JSON.parse(app.identityDetails) 
+      : app.identityDetails || {};
+
+    const panToUse = identityDetails.pan || personalDetails.pan || "N/A";
+    const nameToUse = personalDetails.fullName || identityDetails.aadhaarName || identityDetails.panName || "Customer";
+
+    await emailService.sendWelcomeEmail(email, nameToUse, panToUse, pdfAttachment);
     
     // Mark email as sent in the database
     stepStatuses.welcomeEmailSent = true;

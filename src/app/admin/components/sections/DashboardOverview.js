@@ -271,6 +271,57 @@ export default function DashboardOverview({ onNavigate }) {
         <StatCard label="User Completion" value={avgUserCompletion} icon={Clock} color="#8b5cf6" />
       </div>
 
+      {/* Recent KYC Requests Table */}
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", marginBottom: 32 }}>
+        <div style={{ padding: "24px 32px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
+          <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>Recent Applications</div>
+          <button onClick={() => onNavigate("kyc")} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", fontWeight: 800, color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", padding: "8px 16px", borderRadius: 999, cursor: "pointer", transition: "0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
+            View All <ChevronRight size={16} />
+          </button>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ textAlign: "left", background: "var(--bg-card)" }}>
+                {["ID", "Applicant", "Status", "Action"].map(h => <th key={h} style={{ padding: "16px 32px", color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid var(--border-color)", fontWeight: 800 }}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {(liveStats?.recent || []).length > 0 ? (
+                liveStats.recent.slice(0, 6).map((k, i) => {
+                  let parsedPersonal = {};
+                  try { parsedPersonal = typeof k.personalDetails === "string" ? JSON.parse(k.personalDetails) : (k.personalDetails || {}); } catch(e) {}
+                  
+                  return (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--border-color)", transition: "background 0.2s ease" }} onMouseOver={e => e.currentTarget.style.background="var(--bg-secondary)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
+                    <td style={{ padding: "18px 32px", fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)" }}>{k.applicationId}</td>
+                    <td style={{ padding: "18px 32px" }}>
+                      <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{parsedPersonal.fullName || parsedPersonal.name || "N/A"}</div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>{k.user?.phone || ""}</div>
+                    </td>
+                    <td style={{ padding: "18px 32px" }}>
+                      <span style={{ 
+                        padding: "6px 12px", borderRadius: 8, fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", display: "inline-block",
+                        background: k.status === "verified" ? "#10b98115" : k.status === "rejected" ? "#ef444415" : k.status === "under_review" ? "#3b82f615" : "#f59e0b15",
+                        color: k.status === "verified" ? "#10b981" : k.status === "rejected" ? "#ef4444" : k.status === "under_review" ? "#3b82f6" : "#f59e0b"
+                      }}>
+                        {k.status.replace("_", " ")}
+                      </span>
+                    </td>
+
+                    <td style={{ padding: "18px 32px" }}>
+                      <button onClick={() => onNavigate("kyc")} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-card)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
+                    </td>
+                  </tr>
+                  );
+                })
+              ) : (
+                <tr><td colSpan="4" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)", fontWeight: 700 }}>No recent requests found</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr", gap: 24, marginBottom: 24 }}>
         {/* Weekly Trend Area Chart */}
         <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
@@ -406,58 +457,6 @@ export default function DashboardOverview({ onNavigate }) {
               <div style={{ textAlign: "center", color: "var(--text-muted)", marginTop: 40, fontWeight: 600 }}>No recent activity</div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Recent KYC Requests Table */}
-      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
-        <div style={{ padding: "24px 32px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
-          <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>Recent Applications</div>
-          <button onClick={() => onNavigate("kyc")} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", fontWeight: 800, color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", padding: "8px 16px", borderRadius: 999, cursor: "pointer", transition: "0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
-            View All <ChevronRight size={16} />
-          </button>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", background: "var(--bg-card)" }}>
-                {["ID", "Applicant", "Status", "Action"].map(h => <th key={h} style={{ padding: "16px 32px", color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid var(--border-color)", fontWeight: 800 }}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {(liveStats?.recent || []).length > 0 ? (
-                liveStats.recent.slice(0, 6).map((k, i) => {
-                  let parsedPersonal = {};
-                  try { parsedPersonal = typeof k.personalDetails === "string" ? JSON.parse(k.personalDetails) : (k.personalDetails || {}); } catch(e) {}
-                  
-                  return (
-                  <tr key={i} style={{ borderBottom: "1px solid var(--border-color)", transition: "background 0.2s ease" }} onMouseOver={e => e.currentTarget.style.background="var(--bg-secondary)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
-                    <td style={{ padding: "18px 32px", fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)" }}>{k.applicationId}</td>
-                    <td style={{ padding: "18px 32px" }}>
-                      <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{parsedPersonal.fullName || parsedPersonal.name || "N/A"}</div>
-                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600 }}>{k.user?.phone || ""}</div>
-                    </td>
-                    <td style={{ padding: "18px 32px" }}>
-                      <span style={{ 
-                        padding: "6px 12px", borderRadius: 8, fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", display: "inline-block",
-                        background: k.status === "verified" ? "#10b98115" : k.status === "rejected" ? "#ef444415" : k.status === "under_review" ? "#3b82f615" : "#f59e0b15",
-                        color: k.status === "verified" ? "#10b981" : k.status === "rejected" ? "#ef4444" : k.status === "under_review" ? "#3b82f6" : "#f59e0b"
-                      }}>
-                        {k.status.replace("_", " ")}
-                      </span>
-                    </td>
-
-                    <td style={{ padding: "18px 32px" }}>
-                      <button onClick={() => onNavigate("kyc")} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-card)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
-                    </td>
-                  </tr>
-                  );
-                })
-              ) : (
-                <tr><td colSpan="4" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)", fontWeight: 700 }}>No recent requests found</td></tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
 

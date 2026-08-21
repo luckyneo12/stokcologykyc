@@ -53,6 +53,7 @@ export default function MakerCheckerDashboard() {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
+  const [pendingStep, setPendingStep] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
   const handleCopy = (e, text, key) => {
     e.stopPropagation();

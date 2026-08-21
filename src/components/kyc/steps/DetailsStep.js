@@ -115,8 +115,9 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 };
 
 const InputGroup = ({ label, children, mandatory, style = {} }) => (
-  <div style={{ display: "flex", flexDirection: "column", width: "100%", marginBottom: "14px", ...style }}>
+  <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", marginBottom: "14px", ...style }}>
     <div style={{ 
+      flex: 1,
       fontSize: "0.85rem", 
       color: "var(--text-primary)", 
       fontWeight: 700, 
@@ -250,6 +251,11 @@ export default function DetailsStep() {
     }
   };
 
+  const handleAlphabetInput = (field) => (e) => {
+    const val = e.target.value.replace(/[^a-zA-Z\s]/g, "");
+    update(field, val);
+  };
+
 
   useEffect(() => {
     if (personalDetails && Object.keys(personalDetails).length > 0) {
@@ -375,7 +381,7 @@ export default function DetailsStep() {
               className="input-field" 
               placeholder="Full Name" 
               value={form.motherName || ""} 
-              onChange={e => update("motherName", e.target.value)} 
+              onChange={handleAlphabetInput("motherName")} 
               style={{ 
                 ...COMMON_INPUT_STYLE,
                 borderColor: errors.motherName ? "var(--wise-danger)" : "var(--border-color)",
@@ -552,7 +558,7 @@ export default function DetailsStep() {
                 <input 
                   className="input-field" placeholder="Country of birth" 
                   value={form.countryOfBirth || ""} 
-                  onChange={e => update("countryOfBirth", e.target.value)} 
+                  onChange={handleAlphabetInput("countryOfBirth")} 
                   style={{ ...COMMON_INPUT_STYLE, borderColor: errors.countryOfBirth ? "var(--wise-danger)" : "var(--border-color)" }} 
                 />
               </InputGroup>
@@ -560,7 +566,7 @@ export default function DetailsStep() {
                 <input 
                   className="input-field" placeholder="Citizenship" 
                   value={form.citizenship || ""} 
-                  onChange={e => update("citizenship", e.target.value)} 
+                  onChange={handleAlphabetInput("citizenship")} 
                   style={{ ...COMMON_INPUT_STYLE, borderColor: errors.citizenship ? "var(--wise-danger)" : "var(--border-color)" }} 
                 />
               </InputGroup>
@@ -568,7 +574,7 @@ export default function DetailsStep() {
                 <input 
                   className="input-field" placeholder="Country of Tax Residence 1" 
                   value={form.taxResidence1 || ""} 
-                  onChange={e => update("taxResidence1", e.target.value)} 
+                  onChange={handleAlphabetInput("taxResidence1")} 
                   style={{ ...COMMON_INPUT_STYLE, borderColor: errors.taxResidence1 ? "var(--wise-danger)" : "var(--border-color)" }} 
                 />
               </InputGroup>
@@ -584,7 +590,7 @@ export default function DetailsStep() {
                 <input 
                   className="input-field" placeholder="Country of Tax Residence 2" 
                   value={form.taxResidence2 || ""} 
-                  onChange={e => update("taxResidence2", e.target.value)} 
+                  onChange={handleAlphabetInput("taxResidence2")} 
                   style={COMMON_INPUT_STYLE}
                 />
               </InputGroup>
@@ -600,7 +606,7 @@ export default function DetailsStep() {
                 <input 
                   className="input-field" placeholder="Country Tax Residence 3" 
                   value={form.taxResidence3 || ""} 
-                  onChange={e => update("taxResidence3", e.target.value)} 
+                  onChange={handleAlphabetInput("taxResidence3")} 
                   style={COMMON_INPUT_STYLE}
                 />
               </InputGroup>
@@ -616,7 +622,7 @@ export default function DetailsStep() {
                 <input 
                   className="input-field" placeholder="Place of Birth" 
                   value={form.placeOfBirth || ""} 
-                  onChange={e => update("placeOfBirth", e.target.value)} 
+                  onChange={handleAlphabetInput("placeOfBirth")} 
                   style={{ ...COMMON_INPUT_STYLE, borderColor: errors.placeOfBirth ? "var(--wise-danger)" : "var(--border-color)" }} 
                 />
               </InputGroup>

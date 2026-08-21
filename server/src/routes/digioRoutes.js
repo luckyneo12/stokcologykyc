@@ -1890,8 +1890,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                   try {
                     const { sendWelcomeEmail } = require("../services/emailService");
                     const pDetails = parseJsonField(appToUpdate.personalDetails, {});
+                    const iDetails = parseJsonField(appToUpdate.identityDetails, {});
                     if (pDetails.email) {
-                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", pDetails.pan || "N/A", {
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", iDetails.pan || pDetails.pan || "N/A", {
                         filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
                         content: buffer,
                         contentType: "application/pdf"
@@ -1928,8 +1929,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                   try {
                     const { sendWelcomeEmail } = require("../services/emailService");
                     const pDetails = parseJsonField(appToUpdate.personalDetails, {});
+                    const iDetails = parseJsonField(appToUpdate.identityDetails, {});
                     if (pDetails.email) {
-                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", pDetails.pan || "N/A", {
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", iDetails.pan || pDetails.pan || "N/A", {
                         filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
                         content: buffer,
                         contentType: "application/pdf"
@@ -2385,44 +2387,46 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
        if (globalExtractedFaceScore) nextSelfieDetails.matchScore = globalExtractedFaceScore;
     }
 
+
+    const isMismatch = nextIdentityDetails.panMismatch;
+    const dataToUpdate = {
+      status: "under_review",
+      ocrData: nextOcrData,
+      documents: newDocuments,
+      selfieDetails: nextSelfieDetails,
+      ...(hasSelfieData
+        ? {
+            ...(safeSelfieDocPath || extractedMedia.image
+              ? { selfie: safeSelfieDocPath || extractedMedia.image }
+              : {}),
+            ...(extractedFaceScore !== null
+              ? { faceMatchScore: extractedFaceScore }
+              : {}),
+          }
+        : {
+            ...(extractedFaceScore !== null
+              ? { faceMatchScore: extractedFaceScore }
+              : {}),
+          }),
+      currentStep: Math.max(application.currentStep, STEP_BY_REQUEST_TYPE[payload.type] || 4),
+    };
+    
+    const fieldsToSerialize = [
+      "ocrData",
+      "documents",
+      "selfieDetails",
+    ];
+
+    if (!isMismatch) {
+      dataToUpdate.identityDetails = nextIdentityDetails;
+      dataToUpdate.personalDetails = nextPersonalDetails;
+      dataToUpdate.address = nextAddress;
+      fieldsToSerialize.push("identityDetails", "personalDetails", "address");
+    }
+
     await prisma.kycApplication.update({
       where: { id: application.id },
-      data: serializeJsonFields(
-        {
-          status: "under_review",
-          ocrData: nextOcrData,
-          identityDetails: nextIdentityDetails,
-          personalDetails: nextPersonalDetails,
-          address: nextAddress,
-          documents: newDocuments,
-          selfieDetails: nextSelfieDetails,
-          ...(hasSelfieData
-            ? {
-                ...(safeSelfieDocPath || extractedMedia.image
-                  ? { selfie: safeSelfieDocPath || extractedMedia.image }
-                  : {}),
-                ...(extractedFaceScore !== null
-                  ? { faceMatchScore: extractedFaceScore }
-                  : {}),
-
-              }
-            : {
-                ...(extractedFaceScore !== null
-                  ? { faceMatchScore: extractedFaceScore }
-                  : {}),
-
-              }),
-          currentStep: Math.max(application.currentStep, STEP_BY_REQUEST_TYPE[payload.type] || 4),
-        },
-        [
-          "ocrData",
-          "identityDetails",
-          "personalDetails",
-          "address",
-          "documents",
-          "selfieDetails",
-        ],
-      ),
+      data: serializeJsonFields(dataToUpdate, fieldsToSerialize),
     });
 
       // Notify clients of real-time update
@@ -3059,7 +3063,7 @@ async function ensureDigilockerVerificationDocuments(application) {
   ) {
     updatePayload.documents = documents;
   }
-  if (identityPatched) {
+  if (identityPatched && !identityDetails.panMismatch) {
     updatePayload.identityDetails = identityDetails;
   }
 

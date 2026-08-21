@@ -284,11 +284,19 @@ const reviewStep = async (req, res, next) => {
 
     await prisma.auditLog.create({
       data: {
-        userId: null, // Since this is a CRM agent, we use crmAgentId instead of standard userId
+        userId: null,
         crmAgentId: agentId,
         crmAgentName: agentName,
-        action: `kyc_step_${status}`,
-        details: JSON.stringify({ applicationId: id, stepName, reason: reason || null }),
+        action: `MAKER_CHECKER_STEP_${status.toUpperCase()}`,
+        details: JSON.stringify({ 
+          message: `Maker/Checker reviewer (${agentName}) marked step '${stepName}' as ${status}${reason ? '. Reason: ' + reason : ''}`,
+          applicationId: id, 
+          stepName, 
+          status,
+          reason: reason || null 
+        }),
+        targetId: String(id),
+        targetType: "KycApplication",
         ipAddress: req.ip,
       },
     });
@@ -449,17 +457,21 @@ const requestModifications = async (req, res, next) => {
     }
 
     // Audit log
+    const stepTitles = rejectedEntries.map(e => e.stepTitle || e.stepId).join(", ");
     await prisma.auditLog.create({
       data: {
         userId: null,
         crmAgentId: agentId,
         crmAgentName: agentName,
-        action: "kyc_modifications_requested",
+        action: "MODIFICATION_REQUEST_SENT",
         details: JSON.stringify({
+          message: `Modification request email sent to ${userEmail} by ${agentName} for steps: ${stepTitles}`,
           applicationId: id,
-          rejectedSteps: rejectedEntries.map(e => e.stepId),
+          rejectedSteps: rejectedEntries.map(e => ({ stepId: e.stepId, title: e.stepTitle, reason: e.reason })),
           emailSentTo: userEmail,
         }),
+        targetId: String(id),
+        targetType: "KycApplication",
         ipAddress: req.ip,
       },
     });

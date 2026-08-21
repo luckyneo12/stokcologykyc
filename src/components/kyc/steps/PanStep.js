@@ -30,26 +30,40 @@ const formatPanValue = (value) => {
 
 export default function PanStep() {
   const { personalDetails, identityDetails, panVerified, updateNested, updateState, nextStep, prevStep, addToast, setApplicationId, markStepVerified } = useKYC();
-  const [pan, setPan, clearPanDraft] = useLocalDraft("pan", formatPanValue(identityDetails.pan));
-  const [fullName, setFullName, clearFullNameDraft] = useLocalDraft("panFullName", personalDetails.fullName || "");
-  const [dob, setDob, clearDobDraft] = useLocalDraft("panDob", personalDetails.dob || "");
+  const [pan, setPan, clearPanDraft] = useLocalDraft("pan", formatPanValue(identityDetails.manualPan || identityDetails.pan));
+  const [fullName, setFullName, clearFullNameDraft] = useLocalDraft("panFullName", personalDetails.manualFullName || personalDetails.fullName || "");
+  const [dob, setDob, clearDobDraft] = useLocalDraft("panDob", personalDetails.manualDob || personalDetails.dob || "");
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [digioLoading, setDigioLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const isAlreadyVerified = panVerified && pan === identityDetails?.pan && fullName === personalDetails?.fullName && dob === personalDetails?.dob;
+  const isAlreadyVerified = panVerified && pan === (identityDetails?.manualPan || identityDetails?.pan) && fullName === (personalDetails?.manualFullName || personalDetails?.fullName) && dob === (personalDetails?.manualDob || personalDetails?.dob);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    const normalizedPan = formatPanValue(identityDetails.pan);
+    const normalizedPan = formatPanValue(identityDetails.manualPan || identityDetails.pan);
     if (normalizedPan && normalizedPan !== pan) {
       setPan(normalizedPan);
     }
   }, [identityDetails.pan]);
+
+  useEffect(() => {
+    const normalizedName = personalDetails.manualFullName || personalDetails.fullName;
+    if (normalizedName && normalizedName !== fullName) {
+      setFullName(normalizedName);
+    }
+  }, [personalDetails.manualFullName, personalDetails.fullName]);
+
+  useEffect(() => {
+    const normalizedDob = personalDetails.manualDob || personalDetails.dob;
+    if (normalizedDob && normalizedDob !== dob) {
+      setDob(normalizedDob);
+    }
+  }, [personalDetails.manualDob, personalDetails.dob]);
 
   const handleVerify = async () => {
     // Validation
@@ -94,7 +108,9 @@ export default function PanStep() {
           personalDetails: { 
             ...personalDetails, 
             dob, 
+            manualDob: dob,
             fullName: fullName.toUpperCase(), 
+            manualFullName: fullName.toUpperCase(),
             ...(extractedFatherName ? { fatherName: extractedFatherName } : {}) 
           },
           panVerified: true

@@ -88,12 +88,14 @@ const verifyOtp = async (req, res, next) => {
     // If it's email verification in the middle of KYC, we might just return success
     
     if (phone) {
+      let isNewUser = false;
       // Find or create user in MySQL
       let user = await prisma.user.findUnique({
         where: { phone }
       });
 
       if (!user) {
+        isNewUser = true;
         user = await prisma.user.create({
           data: { 
             phone, 
@@ -103,13 +105,26 @@ const verifyOtp = async (req, res, next) => {
         });
         console.log(`[Auth] Created local KYC user: ${phone} (AP: ${apCode || 'None'})`);
       } else if (apCode && !user.apCode) {
-        // If user already exists but has no apCode, we can optionally update it here
-        // If we want to map them to the AP on login.
         user = await prisma.user.update({
           where: { phone },
           data: { apCode }
         });
       }
+
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: isNewUser ? "USER_REGISTERED" : "USER_LOGGED_IN",
+          details: JSON.stringify({ 
+            message: isNewUser ? `New user registered via phone ${phone}` : `User logged in via phone OTP ${phone}`,
+            phone,
+            apCode: apCode || null 
+          }),
+          targetId: user.id.toString(),
+          targetType: "User",
+          ipAddress: req.ip || req.connection?.remoteAddress,
+        },
+      }).catch(err => console.error("[AuditLog Error]", err.message));
 
       const token = jwt.sign(
         { id: user.id, phone: user.phone, role: user.role },
@@ -125,6 +140,15 @@ const verifyOtp = async (req, res, next) => {
     }
 
     // For email verification only (no user creation/login)
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id || null,
+        action: "USER_EMAIL_VERIFIED",
+        details: JSON.stringify({ message: `Email OTP verified for ${email}`, email }),
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
     res.json({ success: true, message: "Email verified successfully" });
   } catch (error) {
     next(error);
@@ -159,6 +183,17 @@ const globeLogin = async (req, res, next) => {
     if (!isValid) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "GLOBE_LOGGED_IN",
+        details: JSON.stringify({ message: `Globe reviewer (${email}) logged in successfully`, email }),
+        targetId: user.id.toString(),
+        targetType: "GlobeUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
@@ -200,6 +235,17 @@ const adminLogin = async (req, res, next) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "ADMIN_LOGGED_IN",
+        details: JSON.stringify({ message: `Admin (${email}) logged in successfully`, email }),
+        targetId: user.id.toString(),
+        targetType: "AdminUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       JWT_SECRET,
@@ -240,6 +286,16 @@ const kycTeamLogin = async (req, res, next) => {
       console.warn(`[Auth] Failed login for ${email}: Password mismatch.`);
       return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    await prisma.auditLog.create({
+      data: {
+        crmAgentId: Number(crmCheck.user.id),
+        crmAgentName: crmCheck.user.name || email,
+        action: "MAKER_CHECKER_LOGGED_IN",
+        details: JSON.stringify({ message: `Maker/Checker reviewer (${crmCheck.user.name || email}) logged in`, email }),
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
 
     // Parse the stages from CRM (they are stored as JSON string in the DB)
     let kycStages = [];

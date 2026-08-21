@@ -317,13 +317,22 @@ const reviewApplication = async (req, res, next) => {
       }
     }
 
+    const actorName = isKycAgent ? (req.user.email || `KYC Agent ${req.user.id}`) : (req.user.email || "Admin");
     await prisma.auditLog.create({
       data: {
         userId: isKycAgent ? null : req.user.id,
         crmAgentId: isKycAgent ? req.user.id : null,
-        crmAgentName: isKycAgent ? (req.user.email || `Agent ${req.user.id}`) : null,
-        action: `kyc_${status}`,
-        details: JSON.stringify({ applicationId: req.params.id, reason: reason || null, currentStep }),
+        crmAgentName: actorName,
+        action: `ADMIN_STATUS_${status.toUpperCase()}`,
+        details: JSON.stringify({ 
+          message: `${actorName} changed application ${req.params.id} status to ${status}${reason ? '. Reason: ' + reason : ''}`,
+          applicationId: req.params.id, 
+          status,
+          reason: reason || null, 
+          currentStep 
+        }),
+        targetId: String(req.params.id),
+        targetType: "KycApplication",
         ipAddress: req.ip,
       },
     });
@@ -660,7 +669,7 @@ const getStats = async (req, res, next) => {
 };
 
 const getAuditLogs = async (req, res, next) => {
-  const { page = 1, limit = 50, severity = "all", search = "", export: isExport } = req.query;
+  const { page = 1, limit = 50, severity = "all", category = "all", search = "", export: isExport } = req.query;
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const take = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
   const skip = (pageNum - 1) * take;
@@ -668,16 +677,63 @@ const getAuditLogs = async (req, res, next) => {
   try {
     const where = {};
     if (severity !== "all") {
-      where.details = { path: ["severity"], string_contains: severity };
+      where.details = { contains: severity };
+    }
+
+    if (category !== "all") {
+      if (category === "globe") {
+        where.OR = [
+          { action: { contains: "GLOBE" } },
+          { user: { role: "globe" } }
+        ];
+      } else if (category === "admin") {
+        where.OR = [
+          { action: { contains: "ADMIN" } },
+          { action: { contains: "admin" } },
+          { user: { role: "admin" } }
+        ];
+      } else if (category === "maker_checker") {
+        where.OR = [
+          { action: { contains: "MAKER_CHECKER" } },
+          { action: { contains: "kyc_step" } },
+          { action: { contains: "MODIFICATION" } },
+          { crmAgentId: { not: null } }
+        ];
+      } else if (category === "user") {
+        where.OR = [
+          { action: { contains: "USER" } },
+          { action: { contains: "kyc_step_saved" } },
+          { action: { contains: "kyc_submitted" } },
+          { user: { role: "user" } }
+        ];
+      }
     }
 
     if (search) {
       const q = String(search).trim();
-      where.OR = [
-        { action: { contains: q } },
-        { user: { email: { contains: q } } },
-        { user: { phone: { contains: q } } }
-      ];
+      const qLower = q.toLowerCase();
+      const qUpper = q.toUpperCase();
+      const qCap = q.charAt(0).toUpperCase() + q.slice(1).toLowerCase();
+      const searchTerms = Array.from(new Set([q, qLower, qUpper, qCap]));
+
+      const searchConditions = [];
+      for (const term of searchTerms) {
+        searchConditions.push(
+          { action: { contains: term } },
+          { targetId: { contains: term } },
+          { crmAgentName: { contains: term } },
+          { details: { contains: term } },
+          { user: { email: { contains: term } } },
+          { user: { phone: { contains: term } } }
+        );
+      }
+
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchConditions }];
+        delete where.OR;
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     const [logs, total] = await Promise.all([
@@ -687,28 +743,114 @@ const getAuditLogs = async (req, res, next) => {
         ...(isExport !== "true" && { take, skip }), // Don't paginate if exporting
         include: {
           user: {
-            select: { id: true, email: true, phone: true, role: true },
+            select: { 
+              id: true, 
+              email: true, 
+              phone: true, 
+              role: true,
+              kycApplications: {
+                select: {
+                  applicationId: true,
+                  clientCode: true,
+                  personalDetails: true,
+                  currentStep: true
+                },
+                take: 1,
+                orderBy: { createdAt: "desc" }
+              }
+            },
           },
         },
       }),
       prisma.auditLog.count({ where }),
     ]);
 
+    // Resolve target IDs (whether they are numeric IDs or alphanumeric application IDs)
+    const targetStringIds = new Set();
+    const targetNumericIds = new Set();
+
+    logs.forEach(log => {
+      let details = {};
+      try { details = typeof log.details === "string" ? JSON.parse(log.details) : (log.details || {}); } catch(e) {}
+      const candidate = details.applicationId || log.targetId;
+      if (candidate) {
+        if (!isNaN(parseInt(candidate, 10)) && String(parseInt(candidate, 10)) === String(candidate).trim()) {
+          targetNumericIds.add(parseInt(candidate, 10));
+        } else {
+          targetStringIds.add(String(candidate).trim());
+        }
+      }
+    });
+
+    let matchedApps = [];
+    if (targetStringIds.size > 0 || targetNumericIds.size > 0) {
+      try {
+        matchedApps = await prisma.kycApplication.findMany({
+          where: {
+            OR: [
+              ...(targetStringIds.size > 0 ? [{ applicationId: { in: Array.from(targetStringIds) } }] : []),
+              ...(targetNumericIds.size > 0 ? [{ id: { in: Array.from(targetNumericIds) } }] : []),
+            ]
+          },
+          select: {
+            id: true,
+            applicationId: true,
+            clientCode: true,
+            personalDetails: true,
+            user: { select: { id: true, email: true, phone: true } }
+          }
+        });
+      } catch (err) {
+        console.warn("[getAuditLogs] Failed to resolve target applications:", err.message);
+      }
+    }
+
+    const appMap = new Map();
+    matchedApps.forEach(app => {
+      appMap.set(String(app.id), app);
+      appMap.set(app.applicationId, app);
+    });
+
+    const enrichedLogs = logs.map(log => {
+      let details = {};
+      try { details = typeof log.details === "string" ? JSON.parse(log.details) : (log.details || {}); } catch(e) {}
+      const candidate = details.applicationId || log.targetId;
+      const matchedApp = candidate ? appMap.get(String(candidate)) : null;
+
+      return {
+        ...log,
+        matchedApp: matchedApp ? {
+          applicationId: matchedApp.applicationId,
+          clientCode: matchedApp.clientCode,
+          personalDetails: matchedApp.personalDetails,
+          user: matchedApp.user
+        } : null
+      };
+    });
+
     if (isExport === "true") {
-      const csvLines = ["Log ID,Action,Actor,Target,IP Address,Severity,Timestamp"];
-      logs.forEach(log => {
+      const csvLines = ["Log ID,Action,Actor,Role,Target,IP Address,Details,Timestamp"];
+      enrichedLogs.forEach(log => {
         let details = {};
         try { details = JSON.parse(log.details || "{}"); } catch(e) {}
         
+        let targetName = details.applicationId || details.requestId || log.targetId || "-";
+        if (log.matchedApp) {
+          let pd = {};
+          try { pd = typeof log.matchedApp.personalDetails === "string" ? JSON.parse(log.matchedApp.personalDetails) : log.matchedApp.personalDetails; } catch(e) {}
+          targetName = `${log.matchedApp.applicationId}${pd?.fullName ? ` (${pd.fullName})` : ''}`;
+        }
+
         const logId = `LOG-${String(log.id).padStart(6, "0")}`;
         const action = `"${log.action || 'N/A'}"`;
         const actor = `"${log.user?.email || log.user?.phone || log.crmAgentName || 'System'}"`;
-        const target = `"${details.applicationId || details.requestId || log.targetId || '-'}"`;
+        const role = `"${log.user?.role || (log.crmAgentId ? 'kyc_team' : 'system')}"`;
+        const target = `"${targetName}"`;
         const ip = `"${log.ipAddress || '-'}"`;
-        const sev = `"${(details.severity || 'info').toLowerCase()}"`;
+        const msg = `"${(details.message || JSON.stringify(details)).replace(/"/g, '""')}"`;
         const time = `"${new Date(log.timestamp).toLocaleString("en-IN")}"`;
         
-        csvLines.push([logId, action, actor, target, ip, sev, time].join(","));
+        csvLines.push([logId, action, actor, role, target, ip, msg, time].join(","));
       });
       
       res.setHeader('Content-Type', 'text/csv');
@@ -718,7 +860,7 @@ const getAuditLogs = async (req, res, next) => {
 
     res.json({
       success: true,
-      logs,
+      logs: enrichedLogs,
       total,
       page: pageNum,
       totalPages: Math.ceil(total / take),
@@ -1359,8 +1501,14 @@ const updateApplicationDetails = async (req, res, next) => {
         userId: req.user.role !== "admin" ? null : req.user.id,
         crmAgentId: req.user.role === "admin" ? null : agentId,
         crmAgentName: agentName,
-        action: "kyc_admin_updated_details",
-        details: JSON.stringify({ applicationId: id, updates }),
+        action: "ADMIN_UPDATED_FIELD",
+        details: JSON.stringify({ 
+          message: `${agentName} updated field(s) on application ${id}: ${Object.keys(updates).join(', ')}`,
+          applicationId: id, 
+          updates 
+        }),
+        targetId: String(id),
+        targetType: "KycApplication",
         ipAddress: req.ip,
       },
     });
@@ -1472,13 +1620,21 @@ const uploadAdminDocument = async (req, res, next) => {
         data: updatePayload,
       });
 
+      const uploaderName = req.user.email || "Admin";
       await prisma.auditLog.create({
         data: {
           userId: req.user.role !== "admin" ? null : req.user.id,
           crmAgentId: req.user.role === "admin" ? null : req.user.id,
-          crmAgentName: req.user.email || "Admin",
-          action: "kyc_admin_uploaded_document",
-          details: JSON.stringify({ applicationId: id, documentType, filePath }),
+          crmAgentName: uploaderName,
+          action: "ADMIN_UPLOADED_DOCUMENT",
+          details: JSON.stringify({ 
+            message: `${uploaderName} uploaded '${documentType}' for application ${id}`,
+            applicationId: id, 
+            documentType, 
+            filePath 
+          }),
+          targetId: String(id),
+          targetType: "KycApplication",
           ipAddress: req.ip,
         },
       });

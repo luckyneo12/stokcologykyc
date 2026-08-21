@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -51,15 +51,15 @@ const DROPDOWN_OPTIONS = {
   "personalDetails.experience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
   "personalDetails.tradingExperience": ["0-1 Year", "1-2 Years", "2-5 Years", "5+ Years"],
   "personalDetails.occupation": ["Private Sector", "Public Sector", "Government Service", "Business", "Professional", "Agriculturist", "Retired", "Housewife", "Student", "Others"],
-  "personalDetails.accountSettlement": ["Quarterly", "Monthly"],
+  "personalDetails.settlement": ["Quarterly", "Monthly"],
   "personalDetails.smsAlert": ["Yes", "No"],
-  "personalDetails.operateDdpi": ["Yes", "No"],
-  "personalDetails.nsdl4Communication": ["Yes", "No"],
+  "personalDetails.operatedThroughDDPI": ["Yes", "No"],
+  "personalDetails.receiveAnnualReports": ["Yes", "No"],
   "personalDetails.ddpi": ["Yes", "No"],
-  "personalDetails.disBooklet": ["Yes", "No"],
-  "personalDetails.nsdl1ReceiveCredit": ["Yes", "No"],
-  "personalDetails.nsdl2EStatement": ["Yes", "No"],
-  "personalDetails.nsdl3PledgeInstruction": ["Yes", "No"],
+  "personalDetails.dis": ["Yes", "No"],
+  "personalDetails.receiveCredits": ["Yes", "No"],
+  "personalDetails.eStatement": ["Yes", "No"],
+  "personalDetails.acceptPledgeInstructions": ["Yes", "No"],
   "personalDetails.politicallyExposed": ["Yes", "No"],
   "personalDetails.citizenOfIndia": ["Yes", "No"],
   "personalDetails.taxResidencyOutside": ["Yes", "No"],
@@ -73,32 +73,30 @@ const DROPDOWN_OPTIONS = {
 };
 
 const REVIEW_STEPS = [
-  // {
-  //   id: "phoneVerification",
-  //   kycIndex: 1,
-  //   title: "Phone Verification",
-  //   evidenceTitle: "",
-  //   evidenceHint: "Confirm the applicant's verified mobile number and reference their photo.",
-  //   fields: (app) => [
-  //     ["Mobile number", app.user?.phone, "user.phone"],
-  //   ],
-  //   evidence: (app) => {
-  //     const doc = findDocument(app, ["aadhaar", "digilocker", "photo"], "", ["pan"]);
-  //     return doc ? [{ ...doc, label: "" }] : [];
-  //   },
-  // },
-  // {
-  //   id: "emailVerification",
-  //   kycIndex: 2,
-  //   title: "Email Verification",
-  //   evidenceTitle: "",
-  //   evidenceHint: "Confirm the applicant's verified email address.",
-  //   fields: (app) => [
-  //     ["Email", app.personalDetails?.email || app.user?.email, "personalDetails.email"],
-  //     ["Mobile number", app.user?.phone, "user.phone"],
-  //   ],
-  //   evidence: () => [],
-  // },
+  {
+    id: "signature",
+    kycIndex: 12,
+    title: "Signature Upload",
+    evidenceTitle: "Wet Signature",
+    evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
+    fields: (app) => [
+      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
+      ["Name as per pan", app.identityDetails?.panName || "N/A"],
+      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
+    ],
+    evidence: (app) => {
+      const panDocs = getAllPanDocuments(app);
+      const manualPan = panDocs.find(p => p.label === "Uploaded PAN Card") || panDocs[0];
+      const signatureDoc = firstMedia(app.signature, "Signature");
+      if (manualPan && signatureDoc) {
+        return [
+          signatureDoc,
+          { ...manualPan, defaultZoom: 2.5, defaultOffset: { x: 0, y: -150 } }
+        ];
+      }
+      return [signatureDoc].filter(Boolean);
+    },
+  },
   {
     id: "pricingSelection",
     kycIndex: 3,
@@ -262,10 +260,10 @@ const REVIEW_STEPS = [
       ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
-      ["Operate ddpi", app.personalDetails?.operateDdpi || "Yes", "personalDetails.operateDdpi"],
+      ["Operate ddpi", app.personalDetails?.operatedThroughDDPI || "Yes", "personalDetails.operatedThroughDDPI"],
       ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
-      ["Account settlement", app.personalDetails?.accountSettlement || "Quarterly", "personalDetails.accountSettlement"],
+      ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
       ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
       ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
@@ -285,11 +283,11 @@ const REVIEW_STEPS = [
       ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
       ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
 
-      ["Nsdl4 communication in electronic form", app.personalDetails?.nsdl4Communication || "Yes", "personalDetails.nsdl4Communication"],
-      ["Nsdl1 receive credit", app.personalDetails?.nsdl1ReceiveCredit || "Yes", "personalDetails.nsdl1ReceiveCredit"],
-      ["Nsdl2 e statement", app.personalDetails?.nsdl2EStatement || "Yes", "personalDetails.nsdl2EStatement"],
-      ["Nsdl3 pledge instruction", app.personalDetails?.nsdl3PledgeInstruction || "No", "personalDetails.nsdl3PledgeInstruction"],
-      ["Dis booklet", app.personalDetails?.disBooklet || "No", "personalDetails.disBooklet"],
+      ["Nsdl4 communication in electronic form", app.personalDetails?.receiveAnnualReports || "Yes", "personalDetails.receiveAnnualReports"],
+      ["Nsdl1 receive credit", app.personalDetails?.receiveCredits || "Yes", "personalDetails.receiveCredits"],
+      ["Nsdl2 e statement", app.personalDetails?.eStatement || "Yes", "personalDetails.eStatement"],
+      ["Nsdl3 pledge instruction", app.personalDetails?.acceptPledgeInstructions || "No", "personalDetails.acceptPledgeInstructions"],
+      ["Dis booklet", app.personalDetails?.dis || "No", "personalDetails.dis"],
     ],
     evidence: (app) => {
       const pepProof = app.personalDetails?.pepProofPreview || app.personalDetails?.pepProof;
@@ -357,6 +355,13 @@ const REVIEW_STEPS = [
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
       ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.accountHolderName"],
+      ["Account type", (() => {
+        const at = app.bankDetails?.accountType || app.bankDetails?.accType;
+        if (!at) return "N/A";
+        if (at === "10" || at === 10 || String(at).toLowerCase().includes("sav")) return "Saving Account";
+        if (at === "11" || at === 11 || String(at).toLowerCase().includes("curr")) return "Current Account";
+        return String(at);
+      })(), "bankDetails.accountType"],
       ["Account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
       ["IFSC", app.bankDetails?.ifsc || "N/A", "bankDetails.ifsc"],
       ["Penny drop status", (() => {
@@ -411,33 +416,6 @@ const REVIEW_STEPS = [
     evidence: (app) => [firstMedia(app.financialProof, "Financial Proof")].filter(Boolean),
   },
   {
-    id: "signature",
-    kycIndex: 12,
-    title: "Signature Upload",
-    evidenceTitle: "Wet Signature",
-    evidenceHint: "Check that the signature is clear and matches the signature on the PAN card.",
-    fields: (app) => [
-      ["Signature captured", app.signature ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
-      ["Name as per aadhar", app.identityDetails?.aadhaarName || "N/A"],
-      ["Name as per pan", app.identityDetails?.panName || "N/A"],
-      ["Name as per bank", app.bankDetails?.accountHolderName || "N/A"],
-      ["Name as per kra", app.personalDetails?.fullName || "N/A"],
-    ],
-    evidence: (app) => {
-      const panDocs = getAllPanDocuments(app);
-      const manualPan = panDocs.find(p => p.label === "Uploaded PAN Card") || panDocs[0];
-      const signatureDoc = firstMedia(app.signature, "Signature");
-      if (manualPan && signatureDoc) {
-        return [
-          signatureDoc,
-          { ...manualPan, defaultZoom: 2.5, defaultOffset: { x: 0, y: -150 } }
-        ];
-      }
-      return [signatureDoc].filter(Boolean);
-    },
-  },
-  {
     id: "panUpload",
     kycIndex: 13,
     title: "PAN Card Upload",
@@ -490,16 +468,31 @@ const REVIEW_STEPS = [
     kycIndex: 16,
     title: "eSign",
     evidenceTitle: "eSigned Document",
-    evidenceHint: "Review the e-signed application.",
+    evidenceHint: "Review the e-signed application and signer details.",
     fields: (app) => [
-      ["Email", app.personalDetails?.email || app.user?.email || "Pending", "personalDetails.email"],
-      ["Mobile", app.user?.phone || "Pending", "user.phone"],
-      ["Name", app.personalDetails?.fullName || "Pending", "personalDetails.fullName"],
-      ["Ip", app.esignDetails?.ip || "Pending", "esignDetails.ip"],
-      ["Lat", app.esignDetails?.lat || "Pending", "esignDetails.lat"],
-      ["Lng", app.esignDetails?.lng || "Pending", "esignDetails.lng"],
+      ["eSigner Name", app.esignDetails?.signerName || app.esignDetails?.name || app.ocrData?.digio?.ESIGN?.signerName || app.personalDetails?.fullName || app.user?.name || "Pending", "esignDetails.name"],
+      ["eSign Date & Time", (() => {
+        const dt = app.esignDetails?.signedAt || app.esignDetails?.completedAt || app.esignDetails?.updatedAt || app.ocrData?.digio?.ESIGN?.updatedAt || app.ocrData?.digio?.ESIGN?.createdAt || (app.currentStep >= 13 ? (app.submittedAt || app.updatedAt) : null);
+        if (!dt) return "Pending";
+        try {
+          return new Date(dt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        } catch(e) {
+          return String(dt);
+        }
+      })()],
+      ["IP Address", app.esignDetails?.ip || "Pending", "esignDetails.ip"],
+      ["Latitude", app.esignDetails?.lat || "Pending", "esignDetails.lat"],
+      ["Longitude", app.esignDetails?.lng || "Pending", "esignDetails.lng"],
     ],
-    evidence: () => [],
+    evidence: (app) => [
+      firstMedia(
+        app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
+        findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
+        (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+        app.generatedPdfBase64,
+        "eSigned PDF"
+      )
+    ].filter(Boolean),
   }
 ];
 
@@ -1358,6 +1351,7 @@ export default function AgentReview() {
   const [toast, setToast] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarActiveTabs, setSidebarActiveTabs] = useState({});
+  const [showTaxResidency, setShowTaxResidency] = useState(false);
 
   const [expandedModule, setExpandedModule] = useState({});
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -1776,16 +1770,12 @@ export default function AgentReview() {
     panDocs.forEach(doc => pushDoc(doc, "panUpload"));
 
     // eSigned PDF
-    let esignDoc = null;
-    try {
-      const docs = Array.isArray(app.documents) ? app.documents : (app.documents ? JSON.parse(app.documents) : []);
-      esignDoc = docs.find(doc => doc.type === "ESIGN" || (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")));
-    } catch(e) {}
-    
-    if (esignDoc) {
-      pushDoc(firstMedia(esignDoc.path, "eSigned PDF"), "aadhaarEsign");
-    } else if (app.generatedPdfBase64) {
-      pushDoc(firstMedia(app.generatedPdfBase64, "eSigned PDF (Unsigned)"), "aadhaarEsign");
+    const esignPath = app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
+                      findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
+                      (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+                      app.generatedPdfBase64;
+    if (esignPath) {
+      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
     }
 
     // PEP Document
@@ -2101,204 +2091,262 @@ export default function AgentReview() {
                               }
 
                               const renderFieldBlock = () => {
-                                if (tabFields.length === 0) {
+                                const isTaxResidencyOutside = app.personalDetails?.taxResidencyOutside === "Yes";
+                                const TAX_LABELS = [
+                                  "Country of tax residence1", "Tax payer identification number1",
+                                  "Country of tax residence2", "Tax payer identification number2",
+                                  "Country tax residence3", "Tax payer identification number3",
+                                  "Place of birth", "Tax exempt", "Tax exempt reason",
+                                  "Country birth1", "Citizen1"
+                                ];
+                                const taxResidencyFields = [];
+                                const filteredTabFields = tabFields.filter(([label, value, jsonPath]) => {
+                                  if (isTaxResidencyOutside && TAX_LABELS.includes(label)) {
+                                    taxResidencyFields.push([label, value, jsonPath]);
+                                    return false;
+                                  }
+                                  return true;
+                                });
+
+                                if (filteredTabFields.length === 0 && taxResidencyFields.length === 0) {
                                   return <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: section.label ? 16 : 0 }}>No details available.</div>;
                                 }
+                                
+                                const renderField = ([label, value, jsonPath]) => {
+                                  
+                                       const isDivider = label.startsWith("---");
+                                       if (isDivider) {
+                                         const headerText = label.replace(/-/g, "").trim();
+                                         return (
+                                           <div key={label} style={{
+                                             marginTop: 12,
+                                             marginBottom: 4,
+                                             display: "flex",
+                                             alignItems: "center",
+                                             gap: 16
+                                           }}>
+                                             <div style={{
+                                               fontSize: "0.75rem",
+                                               fontWeight: 900,
+                                               color: "var(--text-primary)",
+                                               letterSpacing: "1px",
+                                               textTransform: "uppercase",
+                                               whiteSpace: "nowrap"
+                                             }}>
+                                               {headerText}
+                                             </div>
+                                             <div style={{
+                                               flex: 1,
+                                               height: "2px",
+                                               background: "linear-gradient(90deg, rgba(16, 185, 129, 0.7), transparent)",
+                                               boxShadow: "0 0 8px rgba(16, 185, 129, 0.5)"
+                                             }} />
+                                           </div>
+                                         );
+                                       }
+
+                                      const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
+                                      return (
+                                        <div key={label} style={{ 
+                                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
+                                          padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
+                                          border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                                        }}>
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                                            {editingField === jsonPath && jsonPath ? (
+                                              DROPDOWN_OPTIONS[jsonPath] ? (
+                                                <select
+                                                  autoFocus
+                                                  className="admin-input"
+                                                  style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                                                  value={currentValue || ""}
+                                                  onChange={e => {
+                                                    setEditValues({ ...editValues, [jsonPath]: e.target.value });
+                                                    setEditingField(null);
+                                                    if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                      const val = e.target.value;
+                                                      setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
+                                                      autoSaveField(jsonPath, val);
+                                                    }
+                                                  }}
+                                                  onBlur={(e) => {
+                                                    setEditingField(null);
+                                                    if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                      const val = e.target.value;
+                                                      setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
+                                                      autoSaveField(jsonPath, val);
+                                                    }
+                                                  }}
+                                                >
+                                                  <option value="">--Select--</option>
+                                                  {DROPDOWN_OPTIONS[jsonPath].map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                  ))}
+                                                </select>
+                                              ) : (
+                                                <input 
+                                                  autoFocus
+                                                  className="admin-input"
+                                                  style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
+                                                  value={currentValue || ""}
+                                                  onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
+                                                  onBlur={(e) => {
+                                                    setEditingField(null);
+                                                    if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                      const val = e.target.value;
+                                                      setEditValues(prev => {
+                                                        const next = { ...prev };
+                                                        delete next[jsonPath];
+                                                        return next;
+                                                      });
+                                                      autoSaveField(jsonPath, val);
+                                                    }
+                                                  }}
+                                                  onKeyDown={e => { 
+                                                    if (e.key === "Enter") {
+                                                      setEditingField(null);
+                                                      if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                        const val = e.currentTarget.value;
+                                                        setEditValues(prev => {
+                                                          const next = { ...prev };
+                                                          delete next[jsonPath];
+                                                          return next;
+                                                        });
+                                                        autoSaveField(jsonPath, val);
+                                                      }
+                                                    }
+                                                  }}
+                                                />
+                                              )
+                                            ) : (
+                                              <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                                                {(() => {
+                                                  if (currentValue === undefined || currentValue === null) return "";
+                                                  if (React.isValidElement(currentValue)) return currentValue;
+                                                  if (label === "Segments" && typeof currentValue === "string") return currentValue.split(",").join(", ");
+                                                  if (typeof currentValue === "object") {
+                                                    if (Array.isArray(currentValue)) {
+                                                      return currentValue.map((item, idx) => (
+                                                        <React.Fragment key={idx}>
+                                                          {idx > 0 && ", "}
+                                                          {React.isValidElement(item) ? item : (typeof item === "object" ? (JSON.stringify(item) || "") : String(item))}
+                                                        </React.Fragment>
+                                                      ));
+                                                    }
+                                                    try {
+                                                      return JSON.stringify(currentValue);
+                                                    } catch {
+                                                      return "[Object]";
+                                                    }
+                                                  }
+                                                  return String(currentValue);
+                                                })()}
+                                              </div>
+                                            )}
+                                          </div>
+                                          {jsonPath && (
+                                            <div style={{ display: "flex", alignItems: "center", alignSelf: "center", marginLeft: 8 }}>
+                                              <Edit2 
+                                                onClick={() => setEditingField(jsonPath)} 
+                                                size={14} 
+                                                color="var(--text-muted)" 
+                                                style={{ cursor: "pointer" }} 
+                                                title={`Edit ${label}`}
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    
+                                };
                                 return (
                                   <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: section.label ? 16 : 0 }}>
-                                    {tabFields.map(([label, value, jsonPath]) => {
-                                const isDivider = label.startsWith("---");
-                                if (isDivider) {
-                                  const headerText = label.replace(/-/g, "").trim();
-                                  return (
-                                    <div key={label} style={{
-                                      marginTop: 12,
-                                      marginBottom: 4,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 16
-                                    }}>
-                                      <div style={{
-                                        fontSize: "0.75rem",
-                                        fontWeight: 900,
-                                        color: "var(--text-primary)",
-                                        letterSpacing: "1px",
-                                        textTransform: "uppercase",
-                                        whiteSpace: "nowrap"
-                                      }}>
-                                        {headerText}
-                                      </div>
-                                      <div style={{
-                                        flex: 1,
-                                        height: "2px",
-                                        background: "linear-gradient(90deg, rgba(16, 185, 129, 0.7), transparent)",
-                                        boxShadow: "0 0 8px rgba(16, 185, 129, 0.5)"
-                                      }} />
-                                    </div>
-                                  );
-                                }
-
-                                const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
-                                return (
-                                  <div key={label} style={{ 
-                                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
-                                    padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
-                                    border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-                                  }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-                                      {editingField === jsonPath && jsonPath ? (
-                                        DROPDOWN_OPTIONS[jsonPath] ? (
-                                          <select
-                                            autoFocus
-                                            className="admin-input"
-                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
-                                            value={currentValue || ""}
-                                            onChange={e => {
-                                              setEditValues({ ...editValues, [jsonPath]: e.target.value });
-                                              setEditingField(null);
-                                              if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                const val = e.target.value;
-                                                setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
-                                                autoSaveField(jsonPath, val);
-                                              }
-                                            }}
-                                            onBlur={(e) => {
-                                              setEditingField(null);
-                                              if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                const val = e.target.value;
-                                                setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
-                                                autoSaveField(jsonPath, val);
-                                              }
-                                            }}
-                                          >
-                                            <option value="">--Select--</option>
-                                            {DROPDOWN_OPTIONS[jsonPath].map(opt => (
-                                              <option key={opt} value={opt}>{opt}</option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <input 
-                                            autoFocus
-                                            className="admin-input"
-                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
-                                            value={currentValue || ""}
-                                            onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
-                                            onBlur={(e) => {
-                                              setEditingField(null);
-                                              if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                const val = e.target.value;
-                                                setEditValues(prev => {
-                                                  const next = { ...prev };
-                                                  delete next[jsonPath];
-                                                  return next;
-                                                });
-                                                autoSaveField(jsonPath, val);
-                                              }
-                                            }}
-                                            onKeyDown={e => { 
-                                              if (e.key === "Enter") {
-                                                setEditingField(null);
-                                                if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                  const val = e.currentTarget.value;
-                                                  setEditValues(prev => {
-                                                    const next = { ...prev };
-                                                    delete next[jsonPath];
-                                                    return next;
-                                                  });
-                                                  autoSaveField(jsonPath, val);
-                                                }
-                                              } 
-                                            }}
-                                          />
-                                        )
-                                      ) : (
-                                        <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
-                                          {label === "Segments" && typeof currentValue === "string" 
-                                            ? currentValue.split(",").join(", ") 
-                                            : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? JSON.stringify(currentValue) : String(currentValue)) : "")
-                                          }
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
-                                      {currentValue && (
-                                        <button
+                                    {filteredTabFields.map(renderField)}
+                                    
+                                    {isTaxResidencyOutside && taxResidencyFields.length > 0 && (
+                                      <div style={{ marginTop: 4, padding: "8px", background: "var(--bg-secondary)", borderRadius: 8, border: "1px dashed var(--border-color)" }}>
+                                        <button 
                                           type="button"
-                                          onClick={(e) => handleCopy(e, currentValue, `field-${label}`)}
-                                          title={`Copy ${label}`}
-                                          style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `field-${label}` ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}
+                                          onClick={(e) => { e.stopPropagation(); setShowTaxResidency(prev => !prev); }}
+                                          style={{
+                                            width: "100%", padding: "8px", borderRadius: 4, background: "transparent",
+                                            color: "var(--text-primary)", border: "none",
+                                            fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center"
+                                          }}
                                         >
-                                          {copiedKey === `field-${label}` ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                                          <span>Tax Residency Details</span>
+                                          <span>{showTaxResidency ? "▲" : "▼"}</span>
                                         </button>
-                                      )}
-                                      {jsonPath && (
-                                        <Edit2 onClick={() => setEditingField(jsonPath)} size={14} color="var(--text-muted)" style={{ cursor: "pointer" }} />
-                                      )}
-                                    </div>
+                                        
+                                        {showTaxResidency && (
+                                          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+                                            {taxResidencyFields.map(renderField)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 );
-                              })}
-                            </div>
-                          );
-                        };
+    
+                              };
 
-                        if (!section.label) {
-                          return <div key="default">{renderFieldBlock()}</div>;
-                        }
+                              if (!section.label) {
+                                return <div key="default">{renderFieldBlock()}</div>;
+                              }
 
-                        return (
-                          <div id={`accordion-${step.id}-${section.id}`} key={section.id} style={{ 
-                            border: `1px solid ${section.isActive ? 'var(--wise-dark-green)' : 'var(--border-color)'}`, 
-                            borderRadius: 8, 
-                            overflow: "hidden",
-                            background: "var(--bg-primary)",
-                            boxShadow: section.isActive ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
-                            transition: "all 0.2s"
-                          }}>
-                            <div 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const isCurrentlyActive = section.isActive;
-                                setSidebarActiveTabs(prev => ({...prev, [step.id]: isCurrentlyActive ? null : section.id})); 
-                                if (!isCurrentlyActive) {
-                                  const stepDocs = step.evidence(app, section.id);
-                                  if (stepDocs && stepDocs.length > 0) {
-                                    setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
-                                    setPreviewZoom(1); setPreviewRotation(0); setPreviewOffset({ x: 0, y: 0 });
-                                  }
-                                  setTimeout(() => {
-                                    const el = document.getElementById(`accordion-${step.id}-${section.id}`);
-                                    if (el) {
-                                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                    }
-                                  }, 50);
-                                }
-                              }}
-                              style={{ 
-                                padding: "12px 16px", 
-                                display: "flex", 
-                                justifyContent: "space-between", 
-                                alignItems: "center", 
-                                cursor: "pointer",
-                                background: section.isActive ? "var(--wise-dark-green)" : "var(--bg-secondary)",
-                                color: section.isActive ? "white" : "var(--text-primary)",
-                                fontWeight: 800,
-                                fontSize: "0.85rem",
-                                borderBottom: section.isActive ? "1px solid var(--border-color)" : "none"
-                              }}
-                            >
-                              <span>{section.label}</span>
-                              {section.isActive ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            </div>
-                            
-                            {section.isActive && renderFieldBlock()}
+                              return (
+                                <div id={`accordion-${step.id}-${section.id}`} key={section.id} style={{ 
+                                  border: `1px solid ${section.isActive ? 'var(--wise-dark-green)' : 'var(--border-color)'}`, 
+                                  borderRadius: 8, 
+                                  overflow: "hidden",
+                                  background: "var(--bg-primary)",
+                                  boxShadow: section.isActive ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
+                                  transition: "all 0.2s"
+                                }}>
+                                  <div 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const isCurrentlyActive = section.isActive;
+                                      setSidebarActiveTabs(prev => ({...prev, [step.id]: isCurrentlyActive ? null : section.id})); 
+                                      if (!isCurrentlyActive) {
+                                        const stepDocs = step.evidence(app, section.id);
+                                        if (stepDocs && stepDocs.length > 0) {
+                                          setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
+                                          setPreviewZoom(1); setPreviewRotation(0); setPreviewOffset({ x: 0, y: 0 });
+                                        }
+                                        setTimeout(() => {
+                                          const el = document.getElementById(`accordion-${step.id}-${section.id}`);
+                                          if (el) {
+                                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                          }
+                                        }, 50);
+                                      }
+                                    }}
+                                    style={{ 
+                                      padding: "12px 16px", 
+                                      display: "flex", 
+                                      justifyContent: "space-between", 
+                                      alignItems: "center", 
+                                      cursor: "pointer",
+                                      background: section.isActive ? "var(--wise-dark-green)" : "var(--bg-secondary)",
+                                      color: section.isActive ? "white" : "var(--text-primary)",
+                                      fontWeight: 800,
+                                      fontSize: "0.85rem",
+                                      borderBottom: section.isActive ? "1px solid var(--border-color)" : "none"
+                                    }}
+                                  >
+                                    <span>{section.label}</span>
+                                    {section.isActive ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                  </div>
+                                  
+                                  {section.isActive && renderFieldBlock()}
+                                </div>
+                              );
+                            })}
                           </div>
                         );
-                      })}
-                    </div>
-                  );
-                })()}
+                      })()}
                     </div>
                   )}
                 </div>

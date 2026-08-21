@@ -295,8 +295,10 @@ export function RolesPermissions() {
 // ---- Audit Logs ----
 export function AuditLogs() {
   const [logs, setLogs] = useState([]);
+  const [category, setCategory] = useState("all");
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState("timeline"); // "timeline" or "grouped"
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -304,6 +306,16 @@ export function AuditLogs() {
   const [expandedLogId, setExpandedLogId] = useState(null);
   const [expandedActors, setExpandedActors] = useState({});
   const [filterOpen, setFilterOpen] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [showJsonMap, setShowJsonMap] = useState({});
+
+  const handleCopy = (e, text, key) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (!text || text === "N/A" || text === "-") return;
+    navigator.clipboard.writeText(String(text));
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -319,15 +331,19 @@ export function AuditLogs() {
     const loadLogs = async () => {
       if (typeof window === "undefined") return;
       try {
+        setLoading(true);
         const url = new URL(`${API_BASE_URL}/api/admin/audit-logs`);
         if (filter !== "all") {
           url.searchParams.set("severity", filter);
+        }
+        if (category !== "all") {
+          url.searchParams.set("category", category);
         }
         if (search) {
           url.searchParams.set("search", search);
         }
         url.searchParams.append("page", page);
-        url.searchParams.append("limit", 100);
+        url.searchParams.append("limit", 50);
         
         const token = localStorage.getItem("adminToken");
         const response = await fetch(url, {
@@ -338,24 +354,184 @@ export function AuditLogs() {
         if (contentType && contentType.includes("application/json")) {
           const data = await response.json();
           if (data.success && Array.isArray(data.logs)) {
-            setTotal(data.total);
-            setTotalPages(data.totalPages);
-            const mapped = data.logs.map((log) => ({
-              id: `LOG-${String(log.id).padStart(6, "0")}`,
-              action: log.action || "N/A",
-              actor: log.user?.email || log.user?.phone || log.crmAgentName || "System",
-              target: log.details?.applicationId || log.details?.requestId || log.targetId || "-",
-              ip: log.ipAddress || "-",
-              timestamp: new Date(log.timestamp).toLocaleString("en-IN"),
-              rawTimestamp: new Date(log.timestamp).getTime(),
-              severity: (log.details?.severity || "info").toLowerCase(),
-              rawDetails: log.details || "{}"
-            }));
+            setTotal(data.total || 0);
+            setTotalPages(data.totalPages || 1);
+            const STEP_LABELS = {
+              phoneVerification: "Phone Verification",
+              emailVerification: "Email Verification",
+              pricingSelection: "Pricing Plan",
+              panVerification: "PAN Verification",
+              digilocker: "DigiLocker Aadhaar",
+              personalDetails: "Personal Details",
+              nomineeChoice: "Nominee Choice",
+              nomineeDetails: "Nominee Details",
+              nomineeAllocation: "Nominee Allocation",
+              bankVerification: "Bank Verification",
+              financialProof: "Financial Proof",
+              signature: "Signature",
+              panUpload: "PAN Upload",
+              ipv: "Live Selfie (IPV)",
+              esignPreview: "eSign Preview",
+              aadhaarEsign: "Aadhaar eSign",
+              completion: "Application Completion"
+            };
+
+            const formatIp = (ip) => {
+              if (!ip || ip === "-") return "-";
+              if (ip === "::1" || ip === "127.0.0.1") return "Localhost (::1)";
+              return ip;
+            };
+
+            const mapped = data.logs.map((log) => {
+              let parsedDetails = {};
+              try {
+                parsedDetails = typeof log.details === "string" ? JSON.parse(log.details) : (log.details || {});
+              } catch (e) {
+                parsedDetails = { message: String(log.details) };
+              }
+
+              // Extract applicant profile information from matchedApp or user
+              const kycApp = log.matchedApp || log.user?.kycApplications?.[0];
+              let userPersonal = {};
+              if (kycApp?.personalDetails) {
+                try { userPersonal = typeof kycApp.personalDetails === "string" ? JSON.parse(kycApp.personalDetails) : kycApp.personalDetails; } catch(e) {}
+              }
+
+              const appId = parsedDetails.applicationId || kycApp?.applicationId || (log.targetId && !/^\d+$/.test(String(log.targetId).trim()) ? log.targetId : null);
+              const clientCode = kycApp?.clientCode || parsedDetails.clientCode || null;
+              const applicantName = userPersonal?.fullName || kycApp?.user?.email || (log.user?.role === "user" ? (log.user?.email || log.user?.phone) : null);
+              const userPhone = kycApp?.user?.phone || log.user?.phone || null;
+
+              // Build crystal-clear Target ID (never display raw numeric database IDs like 39 or 43)
+              let targetDisplay = "-";
+              if (appId) {
+                targetDisplay = applicantName ? `${appId} (${applicantName})` : appId;
+              } else if (applicantName) {
+                targetDisplay = userPhone ? `${applicantName} · ${userPhone}` : applicantName;
+              } else if (userPhone) {
+                targetDisplay = `Phone: ${userPhone}`;
+              } else if (log.user?.email) {
+                targetDisplay = `${log.user.email} (${log.user.role || 'User'})`;
+              } else if (log.targetId) {
+                targetDisplay = `Resource #${log.targetId}`;
+              }
+
+              // Determine actor role & display
+              let actorRole = "System";
+              let actorName = log.crmAgentName || log.user?.email || log.user?.phone || "System";
+              const actUpper = (log.action || "").toUpperCase();
+
+              if (log.user?.role === "globe" || actUpper.startsWith("GLOBE_")) {
+                actorRole = "Globe Reviewer";
+              } else if (log.user?.role === "admin" || actUpper.startsWith("ADMIN_")) {
+                actorRole = "Admin";
+              } else if (log.crmAgentId || log.user?.role === "kyc_team" || actUpper.startsWith("MAKER_CHECKER_") || actUpper.startsWith("KYC_STEP_")) {
+                actorRole = "KYC Team";
+              } else if (log.user?.role === "user" || actUpper.startsWith("USER_") || actUpper.startsWith("DIGIO_")) {
+                actorRole = "Applicant";
+              }
+
+              // Human-Friendly Action Title
+              let actionTitle = log.action || "Activity";
+              if (log.action === "digio_request_failed") {
+                const dType = parsedDetails.type || "API";
+                if (dType === "SELFIE" || dType === "IPV") actionTitle = "Digio Selfie / IPV Failure";
+                else if (dType === "PAN") actionTitle = "Digio PAN Verification Failure";
+                else if (dType === "DIGILOCKER" || dType === "AADHAAR") actionTitle = "Digio DigiLocker Failure";
+                else if (dType === "ESIGN") actionTitle = "Digio Aadhaar eSign Failure";
+                else actionTitle = `Digio ${dType} Request Failed`;
+              } else if (log.action === "kyc_step_rejected") {
+                const sName = STEP_LABELS[parsedDetails.stepName] || parsedDetails.stepName || "Step";
+                actionTitle = `Step Rejected: ${sName}`;
+              } else if (log.action === "kyc_step_pending") {
+                const sName = STEP_LABELS[parsedDetails.stepName] || parsedDetails.stepName || "Step";
+                actionTitle = `Step Review Pending: ${sName}`;
+              } else if (log.action === "kyc_step_approved") {
+                const sName = STEP_LABELS[parsedDetails.stepName] || parsedDetails.stepName || "Step";
+                actionTitle = `Step Approved: ${sName}`;
+              } else if (log.action === "kyc_admin_uploaded_document") {
+                actionTitle = `Uploaded: ${parsedDetails.documentType || "Document"}`;
+              } else if (log.action === "kyc_admin_updated_details") {
+                actionTitle = "Updated Application Fields";
+              } else if (log.action === "kyc_modifications_requested") {
+                actionTitle = "Modification Email Dispatched";
+              } else if (log.action === "kyc_step_saved") {
+                actionTitle = `Applicant Saved ${STEP_LABELS[parsedDetails.step] || parsedDetails.step || `Step ${parsedDetails.stepIndex || ""}`}`;
+              } else if (log.action === "kyc_submitted") {
+                actionTitle = "Applicant Submitted Application";
+              } else if (log.action === "GLOBE_APPROVED_KYC") {
+                actionTitle = "Globe Approved Application";
+              } else if (log.action === "GLOBE_REJECTED_KYC") {
+                actionTitle = "Globe Rejected Application";
+              } else if (log.action === "ADMIN_STATUS_VERIFIED") {
+                actionTitle = "Admin Verified Application";
+              } else if (log.action === "ADMIN_STATUS_REJECTED") {
+                actionTitle = "Admin Rejected Application";
+              } else if (log.action === "ADMIN_STATUS_ON_HOLD") {
+                actionTitle = "Admin Placed On Hold";
+              }
+
+              // Human-Readable Narrative Story
+              let story = parsedDetails.message || "";
+              const targetRef = appId ? `application ${appId}${applicantName ? ` (${applicantName})` : ""}` : (applicantName ? `applicant ${applicantName}` : `user ${userPhone || log.userId || ''}`);
+
+              if (!story) {
+                if (log.action === "digio_request_failed") {
+                  const dType = parsedDetails.type || "API";
+                  const errCode = parsedDetails.digioError?.code || "ERROR";
+                  const errMsg = parsedDetails.digioError?.message || parsedDetails.error || "Request failed";
+                  story = `Digio ${dType} verification failed during applicant onboarding for ${targetRef}. Error: ${errMsg} (${errCode})`;
+                } else if (log.action === "kyc_step_rejected") {
+                  const sName = STEP_LABELS[parsedDetails.stepName] || parsedDetails.stepName || "step";
+                  story = `Reviewer (${actorName}) rejected ${sName} for ${targetRef}.${parsedDetails.reason ? ` Reason: ${parsedDetails.reason}` : ""}`;
+                } else if (log.action === "kyc_step_pending") {
+                  const sName = STEP_LABELS[parsedDetails.stepName] || parsedDetails.stepName || "step";
+                  story = `Reviewer (${actorName}) marked ${sName} as pending review for ${targetRef}`;
+                } else if (log.action === "kyc_step_approved") {
+                  const sName = STEP_LABELS[parsedDetails.stepName] || parsedDetails.stepName || "step";
+                  story = `Reviewer (${actorName}) approved ${sName} for ${targetRef}`;
+                } else if (log.action === "kyc_admin_uploaded_document") {
+                  story = `Reviewer (${actorName}) uploaded '${parsedDetails.documentType || "Document"}' for ${targetRef}`;
+                } else if (log.action === "kyc_admin_updated_details") {
+                  const updKeys = parsedDetails.updates ? Object.keys(parsedDetails.updates).join(", ") : "details";
+                  story = `Reviewer (${actorName}) updated ${updKeys} for ${targetRef}`;
+                } else if (log.action === "kyc_modifications_requested") {
+                  story = `Modification email sent to ${parsedDetails.emailSentTo || "applicant"} for ${targetRef}`;
+                } else if (log.action === "kyc_step_saved") {
+                  story = `Applicant saved progress on ${STEP_LABELS[parsedDetails.step] || parsedDetails.step || `Step ${parsedDetails.stepIndex || ""}`} for ${targetRef}`;
+                } else if (log.action === "kyc_submitted") {
+                  story = `Applicant completed and submitted ${targetRef}`;
+                } else if (log.action === "GLOBE_APPROVED_KYC") {
+                  story = `Globe reviewer approved ${targetRef}`;
+                } else if (log.action === "GLOBE_REJECTED_KYC") {
+                  story = `Globe reviewer rejected ${targetRef}. Reason: ${parsedDetails.reason || log.oldValue || "No remarks provided"}`;
+                } else {
+                  story = log.action.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+                }
+              }
+
+              return {
+                id: `LOG-${String(log.id).padStart(6, "0")}`,
+                rawId: log.id,
+                action: log.action || "N/A",
+                actionTitle,
+                story,
+                actor: actorName,
+                actorRole,
+                target: targetDisplay,
+                rawTarget: appId || applicantName || log.targetId || "-",
+                ip: formatIp(log.ipAddress),
+                timestamp: new Date(log.timestamp).toLocaleString("en-IN", {
+                  day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true
+                }),
+                rawTimestamp: new Date(log.timestamp).getTime(),
+                severity: (parsedDetails.severity || (log.action?.includes("REJECT") || log.action?.includes("fail") || log.action?.includes("FAIL") ? "warning" : "info")).toLowerCase(),
+                details: parsedDetails,
+                rawDetails: typeof log.details === "string" ? log.details : JSON.stringify(log.details || {})
+              };
+            });
             setLogs(mapped);
           }
-        } else {
-          const text = await response.text();
-          console.warn("Expected JSON but got:", text.substring(0, 100));
         }
       } catch (error) {
         console.error("Failed to load audit logs", error);
@@ -364,16 +540,17 @@ export function AuditLogs() {
       }
     };
     loadLogs();
-  }, [filter, search, page]);
+  }, [category, filter, search, page]);
 
   useEffect(() => {
     setPage(1);
-  }, [filter, search]);
+  }, [category, filter, search]);
 
   const handleExport = async () => {
     try {
       const url = new URL(`${API_BASE_URL}/api/admin/audit-logs`);
       if (filter !== "all") url.searchParams.set("severity", filter);
+      if (category !== "all") url.searchParams.set("category", category);
       if (search) url.searchParams.set("search", search);
       url.searchParams.set("export", "true");
       
@@ -392,13 +569,41 @@ export function AuditLogs() {
     }
   };
 
-  const filtered = filter === "all" ? logs : logs.filter(l => l.severity === filter);
+  const getActionBadgeStyle = (action, severity) => {
+    const act = (action || "").toUpperCase();
+    if (act.includes("APPROVED") || act.includes("VERIFIED") || act.includes("SUCCESS")) {
+      return { background: "rgba(48, 164, 108, 0.12)", color: "#2b9a66", border: "1px solid rgba(48, 164, 108, 0.25)" };
+    }
+    if (act.includes("REJECT") || severity === "warning" || severity === "error") {
+      return { background: "rgba(229, 72, 77, 0.12)", color: "#e5484d", border: "1px solid rgba(229, 72, 77, 0.25)" };
+    }
+    if (act.includes("MODIFICATION") || act.includes("HOLD")) {
+      return { background: "rgba(247, 107, 21, 0.12)", color: "#f76b15", border: "1px solid rgba(247, 107, 21, 0.25)" };
+    }
+    if (act.includes("GLOBE")) {
+      return { background: "rgba(0, 145, 255, 0.12)", color: "#0091ff", border: "1px solid rgba(0, 145, 255, 0.25)" };
+    }
+    if (act.includes("ADMIN")) {
+      return { background: "rgba(142, 78, 198, 0.12)", color: "#8e4ec6", border: "1px solid rgba(142, 78, 198, 0.25)" };
+    }
+    return { background: "rgba(100, 116, 139, 0.12)", color: "#64748b", border: "1px solid rgba(100, 116, 139, 0.25)" };
+  };
+
+  const getRoleBadgeStyle = (role) => {
+    switch (role) {
+      case "Globe Reviewer": return { background: "rgba(0, 145, 255, 0.15)", color: "#0091ff" };
+      case "Admin": return { background: "rgba(142, 78, 198, 0.15)", color: "#8e4ec6" };
+      case "KYC Team": return { background: "rgba(48, 164, 108, 0.15)", color: "#2b9a66" };
+      case "Applicant": return { background: "rgba(235, 94, 40, 0.15)", color: "#eb5e28" };
+      default: return { background: "rgba(148, 163, 184, 0.15)", color: "#64748b" };
+    }
+  };
 
   const groupedLogs = useMemo(() => {
     const groups = {};
-    filtered.forEach(l => {
+    logs.forEach(l => {
       if (!groups[l.actor]) {
-        groups[l.actor] = { actor: l.actor, logs: [], latestTime: l.rawTimestamp };
+        groups[l.actor] = { actor: l.actor, actorRole: l.actorRole, logs: [], latestTime: l.rawTimestamp };
       }
       groups[l.actor].logs.push(l);
       if (l.rawTimestamp > groups[l.actor].latestTime) {
@@ -406,146 +611,472 @@ export function AuditLogs() {
       }
     });
     return Object.values(groups).sort((a, b) => b.latestTime - a.latestTime);
-  }, [filtered]);
+  }, [logs]);
 
   return (
     <div className="admin-animate">
-      <h1 className="admin-section-title">Audit Logs</h1>
-      <p className="admin-section-subtitle">Immutable record of all admin actions. Timestamped and IP-tracked.</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <h1 className="admin-section-title" style={{ margin: 0 }}>Comprehensive Audit Logs</h1>
+          <p className="admin-section-subtitle" style={{ margin: "4px 0 0 0" }}>
+            Immutable, real-time chronicle of all administrative actions, Globe reviews, step decisions, email notices, and applicant submissions.
+          </p>
+        </div>
+        <button 
+          onClick={handleExport} 
+          style={{ 
+            padding: "10px 18px", borderRadius: 10, border: "none", background: "var(--wise-green)", 
+            color: "var(--wise-dark-green)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", 
+            display: "flex", alignItems: "center", gap: 8, boxShadow: "0 2px 8px rgba(48, 164, 108, 0.2)" 
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
+      </div>
+
+      {/* Category Pills & Filters Header */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        {[
+          { id: "all", label: "All Activity" },
+          { id: "globe", label: "Globe Reviews" },
+          { id: "admin", label: "Admin Actions" },
+          { id: "maker_checker", label: "Maker-Checker" },
+          { id: "user", label: "Applicant Submissions" },
+        ].map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setCategory(cat.id)}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 20,
+              fontSize: "0.82rem",
+              fontWeight: category === cat.id ? 700 : 600,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              border: category === cat.id ? "1px solid var(--wise-green)" : "1px solid var(--border-color)",
+              background: category === cat.id ? "var(--wise-green)" : "var(--bg-primary)",
+              color: category === cat.id ? "var(--wise-dark-green)" : "var(--text-secondary)",
+            }}
+          >
+            {cat.label}
+          </button>
+        ))}
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={() => setViewMode(v => v === "timeline" ? "grouped" : "timeline")}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: "0.8rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-primary)",
+              color: "var(--text-primary)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            {viewMode === "timeline" ? "Group by Actor" : "Timeline View"}
+          </button>
+        </div>
+      </div>
+
+      {/* Search and Severity Bar */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "center" }}>
-        <input 
-          type="text" 
-          placeholder="Search actor, target, action..." 
-          className="admin-input global-search-input" 
-          value={search} 
-          onChange={(e) => setSearch(e.target.value)} 
-        />
-        <div className="filter-dropdown-container" style={{ position: "relative", width: "180px" }}>
+        <div style={{ position: "relative", flex: 1 }}>
+          <svg style={{ position: "absolute", left: 14, top: 12, color: "var(--text-muted)", pointerEvents: "none" }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input 
+            type="text" 
+            placeholder="Search action, application ID, actor, email, reason, or details..." 
+            className="admin-input global-search-input" 
+            style={{ paddingLeft: 40, width: "100%" }}
+            value={search} 
+            onChange={(e) => setSearch(e.target.value)} 
+          />
+          {search && (
+            <button 
+              onClick={() => setSearch("")} 
+              style={{ position: "absolute", right: 12, top: 10, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-muted)", fontSize: "1rem" }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="filter-dropdown-container" style={{ position: "relative", width: "160px" }}>
           <button 
             onClick={() => setFilterOpen(!filterOpen)}
             style={{ 
-              width: "100%", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", 
-              background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, 
+              width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border-color)", 
+              background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.85rem",
               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-              boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
             }}
           >
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
-              {filter === "all" ? "All Severity" : filter.charAt(0).toUpperCase() + filter.slice(1)}
-            </span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: filterOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+            <span>{filter === "all" ? "All Severity" : filter.toUpperCase()}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: filterOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {filterOpen && (
-            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: "100%", right: 0, width: "160px", marginTop: 6, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", zIndex: 30, padding: "6px 0" }}>
               {[
                 { value: "all", label: "All Severity" },
-                { value: "info", label: "Info" },
-                { value: "warning", label: "Warning" }
+                { value: "info", label: "Info Only" },
+                { value: "warning", label: "Warnings / Rejections" }
               ].map(f => (
                 <div 
                   key={f.value}
                   onClick={() => { setFilter(f.value); setFilterOpen(false); }}
                   style={{ 
-                    padding: "10px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: filter === f.value ? 700 : 500,
+                    padding: "8px 14px", cursor: "pointer", fontSize: "0.82rem", fontWeight: filter === f.value ? 700 : 500,
                     color: filter === f.value ? "var(--wise-green)" : "var(--text-primary)",
                     background: filter === f.value ? "rgba(48, 164, 108, 0.1)" : "transparent",
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    transition: "background 0.2s ease"
                   }}
-                  onMouseEnter={(e) => { if (filter !== f.value) e.currentTarget.style.background = "var(--bg-secondary)"; }}
-                  onMouseLeave={(e) => { if (filter !== f.value) e.currentTarget.style.background = "transparent"; }}
                 >
                   {f.label}
-                  {filter === f.value && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
                 </div>
               ))}
             </div>
           )}
         </div>
-        <button onClick={handleExport} style={{ padding: "10px 20px", borderRadius: 12, border: "none", background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export CSV
-        </button>
       </div>
-      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 20, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table className="admin-table">
-            <thead><tr>{["Log ID", "Action", "Actor", "Target", "IP Address", "Severity", "Timestamp", "Details"].map(h => <th key={h}>{h}</th>)}</tr></thead>
-            <tbody>{groupedLogs.map((group, index) => {
-              // Expand the first group by default if no state exists for it yet
-              const isExpanded = expandedActors[group.actor] !== undefined ? expandedActors[group.actor] : index === 0;
 
-              return (
-              <React.Fragment key={group.actor}>
-                <tr 
-                  style={{ background: "var(--bg-secondary)", borderTop: "2px solid var(--border-color)", cursor: "pointer" }}
-                  onClick={() => setExpandedActors(prev => ({ ...prev, [group.actor]: !isExpanded }))}
-                >
-                  <td colSpan={8} style={{ fontWeight: 800, padding: "12px 24px", color: "var(--wise-dark-green)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
-                      Actor: {group.actor} 
-                      <span style={{ fontSize: "0.75rem", background: "var(--border-color)", padding: "2px 8px", borderRadius: 99, marginLeft: 8 }}>
-                        {group.logs.length} actions
-                      </span>
-                    </div>
+      {/* Main Logs Display */}
+      <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)" }}>
+                <th style={{ width: "110px", padding: "12px 16px", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Log ID</th>
+                <th style={{ width: "240px", padding: "12px 16px", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Action & Category</th>
+                <th style={{ padding: "12px 16px", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Narrative Summary</th>
+                <th style={{ width: "180px", padding: "12px 16px", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Actor / Role</th>
+                <th style={{ width: "140px", padding: "12px 16px", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Target ID</th>
+                <th style={{ width: "170px", padding: "12px 16px", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>Date & Time</th>
+                <th style={{ width: "50px", textAlign: "center" }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && logs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "50px 20px", color: "var(--text-muted)" }}>
+                    <div style={{ display: "inline-block", width: 24, height: 24, border: "2px solid var(--border-color)", borderTopColor: "var(--wise-green)", borderRadius: "50%", animation: "spin 0.8s linear infinite", marginBottom: 8 }}></div>
+                    <div>Loading audit logs...</div>
                   </td>
                 </tr>
-                {isExpanded && group.logs.map(l => (
-                  <React.Fragment key={l.id}>
-                    <tr style={{ cursor: "pointer" }} onClick={() => setExpandedLogId(expandedLogId === l.id ? null : l.id)}>
-                      <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--text-muted)", paddingLeft: 40 }}>{l.id}</td>
-                      <td style={{ fontWeight: 700, fontSize: "0.88rem" }}>{l.action}</td>
-                      <td style={{ fontSize: "0.85rem", opacity: 0.5 }}>{l.actor}</td>
-                      <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{l.target}</td>
-                      <td style={{ fontSize: "0.82rem", fontFamily: "monospace", color: "var(--text-muted)" }}>{l.ip}</td>
-                      <td><span className={`badge ${l.severity === "warning" ? "badge-pending" : "badge-verified"}`}>{l.severity}</span></td>
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{l.timestamp}</td>
-                      <td>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expandedLogId === l.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
-                      </td>
-                    </tr>
-                    {expandedLogId === l.id && (
-                      <tr>
-                        <td colSpan={8} style={{ padding: "16px 24px 16px 40px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)" }}>
-                          <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 8 }}>Raw Log Payload</div>
-                          <pre style={{ margin: 0, padding: 16, background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 12, fontSize: "0.8rem", color: "var(--text-primary)", overflowX: "auto", fontFamily: "var(--font-mono)" }}>
-                            {JSON.stringify(JSON.parse(l.rawDetails || "{}"), null, 2)}
-                          </pre>
+              ) : logs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "60px 20px", color: "var(--text-muted)" }}>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: "0 auto 12px", opacity: 0.4 }}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>No audit log records found</div>
+                    <div style={{ fontSize: "0.82rem", marginTop: 4 }}>Try changing your search query or severity filter</div>
+                  </td>
+                </tr>
+              ) : viewMode === "grouped" ? (
+                groupedLogs.map((group) => {
+                  const isExpanded = expandedActors[group.actor] !== false; // expanded by default
+                  return (
+                    <React.Fragment key={group.actor}>
+                      <tr 
+                        style={{ background: "var(--bg-secondary)", borderTop: "2px solid var(--border-color)", cursor: "pointer" }}
+                        onClick={() => setExpandedActors(prev => ({ ...prev, [group.actor]: !isExpanded }))}
+                      >
+                        <td colSpan={7} style={{ padding: "12px 20px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                              <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-primary)" }}>{group.actor}</span>
+                              <span style={{ fontSize: "0.72rem", padding: "2px 8px", borderRadius: 6, fontWeight: 700, ...getRoleBadgeStyle(group.actorRole) }}>
+                                {group.actorRole}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: "0.75rem", background: "var(--border-color)", padding: "3px 10px", borderRadius: 99, fontWeight: 600 }}>
+                              {group.logs.length} logged events
+                            </span>
+                          </div>
                         </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </React.Fragment>
-            )})}</tbody>
+                      {isExpanded && group.logs.map(l => renderLogRow(l))}
+                    </React.Fragment>
+                  );
+                })
+              ) : (
+                logs.map(l => renderLogRow(l))
+              )}
+            </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
         <div style={{ padding: "14px 24px", borderTop: "1px solid var(--border-color)", fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button 
               disabled={page <= 1 || loading} 
               onClick={() => setPage(p => p - 1)}
-              style={{ padding: "4px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "transparent", cursor: "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+              style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "transparent", cursor: "pointer", opacity: page <= 1 ? 0.4 : 1, fontWeight: 600 }}
             >
               Previous
             </button>
-            <span style={{ fontWeight: 700 }}>Page {page} of {totalPages}</span>
+            <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>Page {page} of {totalPages}</span>
             <button 
               disabled={page >= totalPages || loading} 
               onClick={() => setPage(p => p + 1)}
-              style={{ padding: "4px 12px", borderRadius: 8, border: "1px solid var(--border-color)", background: "transparent", cursor: "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+              style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "transparent", cursor: "pointer", opacity: page >= totalPages ? 0.4 : 1, fontWeight: 600 }}
             >
               Next
             </button>
           </div>
-          <span>Total {total} logs</span>
+          <span style={{ fontWeight: 600 }}>Showing {logs.length} of {total} events</span>
         </div>
       </div>
-      {loading && <p style={{ marginTop: 12, fontSize: "0.82rem", color: "var(--text-muted)" }}>Loading audit logs...</p>}
     </div>
   );
+
+  function renderLogRow(l) {
+    const isExpanded = expandedLogId === l.id;
+    const badgeStyle = getActionBadgeStyle(l.action, l.severity);
+    const roleBadgeStyle = getRoleBadgeStyle(l.actorRole);
+    const showJson = !!showJsonMap[l.id];
+
+    return (
+      <React.Fragment key={l.id}>
+        <tr 
+          style={{ 
+            cursor: "pointer", 
+            transition: "background 0.15s ease",
+            background: isExpanded ? "var(--bg-secondary)" : "transparent"
+          }} 
+          onClick={() => setExpandedLogId(isExpanded ? null : l.id)}
+        >
+          {/* Log ID with copy */}
+          <td style={{ padding: "12px 16px" }}>
+            <span 
+              onClick={(e) => handleCopy(e, l.id, `log-${l.id}`)}
+              style={{ 
+                fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 700, color: "var(--text-muted)", 
+                cursor: "pointer", padding: "2px 6px", borderRadius: 4, background: "var(--bg-secondary)" 
+              }}
+              title="Click to copy Log ID"
+            >
+              {copiedKey === `log-${l.id}` ? "✓ Copied" : l.id}
+            </span>
+          </td>
+
+          {/* Action Badge */}
+          <td style={{ padding: "12px 16px" }}>
+            <span style={{ 
+              display: "inline-block", padding: "4px 9px", borderRadius: 6, fontSize: "0.76rem", 
+              fontWeight: 700, letterSpacing: "0.02em", ...badgeStyle 
+            }}>
+              {l.actionTitle || l.action}
+            </span>
+            {l.actionTitle && l.actionTitle !== l.action && (
+              <div style={{ fontSize: "0.68rem", fontFamily: "monospace", color: "var(--text-muted)", marginTop: 3 }}>
+                {l.action}
+              </div>
+            )}
+          </td>
+
+          {/* Narrative Story */}
+          <td style={{ padding: "12px 16px", fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 500, lineHeight: 1.4 }}>
+            {l.story}
+          </td>
+
+          {/* Actor & Role */}
+          <td style={{ padding: "12px 16px" }}>
+            <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-primary)", marginBottom: 2 }}>
+              {l.actor}
+            </div>
+            <span style={{ fontSize: "0.7rem", padding: "1px 6px", borderRadius: 4, fontWeight: 700, ...roleBadgeStyle }}>
+              {l.actorRole}
+            </span>
+          </td>
+
+          {/* Target ID */}
+          <td style={{ padding: "12px 16px" }}>
+            {l.target !== "-" ? (
+              <span 
+                onClick={(e) => handleCopy(e, l.target, `target-${l.id}`)}
+                style={{ 
+                  fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 700, color: "var(--wise-dark-green)",
+                  background: "rgba(48, 164, 108, 0.1)", padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", gap: 4
+                }}
+                title="Click to copy Target ID"
+              >
+                {copiedKey === `target-${l.id}` ? "✓ Copied" : l.target}
+              </span>
+            ) : (
+              <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>—</span>
+            )}
+          </td>
+
+          {/* Timestamp */}
+          <td style={{ padding: "12px 16px", fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+            <div>{l.timestamp}</div>
+            <div style={{ fontSize: "0.7rem", fontFamily: "monospace", opacity: 0.7 }}>IP: {l.ip}</div>
+          </td>
+
+          {/* Chevron */}
+          <td style={{ padding: "12px 16px", textAlign: "center" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+          </td>
+        </tr>
+
+        {/* Expanded Rich Details */}
+        {isExpanded && (
+          <tr>
+            <td colSpan={7} style={{ padding: 0, background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)" }}>
+              <div style={{ padding: "20px 24px", borderLeft: "4px solid var(--wise-green)" }}>
+                {/* Header inside drawer */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontWeight: 800, fontSize: "0.92rem", color: "var(--text-primary)" }}>Detailed Audit Record</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "0.8rem", color: "var(--text-muted)" }}>{l.id}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button 
+                      onClick={() => setShowJsonMap(prev => ({ ...prev, [l.id]: !prev[l.id] }))}
+                      style={{ 
+                        padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border-color)", 
+                        background: "var(--bg-primary)", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer",
+                        color: showJson ? "var(--wise-green)" : "var(--text-primary)"
+                      }}
+                    >
+                      {showJson ? "Hide Raw Payload" : "View Raw JSON Payload"}
+                    </button>
+                    <button 
+                      onClick={(e) => handleCopy(e, l.rawDetails, `json-${l.id}`)}
+                      style={{ 
+                        padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border-color)", 
+                        background: "var(--bg-primary)", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer",
+                        color: "var(--text-primary)"
+                      }}
+                    >
+                      {copiedKey === `json-${l.id}` ? "✓ Payload Copied" : "Copy Payload"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Structured Overview Cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 16 }}>
+                  <div style={{ background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 10, border: "1px solid var(--border-color)" }}>
+                    <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>Actor</div>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>{l.actor}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 2 }}>Role: {l.actorRole}</div>
+                  </div>
+
+                  <div style={{ background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 10, border: "1px solid var(--border-color)" }}>
+                    <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>Target Resource</div>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)", fontFamily: "monospace" }}>{l.target}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 2 }}>IP: {l.ip}</div>
+                  </div>
+
+                  <div style={{ background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 10, border: "1px solid var(--border-color)" }}>
+                    <div style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>Timestamp</div>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>{l.timestamp}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 2 }}>Status: Logged Immutably</div>
+                  </div>
+                </div>
+
+                {/* Specific context rendering */}
+                {/* 1. Reason / Remarks */}
+                {(l.details.reason || l.details.remarks) && (
+                  <div style={{ background: "rgba(229, 72, 77, 0.08)", border: "1px solid rgba(229, 72, 77, 0.25)", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#e5484d", textTransform: "uppercase", marginBottom: 4 }}>
+                      Rejection / Review Remarks:
+                    </div>
+                    <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                      {l.details.reason || l.details.remarks}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Rejected Steps (Modification Email) */}
+                {Array.isArray(l.details.rejectedSteps) && l.details.rejectedSteps.length > 0 && (
+                  <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 8 }}>
+                      Steps Requiring Modification by User:
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {l.details.rejectedSteps.map((step, idx) => (
+                        <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-secondary)", padding: "8px 12px", borderRadius: 6, fontSize: "0.82rem" }}>
+                          <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>
+                            • {typeof step === "string" ? step : step.title || step.stepId}
+                          </span>
+                          {typeof step === "object" && step.reason && (
+                            <span style={{ color: "#e5484d", fontWeight: 600, fontSize: "0.78rem" }}>{step.reason}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {l.details.emailSentTo && (
+                      <div style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                        Notification delivered to: <strong style={{ color: "var(--text-primary)" }}>{l.details.emailSentTo}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. Uploaded Document Preview */}
+                {l.details.filePath && (
+                  <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Uploaded File:</div>
+                      <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>{l.details.documentType || "KYC Document"}</div>
+                    </div>
+                    <a 
+                      href={l.details.filePath} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ padding: "6px 12px", background: "var(--wise-green)", color: "var(--wise-dark-green)", borderRadius: 6, fontSize: "0.78rem", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}
+                    >
+                      <span>Open Document</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                    </a>
+                  </div>
+                )}
+
+                {/* 4. Updates / Field Edits */}
+                {l.details.updates && typeof l.details.updates === "object" && Object.keys(l.details.updates).length > 0 && (
+                  <div style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 8 }}>
+                      Modified Fields:
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+                      {Object.entries(l.details.updates).map(([key, val]) => (
+                        <div key={key} style={{ background: "var(--bg-secondary)", padding: "8px 12px", borderRadius: 6 }}>
+                          <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 600 }}>{key}</div>
+                          <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-primary)", wordBreak: "break-all" }}>
+                            {typeof val === "object" ? JSON.stringify(val) : String(val)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Raw JSON Payload Toggle */}
+                {showJson && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 6 }}>
+                      Raw JSON Log Payload
+                    </div>
+                    <pre style={{ margin: 0, padding: 14, background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 8, fontSize: "0.78rem", color: "var(--text-primary)", overflowX: "auto", fontFamily: "var(--font-mono)" }}>
+                      {JSON.stringify(l.details, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+    );
+  }
 }
 
 // ---- Document Repository ----
