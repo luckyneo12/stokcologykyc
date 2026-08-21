@@ -483,7 +483,7 @@ const REVIEW_STEPS = [
     evidenceHint: "Compare live selfie with Aadhaar/PAN photo and face match score.",
     fields: (app) => [
       ["Face match score", app.selfieDetails?.faceMatchScore != null ? `${app.selfieDetails.faceMatchScore}%` : app.selfieDetails?.matchScore != null ? `${app.selfieDetails.matchScore}%` : "Not Captured"],
-      ["Liveness check", app.selfieDetails?.livenessScore != null ? `Pass (${app.selfieDetails.livenessScore}%)` : app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Pass" : "Not Captured"],
+      // ["Liveness check", app.selfieDetails?.livenessScore != null ? `Pass (${app.selfieDetails.livenessScore}%)` : app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Pass" : "Not Captured"],
       ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
       ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
       ["Latitude", app.selfieDetails?.lat || app.selfieDetails?.latitude || "N/A"],

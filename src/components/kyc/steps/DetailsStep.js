@@ -623,7 +623,29 @@ export default function DetailsStep() {
           </InputGroup>
 
           <InputGroup label="Tax Residency outside India" mandatory>
-            <CustomSelect value={form.taxResidencyOutside} options={["No", "Yes"]} onChange={val => update("taxResidencyOutside", val)} />
+            <CustomSelect 
+              value={form.taxResidencyOutside} 
+              options={["No", "Yes"]} 
+              onChange={val => {
+                update("taxResidencyOutside", val);
+                if (val === "No") {
+                  setForm(prev => ({
+                    ...prev,
+                    countryOfBirth: "",
+                    citizenship: "",
+                    taxResidence1: "",
+                    taxId1: "",
+                    taxResidence2: "",
+                    taxId2: "",
+                    taxResidence3: "",
+                    taxId3: "",
+                    placeOfBirth: "",
+                    taxExempt: "",
+                    taxExemptReason: ""
+                  }));
+                }
+              }} 
+            />
           </InputGroup>
           
           {form.taxResidencyOutside === "Yes" && (

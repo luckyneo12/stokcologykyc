@@ -266,30 +266,54 @@ export default function DocumentUploadStep() {
       if (!response.ok) return;
       const data = await response.json();
       if (!data.success || !data.application) return;
+
       const app = data.application;
-      const sd = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : app.selfieDetails;
-      if (sd?.preview && sd.preview !== "__CLEARED__") {
-        const fullUrl = getFullUrl(sd.preview);
+      let appSelfieDetails =
+        typeof app.selfieDetails === "string"
+          ? JSON.parse(app.selfieDetails)
+          : app.selfieDetails;
+          
+      let draftObj = {};
+      if (app.correctionDraft) {
+        try { draftObj = typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft; } catch (e) {}
+      }
+
+      if (isRejection && isDocRejected("ipv")) {
+        if (draftObj?.selfieDetails) {
+          appSelfieDetails = draftObj.selfieDetails;
+        } else {
+          appSelfieDetails = null; // Do not use old rejected selfie
+        }
+      }
+
+      if (appSelfieDetails?.preview && appSelfieDetails.preview !== "__CLEARED__") {
+        const fullUrl = getFullUrl(appSelfieDetails.preview);
         if (selfiePreviewUrl && fullUrl === selfiePreviewUrl) {
-          // Ignore the old selfie; wait for the new one to be uploaded
           return;
         }
         console.log("[DocUpload] Selfie detected from another device! Updating...");
         setSelfiePreviewUrl(fullUrl);
         setSelfieError(false);
-        setMatchScore(sd.matchScore || null);
+        setMatchScore(appSelfieDetails.matchScore || null);
         setSelfiePhase("done");
-        updateState({
-          selfie: { preview: sd.preview, matchScore: sd.matchScore },
-          selfieDetails: { preview: sd.preview, matchScore: sd.matchScore },
-        });
+        
+        const payloadData = { preview: appSelfieDetails.preview, matchScore: appSelfieDetails.matchScore };
+        
+        if (isRejection && isDocRejected("ipv")) {
+           updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: appSelfieDetails.preview } });
+        } else {
+           updateState({
+             selfie: { preview: appSelfieDetails.preview, matchScore: appSelfieDetails.matchScore },
+             selfieDetails: payloadData,
+           });
+        }
         addToast("Selfie captured on your mobile device!", "success");
         stopSelfieCrossDevicePolling();
       }
     } catch (err) {
       console.warn("[DocUpload] Selfie status check failed:", err.message);
     }
-  }, [applicationId, addToast, updateState, selfiePreviewUrl]);
+  }, [applicationId, addToast, updateState, updateNested, selfiePreviewUrl, isRejection, isDocRejected]);
 
   const startSelfieCrossDevicePolling = useCallback(() => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
@@ -421,10 +445,16 @@ export default function DocumentUploadStep() {
            setSelfieError(false);
            setSelfiePhase("done");
            addToast("Selfie verification completed", "success");
-           updateState({
-             selfie: { preview: sd.preview, matchScore: sd.matchScore },
-             selfieDetails: { preview: sd.preview, matchScore: sd.matchScore },
-           });
+           const payloadData = { preview: sd.preview, matchScore: sd.matchScore };
+           
+           if (isRejection && isDocRejected("ipv")) {
+              updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: sd.preview } });
+           } else {
+              updateState({
+                selfie: { preview: sd.preview, matchScore: sd.matchScore },
+                selfieDetails: payloadData,
+              });
+           }
          } else {
            // Fallback in case preview URL wasn't generated but Digio approved it
            setSelfieError(false);
@@ -500,8 +530,17 @@ export default function DocumentUploadStep() {
       try {
         const uploadResult = await uploadDocument(file);
         addToast("Financial proof attached and uploaded", "success");
-        updateState({ financialProof: { type: finType, filePreview: uploadResult.path } });
-        await syncProgress({ financialProof: { type: finType, filePreview: uploadResult.path } }, false, "documentUpload");
+        
+        const payloadData = { type: finType, filePreview: uploadResult.path };
+        
+        if (isRejection && isDocRejected("financialProof")) {
+          updateNested("correctionDraft", { financialProof: payloadData });
+          // Temporarily set it so UI reflects it immediately
+          setFinPreview(uploadResult.path);
+        } else {
+          updateState({ financialProof: payloadData });
+          await syncProgress({ financialProof: payloadData }, false, "documentUpload");
+        }
       } catch (err) {
         addToast("Failed to upload financial proof", "error");
       }
@@ -524,9 +563,15 @@ export default function DocumentUploadStep() {
       try {
         const uploadResult = await uploadDocument(file);
         addToast("Bank proof attached and uploaded", "success");
+        
         const updatedBankDetails = { ...(bankDetails || {}), proofPreview: uploadResult.path, proofType: bankProofType || "Bank Proof" };
-        updateState({ bankDetails: updatedBankDetails });
-        await syncProgress({ bankDetails: updatedBankDetails }, false, "documentUpload");
+        
+        if (isRejection && isDocRejected("bankVerification")) {
+           updateNested("correctionDraft", { bankDetails: updatedBankDetails });
+        } else {
+           updateState({ bankDetails: updatedBankDetails });
+           await syncProgress({ bankDetails: updatedBankDetails }, false, "documentUpload");
+        }
       } catch (err) {
         addToast("Failed to upload bank proof", "error");
       }
@@ -745,17 +790,23 @@ export default function DocumentUploadStep() {
                 setFilePreview={setRawPanImage} 
                 cropLabel="Crop Your PAN Card"
                 onCropApply={async (res) => { 
-                  setPanPreview(res); 
-                  setIsCroppingPan(false); 
                   try {
                     const file = dataURLtoFile(res, "pan_upload.jpg");
                     const uploadResult = await uploadDocument(file);
                     addToast("PAN cropped and uploaded successfully", "success");
-                    updateState({ panUpload: { filePreview: uploadResult.path } });
-                    await syncProgress({ panUpload: { filePreview: uploadResult.path } }, false, "documentUpload");
+                    const payloadData = { filePreview: uploadResult.path };
+                    if (isRejection && isDocRejected("panUpload")) {
+                      updateNested("correctionDraft", { panUpload: payloadData });
+                    } else {
+                      updateState({ panUpload: payloadData });
+                      await syncProgress({ panUpload: payloadData }, false, "documentUpload");
+                    }
+                    setPanPreview(res);
                   } catch (err) {
                     addToast("Failed to upload PAN image", "error");
                   }
+                  setIsCroppingPan(false);
+                  setRawPanImage(null);
                 }}
                 onCancel={() => { setIsCroppingPan(false); if (panInputRef.current) panInputRef.current.value = ""; }}
               />
@@ -814,17 +865,23 @@ export default function DocumentUploadStep() {
                 setFilePreview={setRawSigImage} 
                 cropLabel="Crop Your Signature"
                 onCropApply={async (res) => { 
-                  setSigPreview(res); 
-                  setIsCroppingSig(false); 
                   try {
                     const file = dataURLtoFile(res, "signature.jpg");
                     const uploadResult = await uploadDocument(file);
                     addToast("Signature cropped and uploaded successfully", "success");
-                    updateState({ signature: { filePreview: uploadResult.path } });
-                    await syncProgress({ signature: { filePreview: uploadResult.path } }, false, "documentUpload");
+                    const payloadData = { filePreview: uploadResult.path };
+                    if (isRejection && isDocRejected("signature")) {
+                      updateNested("correctionDraft", { signature: payloadData });
+                    } else {
+                      updateState({ signature: payloadData });
+                      await syncProgress({ signature: payloadData }, false, "documentUpload");
+                    }
+                    setSigPreview(res);
                   } catch (err) {
                     addToast("Failed to upload signature image", "error");
                   }
+                  setIsCroppingSig(false);
+                  setRawSigImage(null);
                 }}
                 onCancel={() => { setIsCroppingSig(false); if (sigInputRef.current) sigInputRef.current.value = ""; }}
               />
@@ -1093,13 +1150,17 @@ export default function DocumentUploadStep() {
                 onClick={async () => {
                   setShowSkipDerivativesModal(false);
                   const updatedSegments = { ...segments, derivatives: false, equity: true };
-                  updateState({ segments: updatedSegments, financialProof: { type: "Skipped" } });
-                  try {
-                    await syncProgress({ segments: updatedSegments, financialProof: { type: "Skipped" } }, false, "pricing");
-                    addToast("Derivatives segment removed. Financial proof is no longer required.", "success");
-                  } catch(e) {
-                    addToast("Failed to update segments", "error");
+                  
+                  if (isRejection && isDocRejected("financialProof")) {
+                     updateNested("correctionDraft", { segments: updatedSegments, financialProof: { type: "Skipped" } });
+                  } else {
+                     updateState({ segments: updatedSegments, financialProof: { type: "Skipped" } });
+                     try {
+                       await syncProgress({ segments: updatedSegments, financialProof: { type: "Skipped" } }, false, "pricing");
+                     } catch(e) {}
                   }
+                  
+                  addToast("Derivatives segment removed. Financial proof is no longer required.", "success");
                 }} 
                 style={{ flex: 1, padding: "12px", background: "var(--wise-danger)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 700, cursor: "pointer" }}
               >
