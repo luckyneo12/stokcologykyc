@@ -117,7 +117,7 @@ export default function DocumentUploadStep() {
   const { 
     financialProof, signature, panUpload, selfie, personalDetails, 
     segments, bankDetails, updateState, nextStep, prevStep, addToast, 
-    applicationId, setApplicationId, syncProgress,
+    applicationId, setApplicationId, syncProgress, updateNested,
     preGeneratePdf, rejectionMode, stepStatuses, rejectedStepsList
   } = useKYC();
 
