@@ -1319,18 +1319,59 @@ export function KYCProvider({ children }) {
   const prevStep = useCallback(() => {
     lastClientStepChange.current = Date.now();
 
+    const currentSteps = steps.length > 0 ? steps : STEPS;
     const currentPrev = stateRef.current;
-    const nextStepIndex = Math.max(currentPrev.currentStep - 1, 0);
-    const computedNextState = { ...currentPrev, currentStep: nextStepIndex };
+    let prevStepIndex = Math.max(currentPrev.currentStep - 1, 0);
+
+    // In rejection/resubmission mode, skip backward over approved steps
+    // so the user only navigates between rejected steps + mandatory steps
+    const hasStepStatuses =
+      currentPrev.stepStatuses && Object.keys(currentPrev.stepStatuses).length > 0;
+    const hasAnyRejected =
+      hasStepStatuses &&
+      Object.values(currentPrev.stepStatuses).some(s => s?.status === "rejected");
+    const isResubmission =
+      !!currentPrev.rejectionReason ||
+      !!currentPrev.submittedAt ||
+      !!currentPrev.isResubmitted ||
+      hasAnyRejected;
+
+    if (hasStepStatuses && isResubmission) {
+      while (
+        prevStepIndex > 0 &&
+        isKycStepApproved(prevStepIndex, currentPrev.stepStatuses, isResubmission)
+      ) {
+        prevStepIndex--;
+      }
+    }
+
+    const computedNextState = { ...currentPrev, currentStep: prevStepIndex };
 
     setState((prev) => {
-      const freshNextStepIndex = Math.max(prev.currentStep - 1, 0);
-      const stateToReturn = { ...prev, currentStep: freshNextStepIndex };
+      let freshPrevStepIndex = Math.max(prev.currentStep - 1, 0);
+
+      // Mirror the same skip logic using fresh state
+      const freshHasStatuses = prev.stepStatuses && Object.keys(prev.stepStatuses).length > 0;
+      const freshHasRejected = freshHasStatuses &&
+        Object.values(prev.stepStatuses).some(s => s?.status === "rejected");
+      const freshIsResubmission =
+        !!prev.rejectionReason || !!prev.submittedAt || !!prev.isResubmitted || freshHasRejected;
+
+      if (freshHasStatuses && freshIsResubmission) {
+        while (
+          freshPrevStepIndex > 0 &&
+          isKycStepApproved(freshPrevStepIndex, prev.stepStatuses, freshIsResubmission)
+        ) {
+          freshPrevStepIndex--;
+        }
+      }
+
+      const stateToReturn = { ...prev, currentStep: freshPrevStepIndex };
       if (typeof window !== "undefined") {
         sessionStorage.setItem(
           "kyc-progress",
           JSON.stringify({
-            currentStep: freshNextStepIndex,
+            currentStep: freshPrevStepIndex,
             status: stateToReturn.status,
           }),
         );
@@ -1339,7 +1380,8 @@ export function KYCProvider({ children }) {
     });
 
     persistStepToBackend(computedNextState, true);
-  }, [persistStepToBackend]);
+  }, [persistStepToBackend, steps]);
+
 
   const goToStep = useCallback(
     (step, updates) => {

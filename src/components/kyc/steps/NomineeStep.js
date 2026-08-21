@@ -129,6 +129,34 @@ export default function NomineeStep() {
   const [draftNominees, setNominees, clearNomineesDraft] = useLocalDraft("nominees", initialNominees);
   const nominees = Array.isArray(draftNominees) && draftNominees.length > 0 ? draftNominees : [createEmptyNominee()];
   
+  const rejectionCleared = useRef(false);
+
+  // In rejection mode, handle granular clearing of just the rejected documents
+  useEffect(() => {
+    if (isRejection && !rejectionCleared.current && rejectedStepsList?.length > 0) {
+      rejectionCleared.current = true;
+      let needsUpdate = false;
+      const updatedNominees = JSON.parse(JSON.stringify(nominees));
+
+      for (let i = 0; i < updatedNominees.length; i++) {
+        if (rejectedStepsList.some(r => r.stepId === `nominee${i + 1}Proof`)) {
+          updatedNominees[i].proofPath = "";
+          needsUpdate = true;
+        }
+        if (rejectedStepsList.some(r => r.stepId === `guardian${i + 1}Proof`)) {
+          updatedNominees[i].guardianProofPath = "";
+          needsUpdate = true;
+        }
+      }
+
+      // Also handle module-level rejection if requested (currently we just clear the draft so they start fresh or keep old data? The user specifically asked to NOT clear info if document is rejected. If module is rejected, we keep the previous behavior which retains the draft for them to edit).
+      if (needsUpdate) {
+        setNominees(updatedNominees);
+      }
+    }
+  }, [isRejection, rejectedStepsList, nominees, setNominees]);
+
+  
   const ALL_RELATIONS = [
     "Brother", "Daughter", "Father", "Nephew", "Grand-father", "Grand-mother", 
     "Cousin", "Mother", "Son", "Sister", "Spouse", "Friend", "Uncle", "Aunty"

@@ -157,8 +157,8 @@ const REVIEW_STEPS = [
     fields: (app) => {
       const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
       return [
-        ["PAN number", app.identityDetails?.manualPan || app.identityDetails?.pan || app.personalDetails?.pan],
-        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
+        ["PAN number", app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan],
+        ["Name as per PAN", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.name],
         ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
         ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
       ];
@@ -185,7 +185,7 @@ const REVIEW_STEPS = [
         return [
           ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available"],
           ["Name", app.personalDetails?.fullName || "N/A"],
-          ["Pan number", app.identityDetails?.digilockerPan || app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
+          ["Pan number", app.personalDetails?.pan || app.identityDetails?.digilockerPan || app.identityDetails?.pan || "N/A"],
           ["Dob1", app.personalDetails?.dob || "N/A"],
           ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y"],
           ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N"],
@@ -236,7 +236,7 @@ const REVIEW_STEPS = [
       ["Annual income", app.personalDetails?.annualIncome || "N/A"],
       ["Locality", app.address?.line2 || app.address?.city || "N/A"],
       ["Name", app.personalDetails?.fullName || "N/A"],
-      ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"]
+      ["Pan number", app.personalDetails?.pan || app.identityDetails?.pan || "N/A"]
     ],
     evidence: () => [],
   }, */
@@ -265,22 +265,22 @@ const REVIEW_STEPS = [
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
       ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
-      ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
-      ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
-      ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
-      ["Tax payer identification number2", app.personalDetails?.taxPayerId2 || "N/A", "personalDetails.taxPayerId2"],
-      ["Country tax residence3", app.personalDetails?.taxResidenceCountry3 || "N/A", "personalDetails.taxResidenceCountry3"],
-      ["Tax payer identification number3", app.personalDetails?.taxPayerId3 || "N/A", "personalDetails.taxPayerId3"],
+      ["Country of tax residence1", app.personalDetails?.taxResidence1 || "N/A", "personalDetails.taxResidence1"],
+      ["Tax payer identification number1", app.personalDetails?.taxId1 || "N/A", "personalDetails.taxId1"],
+      ["Country of tax residence2", app.personalDetails?.taxResidence2 || "N/A", "personalDetails.taxResidence2"],
+      ["Tax payer identification number2", app.personalDetails?.taxId2 || "N/A", "personalDetails.taxId2"],
+      ["Country tax residence3", app.personalDetails?.taxResidence3 || "N/A", "personalDetails.taxResidence3"],
+      ["Tax payer identification number3", app.personalDetails?.taxId3 || "N/A", "personalDetails.taxId3"],
       ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
       ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
       ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
 
       ["State code", app.address?.state || "N/A", "address.state"],
 
-      ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
+      ["Are you citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
       ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
-      ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
-      ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
+      ["Country birth1", app.personalDetails?.countryOfBirth || "N/A", "personalDetails.countryOfBirth"],
+      ["Citizen1", app.personalDetails?.citizenship || "N/A", "personalDetails.citizenship"],
       ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
 
       ["Nsdl4 communication in electronic form", app.personalDetails?.receiveAnnualReports || "Yes", "personalDetails.receiveAnnualReports"],
@@ -395,7 +395,7 @@ const REVIEW_STEPS = [
       ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A"],
       ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A"],
       ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A"],
-      ["Name on pan", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
+      ["Name on pan", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.panName || "N/A"],
       ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
       ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
       ["Bank Log", JSON.stringify(app.bankDetails || {})],
@@ -422,7 +422,7 @@ const REVIEW_STEPS = [
     evidenceTitle: "PAN Card Image",
     evidenceHint: "Compare the PAN image against the PAN details verified earlier.",
     fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
+      ["PAN number", app.personalDetails?.pan || app.identityDetails?.pan, "personalDetails.pan"],
       ["Name", app.personalDetails?.fullName, "personalDetails.fullName"],
     ],
     evidence: (app) => getAllPanDocuments(app),
@@ -1562,11 +1562,13 @@ export default function AgentReview() {
       const token = localStorage.getItem("adminToken");
       const res = await fetchWithFallback(`/api/admin/application/${id}/request-modifications`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ documentRejections })
       });
       const data = await res.json();
       if (data.success) {
         showToast("Rejection email sent and application returned to user.");
+        // We no longer clear local document rejections here so they remain visible in the UI
         fetchDetail();
       } else {
         showToast(data.error || "Failed to send rejection email.", "error");
@@ -1578,6 +1580,7 @@ export default function AgentReview() {
       setSubmitting(false);
     }
   };
+
 
   const handleGlobalReject = async () => {
     if (!globalRejectReason.trim()) {
@@ -2005,6 +2008,9 @@ export default function AgentReview() {
                         <Circle size={16} color="var(--text-muted)" style={{ opacity: 0.35, flexShrink: 0 }} title="Not visited" />
                       )}
                       <span>{step.title}</span>
+                      {step.id === "financialProof" && app.financialProof?.type === "Skipped" && (
+                        <span style={{ padding: "2px 6px", background: "var(--bg-secondary)", borderRadius: 4, fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", marginLeft: 8 }}>SKIPPED</span>
+                      )}
                     </div>
 
                     {/* Right: Expand Chevron + Reject Block Button */}
@@ -2096,7 +2102,7 @@ export default function AgentReview() {
                                   "Country of tax residence1", "Tax payer identification number1",
                                   "Country of tax residence2", "Tax payer identification number2",
                                   "Country tax residence3", "Tax payer identification number3",
-                                  "Place of birth", "Tax exempt", "Tax exempt reason",
+                                  "Tax exempt reason",
                                   "Country birth1", "Citizen1"
                                 ];
                                 const taxResidencyFields = [];
@@ -2262,30 +2268,54 @@ export default function AgentReview() {
                                 };
                                 return (
                                   <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: section.label ? 16 : 0 }}>
-                                    {filteredTabFields.map(renderField)}
-                                    
-                                    {isTaxResidencyOutside && taxResidencyFields.length > 0 && (
-                                      <div style={{ marginTop: 4, padding: "8px", background: "var(--bg-secondary)", borderRadius: 8, border: "1px dashed var(--border-color)" }}>
-                                        <button 
-                                          type="button"
-                                          onClick={(e) => { e.stopPropagation(); setShowTaxResidency(prev => !prev); }}
-                                          style={{
-                                            width: "100%", padding: "8px", borderRadius: 4, background: "transparent",
-                                            color: "var(--text-primary)", border: "none",
-                                            fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center"
-                                          }}
-                                        >
-                                          <span>Tax Residency Details</span>
-                                          <span>{showTaxResidency ? "▲" : "▼"}</span>
-                                        </button>
-                                        
-                                        {showTaxResidency && (
-                                          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-                                            {taxResidencyFields.map(renderField)}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
+                                    {filteredTabFields.map((fieldTuple) => {
+                                      const label = fieldTuple[0];
+                                      const renderedField = renderField(fieldTuple);
+                                      if (label === "Tax residency outside" && isTaxResidencyOutside) {
+                                        return (
+                                          <React.Fragment key={label}>
+                                            <div 
+                                              onClick={(e) => { e.stopPropagation(); setShowTaxResidency(prev => !prev); }}
+                                              style={{ 
+                                                cursor: "pointer", 
+                                                transition: "all 0.2s",
+                                                display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
+                                                padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
+                                                border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                                              }}
+                                            >
+                                              <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                <div>
+                                                  <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                                                  <div style={{ fontSize: "0.8rem", color: "var(--text-primary)", fontWeight: 600, wordBreak: "break-word" }}>
+                                                    Yes <span style={{ marginLeft: 8, color: "var(--wise-green)", fontSize: "0.7rem" }}>{showTaxResidency ? "▲" : "▼"}</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              <div style={{ display: "flex", alignItems: "center", alignSelf: "center", marginLeft: 8 }}>
+                                                <Edit2 
+                                                  onClick={(e) => { e.stopPropagation(); setEditingField("personalDetails.taxResidencyOutside"); }} 
+                                                  size={14} 
+                                                  color="var(--text-muted)" 
+                                                  style={{ cursor: "pointer" }} 
+                                                  title={`Edit ${label}`}
+                                                />
+                                              </div>
+                                            </div>
+                                            {showTaxResidency && (
+                                              <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingLeft: 16, borderLeft: "2px solid var(--wise-green)", marginLeft: 8, marginTop: 4 }}>
+                                                {taxResidencyFields.length > 0 ? (
+                                                  taxResidencyFields.map(renderField)
+                                                ) : (
+                                                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: 8 }}>No additional details provided.</div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </React.Fragment>
+                                        );
+                                      }
+                                      return renderedField;
+                                    })}
                                   </div>
                                 );
     

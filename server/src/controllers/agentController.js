@@ -179,14 +179,22 @@ const REVIEW_STEP_ORDER = [
   { id: "panVerification", kycIndex: 4 },
   { id: "digilocker", kycIndex: 5 },
   { id: "personalDetails", kycIndex: 6 },
+  { id: "pepProof", kycIndex: 6 },
   { id: "nomineeChoice", kycIndex: 7 },
   { id: "nomineeDetails", kycIndex: 8 },
+  { id: "nominee1Proof", kycIndex: 8 },
+  { id: "nominee2Proof", kycIndex: 8 },
+  { id: "nominee3Proof", kycIndex: 8 },
+  { id: "guardian1Proof", kycIndex: 8 },
+  { id: "guardian2Proof", kycIndex: 8 },
+  { id: "guardian3Proof", kycIndex: 8 },
   { id: "nomineeAllocation", kycIndex: 9 },
   { id: "bankVerification", kycIndex: 10 },
   { id: "financialProof", kycIndex: 11 },
   { id: "signature", kycIndex: 12 },
   { id: "panUpload", kycIndex: 13 },
   { id: "ipv", kycIndex: 14 },
+  { id: "documentUpload", kycIndex: 11 }, // Fallback for general document rejections
   { id: "esignPreview", kycIndex: 15 },
   { id: "aadhaarEsign", kycIndex: 16 },
   { id: "completion", kycIndex: 17 },
@@ -326,6 +334,13 @@ const STEP_TITLE_MAP = {
   signature: "Signature",
   panUpload: "PAN Upload",
   ipv: "In-Person Verification (Selfie)",
+  pepProof: "PEP Proof",
+  nominee1Proof: "Nominee 1 Proof",
+  nominee2Proof: "Nominee 2 Proof",
+  nominee3Proof: "Nominee 3 Proof",
+  guardian1Proof: "Guardian 1 Proof",
+  guardian2Proof: "Guardian 2 Proof",
+  guardian3Proof: "Guardian 3 Proof",
   esignPreview: "eSign Preview",
   aadhaarEsign: "Aadhaar eSign",
   completion: "Completion",
@@ -339,8 +354,15 @@ const REVIEW_STEP_TO_KYC_INDEX = {
   panVerification: 4,
   digilocker: 5,
   personalDetails: 6,
+  pepProof: 6, // Renders in DetailsStep
   nomineeChoice: 7,
   nomineeDetails: 8,
+  nominee1Proof: 8, // Renders in NomineeStep
+  nominee2Proof: 8,
+  nominee3Proof: 8,
+  guardian1Proof: 8,
+  guardian2Proof: 8,
+  guardian3Proof: 8,
   nomineeAllocation: 9,
   bankVerification: 10,
   financialProof: 11,
@@ -353,8 +375,12 @@ const REVIEW_STEP_TO_KYC_INDEX = {
 };
 
 // Document-type review steps — rejection of these only clears the specific document,
-// not the entire DocumentUploadStep form. All other steps are "module" rejections.
-const DOCUMENT_REVIEW_STEPS = ["financialProof", "signature", "panUpload", "ipv"];
+// not the entire form. All other steps are "module" rejections.
+const DOCUMENT_REVIEW_STEPS = [
+  "financialProof", "signature", "panUpload", "ipv",
+  "pepProof", "nominee1Proof", "nominee2Proof", "nominee3Proof",
+  "guardian1Proof", "guardian2Proof", "guardian3Proof"
+];
 
 /**
  * Sends a rejection email to the KYC user and resets the application
@@ -365,6 +391,7 @@ const requestModifications = async (req, res, next) => {
     const { id } = req.params;
     const agentId = req.user.id;
     const agentName = req.user.email || `Agent ${agentId}`;
+    const { documentRejections } = req.body || {};
 
     const app = await prisma.kycApplication.findUnique({
       where: { applicationId: id },
@@ -390,12 +417,98 @@ const requestModifications = async (req, res, next) => {
         kycIndex: REVIEW_STEP_TO_KYC_INDEX[stepId] || 1,
       }));
 
+    // Merge document rejections from the frontend (localStorage-based)
+    // These are keyed by document URL (src) with a reason string as value
+    // Merge document rejections from the frontend (localStorage-based)
+    // These are keyed by document URL (src) with a reason string as value
+    const DOCUMENT_TITLE_MAP = {
+      financialProof: "Financial Proof",
+      signature: "Signature",
+      panUpload: "PAN Card Upload",
+      ipv: "In-Person Verification (Selfie)",
+      pepProof: "PEP Proof",
+      nominee1Proof: "Nominee 1 Proof",
+      nominee2Proof: "Nominee 2 Proof",
+      nominee3Proof: "Nominee 3 Proof",
+      guardian1Proof: "Guardian 1 Proof",
+      guardian2Proof: "Guardian 2 Proof",
+      guardian3Proof: "Guardian 3 Proof",
+    };
+
+    if (documentRejections && typeof documentRejections === "object") {
+      // Try to match document src URLs to their stepId by checking the app's documents
+      let appDocuments = [];
+      if (app.documents) {
+        try { appDocuments = JSON.parse(app.documents); } catch (e) { appDocuments = []; }
+      }
+
+      for (const [docSrc, reason] of Object.entries(documentRejections)) {
+        if (!reason) continue;
+        // Try to find matching document to get its type/label
+        const matchedDoc = appDocuments.find(d => d.url === docSrc || d.path === docSrc);
+        let docStepId = null;
+        let docLabel = "Document";
+
+        if (matchedDoc) {
+          // Map document type to a step ID
+          const typeLC = (matchedDoc.type || matchedDoc.label || "").toLowerCase();
+          if (typeLC.includes("financial") || typeLC.includes("income")) {
+            docStepId = "financialProof";
+          } else if (typeLC.includes("signature")) {
+            docStepId = "signature";
+          } else if (typeLC.includes("pan") && !typeLC.includes("digilocker")) {
+            docStepId = "panUpload";
+          } else if (typeLC.includes("selfie") || typeLC.includes("ipv")) {
+            docStepId = "ipv";
+          } else if (typeLC.includes("pep")) {
+            docStepId = "pepProof";
+          } else if (typeLC.includes("nominee")) {
+            if (typeLC.includes("1")) docStepId = "nominee1Proof";
+            else if (typeLC.includes("2")) docStepId = "nominee2Proof";
+            else if (typeLC.includes("3")) docStepId = "nominee3Proof";
+            else docStepId = "nominee1Proof"; // Fallback
+          } else if (typeLC.includes("guardian")) {
+            if (typeLC.includes("1")) docStepId = "guardian1Proof";
+            else if (typeLC.includes("2")) docStepId = "guardian2Proof";
+            else if (typeLC.includes("3")) docStepId = "guardian3Proof";
+            else docStepId = "guardian1Proof"; // Fallback
+          }
+          docLabel = matchedDoc.label || matchedDoc.type || "Document";
+        }
+
+
+        // Determine a step ID for this document
+        const finalStepId = docStepId || "documentUpload";
+        const finalTitle = DOCUMENT_TITLE_MAP[docStepId] || docLabel;
+
+        // Only add if not already in rejectedEntries (avoid duplicates)
+        if (!rejectedEntries.some(e => e.stepId === finalStepId)) {
+          rejectedEntries.push({
+            stepId: finalStepId,
+            stepTitle: finalTitle,
+            reason: reason,
+            kycIndex: REVIEW_STEP_TO_KYC_INDEX[finalStepId] || 11,
+          });
+
+          // Also save to stepStatuses so frontend can detect it
+          stepStatuses[finalStepId] = { status: "rejected", reason: reason };
+        }
+      }
+
+      // Persist the updated stepStatuses with document rejections
+      await prisma.kycApplication.update({
+        where: { applicationId: id },
+        data: { stepStatuses: JSON.stringify(stepStatuses) },
+      });
+    }
+
     if (rejectedEntries.length === 0) {
       return res.status(400).json({ success: false, error: "No rejected steps found on this application" });
     }
 
     // Find the first rejected step's KYC index — the user will land here
     const firstRejectedKycIndex = Math.min(...rejectedEntries.map(e => e.kycIndex));
+
 
     // Get the user's email and name
     let personalDetails = {};

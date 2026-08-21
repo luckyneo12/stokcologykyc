@@ -203,14 +203,70 @@ export default function DetailsStep() {
   const [form, setForm, clearFormDraft] = useLocalDraft("details", personalDetails);
 
   const isRejection = Boolean(rejectionMode);
+  // Module-level rejection (blanks entire form)
   const isPersonalDetailsRejected = isRejection && (
     rejectedStepsList?.some(r => r.stepId === "personalDetails") ||
     stepStatuses?.personalDetails?.status === "rejected"
   );
+  // Document-level rejection (blanks only PEP proof)
+  const isPepProofRejected = isRejection && rejectedStepsList?.some(r => r.stepId === "pepProof");
+
   const rejectionReasonText = rejectedStepsList?.find(r => r.stepId === "personalDetails")?.reason || stepStatuses?.personalDetails?.reason || "";
 
   const lastAutoSaveValues = useRef(form || {});
   const initializedForm = useRef(false);
+  const rejectionCleared = useRef(false);
+
+  // In rejection mode, handle blanking
+  useEffect(() => {
+    if (isRejection && !rejectionCleared.current) {
+      if (isPersonalDetailsRejected) {
+        rejectionCleared.current = true;
+        clearFormDraft(); // Clear localStorage draft
+        // Keep DigiLocker-sourced read-only fields but blank the user-editable ones
+        setForm(prev => ({
+          // Preserve read-only DigiLocker fields
+          fullName: prev?.fullName || "",
+          dob: prev?.dob || "",
+          email: prev?.email || "",
+          citizenOfIndia: prev?.citizenOfIndia || "Yes",
+          // Blank all user-editable fields
+          prefix: "",
+          fatherName: "",
+          motherName: "",
+          gender: "",
+          maritalStatus: "",
+          education: "",
+          occupation: "",
+          annualIncome: "",
+          experience: "",
+          politicallyExposed: "",
+          pepType: "",
+          pepProof: "",
+          taxResidencyOutside: "",
+          countryOfBirth: "",
+          citizenship: "",
+          taxResidence1: "",
+          taxId1: "",
+          taxResidence2: "",
+          taxId2: "",
+          placeOfBirth: "",
+          taxExempt: "",
+          taxExemptReason: "",
+          ddpiOptIn: prev?.ddpiOptIn || "",
+        }));
+        initializedForm.current = true;
+      } else if (isPepProofRejected) {
+        // ONLY pepProof was rejected. Keep the rest of the form, just blank the proof.
+        rejectionCleared.current = true;
+        setForm(prev => ({
+          ...prev,
+          pepProof: "",
+        }));
+        // Note: we don't clear the draft here because we want to preserve the rest of the user's data
+      }
+    }
+  }, [isRejection, isPersonalDetailsRejected, isPepProofRejected, clearFormDraft, setForm]);
 
   // Comprehensive debounced auto-save for all fields to prevent data loss on refresh/polling
   useEffect(() => {
@@ -258,6 +314,9 @@ export default function DetailsStep() {
 
 
   useEffect(() => {
+    // Don't re-initialize from backend if we already blanked due to rejection
+    if (rejectionCleared.current) return;
+
     if (personalDetails && Object.keys(personalDetails).length > 0) {
       if (initializedForm.current) return;
 
@@ -280,6 +339,7 @@ export default function DetailsStep() {
       initializedForm.current = true;
     }
   }, [personalDetails]);
+
 
   const update = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));

@@ -735,7 +735,7 @@ export default function ApplicationDetail() {
   const aadhaarPhotoSrc = aadhaarPhotoDocument?.path ? resolveAssetUrl(aadhaarPhotoDocument.path) : null;
   const aadhaarPdfSrc = aadhaarPdfDocument?.path ? resolveAssetUrl(aadhaarPdfDocument.path) : null;
   const esignDocument = allStoredDocuments.find((doc) => String(doc?.type).toUpperCase() === "ESIGN");
-  const panNumber = formatPanValue(app.identityDetails?.pan);
+  const panNumber = formatPanValue(app.personalDetails?.pan || app.identityDetails?.pan);
   const selfiePreview = app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie;
 
   const extractGeoLocation = () => {

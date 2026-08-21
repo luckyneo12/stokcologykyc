@@ -111,8 +111,8 @@ const REVIEW_STEPS = [
     evidenceTitle: "PAN Data",
     evidenceHint: "Match PAN number, name, and date of birth with uploaded PAN evidence when available.",
     fields: (app) => [
-      ["PAN number", app.identityDetails?.manualPan || app.identityDetails?.pan || app.personalDetails?.pan],
-      ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
+      ["PAN number", app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan],
+      ["Name as per PAN", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.name],
       ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
       ["PAN verified", app.identityDetails?.pan_verification?.status || app.identityDetails?.panVerified],
     ],
@@ -131,8 +131,8 @@ const REVIEW_STEPS = [
     fields: (app, tab = "aadhaar") => {
       if (tab === "pan") {
         return [
-          ["PAN number", app.identityDetails?.digilockerPan || app.identityDetails?.pan || app.personalDetails?.pan],
-          ["Name on PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
+          ["PAN number", app.personalDetails?.pan || app.identityDetails?.digilockerPan || app.identityDetails?.pan],
+          ["Name on PAN", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.name],
           ["Father's Name", app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName],
           ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
           ["Aadhaar Seeding Status", app.identityDetails?.pan_verification?.aadhaar_seeding_status],
@@ -182,22 +182,22 @@ const REVIEW_STEPS = [
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER"],
       ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
-      ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
-      ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
-      ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
-      ["Tax payer identification number2", app.personalDetails?.taxPayerId2 || "N/A", "personalDetails.taxPayerId2"],
-      ["Country tax residence3", app.personalDetails?.taxResidenceCountry3 || "N/A", "personalDetails.taxResidenceCountry3"],
-      ["Tax payer identification number3", app.personalDetails?.taxPayerId3 || "N/A", "personalDetails.taxPayerId3"],
+      ["Country of tax residence1", app.personalDetails?.taxResidence1 || "N/A", "personalDetails.taxResidence1"],
+      ["Tax payer identification number1", app.personalDetails?.taxId1 || "N/A", "personalDetails.taxId1"],
+      ["Country of tax residence2", app.personalDetails?.taxResidence2 || "N/A", "personalDetails.taxResidence2"],
+      ["Tax payer identification number2", app.personalDetails?.taxId2 || "N/A", "personalDetails.taxId2"],
+      ["Country tax residence3", app.personalDetails?.taxResidence3 || "N/A", "personalDetails.taxResidence3"],
+      ["Tax payer identification number3", app.personalDetails?.taxId3 || "N/A", "personalDetails.taxId3"],
       ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
       ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
       ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
 
-      ["State code", app.address?.state || "N/A"],
+      ["State code", app.address?.state || "N/A", "address.state"],
 
-      ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
+      ["Are you citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
       ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
-      ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
-      ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
+      ["Country birth1", app.personalDetails?.countryOfBirth || "N/A", "personalDetails.countryOfBirth"],
+      ["Citizen1", app.personalDetails?.citizenship || "N/A", "personalDetails.citizenship"],
       ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
 
       ["Nsdl4 communication in electronic form", app.personalDetails?.receiveAnnualReports || "Yes", "personalDetails.receiveAnnualReports"],
@@ -321,7 +321,7 @@ const REVIEW_STEPS = [
     evidenceTitle: "PAN Card Image",
     evidenceHint: "Compare the PAN image against the PAN details verified earlier.",
     fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan],
+      ["PAN number", app.personalDetails?.pan || app.identityDetails?.pan],
       ["Name", app.personalDetails?.fullName],
     ],
     evidence: (app) => getAllPanDocuments(app),

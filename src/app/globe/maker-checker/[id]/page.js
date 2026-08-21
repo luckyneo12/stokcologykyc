@@ -159,8 +159,8 @@ const REVIEW_STEPS = [
     fields: (app) => {
       const panMatchData = app.identityDetails?.pan_verification || app.ocrData?.pan_verification?.data || app.ocrData?.pan_verification || {};
       return [
-        ["PAN number", app.identityDetails?.manualPan || app.identityDetails?.pan || app.personalDetails?.pan],
-        ["Name as per PAN", app.identityDetails?.pan_name || app.identityDetails?.name || app.personalDetails?.fullName],
+        ["PAN number", app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan],
+        ["Name as per PAN", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.name],
         ["Date of birth", app.identityDetails?.dob || app.personalDetails?.dob],
         ["PAN verified", panMatchData.status || app.identityDetails?.panVerified],
       ];
@@ -187,7 +187,7 @@ const REVIEW_STEPS = [
         return [
           ["Father's Name", panVerify?.data?.father_name || app.identityDetails?.pan_verification?.father_name || app.identityDetails?.pan_father_name || app.ocrData?.pan?.fatherName || app.personalDetails?.fatherName || "Not Available"],
           ["Name", app.personalDetails?.fullName || "N/A"],
-          ["Pan number", app.identityDetails?.digilockerPan || app.identityDetails?.pan || app.personalDetails?.pan || "N/A"],
+          ["Pan number", app.personalDetails?.pan || app.identityDetails?.digilockerPan || app.identityDetails?.pan || "N/A"],
           ["Dob1", app.personalDetails?.dob || "N/A"],
           ["Aadhar seeding status", panMatchData.aadhaar_seeding_status || "Y"],
           ["Dob status", panMatchData.dob_match || panMatchData.date_of_birth_match ? "Y" : "N"],
@@ -238,7 +238,7 @@ const REVIEW_STEPS = [
       ["Annual income", app.personalDetails?.annualIncome || "N/A"],
       ["Locality", app.address?.line2 || app.address?.city || "N/A"],
       ["Name", app.personalDetails?.fullName || "N/A"],
-      ["Pan number", app.identityDetails?.pan || app.personalDetails?.pan || "N/A"]
+      ["Pan number", app.personalDetails?.pan || app.identityDetails?.pan || "N/A"]
     ],
     evidence: () => [],
   }, */
@@ -267,22 +267,22 @@ const REVIEW_STEPS = [
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
       ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
-      ["Country of tax residence1", app.personalDetails?.taxResidenceCountry1 || "N/A", "personalDetails.taxResidenceCountry1"],
-      ["Tax payer identification number1", app.personalDetails?.taxPayerId1 || "N/A", "personalDetails.taxPayerId1"],
-      ["Country of tax residence2", app.personalDetails?.taxResidenceCountry2 || "N/A", "personalDetails.taxResidenceCountry2"],
-      ["Tax payer identification number2", app.personalDetails?.taxPayerId2 || "N/A", "personalDetails.taxPayerId2"],
-      ["Country tax residence3", app.personalDetails?.taxResidenceCountry3 || "N/A", "personalDetails.taxResidenceCountry3"],
-      ["Tax payer identification number3", app.personalDetails?.taxPayerId3 || "N/A", "personalDetails.taxPayerId3"],
+      ["Country of tax residence1", app.personalDetails?.taxResidence1 || "N/A", "personalDetails.taxResidence1"],
+      ["Tax payer identification number1", app.personalDetails?.taxId1 || "N/A", "personalDetails.taxId1"],
+      ["Country of tax residence2", app.personalDetails?.taxResidence2 || "N/A", "personalDetails.taxResidence2"],
+      ["Tax payer identification number2", app.personalDetails?.taxId2 || "N/A", "personalDetails.taxId2"],
+      ["Country tax residence3", app.personalDetails?.taxResidence3 || "N/A", "personalDetails.taxResidence3"],
+      ["Tax payer identification number3", app.personalDetails?.taxId3 || "N/A", "personalDetails.taxId3"],
       ["Place of birth", app.personalDetails?.placeOfBirth || "N/A", "personalDetails.placeOfBirth"],
       ["Tax exempt", app.personalDetails?.taxExempt || "--select--", "personalDetails.taxExempt"],
       ["Tax exempt reason", app.personalDetails?.taxExemptReason || "N/A", "personalDetails.taxExemptReason"],
 
       ["State code", app.address?.state || "N/A", "address.state"],
 
-      ["Are ypu citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
+      ["Are you citizen of india", app.personalDetails?.citizenOfIndia || "Yes", "personalDetails.citizenOfIndia"],
       ["Tax residency outside", app.personalDetails?.taxResidencyOutside || "No", "personalDetails.taxResidencyOutside"],
-      ["Country birth1", app.personalDetails?.countryBirth1 || "N/A", "personalDetails.countryBirth1"],
-      ["Citizen1", app.personalDetails?.citizen1 || "N/A", "personalDetails.citizen1"],
+      ["Country birth1", app.personalDetails?.countryOfBirth || "N/A", "personalDetails.countryOfBirth"],
+      ["Citizen1", app.personalDetails?.citizenship || "N/A", "personalDetails.citizenship"],
       ["Sms alert", app.personalDetails?.smsAlert || "Yes", "personalDetails.smsAlert"],
 
       ["Nsdl4 communication in electronic form", app.personalDetails?.receiveAnnualReports || "Yes", "personalDetails.receiveAnnualReports"],
@@ -390,7 +390,7 @@ const REVIEW_STEPS = [
       ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A"],
       ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A"],
       ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A"],
-      ["Name on pan", app.identityDetails?.pan_name || app.identityDetails?.panName || app.personalDetails?.fullName || "N/A"],
+      ["Name on pan", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.panName || "N/A"],
       ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
       ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
       ["Bank Log", JSON.stringify(app.bankDetails || {})],
@@ -444,7 +444,7 @@ const REVIEW_STEPS = [
     evidenceTitle: "PAN Card Image",
     evidenceHint: "Compare the PAN image against the PAN details verified earlier.",
     fields: (app) => [
-      ["PAN number", app.identityDetails?.pan || app.personalDetails?.pan, "identityDetails.pan"],
+      ["PAN number", app.personalDetails?.pan || app.identityDetails?.pan, "personalDetails.pan"],
       ["Name", app.personalDetails?.fullName, "personalDetails.fullName"],
     ],
     evidence: (app) => getAllPanDocuments(app),
@@ -1569,11 +1569,13 @@ export default function AgentReview() {
       const token = localStorage.getItem("globeToken");
       const res = await fetchWithFallback(`/api/globe/application/${id}/request-modifications`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ documentRejections })
       });
       const data = await res.json();
       if (data.success) {
         showToast("Rejection email sent and application returned to user.");
+        // We no longer clear local document rejections here so they remain visible in the UI
         fetchDetail();
       } else {
         showToast(data.error || "Failed to send rejection email.", "error");
@@ -1585,6 +1587,7 @@ export default function AgentReview() {
       setSubmitting(false);
     }
   };
+
 
   const handleGlobalReject = async () => {
     if (!globalRejectReason.trim()) {
@@ -2016,6 +2019,9 @@ export default function AgentReview() {
                         <Circle size={16} color="var(--text-muted)" style={{ opacity: 0.35, flexShrink: 0 }} title="Not visited" />
                       )}
                       <span>{step.title}</span>
+                      {step.id === "financialProof" && app.financialProof?.type === "Skipped" && (
+                        <span style={{ padding: "2px 6px", background: "var(--bg-secondary)", borderRadius: 4, fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", marginLeft: 8 }}>SKIPPED</span>
+                      )}
                     </div>
 
                     {/* Right: Expand Chevron + Reject Block Button */}

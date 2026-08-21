@@ -194,17 +194,44 @@ export default function DocumentUploadStep() {
   const [previewModalData, setPreviewModalData] = useState(null);
   const [showSkipDerivativesModal, setShowSkipDerivativesModal] = useState(false);
 
+  // In rejection mode, clear ONLY the specifically rejected document's state
+  // so the user sees a blank upload area for just that document.
+  // Other documents on the same page remain untouched.
+  const rejectionDocCleared = useRef(false);
+  useEffect(() => {
+    if (!isRejection || rejectionDocCleared.current) return;
+    rejectionDocCleared.current = true;
+
+    if (isDocRejected("financialProof")) {
+      setFinType("");
+      setFinPreview(null);
+    }
+    if (isDocRejected("signature")) {
+      setSigPreview(null);
+    }
+    if (isDocRejected("panUpload")) {
+      setPanPreview(null);
+    }
+    if (isDocRejected("ipv")) {
+      setSelfiePhase("intro");
+      setSelfiePreviewUrl(null);
+      setMatchScore(null);
+    }
+  }, [isRejection]);
+
+
   // --- Sync from Context (for cross-device updates) ---
   useEffect(() => {
-    if (panUpload?.filePreview) {
+    // Skip re-populating documents that were cleared due to rejection
+    if (panUpload?.filePreview && !(isRejection && isDocRejected("panUpload"))) {
       const full = getFullUrl(panUpload.filePreview);
       if (full !== panPreview) setPanPreview(full);
     }
-    if (signature?.filePreview) {
+    if (signature?.filePreview && !(isRejection && isDocRejected("signature"))) {
       const full = getFullUrl(signature.filePreview);
       if (full !== sigPreview) setSigPreview(full);
     }
-    if (financialProof?.filePreview) {
+    if (financialProof?.filePreview && !(isRejection && isDocRejected("financialProof"))) {
       const full = getFullUrl(financialProof.filePreview);
       if (full !== finPreview) setFinPreview(full);
       if (financialProof.type) setFinType(financialProof.type);
@@ -213,7 +240,7 @@ export default function DocumentUploadStep() {
       const full = getFullUrl(bankDetails.proofPreview || bankDetails.proof);
       if (full !== bankProofPreview) setBankProofPreview(full);
     }
-    if ((selfie?.preview && selfie.preview !== "__CLEARED__") || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0)) {
+    if (!(isRejection && isDocRejected("ipv")) && ((selfie?.preview && selfie.preview !== "__CLEARED__") || (selfie?.matchScore !== null && selfie?.matchScore !== undefined && selfie?.matchScore !== 0))) {
       setSelfiePhase("done");
       if (selfie.preview && selfie.preview !== "__CLEARED__") {
         const full = getFullUrl(selfie.preview);
@@ -225,6 +252,7 @@ export default function DocumentUploadStep() {
       if (selfie.matchScore !== undefined && selfie.matchScore !== matchScore) setMatchScore(selfie.matchScore);
     }
   }, [panUpload, signature, financialProof, selfie, bankDetails]);
+
 
   // --- Cross-device selfie polling via Socket.IO + fallback ---
   const checkSelfieStatus = useCallback(async () => {
@@ -575,6 +603,10 @@ export default function DocumentUploadStep() {
 
     setSubmitting(true);
     try {
+      if (!finPreview) {
+        updateState({ financialProof: { type: "Skipped" } });
+        await syncProgress({ financialProof: { type: "Skipped" } }, false, "documentUpload");
+      }
       nextStep();
     } catch (err) {
       setSubmitting(false);
@@ -1061,9 +1093,9 @@ export default function DocumentUploadStep() {
                 onClick={async () => {
                   setShowSkipDerivativesModal(false);
                   const updatedSegments = { ...segments, derivatives: false, equity: true };
-                  updateState({ segments: updatedSegments });
+                  updateState({ segments: updatedSegments, financialProof: { type: "Skipped" } });
                   try {
-                    await syncProgress({ segments: updatedSegments }, false, "pricing");
+                    await syncProgress({ segments: updatedSegments, financialProof: { type: "Skipped" } }, false, "pricing");
                     addToast("Derivatives segment removed. Financial proof is no longer required.", "success");
                   } catch(e) {
                     addToast("Failed to update segments", "error");
