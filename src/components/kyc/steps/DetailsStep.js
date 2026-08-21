@@ -223,27 +223,32 @@ export default function DetailsStep() {
       if (isPersonalDetailsRejected) {
         rejectionCleared.current = true;
         clearFormDraft(); // Clear localStorage draft
-        // Keep DigiLocker-sourced read-only fields but blank the user-editable ones
+        // Keep DigiLocker-sourced/extracted fields and revert dropdowns to default values
         setForm(prev => ({
-          // Preserve read-only DigiLocker fields
+          // Preserve read-only & extracted fields
           fullName: prev?.fullName || "",
           dob: prev?.dob || "",
           email: prev?.email || "",
-          citizenOfIndia: prev?.citizenOfIndia || "Yes",
-          // Blank all user-editable fields
+          fatherName: prev?.fatherName || "",
+          gender: prev?.gender || "",
+          
+          // Restore Default Values for Dropdowns
+          citizenOfIndia: "Yes",
+          politicallyExposed: "No",
+          taxResidencyOutside: "No",
+          taxExempt: "No",
+          ddpiOptIn: "Yes",
+          
+          // Blank purely user-editable fields
           prefix: "",
-          fatherName: "",
           motherName: "",
-          gender: "",
           maritalStatus: "",
           education: "",
           occupation: "",
           annualIncome: "",
           experience: "",
-          politicallyExposed: "",
           pepType: "",
           pepProof: "",
-          taxResidencyOutside: "",
           countryOfBirth: "",
           citizenship: "",
           taxResidence1: "",
@@ -251,9 +256,7 @@ export default function DetailsStep() {
           taxResidence2: "",
           taxId2: "",
           placeOfBirth: "",
-          taxExempt: "",
           taxExemptReason: "",
-          ddpiOptIn: prev?.ddpiOptIn || "",
         }));
         initializedForm.current = true;
       } else if (isPepProofRejected) {
