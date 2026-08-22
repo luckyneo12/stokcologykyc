@@ -459,7 +459,7 @@ export function KYCProvider({ children }) {
             }
             keysToRemove.forEach(k => localStorage.removeItem(k));
           }
-          setState(INITIAL_STATE);
+          setState({ ...INITIAL_STATE, isRestoring: false });
           return null;
         }
 
@@ -902,7 +902,7 @@ export function KYCProvider({ children }) {
               localStorage.removeItem("kyc-progress");
               localStorage.removeItem("token");
             }
-            setState(INITIAL_STATE);
+            setState({ ...INITIAL_STATE, isRestoring: false });
             setHasSynced(true);
           }
         })
@@ -915,7 +915,7 @@ export function KYCProvider({ children }) {
             localStorage.removeItem("kyc-progress");
             localStorage.removeItem("token");
           }
-          setState(INITIAL_STATE);
+          setState({ ...INITIAL_STATE, isRestoring: false });
           setHasSynced(true);
         });
       return;
@@ -1441,7 +1441,7 @@ export function KYCProvider({ children }) {
   );
 
   const resetKYC = useCallback(() => {
-    setState(INITIAL_STATE);
+    setState({ ...INITIAL_STATE, isRestoring: false });
     if (typeof window !== "undefined") {
       getStorage().clear();
       localStorage.removeItem("kyc-progress");
