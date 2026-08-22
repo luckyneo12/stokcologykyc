@@ -136,11 +136,17 @@ export default function EmailStep() {
               type="email" className="input-field" placeholder="name@example.com" 
               style={{ fontWeight: 700, paddingRight: isOtpMode ? "60px" : "24px" }}
               value={email} onChange={e => !isOtpMode && setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && email && !isOtpMode && handleSendOtp()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (email && !isOtpMode) handleSendOtp();
+                }
+              }}
               readOnly={isOtpMode}
             />
             {isOtpMode && (
               <button 
+                type="button"
                 onClick={() => setIsOtpMode(false)}
                 style={{ 
                   position: "absolute", right: 15, top: "50%", transform: "translateY(-50%)",
@@ -208,10 +214,10 @@ export default function EmailStep() {
         </div>
 
         <div style={{ display: isOtpMode ? "none" : "flex", gap: "16px" }}>
-          <button className="btn btn-secondary" onClick={prevStep} style={{ flex: 1 }}>
+          <button type="button" className="btn btn-secondary" onClick={prevStep} style={{ flex: 1 }}>
             Back
           </button>
-          <button className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ flex: 1.5 }}>
+          <button type="button" className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ flex: 1.5 }}>
             {loading ? "Sending..." : "Send Code"}
           </button>
         </div>
@@ -234,7 +240,7 @@ export default function EmailStep() {
               <span>CODE SENT TO {email}</span>
             </div>
             <div>
-              <button className="btn-pill" onClick={() => setIsOtpMode(false)}>Edit Email</button>
+              <button type="button" className="btn-pill" onClick={() => setIsOtpMode(false)}>Edit Email</button>
             </div>
           </div>
 

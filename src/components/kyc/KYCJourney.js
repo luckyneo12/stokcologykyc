@@ -48,6 +48,7 @@ export default function KYCJourney() {
 
   const lastStepRef = useRef(currentStep);
   const lastPathnameRef = useRef(pathname);
+  const isNavigatingRef = useRef(false);
 
   useEffect(() => {
     if (!mounted || isRestoring) return;
@@ -59,6 +60,7 @@ export default function KYCJourney() {
     // Case 1: currentStep changed via code (nextStep / goToStep)
     if (currentStep !== lastStepRef.current) {
       if (pathname !== targetPath) {
+        isNavigatingRef.current = true;
         router.push(targetPath, { scroll: false });
       }
       lastStepRef.current = currentStep;
@@ -66,6 +68,8 @@ export default function KYCJourney() {
     }
     // Case 2: pathname changed via browser back/forward
     else if (pathname !== lastPathnameRef.current) {
+      if (isNavigatingRef.current) return;
+
       const stepIndexFromUrl = activeSteps.findIndex(s => {
         const p = s.id === "phone" ? "/" : `/${s.id}`;
         return p === pathname;
@@ -81,8 +85,10 @@ export default function KYCJourney() {
       }
       lastPathnameRef.current = pathname;
       lastStepRef.current = stepIndexFromUrl !== -1 ? stepIndexFromUrl : currentStep;
+    } else {
+      isNavigatingRef.current = false;
     }
-  }, [currentStep, pathname, mounted, steps, STEPS, router, goToStep]);
+  }, [currentStep, pathname, mounted, steps, STEPS, router, goToStep, isRestoring]);
 
   const handleMouseMove = (e) => {
     if (sidebarRef.current) {

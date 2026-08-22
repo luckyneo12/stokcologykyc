@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { SmartphoneIcon, ArrowRightIcon, ArrowLeftIcon, CheckCircleIcon, EditIcon } from "../Icons";
 import Logo from "../Logo";
-import { sendOtp, verifyOtp, startKycApplication } from "@/utils/kycApi";
+import { sendOtp, verifyOtp, startKycApplication, getStorage } from "@/utils/kycApi";
 
 const CheckIcon = ({ size = 12 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--bg-primary)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
@@ -143,12 +143,11 @@ export default function PhoneStep() {
       const apCode = sessionStorage.getItem('apCode') || undefined;
       
       const authResult = await verifyOtp(phoneNumber, otpValue, apCode);
-      sessionStorage.setItem("kycToken", authResult.token);
-      sessionStorage.setItem("kycUser", JSON.stringify(authResult.user));
+      getStorage().setItem("kycToken", authResult.token);
+      getStorage().setItem("kycUser", JSON.stringify(authResult.user));
 
       const startResult = await startKycApplication();
-      sessionStorage.setItem("kycApplicationId", startResult.applicationId);
-      localStorage.setItem("kycApplicationId", startResult.applicationId);
+      getStorage().setItem("kycApplicationId", startResult.applicationId);
 
       // Fetch the full application state to decide where to go
       let fullApp = null;

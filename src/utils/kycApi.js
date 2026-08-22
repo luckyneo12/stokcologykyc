@@ -4,7 +4,7 @@ const isMobile = () => {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 };
 
-const getStorage = () => isMobile() ? localStorage : sessionStorage;
+export const getStorage = () => isMobile() ? localStorage : sessionStorage;
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
