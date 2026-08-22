@@ -50,7 +50,7 @@ export default function KYCJourney() {
   const lastPathnameRef = useRef(pathname);
 
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || isRestoring) return;
 
     const activeSteps = steps.length > 0 ? steps : STEPS;
     const currentStepId = activeSteps[currentStep]?.id;
