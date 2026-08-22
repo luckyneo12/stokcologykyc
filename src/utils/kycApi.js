@@ -1,3 +1,11 @@
+
+const isMobile = () => {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+const getStorage = () => isMobile() ? localStorage : sessionStorage;
+
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export const resolveAssetUrl = (path) => {
@@ -9,9 +17,9 @@ export const resolveAssetUrl = (path) => {
 const getToken = () => {
   if (typeof window === "undefined") return null;
   return (
-    sessionStorage.getItem("kycToken")
-    || sessionStorage.getItem("adminToken")
-    || sessionStorage.getItem("token")
+    getStorage().getItem("kycToken")
+    || getStorage().getItem("adminToken")
+    || getStorage().getItem("token")
   );
 };
 

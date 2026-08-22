@@ -12,6 +12,14 @@ import { io } from "socket.io-client";
 
 const KYCContext = createContext(null);
 
+const isMobile = () => {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+const getStorage = () => isMobile() ? localStorage : sessionStorage;
+
+
 const INITIAL_STATE = {
   currentStep: 1,
   applicationId: "",
@@ -287,13 +295,24 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export function KYCProvider({ children }) {
   const [state, setState] = useState(INITIAL_STATE);
+
+    if (typeof window !== "undefined" && isMobile()) {
+      const sessionStart = localStorage.getItem("mobileSessionStart");
+      const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
+      if (sessionStart && (Date.now() - parseInt(sessionStart)) > ONE_DAY_IN_MS) {
+        localStorage.clear();
+      } else if (!sessionStart) {
+        localStorage.setItem("mobileSessionStart", Date.now().toString());
+      }
+    }
+
   const [theme, setTheme] = useState("light");
   const [toasts, setToasts] = useState([]);
   const [preGeneratedPdf, setPreGeneratedPdf] = useState(null);
 
   const preGeneratePdf = useCallback(async (currentState = state) => {
     try {
-      const token = typeof window !== "undefined" ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || localStorage.getItem("token")) : "";
+      const token = typeof window !== "undefined" ? (getStorage().getItem("kycToken") || getStorage().getItem("adminToken") || localStorage.getItem("token")) : "";
       
       const res = await fetch(`${API_BASE_URL}/api/kyc/preview-pdf`, {
         method: 'POST',
@@ -346,7 +365,7 @@ export function KYCProvider({ children }) {
   useEffect(() => {
     // Attempt to quickly restore state from session storage before the API call finishes
     try {
-      const saved = sessionStorage.getItem("kyc-progress");
+      const saved = getStorage().getItem("kyc-progress");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.currentStep !== undefined) {
@@ -385,13 +404,13 @@ export function KYCProvider({ children }) {
       const activeAppId =
         appId ||
         (typeof window !== "undefined"
-          ? sessionStorage.getItem("kycApplicationId") ||
+          ? getStorage().getItem("kycApplicationId") ||
             localStorage.getItem("kycApplicationId")
           : null);
       const activeToken =
         authToken ||
         (typeof window !== "undefined"
-          ? sessionStorage.getItem("kycToken") ||
+          ? getStorage().getItem("kycToken") ||
             localStorage.getItem("kycToken") ||
             localStorage.getItem("token")
           : null);
@@ -424,9 +443,9 @@ export function KYCProvider({ children }) {
             `[KYC Sync] ${response.status === 404 ? "Application Deleted" : "Session Expired"}. Cleaning up...`,
           );
           if (typeof window !== "undefined") {
-            sessionStorage.removeItem("kycApplicationId");
-            sessionStorage.removeItem("kycToken");
-            sessionStorage.removeItem("kyc-progress");
+            getStorage().removeItem("kycApplicationId");
+            getStorage().removeItem("kycToken");
+            getStorage().removeItem("kyc-progress");
             localStorage.removeItem("kycApplicationId");
             localStorage.removeItem("kycToken");
           }
@@ -476,7 +495,7 @@ export function KYCProvider({ children }) {
 
               const updateSessionStorage = (nextState) => {
                 try {
-                  sessionStorage.setItem(
+                  getStorage().setItem(
                     "kyc-progress",
                     JSON.stringify(nextState),
                   );
@@ -544,7 +563,7 @@ export function KYCProvider({ children }) {
                 setPreGeneratedPdf(null);
 
                 const isRejectionMode =
-                  sessionStorage.getItem("kycRejectionMode") === "true" ||
+                  getStorage().getItem("kycRejectionMode") === "true" ||
                   prev.rejectionMode ||
                   Boolean(decodeJwtPayload(activeToken)?.rejectionMode);
 
@@ -552,7 +571,7 @@ export function KYCProvider({ children }) {
                 if (rejList.length === 0) {
                   try {
                     rejList = JSON.parse(
-                      sessionStorage.getItem("kycRejectedSteps") || "[]"
+                      getStorage().getItem("kycRejectedSteps") || "[]"
                     );
                   } catch (e) {
                     rejList = [];
@@ -779,10 +798,10 @@ export function KYCProvider({ children }) {
     const activeAppId =
       state.applicationId ||
       (typeof window !== "undefined"
-        ? sessionStorage.getItem("kycApplicationId")
+        ? getStorage().getItem("kycApplicationId")
         : null);
     const activeToken =
-      sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+      getStorage().getItem("kycToken") || getStorage().getItem("token");
 
     if (!activeAppId || !activeToken) return;
 
@@ -807,7 +826,7 @@ export function KYCProvider({ children }) {
   }, [state.applicationId, refreshProgress]);
 
   useEffect(() => {
-    const savedTheme = sessionStorage.getItem("kyc-theme");
+    const savedTheme = getStorage().getItem("kyc-theme");
     if (savedTheme) {
       setTheme(savedTheme);
       document.documentElement.setAttribute("data-theme", savedTheme);
@@ -816,17 +835,17 @@ export function KYCProvider({ children }) {
     if (typeof window === "undefined") return;
 
     // Only restore from sessionStorage to ensure new tabs start fresh at Phone Verification
-    const savedApplicationId = sessionStorage.getItem("kycApplicationId");
+    const savedApplicationId = getStorage().getItem("kycApplicationId");
     const token =
-      sessionStorage.getItem("kycToken") ||
-      sessionStorage.getItem("adminToken") ||
-      sessionStorage.getItem("token");
+      getStorage().getItem("kycToken") ||
+      getStorage().getItem("adminToken") ||
+      getStorage().getItem("token");
 
     const urlParams = new URLSearchParams(window.location.search);
     const magicToken = urlParams.get("token");
 
     if (magicToken) {
-      sessionStorage.setItem("kycToken", magicToken);
+      getStorage().setItem("kycToken", magicToken);
       window.history.replaceState({}, document.title, window.location.pathname);
 
       const decoded = decodeJwtPayload(magicToken);
@@ -834,14 +853,14 @@ export function KYCProvider({ children }) {
       const rejSteps = decoded?.rejectedSteps || [];
 
       if (isRejection) {
-        sessionStorage.setItem("kycRejectionMode", "true");
-        sessionStorage.setItem(
+        getStorage().setItem("kycRejectionMode", "true");
+        getStorage().setItem(
           "kycRejectedSteps",
           JSON.stringify(rejSteps)
         );
       } else {
-        sessionStorage.removeItem("kycRejectionMode");
-        sessionStorage.removeItem("kycRejectedSteps");
+        getStorage().removeItem("kycRejectionMode");
+        getStorage().removeItem("kycRejectedSteps");
       }
 
       // Set restoring immediately so KYCJourney shows the loading spinner
@@ -860,7 +879,7 @@ export function KYCProvider({ children }) {
         .then((res) => res.json())
         .then((data) => {
           if (data.success && data.application) {
-            sessionStorage.setItem(
+            getStorage().setItem(
               "kycApplicationId",
               data.application.applicationId,
             );
@@ -885,13 +904,13 @@ export function KYCProvider({ children }) {
       const decoded = decodeJwtPayload(token);
       const isRejection = Boolean(
         decoded?.rejectionMode ||
-          sessionStorage.getItem("kycRejectionMode") === "true"
+          getStorage().getItem("kycRejectionMode") === "true"
       );
       let rejSteps = decoded?.rejectedSteps || [];
       if (rejSteps.length === 0) {
         try {
           rejSteps = JSON.parse(
-            sessionStorage.getItem("kycRejectedSteps") || "[]"
+            getStorage().getItem("kycRejectedSteps") || "[]"
           );
         } catch (e) {
           rejSteps = [];
@@ -918,7 +937,7 @@ export function KYCProvider({ children }) {
     setTheme((prev) => {
       const next = prev === "light" ? "dark" : "light";
       document.documentElement.setAttribute("data-theme", next);
-      sessionStorage.setItem("kyc-theme", next);
+      getStorage().setItem("kyc-theme", next);
       return next;
     });
   }, []);
@@ -933,7 +952,7 @@ export function KYCProvider({ children }) {
       );
       if (isEqual) return prev;
       try {
-        sessionStorage.setItem("kyc-progress", JSON.stringify(next));
+        getStorage().setItem("kyc-progress", JSON.stringify(next));
       } catch (e) {
         console.warn("[KYC Context] sessionStorage update failed:", e.message);
       }
@@ -946,7 +965,7 @@ export function KYCProvider({ children }) {
     setState((prev) => {
       const next = { ...prev, [key]: { ...prev[key], ...updates } };
       try {
-        sessionStorage.setItem("kyc-progress", JSON.stringify(next));
+        getStorage().setItem("kyc-progress", JSON.stringify(next));
       } catch (e) {
         console.warn("[KYC Context] sessionStorage update failed:", e.message);
       }
@@ -1052,11 +1071,11 @@ export function KYCProvider({ children }) {
       const snapshot = { ...stateRef.current, ...partialSnapshot };
 
       const applicationId =
-        snapshot.applicationId || sessionStorage.getItem("kycApplicationId");
+        snapshot.applicationId || getStorage().getItem("kycApplicationId");
       const token =
-        sessionStorage.getItem("kycToken") ||
-        sessionStorage.getItem("adminToken") ||
-        sessionStorage.getItem("token");
+        getStorage().getItem("kycToken") ||
+        getStorage().getItem("adminToken") ||
+        getStorage().getItem("token");
       if (!applicationId || !token) return false;
 
       const currentSteps = steps.length > 0 ? steps : STEPS;
@@ -1107,7 +1126,7 @@ export function KYCProvider({ children }) {
         },
       };
       try {
-        sessionStorage.setItem("kyc-progress", JSON.stringify(next));
+        getStorage().setItem("kyc-progress", JSON.stringify(next));
       } catch (e) {
         console.warn("[KYC Context] sessionStorage update failed:", e.message);
       }
@@ -1277,7 +1296,7 @@ export function KYCProvider({ children }) {
         const stateToReturn = { ...freshBase, currentStep: freshNextStepIndex };
 
         if (typeof window !== "undefined") {
-          sessionStorage.setItem(
+          getStorage().setItem(
             "kyc-progress",
             JSON.stringify(stateToReturn)
           );
@@ -1340,7 +1359,7 @@ export function KYCProvider({ children }) {
 
       const stateToReturn = { ...prev, currentStep: freshPrevStepIndex };
       if (typeof window !== "undefined") {
-        sessionStorage.setItem(
+        getStorage().setItem(
           "kyc-progress",
           JSON.stringify({
             currentStep: freshPrevStepIndex,
@@ -1377,7 +1396,7 @@ export function KYCProvider({ children }) {
         }
 
         if (typeof window !== "undefined") {
-          sessionStorage.setItem(
+          getStorage().setItem(
             "kyc-progress",
             JSON.stringify({
               currentStep: step,
@@ -1385,7 +1404,7 @@ export function KYCProvider({ children }) {
             }),
           );
           if (computedNextState.applicationId) {
-            sessionStorage.setItem(
+            getStorage().setItem(
               "kycApplicationId",
               computedNextState.applicationId,
             );
@@ -1400,7 +1419,7 @@ export function KYCProvider({ children }) {
   const resetKYC = useCallback(() => {
     setState(INITIAL_STATE);
     if (typeof window !== "undefined") {
-      sessionStorage.clear();
+      getStorage().clear();
       localStorage.removeItem("kyc-progress");
       localStorage.removeItem("kycApplicationId");
       localStorage.removeItem("kycToken");
@@ -1421,7 +1440,7 @@ export function KYCProvider({ children }) {
   const setApplicationId = useCallback((applicationId) => {
     setState((prev) => ({ ...prev, applicationId: applicationId || "" }));
     if (typeof window !== "undefined" && applicationId) {
-      sessionStorage.setItem("kycApplicationId", applicationId);
+      getStorage().setItem("kycApplicationId", applicationId);
       localStorage.setItem("kycApplicationId", applicationId);
     }
   }, []);
