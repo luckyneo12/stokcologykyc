@@ -1,39 +1,13 @@
 const { PrismaClient } = require('@prisma/client');
-const fs = require('fs');
 const prisma = new PrismaClient();
 
-async function checkDb() {
-  const app = await prisma.kycApplication.findFirst({
-    orderBy: { createdAt: 'desc' }
+async function check() {
+  const latest = await prisma.kycApplication.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 1
   });
-  
-  if (!app) return;
-  fs.writeFileSync('scratch_db.json', JSON.stringify({id: app.id, documents: app.documents}, null, 2));
-  
-  let docs = typeof app.documents === 'string' ? JSON.parse(app.documents) : app.documents;
-  let modified = false;
-  docs.forEach(d => {
-    // If it's a PDF but not marked generated, mark it generated so it shows in the maker checker
-    if (d.path && typeof d.path === 'string' && d.path.endsWith('.pdf')) {
-      if (!d.generated) {
-        d.generated = true;
-        modified = true;
-      }
-    }
-  });
-  
-  if (modified) {
-    await prisma.kycApplication.update({
-      where: { id: app.id },
-      data: { documents: JSON.stringify(docs) }
-    });
-    console.log("Fixed DB documents");
-  } else {
-    console.log("No modifications needed");
-  }
-
-  console.log("Done");
+  console.log(JSON.stringify(latest, null, 2));
   await prisma.$disconnect();
-  process.exit(0);
 }
-checkDb();
+
+check();

@@ -1094,17 +1094,33 @@ export function KYCProvider({ children }) {
       // Merge partial snapshot with latest state for a complete picture
       const snapshot = { ...stateRef.current, ...partialSnapshot };
 
+      const activeStorage = getStorage();
+      const backupStorage = activeStorage === localStorage ? sessionStorage : localStorage;
+
       const applicationId =
-        snapshot.applicationId || getStorage().getItem("kycApplicationId");
+        snapshot.applicationId ||
+        activeStorage.getItem("kycApplicationId") ||
+        backupStorage.getItem("kycApplicationId");
+        
       const token =
-        getStorage().getItem("kycToken") ||
-        getStorage().getItem("adminToken") ||
-        getStorage().getItem("token");
-      if (!applicationId || !token) return false;
+        activeStorage.getItem("kycToken") ||
+        backupStorage.getItem("kycToken") ||
+        activeStorage.getItem("adminToken") ||
+        backupStorage.getItem("adminToken") ||
+        activeStorage.getItem("token") ||
+        backupStorage.getItem("token");
+
+      if (!applicationId || !token) {
+        console.error("[KYC Context] persistStepToBackend aborted: Missing applicationId or token. AppID:", applicationId, "Token:", !!token);
+        return false;
+      }
 
       const currentSteps = steps.length > 0 ? steps : STEPS;
       const stepId = forceStepId || currentSteps[snapshot.currentStep]?.id;
-      if (!stepId) return false;
+      if (!stepId) {
+        console.error("[KYC Context] persistStepToBackend aborted: Missing stepId for step index:", snapshot.currentStep);
+        return false;
+      }
 
       console.log(
         `[KYC Context] Persisting Step: ${stepId} (Index: ${snapshot.currentStep})`,
@@ -1123,11 +1139,22 @@ export function KYCProvider({ children }) {
         });
         return true;
       } catch (error) {
-        console.warn("[KYC Sync] save-step failed:", error?.message || error);
+        const errorMsg = error?.message || error;
+        console.error("[KYC Sync] save-step failed EXACT REASON:", errorMsg);
+        
+        // If the application was deleted from the backend, wipe local storage and force a hard reset
+        if (typeof errorMsg === 'string' && errorMsg.includes("Application not found")) {
+          console.warn("[KYC Sync] Ghost application detected. Wiping local storage and redirecting to start.");
+          if (typeof window !== 'undefined') {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = "/";
+          }
+          return false;
+        }
+
         if (showToastOnError) {
-          const errorMsg =
-            error?.message || "Failed to sync progress. Please try again.";
-          addToast(errorMsg, "error");
+          addToast(errorMsg || "Failed to sync progress. Please try again.", "error");
         }
         return false;
       }
@@ -1320,10 +1347,24 @@ export function KYCProvider({ children }) {
         const stateToReturn = { ...freshBase, currentStep: freshNextStepIndex };
 
         if (typeof window !== "undefined") {
-          getStorage().setItem(
-            "kyc-progress",
-            JSON.stringify(stateToReturn)
-          );
+          try {
+            getStorage().setItem(
+              "kyc-progress",
+              JSON.stringify(stateToReturn)
+            );
+          } catch (e) {
+            console.warn("Failed to set kyc-progress in storage:", e);
+          }
+          if (stateToReturn.applicationId) {
+            try {
+              getStorage().setItem(
+                "kycApplicationId",
+                stateToReturn.applicationId,
+              );
+            } catch (e) {
+              console.warn("Failed to set kycApplicationId in storage:", e);
+            }
+          }
         }
         return stateToReturn;
       });
@@ -1383,13 +1424,17 @@ export function KYCProvider({ children }) {
 
       const stateToReturn = { ...prev, currentStep: freshPrevStepIndex };
       if (typeof window !== "undefined") {
-        getStorage().setItem(
-          "kyc-progress",
-          JSON.stringify({
-            currentStep: freshPrevStepIndex,
-            status: stateToReturn.status,
-          }),
-        );
+        try {
+          getStorage().setItem(
+            "kyc-progress",
+            JSON.stringify({
+              currentStep: freshPrevStepIndex,
+              status: stateToReturn.status,
+            }),
+          );
+        } catch (e) {
+          console.warn("Failed to set kyc-progress in storage:", e);
+        }
       }
       return stateToReturn;
     });
@@ -1420,18 +1465,26 @@ export function KYCProvider({ children }) {
         }
 
         if (typeof window !== "undefined") {
-          getStorage().setItem(
-            "kyc-progress",
-            JSON.stringify({
-              currentStep: step,
-              status: computedNextState.status,
-            }),
-          );
-          if (computedNextState.applicationId) {
+          try {
             getStorage().setItem(
-              "kycApplicationId",
-              computedNextState.applicationId,
+              "kyc-progress",
+              JSON.stringify({
+                currentStep: step,
+                status: computedNextState.status,
+              }),
             );
+          } catch (e) {
+            console.warn("Failed to set kyc-progress in storage:", e);
+          }
+          if (computedNextState.applicationId) {
+            try {
+              getStorage().setItem(
+                "kycApplicationId",
+                computedNextState.applicationId,
+              );
+            } catch (e) {
+              console.warn("Failed to set kycApplicationId in storage:", e);
+            }
           }
         }
         return computedNextState;
@@ -1441,24 +1494,42 @@ export function KYCProvider({ children }) {
   );
 
   const resetKYC = useCallback(() => {
-    setState({ ...INITIAL_STATE, isRestoring: false });
     if (typeof window !== "undefined") {
-      getStorage().clear();
-      localStorage.removeItem("kyc-progress");
-      localStorage.removeItem("kycApplicationId");
-      localStorage.removeItem("kycToken");
-      localStorage.removeItem("token");
-      
-      // Clear all kyc-drafts to prevent stale data in new applications
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith("kyc-draft-")) {
-          keysToRemove.push(key);
+      try {
+        localStorage.removeItem("kycToken");
+        localStorage.removeItem("kycApplicationId");
+        localStorage.removeItem("kyc-progress");
+        localStorage.removeItem("kycUser");
+        localStorage.removeItem("token");
+        
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("kyc-draft-")) {
+            keysToRemove.push(key);
+          }
         }
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch (e) { console.warn(e); }
+      
+      try {
+        sessionStorage.removeItem("kycToken");
+        sessionStorage.removeItem("kycApplicationId");
+        sessionStorage.removeItem("kyc-progress");
+        sessionStorage.removeItem("kycUser");
+        sessionStorage.removeItem("token");
+        
+        const keysToRemove = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith("kyc-draft-")) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      } catch (e) { console.warn(e); }
     }
+    setState({ ...INITIAL_STATE, isRestoring: false });
   }, []);
 
   const setApplicationId = useCallback((applicationId) => {

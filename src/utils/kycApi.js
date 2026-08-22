@@ -16,10 +16,15 @@ export const resolveAssetUrl = (path) => {
 
 const getToken = () => {
   if (typeof window === "undefined") return null;
+  const activeStorage = getStorage();
+  const backupStorage = activeStorage === localStorage ? sessionStorage : localStorage;
   return (
-    getStorage().getItem("kycToken")
-    || getStorage().getItem("adminToken")
-    || getStorage().getItem("token")
+    activeStorage.getItem("kycToken") ||
+    backupStorage.getItem("kycToken") ||
+    activeStorage.getItem("adminToken") ||
+    backupStorage.getItem("adminToken") ||
+    activeStorage.getItem("token") ||
+    backupStorage.getItem("token")
   );
 };
 

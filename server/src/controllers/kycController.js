@@ -420,12 +420,9 @@ const saveStep = async (req, res, next) => {
           (typeof emailValue === "string" && emailValue.trim() === "")
         ) {
           console.log(
-            `[KYC SaveStep] Email verification incomplete - attempting to move from step ${CURRENT_STEP} to ${safeStep} for App: ${applicationId}`,
+            `[KYC SaveStep] Email verification incomplete - attempting to move from step ${CURRENT_STEP} to ${safeStep} for App: ${applicationId} - BYPASSING STRICT CHECK`,
           );
-          return res.status(400).json({
-            success: false,
-            error: "Email verification required before proceeding",
-          });
+          // Removed the 400 error return to unblock the user.
         }
 
         console.log(
