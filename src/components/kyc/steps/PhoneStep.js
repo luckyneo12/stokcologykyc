@@ -12,7 +12,7 @@ const CheckIcon = ({ size = 12 }) => (
 );
 
 export default function PhoneStep() {
-  const { phone, updateState, nextStep, prevStep, goToStep, refreshProgress, addToast, setApplicationId } = useKYC();
+  const { phone, updateState, nextStep, prevStep, goToStep, refreshProgress, addToast, setApplicationId, resetKYC } = useKYC();
   const [phoneNumber, setPhoneNumber] = useState(phone || "");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
@@ -39,7 +39,8 @@ export default function PhoneStep() {
   // Ensure component is mounted to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
-  }, []);
+    resetKYC();
+  }, [resetKYC]);
 
   useEffect(() => {
     let interval;
