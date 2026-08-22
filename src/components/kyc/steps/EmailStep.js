@@ -105,7 +105,7 @@ export default function EmailStep() {
     try {
       await verifyEmailOtp(email, otpValue);
       addToast("Email verified successfully!", "success");
-      nextStep({ 
+      await nextStep({ 
         personalDetails: { ...personalDetails, email: email }, 
         emailVerified: true 
       });

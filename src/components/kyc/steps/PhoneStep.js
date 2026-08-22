@@ -183,9 +183,9 @@ export default function PhoneStep() {
       };
 
       if (serverStep > 1) {
-        goToStep(serverStep, updates);
+        await goToStep(serverStep, updates);
       } else {
-        nextStep(updates);
+        await nextStep(updates);
       }
     } catch (error) {
       console.error("[PhoneStep] OTP Verification Error:", error);
