@@ -443,11 +443,21 @@ export function KYCProvider({ children }) {
             `[KYC Sync] ${response.status === 404 ? "Application Deleted" : "Session Expired"}. Cleaning up...`,
           );
           if (typeof window !== "undefined") {
-            getStorage().removeItem("kycApplicationId");
-            getStorage().removeItem("kycToken");
-            getStorage().removeItem("kyc-progress");
+            getStorage().clear();
             localStorage.removeItem("kycApplicationId");
             localStorage.removeItem("kycToken");
+            localStorage.removeItem("kyc-progress");
+            localStorage.removeItem("token");
+            
+            // Clear all kyc-drafts to prevent stale data
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && key.startsWith("kyc-draft-")) {
+                keysToRemove.push(key);
+              }
+            }
+            keysToRemove.forEach(k => localStorage.removeItem(k));
           }
           setState(INITIAL_STATE);
           return null;
@@ -885,14 +895,28 @@ export function KYCProvider({ children }) {
             );
             refreshProgress(data.application.applicationId, magicToken);
           } else {
+            if (typeof window !== "undefined") {
+              getStorage().clear();
+              localStorage.removeItem("kycApplicationId");
+              localStorage.removeItem("kycToken");
+              localStorage.removeItem("kyc-progress");
+              localStorage.removeItem("token");
+            }
+            setState(INITIAL_STATE);
             setHasSynced(true);
-            setState((prev) => ({ ...prev, isRestoring: false }));
           }
         })
         .catch((err) => {
           console.warn("[KYC Init] Failed to verify magic token:", err);
+          if (typeof window !== "undefined") {
+            getStorage().clear();
+            localStorage.removeItem("kycApplicationId");
+            localStorage.removeItem("kycToken");
+            localStorage.removeItem("kyc-progress");
+            localStorage.removeItem("token");
+          }
+          setState(INITIAL_STATE);
           setHasSynced(true);
-          setState((prev) => ({ ...prev, isRestoring: false }));
         });
       return;
     }
