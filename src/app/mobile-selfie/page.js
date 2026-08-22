@@ -85,14 +85,41 @@ function MobileSelfieContent() {
       const { requestId, customerIdentifier, accessToken } = requestData;
 
       const digio = initializeDigio({
-        is_redirection_approach: true,
-        redirect_url: window.location.href, // Redirect back to this same URL with token/appId intact
+        callback: (response) => {
+          if (response.error_code && response.error_code !== "success") {
+            setStatus("error");
+            setErrorMessage(`Selfie verification failed: ${response.message}`);
+            return;
+          }
+          
+          setStatus("processing");
+          const docId = response.document_id || response.digio_doc_id || requestId;
+          if (docId) {
+            fetchDigioRequestResponse(docId, "SELFIE")
+              .then((res) => {
+                 if (res?.success) {
+                    setStatus("success");
+                 } else {
+                    setStatus("error");
+                    setErrorMessage("Failed to fetch verification results.");
+                 }
+              })
+              .catch((err) => {
+                 setStatus("error");
+                 setErrorMessage("Error verifying selfie.");
+              });
+          }
+        }
       });
 
       if (!digio || !requestId) {
         setStatus("error");
         setErrorMessage("Unable to initialize selfie verification flow");
         return;
+      }
+
+      if (!digio.is_redirection_approach) {
+        digio.init();
       }
 
       if (accessToken) {

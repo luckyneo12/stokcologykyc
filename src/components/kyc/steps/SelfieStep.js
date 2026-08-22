@@ -65,13 +65,8 @@ export default function SelfieStep() {
       }
       addToast("Selfie verification completed", "success");
 
-      // On mobile (QR-scanned device), show "close this tab" instead of advancing
-      if (isMobileRedirectReturn) {
-        setPhase("mobileCompleted");
-      } else {
-        setPhase("done");
-        nextStep();
-      }
+      setPhase("done");
+      nextStep();
     } catch (error) {
       addToast("Error fetching verification results", "error");
       setPhase("intro");
@@ -269,27 +264,16 @@ export default function SelfieStep() {
       const { requestId, customerIdentifier, applicationId: appId } = requestData;
       if (appId) setApplicationId(appId);
 
-      const isMobile = isMobileDevice();
-
-      // On mobile, use redirect approach so Digio redirects back to our app
-      // instead of opening a popup/new tab that won't auto-close
       const digioOptions = {
         callback: async (response) => {
-          if (response.error_code) {
+          if (response.error_code && response.error_code !== "success") {
             addToast(`Selfie verification failed: ${response.message}`, "error");
             setPhase("intro");
             return;
           }
-          handleDigioSuccess(response.digio_doc_id || response.id, {
-            isMobileRedirectReturn: isMobile,
-          });
+          handleDigioSuccess(response.digio_doc_id || response.id, {});
         },
       };
-
-      if (isMobile) {
-        digioOptions.is_redirection_approach = true;
-        digioOptions.redirect_url = window.location.origin + window.location.pathname;
-      }
 
       const digio = initializeDigio(digioOptions);
 
@@ -297,6 +281,10 @@ export default function SelfieStep() {
         addToast("Unable to initialize selfie verification flow", "error");
         setPhase("intro");
         return;
+      }
+
+      if (!digio.is_redirection_approach) {
+        digio.init();
       }
 
       if (requestData.accessToken) {
