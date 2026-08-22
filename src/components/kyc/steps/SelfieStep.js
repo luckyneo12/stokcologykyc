@@ -35,7 +35,7 @@ export default function SelfieStep() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+      const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
       if (token && applicationId) {
         setResumeUrl(`${window.location.origin}/resume?token=${token}&appId=${applicationId}`);
       }
@@ -77,7 +77,7 @@ export default function SelfieStep() {
   // Activated when QR code is shown on desktop
   const startCrossDevicePolling = useCallback(() => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
-    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
     if (!activeAppId || !token) return;
 
     // Connect to Socket.IO and join the application room

@@ -37,7 +37,7 @@ export default function EsignPreviewStep() {
 
       if (!pdfBase64) {
         console.log("[EsignPreview] No pre-generated PDF found, generating now...");
-        const token = typeof window !== "undefined" ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || localStorage.getItem("token")) : "";
+        const token = typeof window !== "undefined" ? (sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || localStorage.getItem("token")) : "";
         
         const res = await fetch(`${API_URL}/api/kyc/preview-pdf`, {
           method: 'POST',

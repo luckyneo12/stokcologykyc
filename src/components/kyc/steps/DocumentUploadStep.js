@@ -257,7 +257,7 @@ export default function DocumentUploadStep() {
   // --- Cross-device selfie polling via Socket.IO + fallback ---
   const checkSelfieStatus = useCallback(async () => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
-    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
     if (!activeAppId || !token) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/kyc/status/${activeAppId}`, {
@@ -317,7 +317,7 @@ export default function DocumentUploadStep() {
 
   const startSelfieCrossDevicePolling = useCallback(() => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
-    const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
     if (!activeAppId || !token) return;
 
     const socket = io(API_BASE_URL, { withCredentials: true });
@@ -363,7 +363,7 @@ export default function DocumentUploadStep() {
   // --- Selfie Logic ---
   const generateMobileQR = async () => {
     try {
-      const token = sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+      const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
       const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
       if (!token || !activeAppId) return;
 

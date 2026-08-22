@@ -74,7 +74,7 @@ export default function DigilockerStep() {
 
           if (dlPan && step4Pan && dlPan !== step4Pan) {
             console.warn(`[KYC Validation] PAN Mismatch: Step 4 PAN (${step4Pan}) != DigiLocker PAN (${dlPan})`);
-            addToast(`PAN mismatch! The PAN fetched from DigiLocker (${dlPan}) does not match the PAN entered in Step 4 (${step4Pan}). Please re-verify.`, "error");
+            addToast(`PAN mismatch! The PAN fetched from DigiLocker does not match the PAN entered in Step 4 (${step4Pan}). Please re-verify.`, "error");
             
             // Clear Aadhaar state so they can't bypass with the 'Continue' button
             updateState({
