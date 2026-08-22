@@ -2231,79 +2231,12 @@ export default function AgentReview() {
                                   }}>
                                     <div style={{ flex: 1 }}>
                                       <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-                                      {editingField === jsonPath && jsonPath ? (
-                                        DROPDOWN_OPTIONS[jsonPath] ? (
-                                          <select
-                                            autoFocus
-                                            className="admin-input"
-                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
-                                            value={currentValue || ""}
-                                            onChange={e => {
-                                              setEditValues({ ...editValues, [jsonPath]: e.target.value });
-                                              setEditingField(null);
-                                              if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                const val = e.target.value;
-                                                setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
-                                                autoSaveField(jsonPath, val);
-                                              }
-                                            }}
-                                            onBlur={(e) => {
-                                              setEditingField(null);
-                                              if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                const val = e.target.value;
-                                                setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
-                                                autoSaveField(jsonPath, val);
-                                              }
-                                            }}
-                                          >
-                                            <option value="">--Select--</option>
-                                            {DROPDOWN_OPTIONS[jsonPath].map(opt => (
-                                              <option key={opt} value={opt}>{opt}</option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <input 
-                                            autoFocus
-                                            className="admin-input"
-                                            style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
-                                            value={currentValue || ""}
-                                            onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
-                                            onBlur={(e) => {
-                                              setEditingField(null);
-                                              if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                const val = e.target.value;
-                                                setEditValues(prev => {
-                                                  const next = { ...prev };
-                                                  delete next[jsonPath];
-                                                  return next;
-                                                });
-                                                autoSaveField(jsonPath, val);
-                                              }
-                                            }}
-                                            onKeyDown={e => { 
-                                              if (e.key === "Enter") {
-                                                setEditingField(null);
-                                                if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                  const val = e.currentTarget.value;
-                                                  setEditValues(prev => {
-                                                    const next = { ...prev };
-                                                    delete next[jsonPath];
-                                                    return next;
-                                                  });
-                                                  autoSaveField(jsonPath, val);
-                                                }
-                                              } 
-                                            }}
-                                          />
-                                        )
-                                      ) : (
-                                        <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
-                                          {label === "Segments" && typeof currentValue === "string" 
-                                            ? currentValue.split(",").join(", ") 
-                                            : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? (currentValue.$$typeof ? currentValue : (() => { try { return JSON.stringify(currentValue); } catch(e) { return "[Object]"; } })()) : String(currentValue)) : "")
-                                          }
-                                        </div>
-                                      )}
+                                      <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                                        {label === "Segments" && typeof currentValue === "string" 
+                                          ? currentValue.split(",").join(", ") 
+                                          : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? (currentValue.$$typeof ? currentValue : (() => { try { return JSON.stringify(currentValue); } catch(e) { return "[Object]"; } })()) : String(currentValue)) : "")
+                                        }
+                                      </div>
                                     </div>
                                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
                                       {currentValue && (
@@ -2315,9 +2248,6 @@ export default function AgentReview() {
                                         >
                                           {copiedKey === `field-${label}` ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
                                         </button>
-                                      )}
-                                      {jsonPath && (
-                                        <Edit2 onClick={() => setEditingField(jsonPath)} size={14} color="var(--text-muted)" style={{ cursor: "pointer" }} />
                                       )}
                                     </div>
                                   </div>
@@ -2635,18 +2565,6 @@ export default function AgentReview() {
                   setRejectStepModal({ id: finalId, title: selectedDocument.label });
                }} disabled={submitting || !selectedDocument} style={{ padding: "8px 16px", fontSize: "0.85rem", color: "#ffffff", background: "#ef4444", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.5 : 1, boxShadow: (!submitting && selectedDocument) ? "0 0 16px rgba(239, 68, 68, 0.4)" : "none", transition: "all 0.2s" }}>
                   Reject
-               </button>
-               <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleUploadFile} accept="image/*,application/pdf" />
-               <button onClick={() => fileInputRef.current?.click()} disabled={submitting || !selectedDocument} style={{ padding: "8px 16px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.5 : 1, boxShadow: (!submitting && selectedDocument) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
-                  Upload File
-               </button>
-            </div>
-            <div style={{ display: "flex", gap: 12 }}>
-               <button onClick={() => handleSaveDetails(false)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", borderRadius: 8, fontWeight: 700, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", opacity: submitting || Object.keys(editValues).length === 0 ? 0.5 : 1, transition: "all 0.2s" }}>
-                  Save
-               </button>
-               <button onClick={() => handleSaveDetails(true)} disabled={submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0)} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0) ? "not-allowed" : "pointer", opacity: submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0) ? 0.5 : 1, boxShadow: (!submitting && (Object.keys(editValues).length > 0 || Object.keys(accumulatedEdits).length > 0)) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
-                  Save & Generate PDF
                </button>
             </div>
           </div>

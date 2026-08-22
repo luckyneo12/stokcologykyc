@@ -93,8 +93,7 @@ export default function EsignPreviewStep() {
         {loading && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg-card)", zIndex: 10 }}>
             <div className="loader" style={{ marginBottom: 24, width: "48px", height: "48px", border: "4px solid var(--border-color)", borderTop: "4px solid var(--wise-green)" }}></div>
-            <p style={{ fontWeight: 800, color: "var(--text-primary)", fontSize: "1.2rem" }}>Preparing Documents...</p>
-            <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginTop: "8px", fontWeight: 600 }}>Merging 55 Pages + Annexure</p>
+            <p style={{ fontWeight: 800, color: "var(--text-primary)", fontSize: "1.2rem", textAlign: "center" }}>Merging your documents please wait few seconds..</p>
           </div>
         )}
 

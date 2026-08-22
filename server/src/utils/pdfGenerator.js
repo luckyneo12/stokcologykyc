@@ -177,7 +177,39 @@ function getVariableValue(variableName, appData) {
       const name = pDetails.fullName || 'User';
       const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
       const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
-      return `Digitally Signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+      return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+    }
+    case 'esignOptOut': {
+      const n = safeJsonParse(appData.nomineeDetails) || {};
+      if (n.opted !== 'No') return '';
+      const name = pDetails.fullName || 'User';
+      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
+      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+    }
+    case 'esignOptIn': {
+      const n = safeJsonParse(appData.nomineeDetails) || {};
+      if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 0)) return '';
+      const name = pDetails.fullName || 'User';
+      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
+      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+    }
+    case 'esignNominee2': {
+      const n = safeJsonParse(appData.nomineeDetails) || {};
+      if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 1 && n.nominees[1].name)) return '';
+      const name = pDetails.fullName || 'User';
+      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
+      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+    }
+    case 'esignNominee3': {
+      const n = safeJsonParse(appData.nomineeDetails) || {};
+      if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 2 && n.nominees[2].name)) return '';
+      const name = pDetails.fullName || 'User';
+      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
+      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
     }
     case 'isOccGovt': return String(pDetails.occupation || '').toLowerCase().includes('govt');
     case 'isOccPublic': return String(pDetails.occupation || '').toLowerCase().includes('public');
@@ -516,7 +548,6 @@ async function generateKycPdf(applicationData) {
         const imageVariables = [
           'selfie', 'signature', 'signatureOptOut', 'signatureOptIn', 
           'signatureNominee2', 'signatureNominee3',
-          'esign', 'esignOptOut', 'esignOptIn', 'esignNominee2', 'esignNominee3',
           'panImage', 'aadhaarImage', 
           'bankProof', 'incomeProof', 'pepProof', 
           'nominee1Proof', 'nominee2Proof', 'nominee3Proof', 
@@ -540,19 +571,6 @@ async function generateKycPdf(applicationData) {
             
             if (shouldShow) {
               imgRelPath = typeof parsedSignature === 'string' ? parsedSignature : (parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview);
-            }
-          } else if (field.variable === 'esign' || field.variable === 'esignOptOut' || field.variable === 'esignOptIn' || field.variable === 'esignNominee2' || field.variable === 'esignNominee3') {
-            let shouldShow = false;
-            const n = safeJsonParse(applicationData.nomineeDetails) || {};
-            if (field.variable === 'esign') shouldShow = true;
-            else if (field.variable === 'esignOptOut' && n.opted === 'No') shouldShow = true;
-            else if (field.variable === 'esignOptIn' && n.opted === 'Yes' && n.nominees && n.nominees.length > 0) shouldShow = true;
-            else if (field.variable === 'esignNominee2' && n.opted === 'Yes' && n.nominees && n.nominees.length > 1 && n.nominees[1].name) shouldShow = true;
-            else if (field.variable === 'esignNominee3' && n.opted === 'Yes' && n.nominees && n.nominees.length > 2 && n.nominees[2].name) shouldShow = true;
-
-            const esignDoc = parsedDocuments.find(d => d.type === 'ESIGN');
-            if (shouldShow && esignDoc) {
-              imgRelPath = 'data:image/png;base64,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';
             }
 
           } else if (field.variable === 'panImage') {
