@@ -40,7 +40,6 @@ export const initializeDigio = (options) => {
 
   if (typeof window !== "undefined" && window.Digio) {
     try {
-      const isMobile = window.innerWidth <= 768;
       const digioOptions = {
         environment,
         callback,
@@ -49,9 +48,9 @@ export const initializeDigio = (options) => {
         is_iframe: false,
       };
 
-      if ((is_redirection_approach || isMobile) && (redirect_url || window.location.href)) {
+      if (is_redirection_approach && redirect_url) {
         digioOptions.is_redirection_approach = true;
-        digioOptions.redirect_url = redirect_url || window.location.href;
+        digioOptions.redirect_url = redirect_url;
       }
 
       return new window.Digio(digioOptions);

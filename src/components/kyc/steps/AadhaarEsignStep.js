@@ -126,6 +126,13 @@ export default function AadhaarEsignStep() {
           return;
         }
         handleDigioSuccess(response.digio_doc_id || response.id);
+        
+        // Force close the SDK overlay in case mobile browsers get stuck
+        try {
+          if (digio && typeof digio.cancel === 'function') {
+            digio.cancel();
+          }
+        } catch(e) {}
       }
     });
 

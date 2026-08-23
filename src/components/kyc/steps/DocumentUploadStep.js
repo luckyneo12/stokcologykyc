@@ -510,7 +510,15 @@ export default function DocumentUploadStep() {
       currentDigioRequestId.current = requestId;
 
       const digio = initializeDigio({
-        callback: handleInlineSelfieSuccess,
+        callback: (response) => {
+          handleInlineSelfieSuccess(response);
+          // Force close the SDK overlay in case mobile browsers get stuck
+          try {
+            if (digio && typeof digio.cancel === 'function') {
+              digio.cancel();
+            }
+          } catch(e) {}
+        },
         is_redirection_approach: false // Use iframe/overlay for desktop
       });
 

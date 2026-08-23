@@ -206,6 +206,13 @@ export default function DigilockerStep() {
           } else {
             handleDigioSuccess(currentRequestId.current || response.digio_doc_id);
           }
+          
+          // Force close the SDK overlay in case mobile browsers get stuck
+          try {
+            if (digioInstance && typeof digioInstance.cancel === 'function') {
+              digioInstance.cancel();
+            }
+          } catch(e) {}
         }
       });
 
