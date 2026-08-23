@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import { useKYC } from "@/context/KYCContext";
 import Logo from "../Logo";
@@ -30,6 +30,7 @@ export default function AadhaarEsignStep() {
   } = useKYC();
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState("intro"); // intro, processing, done, failed
+  const isSuccessReceived = useRef(false);
 
   
   const handleDigioSuccess = async (requestId) => {
@@ -91,6 +92,7 @@ export default function AadhaarEsignStep() {
       if (event.data?.type === 'DIGIO_SUCCESS' && event.data?.step === 'ESIGN') {
         const popupStatus = event.data.status;
         if (popupStatus === "Sign completed" || popupStatus.toLowerCase() === "success") {
+          isSuccessReceived.current = true;
           handleDigioSuccess(event.data.documentId);
         } else {
           setPhase("failed");
@@ -117,6 +119,10 @@ export default function AadhaarEsignStep() {
       redirect_url: typeof window !== "undefined" ? window.location.href : "",
       callback: async (response) => {
         if (response.error_code || response.message === "cancelled" || !response.digio_doc_id) {
+          if (isSuccessReceived.current) {
+            // Already successfully received the document via redirect postMessage, ignore the fake cancel
+            return;
+          }
           console.error("Digio Error/Cancel:", response);
           if (response.error_code === "CANCELLED" || response.message === "cancelled" || !response.digio_doc_id) {
             addToast("eSign cancelled by user", "info");
@@ -127,6 +133,8 @@ export default function AadhaarEsignStep() {
           setPhase("failed");
           return;
         }
+        
+        isSuccessReceived.current = true;
         handleDigioSuccess(response.digio_doc_id || response.id);
         
         // Force close the SDK overlay in case mobile browsers get stuck
