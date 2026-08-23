@@ -405,6 +405,25 @@ export default function DocumentUploadStep() {
   };
 
   useEffect(() => {
+    // 1. Handle Digio Redirect URL return for mobile selfie
+    const searchParams = new URLSearchParams(window.location.search);
+    const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
+    const status = searchParams.get("message") || searchParams.get("status");
+    
+    if (documentId && status) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      const responseObj = {
+        document_id: documentId,
+        error_code: status.toLowerCase() === "success" || status === "Sign completed" ? "success" : status,
+        message: status
+      };
+      
+      // Give a tiny delay to ensure state is mounted
+      setTimeout(() => handleInlineSelfieSuccess(responseObj), 100);
+    }
+
+    // 2. Clean up timer on unmount
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };

@@ -252,50 +252,60 @@ export default function DigilockerStep() {
       minHeight: "50vh"
     }}>
       
-      <div className="text-center" style={{ maxWidth: 500 }}>
-        <h2 className="text-section" style={{ marginBottom: 12 }}>Connect DigiLocker</h2>
-        <p className="text-body" style={{ marginBottom: 32, fontWeight: 600, color: "var(--text-muted)" }}>
-          We'll now connect to your official DigiLocker account to securely fetch your Aadhaar and PAN details.
-        </p>
-
-        {error && (
-          <div style={{ 
-            background: "rgba(255, 71, 71, 0.05)", 
-            border: "1px solid var(--wise-danger)", 
-            padding: "16px", 
-            borderRadius: "12px", 
-            marginBottom: "24px",
-            color: "var(--wise-danger)",
-            fontSize: "0.9rem"
-          }}>
-            {error}
+      <div className="text-center" style={{ maxWidth: 500, width: "100%" }}>
+        {loading ? (
+          <div className="card animate-fade-in" style={{ padding: "64px 40px", textAlign: "center", borderRadius: "32px", background: "var(--bg-card)", border: "1.5px solid var(--border-color)", width: "100%" }}>
+            <div className="loader" style={{ margin: '0 auto 32px', width: "56px", height: "56px", border: "4px solid var(--border-color)", borderTop: "4px solid var(--wise-green)" }}></div>
+            <p style={{ fontSize: "1.3rem", fontWeight: 900, color: "var(--text-primary)" }}>Verifying DigiLocker Data</p>
+            <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginTop: 12, fontWeight: 600 }}>
+              Almost done! We are securely fetching your documents. Please do not refresh.
+            </p>
           </div>
-        )}
-
-        {identityDetails?.aadhaar ? (
-          <button 
-            className="btn btn-primary" 
-            onClick={() => nextStep()}
-            style={{ width: "100%", height: "56px", fontSize: "1.1rem", background: "var(--wise-green)", color: "#000" }}
-          >
-            Aadhaar Verified - Continue
-          </button>
         ) : (
-          <button 
-            className="btn btn-primary" 
-            disabled={loading}
-            onClick={startFlow}
-            style={{ width: "100%", height: "56px", fontSize: "1.1rem" }}
-          >
-            {loading ? "Connecting..." : "Proceed to DigiLocker"}
-          </button>
+          <>
+            <h2 className="text-section" style={{ marginBottom: 12 }}>Connect DigiLocker</h2>
+            <p className="text-body" style={{ marginBottom: 32, fontWeight: 600, color: "var(--text-muted)" }}>
+              We'll now connect to your official DigiLocker account to securely fetch your Aadhaar and PAN details.
+            </p>
+
+            {error && (
+              <div style={{ 
+                background: "rgba(255, 71, 71, 0.05)", 
+                border: "1px solid var(--wise-danger)", 
+                padding: "16px", 
+                borderRadius: "12px", 
+                marginBottom: "24px",
+                color: "var(--wise-danger)",
+                fontSize: "0.9rem"
+              }}>
+                {error}
+              </div>
+            )}
+
+            {identityDetails?.aadhaar ? (
+              <button 
+                className="btn btn-primary" 
+                onClick={() => nextStep()}
+                style={{ width: "100%", height: "56px", fontSize: "1.1rem", background: "var(--wise-green)", color: "#000" }}
+              >
+                Aadhaar Verified - Continue
+              </button>
+            ) : (
+              <button 
+                className="btn btn-primary" 
+                disabled={loading}
+                onClick={startFlow}
+                style={{ width: "100%", height: "56px", fontSize: "1.1rem" }}
+              >
+                Proceed to DigiLocker
+              </button>
+            )}
+
+            <p className="text-caption" style={{ marginTop: 24, marginBottom: 24, fontSize: "0.8rem", opacity: 0.7 }}>
+              Clicking above will open a secure Government portal in a new window.
+            </p>
+          </>
         )}
-
-        <p className="text-caption" style={{ marginTop: 24, marginBottom: 24, fontSize: "0.8rem", opacity: 0.7 }}>
-          Clicking above will open a secure Government portal in a new window.
-        </p>
-
-
       </div>
 
       <div style={{ 
