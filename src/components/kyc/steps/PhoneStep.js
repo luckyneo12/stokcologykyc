@@ -39,8 +39,7 @@ export default function PhoneStep() {
   // Ensure component is mounted to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
-    resetKYC();
-  }, [resetKYC]);
+  }, []);
 
   useEffect(() => {
     let interval;
@@ -165,6 +164,8 @@ export default function PhoneStep() {
       if (startResult.isNew) {
         // Aggressively clear all kyc-drafts to prevent stale data from a previously deleted application
         if (typeof window !== "undefined") {
+          localStorage.removeItem("kyc-progress");
+          sessionStorage.removeItem("kyc-progress");
           const keysToRemove = [];
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);

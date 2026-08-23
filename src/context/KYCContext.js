@@ -415,7 +415,10 @@ export function KYCProvider({ children }) {
             localStorage.getItem("token")
           : null);
 
+      console.log("[KYC Sync] refreshProgress called with appId:", activeAppId, "token:", activeToken ? "present" : "missing", "isPolling:", isPolling);
+      
       if (!activeAppId || !activeToken) {
+        console.warn("[KYC Sync] Aborting refreshProgress due to missing appId or token");
         if (!isPolling) {
           console.log(
             "[KYC Sync] No active application ID or token found. Skipping refresh.",
@@ -437,17 +440,38 @@ export function KYCProvider({ children }) {
           },
         );
 
-        // Handle Deleted Application or Invalid Session
         if (response.status === 404 || response.status === 401) {
+          console.error(`[KYC Sync] refreshProgress got ${response.status} from API!`);
+          if (typeof window !== "undefined") {
+            const currentTokenInStorage =
+              getStorage().getItem("kycToken") || getStorage().getItem("token");
+            const currentAppIdInStorage = getStorage().getItem("kycApplicationId");
+            
+            console.log(`[KYC Sync] currentTokenInStorage:`, !!currentTokenInStorage, `currentAppIdInStorage:`, currentAppIdInStorage);
+            
+            if (
+              (activeToken && currentTokenInStorage && activeToken !== currentTokenInStorage) ||
+              (activeAppId && currentAppIdInStorage && activeAppId !== currentAppIdInStorage)
+            ) {
+              console.warn(`[KYC Sync] Ignored ${response.status} cleanup because the active session has changed.`);
+              return null;
+            }
+          }
+
           console.warn(
             `[KYC Sync] ${response.status === 404 ? "Application Deleted" : "Session Expired"}. Cleaning up...`,
           );
           if (typeof window !== "undefined") {
-            getStorage().clear();
+            if (response.status === 401) {
+              localStorage.removeItem("kycToken");
+              localStorage.removeItem("token");
+              sessionStorage.removeItem("kycToken");
+              sessionStorage.removeItem("token");
+            }
             localStorage.removeItem("kycApplicationId");
-            localStorage.removeItem("kycToken");
             localStorage.removeItem("kyc-progress");
-            localStorage.removeItem("token");
+            sessionStorage.removeItem("kycApplicationId");
+            sessionStorage.removeItem("kyc-progress");
             
             // Clear all kyc-drafts to prevent stale data
             const keysToRemove = [];
@@ -896,7 +920,6 @@ export function KYCProvider({ children }) {
             refreshProgress(data.application.applicationId, magicToken);
           } else {
             if (typeof window !== "undefined") {
-              getStorage().clear();
               localStorage.removeItem("kycApplicationId");
               localStorage.removeItem("kycToken");
               localStorage.removeItem("kyc-progress");
@@ -909,7 +932,6 @@ export function KYCProvider({ children }) {
         .catch((err) => {
           console.warn("[KYC Init] Failed to verify magic token:", err);
           if (typeof window !== "undefined") {
-            getStorage().clear();
             localStorage.removeItem("kycApplicationId");
             localStorage.removeItem("kycToken");
             localStorage.removeItem("kyc-progress");
@@ -1111,7 +1133,20 @@ export function KYCProvider({ children }) {
         backupStorage.getItem("token");
 
       if (!applicationId || !token) {
-        console.error("[KYC Context] persistStepToBackend aborted: Missing applicationId or token. AppID:", applicationId, "Token:", !!token);
+        console.error(
+          "[KYC Context] persistStepToBackend aborted: Missing applicationId or token. AppID:",
+          applicationId,
+          "Token:",
+          !!token,
+          "RawToken:",
+          token,
+          "activeStorage:",
+          activeStorage === localStorage ? "local" : "session",
+          "kycToken in local:",
+          !!localStorage.getItem("kycToken"),
+          "kycToken in session:",
+          !!sessionStorage.getItem("kycToken")
+        );
         return false;
       }
 
@@ -1146,8 +1181,10 @@ export function KYCProvider({ children }) {
         if (typeof errorMsg === 'string' && errorMsg.includes("Application not found")) {
           console.warn("[KYC Sync] Ghost application detected. Wiping local storage and redirecting to start.");
           if (typeof window !== 'undefined') {
-            localStorage.clear();
-            sessionStorage.clear();
+            localStorage.removeItem("kycApplicationId");
+            localStorage.removeItem("kyc-progress");
+            sessionStorage.removeItem("kycApplicationId");
+            sessionStorage.removeItem("kyc-progress");
             window.location.href = "/";
           }
           return false;
