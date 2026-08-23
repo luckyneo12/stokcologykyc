@@ -110,9 +110,13 @@ export default function AadhaarEsignStep() {
       ? rawIdentifier.replace(/\D/g, '').slice(-10) 
       : rawIdentifier;
       
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+      
     const digio = initializeDigio({
       environment: process.env.NEXT_PUBLIC_DIGIO_ENV || "production",
       logoUrl: "/logo120.png",
+      is_redirection_approach: isMobile,
+      redirect_url: isMobile ? window.location.href : "",
       callback: async (response) => {
         if (response.error_code || response.message === "cancelled" || !response.digio_doc_id) {
           console.error("Digio Error/Cancel:", response);
