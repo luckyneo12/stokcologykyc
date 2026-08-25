@@ -184,12 +184,37 @@ const sendWelcomeEmail = async (email, name, panCard, pdfAttachment) => {
     // Add default Client Copy Stockology.pdf
     const fs = require('fs');
     const path = require('path');
-    const clientCopyPath = path.resolve(__dirname, "../../../kyc_pages/Client Copy Stockology.pdf");
-    if (fs.existsSync(clientCopyPath)) {
-      mailOptions.attachments.push({
-        filename: "Client Copy Stockology.pdf",
-        path: clientCopyPath
-      });
+    
+    // Use multiple fallback paths to ensure it's found regardless of execution context
+    const possiblePaths = [
+      path.resolve(__dirname, "../../../kyc_pages/Client Copy Stockology.pdf"),
+      path.resolve(process.cwd(), "kyc_pages/Client Copy Stockology.pdf"),
+      path.resolve(process.cwd(), "../kyc_pages/Client Copy Stockology.pdf"),
+      path.resolve(__dirname, "../../kyc_pages/Client Copy Stockology.pdf")
+    ];
+    
+    let foundPath = null;
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        foundPath = p;
+        break;
+      }
+    }
+
+    if (foundPath) {
+      try {
+        const fileContent = fs.readFileSync(foundPath);
+        mailOptions.attachments.push({
+          filename: "Client Copy Stockology.pdf",
+          content: fileContent,
+          contentType: "application/pdf"
+        });
+        console.log("[EmailService] Client Copy attached successfully from:", foundPath);
+      } catch (err) {
+        console.error("[EmailService] Error reading Client Copy:", err);
+      }
+    } else {
+      console.error("[EmailService] CRITICAL ERROR: Client Copy Stockology.pdf not found in any of the expected paths!");
     }
 
     const info = await transporter.sendMail(mailOptions);

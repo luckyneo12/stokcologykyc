@@ -76,6 +76,36 @@ class PanService {
         errors.push("DOB mismatch");
       }
       
+      // FALLBACK: Digio's name match is notoriously strict and fails on double-spaces in NSDL database.
+      // If there's a name mismatch but DOB matches, let's fetch the actual name from Digio and compare normalized strings.
+      if (errors.includes("Name mismatch") && !errors.includes("DOB mismatch")) {
+        try {
+          console.log('[Digio] Name mismatch detected. Attempting robust fallback fetch...');
+          const fallbackPayload = {
+            id_no: panNumber.toUpperCase(),
+            dob: formattedDob,
+            unique_request_id: `PAN_FB_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`
+          };
+          const fallbackData = await digioClient.post(endpoint, fallbackPayload);
+          
+          if (fallbackData && fallbackData.full_name) {
+            const normalize = (str) => String(str).toUpperCase().replace(/[^A-Z]/g, '');
+            if (normalize(fallbackData.full_name) === normalize(fullName)) {
+               console.log(`[Digio] Fallback match successful! Overriding mismatch. Digio: '${fallbackData.full_name}', User: '${fullName}'`);
+               data.name_as_per_pan_match = true;
+               data.name_at_pan = fallbackData.full_name; // Store the exact NSDL name
+               
+               const index = errors.indexOf("Name mismatch");
+               if (index > -1) errors.splice(index, 1);
+            } else {
+               console.log(`[Digio] Fallback match failed. Normalized Digio: '${normalize(fallbackData.full_name)}', Normalized User: '${normalize(fullName)}'`);
+            }
+          }
+        } catch (fallbackError) {
+          console.warn('[Digio] Robust fallback fetch failed:', fallbackError.message);
+        }
+      }
+
       if (errors.length > 0) {
         return {
           success: false,

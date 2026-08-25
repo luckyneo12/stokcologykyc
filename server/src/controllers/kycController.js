@@ -937,7 +937,25 @@ const downloadPdf = async (req, res, next) => {
 
     if (pdfPath) {
       if (pdfPath.startsWith("http")) {
-        return res.redirect(pdfPath);
+        const https = require("https");
+        const http = require("http");
+        const client = pdfPath.startsWith("https") ? https : http;
+        
+        return client.get(pdfPath, (proxyRes) => {
+          if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
+            return client.get(proxyRes.headers.location, (redirectRes) => {
+              res.setHeader("Content-Type", "application/pdf");
+              res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${app.applicationId}.pdf`);
+              redirectRes.pipe(res);
+            });
+          }
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${app.applicationId}.pdf`);
+          proxyRes.pipe(res);
+        }).on("error", (err) => {
+          console.error("PDF download proxy error:", err);
+          return res.status(500).json({ success: false, error: "Failed to download PDF" });
+        });
       }
       const fullPath = require("path").join(__dirname, "../../", pdfPath);
       if (require("fs").existsSync(fullPath)) {

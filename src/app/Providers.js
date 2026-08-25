@@ -69,7 +69,6 @@ export function Providers({ children }) {
   return (
     <KYCProvider>
       <ToastContainer />
-      <AntiInspect />
       {children}
     </KYCProvider>
   );
