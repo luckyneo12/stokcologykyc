@@ -275,13 +275,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
     }
   }, [isRejection, isPersonalDetailsRejected, isPepProofRejected, clearFormDraft, setForm]);
 
-  // Comprehensive debounced auto-save for all fields to prevent data loss on refresh/polling
-  useEffect(() => {
-    if (!initializedForm.current) return;
-    
-    // Check if the form has actually changed compared to the last auto-save
-    
-  }, [form, syncProgress]);
+
   const [errors, setErrors] = useState({});
   const [showMore, setShowMore] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
