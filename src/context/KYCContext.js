@@ -879,15 +879,19 @@ export function KYCProvider({ children }) {
     const magicToken = urlParams.get("token");
 
     if (magicToken) {
+      const decoded = decodeJwtPayload(magicToken);
+      
+      if (decoded?.correctionMode) {
+        // Don't process in normal flow — redirect to correction route if not already there
+        if (!window.location.pathname.startsWith("/correction")) {
+          window.location.href = `/correction?token=${magicToken}`;
+        }
+        return;
+      }
+
       getStorage().setItem("kycToken", magicToken);
       window.history.replaceState({}, document.title, window.location.pathname);
 
-      const decoded = decodeJwtPayload(magicToken);
-      if (decoded?.correctionMode) {
-        // Don't process in normal flow — redirect to correction route
-        window.location.href = `/correction?token=${magicToken}`;
-        return;
-      }
       const isRejection = Boolean(decoded?.rejectionMode);
       const rejSteps = decoded?.rejectedSteps || [];
 
