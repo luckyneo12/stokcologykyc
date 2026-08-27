@@ -166,7 +166,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
         }
       }
     }
-  }, [isRejection, rejectedStepsList, nominees, setNominees, drafts[stepId]]);
+  }, [isRejection, nominees, setNominees, drafts[stepId]]);
 
   
   const ALL_RELATIONS = [

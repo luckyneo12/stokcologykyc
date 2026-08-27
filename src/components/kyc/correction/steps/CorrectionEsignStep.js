@@ -35,6 +35,11 @@ export default function CorrectionEsignStep() {
       const app = appDataRes.application;
 
       // 2. Generate PDF with the latest data
+      const safeParse = (val) => {
+        if (typeof val !== 'string') return val;
+        try { return JSON.parse(val || "{}"); } catch(e) { return val; }
+      };
+
       const pdfRes = await fetch(`${API_URL}/api/kyc/preview-pdf`, {
         method: 'POST',
         headers: {
@@ -42,18 +47,18 @@ export default function CorrectionEsignStep() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          personalDetails: typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails || "{}") : app.personalDetails,
-          identityDetails: typeof app.identityDetails === "string" ? JSON.parse(app.identityDetails || "{}") : app.identityDetails,
-          address: typeof app.address === "string" ? JSON.parse(app.address || "{}") : app.address,
-          bankDetails: typeof app.bankDetails === "string" ? JSON.parse(app.bankDetails || "{}") : app.bankDetails,
-          nomineeDetails: typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails || "{}") : app.nomineeDetails,
-          ocrData: typeof app.ocrData === "string" ? JSON.parse(app.ocrData || "{}") : app.ocrData,
-          selfieDetails: typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails || "{}") : app.selfieDetails,
-          documents: typeof app.documents === "string" ? JSON.parse(app.documents || "[]") : app.documents,
-          panUpload: typeof app.panUpload === "string" ? JSON.parse(app.panUpload || "null") : app.panUpload,
-          financialProof: typeof app.financialProof === "string" ? JSON.parse(app.financialProof || "null") : app.financialProof,
-          selfie: typeof app.selfie === "string" ? JSON.parse(app.selfie || "null") : app.selfie,
-          signature: typeof app.signature === "string" ? JSON.parse(app.signature || "null") : app.signature,
+          personalDetails: safeParse(app.personalDetails),
+          identityDetails: safeParse(app.identityDetails),
+          address: safeParse(app.address),
+          bankDetails: safeParse(app.bankDetails),
+          nomineeDetails: safeParse(app.nomineeDetails),
+          ocrData: safeParse(app.ocrData),
+          selfieDetails: safeParse(app.selfieDetails),
+          documents: safeParse(app.documents),
+          panUpload: app.panUpload,
+          financialProof: app.financialProof,
+          selfie: app.selfie,
+          signature: app.signature,
         })
       });
       
