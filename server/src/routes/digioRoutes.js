@@ -1892,8 +1892,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                     const pDetails = parseJsonField(appToUpdate.personalDetails, {});
                     const iDetails = parseJsonField(appToUpdate.identityDetails, {});
                     if (pDetails.email) {
-                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", iDetails.pan || pDetails.pan || "N/A", {
-                        filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
+                      const panNumber = iDetails.pan || pDetails.pan || appToUpdate.applicationId;
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", panNumber !== appToUpdate.applicationId ? panNumber : "N/A", {
+                        filename: `KYC_Application_${panNumber}_Signed.pdf`,
                         content: buffer,
                         contentType: "application/pdf"
                       });
@@ -1931,8 +1932,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                     const pDetails = parseJsonField(appToUpdate.personalDetails, {});
                     const iDetails = parseJsonField(appToUpdate.identityDetails, {});
                     if (pDetails.email) {
-                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", iDetails.pan || pDetails.pan || "N/A", {
-                        filename: `KYC_Application_${appToUpdate.applicationId}_Signed.pdf`,
+                      const panNumber = iDetails.pan || pDetails.pan || appToUpdate.applicationId;
+                      await sendWelcomeEmail(pDetails.email, pDetails.fullName || "Customer", panNumber !== appToUpdate.applicationId ? panNumber : "N/A", {
+                        filename: `KYC_Application_${panNumber}_Signed.pdf`,
                         content: buffer,
                         contentType: "application/pdf"
                       });

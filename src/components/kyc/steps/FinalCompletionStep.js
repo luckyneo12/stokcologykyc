@@ -36,11 +36,17 @@ export default function FinalCompletionStep() {
       });
       
       if (response.ok) {
+        let filename = `KYC_Application_${applicationId}_Signed.pdf`;
+        const disposition = response.headers.get("Content-Disposition");
+        if (disposition && disposition.includes("filename=")) {
+          filename = disposition.split("filename=")[1].replace(/["']/g, "");
+        }
+        
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `KYC_Application_${applicationId}_Signed.pdf`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();

@@ -443,7 +443,7 @@ function getVariableValue(variableName, appData) {
   }
 }
 
-async function generateKycPdf(applicationData) {
+async function generateKycPdf(applicationData, options = {}) {
   try {
     const safeJsonParse = (str) => {
       let result = str;
@@ -522,6 +522,8 @@ async function generateKycPdf(applicationData) {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const dingbats = await pdfDoc.embedFont(StandardFonts.ZapfDingbats);
+
+    let esignCoordinatesMap = {};
 
     // If template exists, populate fields over the existing pages
     if (activeTemplate) {
@@ -716,11 +718,30 @@ async function generateKycPdf(applicationData) {
           }
         } else {
           // Handle Text
-          const val = getVariableValue(field.variable, applicationData);
+          let val = getVariableValue(field.variable, applicationData);
+          
+          if (field.variable && field.variable.startsWith('esign')) {
+             // Always extract coordinates if it's an esign field (val must evaluate to true, which it does from getVariableValue)
+             if (val) {
+               const boxWidth = field.width || 150;
+               const boxHeight = field.height || 30;
+               const pageNum = String((field.page || 1));
+               if (!esignCoordinatesMap[pageNum]) esignCoordinatesMap[pageNum] = [];
+               esignCoordinatesMap[pageNum].push({
+                 x: field.x,
+                 y: yPos - boxHeight, 
+                 width: boxWidth,
+                 height: boxHeight
+               });
+             }
+             // Force val to be empty so it NEVER manually draws the text!
+             val = "";
+          }
+
           if (val) {
-            const textStr = String(val);
             const boxWidth = field.width || 150;
             const boxHeight = field.height || 30;
+            const textStr = String(val);
             
             let fontSize = field.fontSize || 12; 
             
@@ -991,7 +1012,11 @@ async function generateKycPdf(applicationData) {
     }
 
     console.log(`[PDF Gen] Successfully generated PDF`);
-    return await pdfDoc.saveAsBase64();
+    const pdfBase64 = await pdfDoc.saveAsBase64();
+    if (options.extractEsignCoordinates) {
+      return { pdfBase64, esignCoordinatesMap };
+    }
+    return pdfBase64;
   } catch (error) {
     console.error("[PDF Gen] Fatal error:", error);
     throw error;

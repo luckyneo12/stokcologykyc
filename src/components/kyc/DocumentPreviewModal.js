@@ -16,13 +16,26 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
 
   const isPdf = documentUrl.toLowerCase().endsWith(".pdf") || documentType === "application/pdf" || documentUrl.startsWith("data:application/pdf");
 
+  let safeDocumentUrl = documentUrl;
+  if (typeof documentUrl === "string" && documentUrl.includes("/api/kyc/document/")) {
+    try {
+      const token = typeof window !== "undefined"
+        ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
+        : null;
+      if (token && !documentUrl.includes("token=")) {
+        const separator = documentUrl.includes("?") ? "&" : "?";
+        safeDocumentUrl = `${documentUrl}${separator}token=${token}`;
+      }
+    } catch (e) {}
+  }
+
   // For Cloudinary PDFs, route through our backend proxy so the iframe loads same-origin
-  let iframeSrc = documentUrl;
-  if (isPdf && documentUrl.startsWith("https://res.cloudinary.com/")) {
+  let iframeSrc = safeDocumentUrl;
+  if (isPdf && safeDocumentUrl.startsWith("https://res.cloudinary.com/")) {
     const token = typeof window !== "undefined"
-      ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token"))
+      ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
       : null;
-    iframeSrc = `${API_BASE}/api/kyc/proxy-pdf?url=${encodeURIComponent(documentUrl)}&token=${encodeURIComponent(token || "")}`;
+    iframeSrc = `${API_BASE}/api/kyc/proxy-pdf?url=${encodeURIComponent(safeDocumentUrl)}&token=${encodeURIComponent(token || "")}`;
   }
 
   return createPortal(
@@ -63,7 +76,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             {isPdf && (
               <a 
-                href={documentUrl} 
+                href={safeDocumentUrl} 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", color: "var(--primary-color)", textDecoration: "none", fontWeight: 600, padding: "6px 12px", background: "var(--bg-secondary)", borderRadius: "6px" }}
@@ -112,7 +125,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
             />
           ) : (
             <img 
-              src={documentUrl} 
+              src={safeDocumentUrl} 
               alt="Document Preview" 
               style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", background: "#fff" }} 
               onError={(e) => {

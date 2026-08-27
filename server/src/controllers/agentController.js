@@ -585,9 +585,23 @@ const requestModifications = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "No rejected steps found on this application" });
     }
 
-    // Find the first rejected step's KYC index — the user will land here
-    const firstRejectedKycIndex = Math.min(...rejectedEntries.map(e => e.kycIndex));
+    // Build a structured correction session (replaces any previous session)
+    const crypto = require("crypto");
+    const correctionSessionId = `CORR-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 
+    const correctionSession = {
+      sessionId: correctionSessionId,
+      createdAt: new Date().toISOString(),
+      rejectedSteps: rejectedEntries.map(e => ({
+        stepId: e.stepId,
+        type: DOCUMENT_REVIEW_STEPS.includes(e.stepId) ? "document" : "module",
+        reason: e.reason,
+        kycIndex: e.kycIndex,
+        completed: false,
+      })),
+      drafts: {},
+      requiresEsign: true,
+    };
 
     // Get the user's email and name
     let personalDetails = {};
@@ -601,39 +615,32 @@ const requestModifications = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "No email found for this user. Cannot send rejection notification." });
     }
 
-    // Reset the application: set status to pending and move currentStep to the
-    // first rejected step so the user lands there on page load/refresh.
+    // Set status to "rejected" and store correction session.
+    // IMPORTANT: currentStep is NOT moved — normal flow position is preserved.
     await prisma.kycApplication.update({
       where: { applicationId: id },
       data: {
-        status: "pending",
-        isResubmitted: false,
-        currentStep: firstRejectedKycIndex,
-        correctionDraft: "{}",
+        status: "rejected",
+        correctionDraft: JSON.stringify(correctionSession),
       },
     });
 
-    // Build the modification link — the user's KYC portal
-    // Embed rejection metadata in the JWT so the frontend can detect rejection mode
-    // and know exactly which steps to blank (module vs document)
+    // Build the correction link — points to the separate /correction route
     const jwt = require("jsonwebtoken");
     const magicToken = jwt.sign(
       {
         id: app.user.id,
         phone: app.user.phone,
         role: app.user.role || "user",
-        rejectionMode: true,
-        rejectedSteps: rejectedEntries.map(e => ({
-          stepId: e.stepId,
-          type: DOCUMENT_REVIEW_STEPS.includes(e.stepId) ? "document" : "module",
-          reason: e.reason
-        }))
+        correctionMode: true,
+        sessionId: correctionSessionId,
+        rejectedSteps: correctionSession.rejectedSteps,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-    const modifyLink = `${frontendUrl}/?token=${magicToken}`;
+    const modifyLink = `${frontendUrl}/correction?token=${magicToken}`;
 
     // Send the email
     const { sendRejectionEmail } = require("../services/emailService");
@@ -646,7 +653,7 @@ const requestModifications = async (req, res, next) => {
       );
     } catch (emailError) {
       console.error("[RequestModifications] Email sending failed:", emailError.message);
-      // Don't fail the whole request if email fails — the app is already reset
+      // Don't fail the whole request if email fails — the app is already updated
     }
 
     // Audit log
@@ -662,6 +669,7 @@ const requestModifications = async (req, res, next) => {
           applicationId: id,
           rejectedSteps: rejectedEntries.map(e => ({ stepId: e.stepId, title: e.stepTitle, reason: e.reason })),
           emailSentTo: userEmail,
+          correctionSessionId,
         }),
         targetId: String(id),
         targetType: "KycApplication",
@@ -680,6 +688,7 @@ const requestModifications = async (req, res, next) => {
       success: true,
       message: `Modification request sent to ${userEmail}`,
       rejectedSteps: rejectedEntries.map(e => e.stepTitle),
+      correctionSessionId,
     });
   } catch (error) {
     next(error);

@@ -31,5 +31,21 @@ export function resolveAssetUrl(path) {
   if (!normalizedPath.startsWith("/")) {
     normalizedPath = "/" + normalizedPath;
   }
-  return `${API_BASE_URL}${normalizedPath}`;
+  
+  let finalUrl = `${API_BASE_URL}${normalizedPath}`;
+  
+  // Attach token for secure local routes to bypass 401 Unauthorized in standard <img> tags
+  if (finalUrl.includes("/api/kyc/document/")) {
+    try {
+      const token = typeof window !== "undefined"
+        ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
+        : null;
+      if (token && !finalUrl.includes("token=")) {
+        const separator = finalUrl.includes("?") ? "&" : "?";
+        finalUrl = `${finalUrl}${separator}token=${token}`;
+      }
+    } catch (e) {}
+  }
+  
+  return finalUrl;
 }

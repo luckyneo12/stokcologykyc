@@ -33,8 +33,45 @@ class EsignService {
 
     // 1. Generate the PDF locally on the server
     console.log(`[EsignService] Generating PDF for ${customerIdentifier}...`);
-    const pdfBase64 = await generateKycPdf(applicationData);
+    const genResult = await generateKycPdf(applicationData, { extractEsignCoordinates: true });
+    const pdfBase64 = genResult.pdfBase64 || genResult;
+    const esignCoordinatesMap = genResult.esignCoordinatesMap || {};
+    
+    // Clean up coordinates to exactly match Digio's expected format (llx, lly, urx, ury)
+    const signCoordinates = {};
+    for (const [page, coordsArray] of Object.entries(esignCoordinatesMap)) {
+      signCoordinates[page] = coordsArray.map(c => ({
+        llx: c.x,
+        lly: c.y,
+        urx: c.x + c.width,
+        ury: c.y + c.height
+      }));
+    }
+
     const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+
+    // If there are custom coordinates, we must switch to display_on_page: "custom"
+    // and manually inject the bottom-of-page signature for every page.
+    let displayOnPage = "all";
+    if (Object.keys(signCoordinates).length > 0) {
+      displayOnPage = "custom";
+      const { PDFDocument } = require('pdf-lib');
+      const pdfDoc = await PDFDocument.load(pdfBuffer);
+      const totalPages = pdfDoc.getPageCount();
+      
+      for (let i = 1; i <= totalPages; i++) {
+        const pageNum = String(i);
+        if (!signCoordinates[pageNum]) signCoordinates[pageNum] = [];
+        
+        // Add bottom-right default Digio stamp coordinates (Standard A4 bottom right)
+        signCoordinates[pageNum].push({
+          llx: 400,
+          lly: 20,
+          urx: 550,
+          ury: 70
+        });
+      }
+    }
 
     // 2. Prepare Digio Request (Multipart DID Flow)
     const endpoint = "v2/client/document/upload";
@@ -59,18 +96,31 @@ class EsignService {
           name: parsedPersonalDetails.fullName || "KYC User",
           reason: "KYC Application Signing",
           sign_type: "aadhaar",
-          name_match: true
+          name_match: true,
+          ...(Object.keys(signCoordinates).length > 0 && { sign_coordinates: signCoordinates })
         }
       ],
       expire_in_days: 10,
-      display_on_page: "all",
+      display_on_page: displayOnPage,
       notify_signers: true,
       send_sign_link: false,
       generate_access_token: true
     };
 
+    let parsedIdentityDetails = {};
+    try {
+      if (typeof applicationData.identityDetails === 'string') {
+        parsedIdentityDetails = JSON.parse(applicationData.identityDetails);
+      } else if (typeof applicationData.identityDetails === 'object') {
+        parsedIdentityDetails = applicationData.identityDetails;
+      }
+    } catch (e) {
+      console.warn("Failed to parse identityDetails");
+    }
+    const panNumber = parsedIdentityDetails.pan || customerIdentifier;
+
     const form = new FormData();
-    form.append('file', pdfBuffer, { filename: `KYC_Application_${customerIdentifier}.pdf`, contentType: 'application/pdf' });
+    form.append('file', pdfBuffer, { filename: `KYC_Application_${panNumber}.pdf`, contentType: 'application/pdf' });
     form.append('request', JSON.stringify(requestDetails), { contentType: 'application/json' });
 
     console.log(`[EsignService] Uploading generated PDF via multipart for ${customerIdentifier} (Buffer size: ${pdfBuffer.length} bytes)`);

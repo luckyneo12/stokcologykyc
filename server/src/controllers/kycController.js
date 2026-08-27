@@ -642,19 +642,43 @@ const uploadDocument = (req, res) => {
   if (!req.file)
     return res.status(400).json({ success: false, error: "No file uploaded" });
 
-  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
-  const baseUrl = `${protocol}://${req.headers.host}`;
-
   const finalPath =
     req.file.path && req.file.path.startsWith("http")
       ? req.file.path
-      : `/uploads/${req.file.filename}`;
+      : `/api/kyc/document/${req.file.filename}`;
 
   res.json({
     success: true,
     path: finalPath,
     filename: req.file.filename,
   });
+};
+
+const getSecureDocument = (req, res) => {
+  const { filename } = req.params;
+  const userRole = req.user?.role || "user";
+  const userId = req.user?.id;
+
+  // Authorization check to prevent IDOR
+  if (userRole !== "admin") {
+    // If the user is not an admin, they must own the file.
+    // Our local files are prefixed with `user_${userId}_`
+    const isOwner = filename.startsWith(`user_${userId}_`);
+    if (!isOwner) {
+      return res.status(403).json({ success: false, error: "Access denied to this document." });
+    }
+  }
+
+  const path = require("path");
+  const fs = require("fs");
+  // __dirname is server/src/controllers, we want server/uploads
+  const filePath = path.join(__dirname, "../../uploads", filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, error: "Document not found." });
+  }
+
+  res.sendFile(filePath);
 };
 
 const ocrExtract = (req, res) => {
@@ -935,6 +959,9 @@ const downloadPdf = async (req, res, next) => {
       pdfPath = esignDoc.path;
     }
 
+    const iDetails = parseJsonField(app.identityDetails, {});
+    const panNumber = iDetails.pan || app.applicationId;
+
     if (pdfPath) {
       if (pdfPath.startsWith("http")) {
         const https = require("https");
@@ -944,13 +971,15 @@ const downloadPdf = async (req, res, next) => {
         return client.get(pdfPath, (proxyRes) => {
           if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
             return client.get(proxyRes.headers.location, (redirectRes) => {
+              res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
               res.setHeader("Content-Type", "application/pdf");
-              res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${app.applicationId}.pdf`);
+              res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${panNumber}.pdf`);
               redirectRes.pipe(res);
             });
           }
+          res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
           res.setHeader("Content-Type", "application/pdf");
-          res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${app.applicationId}.pdf`);
+          res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${panNumber}.pdf`);
           proxyRes.pipe(res);
         }).on("error", (err) => {
           console.error("PDF download proxy error:", err);
@@ -961,7 +990,7 @@ const downloadPdf = async (req, res, next) => {
       if (require("fs").existsSync(fullPath)) {
         return res.download(
           fullPath,
-          `KYC_Application_${app.applicationId}.pdf`,
+          `KYC_Application_${panNumber}.pdf`,
         );
       }
     }
@@ -970,10 +999,11 @@ const downloadPdf = async (req, res, next) => {
     const dynamicPdfBase64 = await generateKycPdf(app);
     if (dynamicPdfBase64) {
       const buffer = Buffer.from(dynamicPdfBase64, "base64");
+      res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename=KYC_Application_${app.applicationId}_unsigned.pdf`,
+        `attachment; filename=KYC_Application_${panNumber}_unsigned.pdf`,
       );
       return res.send(buffer);
     }
@@ -1256,6 +1286,342 @@ const generateMobileSession = async (req, res, next) => {
   }
 };
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CORRECTION FLOW ENDPOINTS — Separate from normal save-step flow
+// These operate on correctionDraft only, never touching live application data
+// until completeCorrectionSession merges everything at once.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/kyc/correction/session
+ * Returns the current correction session for the authenticated user.
+ * Validates the sessionId from the JWT to detect stale links.
+ */
+const getCorrectionSession = async (req, res, next) => {
+  try {
+    const app = await prisma.kycApplication.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!app) {
+      return res.status(404).json({ success: false, error: "No application found" });
+    }
+
+    if (app.status !== "rejected") {
+      return res.json({
+        success: false,
+        error: "No pending corrections",
+        applicationStatus: app.status,
+      });
+    }
+
+    let correctionDraft = {};
+    try {
+      correctionDraft = app.correctionDraft
+        ? (typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft)
+        : {};
+    } catch (e) {
+      correctionDraft = {};
+    }
+
+    if (!correctionDraft.sessionId || !correctionDraft.rejectedSteps) {
+      return res.status(400).json({ success: false, error: "No correction session found on this application" });
+    }
+
+    // Stale link detection: compare JWT sessionId with stored sessionId
+    const jwtSessionId = req.user.sessionId || req.query.sessionId;
+    if (jwtSessionId && jwtSessionId !== correctionDraft.sessionId) {
+      return res.json({
+        success: true,
+        staleSession: true,
+        message: "A new correction email has been sent to you. Please use the link from the latest email to complete your KYC corrections.",
+      });
+    }
+
+    // Return the correction session + read-only application data snapshot
+    const appData = normalizeApplication(app);
+
+    res.json({
+      success: true,
+      staleSession: false,
+      correctionSession: correctionDraft,
+      applicationData: {
+        applicationId: appData.applicationId,
+        personalDetails: appData.personalDetails,
+        identityDetails: appData.identityDetails,
+        identityMethod: appData.identityMethod,
+        address: appData.address,
+        bankDetails: appData.bankDetails,
+        ocrData: appData.ocrData,
+        nomineeDetails: appData.nomineeDetails,
+        nomineeAllocation: appData.nomineeAllocation,
+        segments: appData.segments,
+        bsda: appData.bsda,
+        financialProof: appData.financialProof,
+        signature: appData.signature,
+        panUpload: appData.panUpload,
+        selfieDetails: appData.selfieDetails,
+        documents: appData.documents,
+        stepStatuses: appData.stepStatuses,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/kyc/correction/save-step
+ * Saves corrected data for a single rejected step into correctionDraft.drafts[stepId].
+ * Does NOT touch any live application fields.
+ * Body: { stepId: string, data: object }
+ */
+const saveCorrectionStep = async (req, res, next) => {
+  try {
+    const { stepId, data } = req.body || {};
+
+    if (!stepId || !data) {
+      return res.status(400).json({ success: false, error: "stepId and data are required" });
+    }
+
+    const app = await prisma.kycApplication.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!app || app.status !== "rejected") {
+      return res.status(400).json({ success: false, error: "No active correction session" });
+    }
+
+    let correctionDraft = {};
+    try {
+      correctionDraft = app.correctionDraft
+        ? (typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft)
+        : {};
+    } catch (e) {
+      correctionDraft = {};
+    }
+
+    if (!correctionDraft.sessionId || !correctionDraft.rejectedSteps) {
+      return res.status(400).json({ success: false, error: "No correction session found" });
+    }
+
+    // Validate stepId is in the rejected steps list
+    const stepEntry = correctionDraft.rejectedSteps.find(s => s.stepId === stepId);
+    if (!stepEntry) {
+      return res.status(400).json({ success: false, error: `Step '${stepId}' is not in the rejected steps list` });
+    }
+
+    // Save into drafts
+    if (!correctionDraft.drafts) correctionDraft.drafts = {};
+    correctionDraft.drafts[stepId] = data;
+
+    // Mark step as completed
+    stepEntry.completed = true;
+
+    await prisma.kycApplication.update({
+      where: { applicationId: app.applicationId },
+      data: {
+        correctionDraft: JSON.stringify(correctionDraft),
+      },
+    });
+
+    const allComplete = correctionDraft.rejectedSteps.every(s => s.completed);
+
+    console.log(`[Correction] Saved draft for step '${stepId}' on app ${app.applicationId}. All complete: ${allComplete}`);
+
+    res.json({
+      success: true,
+      message: `Correction for '${stepId}' saved`,
+      stepCompleted: true,
+      allStepsComplete: allComplete,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/kyc/correction/complete
+ * Called when all rejected steps are completed (+ re-eSign done).
+ * Merges correctionDraft.drafts into the live application fields,
+ * clears rejection entries from stepStatuses, and resets for re-review.
+ */
+const completeCorrectionSession = async (req, res, next) => {
+  try {
+    const app = await prisma.kycApplication.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!app || app.status !== "rejected") {
+      return res.status(400).json({ success: false, error: "No active correction session" });
+    }
+
+    let correctionDraft = {};
+    try {
+      correctionDraft = app.correctionDraft
+        ? (typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft)
+        : {};
+    } catch (e) {
+      correctionDraft = {};
+    }
+
+    if (!correctionDraft.sessionId || !correctionDraft.rejectedSteps) {
+      return res.status(400).json({ success: false, error: "No correction session found" });
+    }
+
+    // Validate all steps are complete
+    const incompleteSteps = correctionDraft.rejectedSteps.filter(s => !s.completed);
+    if (incompleteSteps.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Not all rejected steps have been corrected",
+        incompleteSteps: incompleteSteps.map(s => s.stepId),
+      });
+    }
+
+    const drafts = correctionDraft.drafts || {};
+    const updateData = {};
+
+    // Merge each draft into the corresponding live application field
+    // using the existing mergeJson helper for deep merging
+    const DRAFT_TO_FIELD_MAP = {
+      personalDetails: "personalDetails",
+      bankVerification: "bankDetails",
+      nomineeDetails: "nomineeDetails",
+      nomineeChoice: "nomineeDetails",
+      nomineeAllocation: "nomineeAllocation",
+      panVerification: "identityDetails",
+      digilocker: null, // Special handling below
+      pricingSelection: null, // Special handling below
+      // Document-type drafts
+      financialProof: "financialProof",
+      signature: "signature",
+      panUpload: "panUpload",
+      ipv: "selfieDetails",
+      pepProof: "personalDetails",
+      nominee1Proof: "nomineeDetails",
+      nominee2Proof: "nomineeDetails",
+      nominee3Proof: "nomineeDetails",
+      guardian1Proof: "nomineeDetails",
+      guardian2Proof: "nomineeDetails",
+      guardian3Proof: "nomineeDetails",
+    };
+
+    for (const [stepId, draftData] of Object.entries(drafts)) {
+      if (!draftData) continue;
+
+      if (stepId === "digilocker") {
+        // DigiLocker: replace identity + address + name/dob fields
+        if (draftData.identityDetails) {
+          updateData.identityDetails = serializeJsonField(
+            mergeJson(parseJsonField(app.identityDetails), draftData.identityDetails)
+          );
+        }
+        if (draftData.address) {
+          updateData.address = serializeJsonField(
+            mergeJson(parseJsonField(app.address), draftData.address)
+          );
+        }
+        if (draftData.personalDetails) {
+          const existingPD = parseJsonField(updateData.personalDetails || app.personalDetails);
+          updateData.personalDetails = serializeJsonField(
+            mergeJson(existingPD, draftData.personalDetails)
+          );
+        }
+        if (draftData.identityMethod) {
+          updateData.identityMethod = draftData.identityMethod;
+        }
+        continue;
+      }
+
+      if (stepId === "pricingSelection") {
+        if (draftData.segments) {
+          updateData.segments = serializeJsonField(draftData.segments);
+        }
+        if (draftData.bsda !== undefined) {
+          updateData.bsda = draftData.bsda;
+        }
+        continue;
+      }
+
+      const fieldName = DRAFT_TO_FIELD_MAP[stepId];
+      if (fieldName) {
+        const existing = parseJsonField(updateData[fieldName] || app[fieldName], fieldName === "documents" ? [] : {});
+        updateData[fieldName] = serializeJsonField(mergeJson(existing, draftData));
+      }
+    }
+
+    // Clear rejection entries from stepStatuses
+    let stepStatuses = {};
+    try {
+      stepStatuses = app.stepStatuses
+        ? (typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : app.stepStatuses)
+        : {};
+    } catch (e) {
+      stepStatuses = {};
+    }
+
+    for (const rejStep of correctionDraft.rejectedSteps) {
+      if (stepStatuses[rejStep.stepId]) {
+        // Change status from "rejected" to "pending" (will need re-review)
+        stepStatuses[rejStep.stepId] = {
+          ...stepStatuses[rejStep.stepId],
+          status: "pending",
+          correctedAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    updateData.stepStatuses = JSON.stringify(stepStatuses);
+    updateData.status = "pending";
+    updateData.currentStep = 12; // esignPreview
+    updateData.isResubmitted = true;
+    updateData.correctionDraft = null;
+    // Reset eSign so user must re-sign
+    updateData.generatedPdfBase64 = null;
+    updateData.esignDetails = null;
+
+    await prisma.kycApplication.update({
+      where: { applicationId: app.applicationId },
+      data: updateData,
+    });
+
+    // Audit log
+    await writeAuditLog({
+      userId: req.user.id,
+      action: "CORRECTION_SESSION_COMPLETED",
+      details: {
+        message: `User completed correction session ${correctionDraft.sessionId}`,
+        applicationId: app.applicationId,
+        correctedSteps: correctionDraft.rejectedSteps.map(s => s.stepId),
+      },
+      targetId: app.applicationId,
+      targetType: "KycApplication",
+      ipAddress: req.ip,
+    });
+
+    // Notify via Socket.IO
+    const io = req.app.get("io");
+    if (io) {
+      io.to(app.applicationId).emit("kyc_updated", { action: "correction_completed" });
+      io.to("staff_room").emit("applications_updated");
+    }
+
+    console.log(`[Correction] Session ${correctionDraft.sessionId} completed for app ${app.applicationId}. Merged ${Object.keys(drafts).length} drafts.`);
+
+    res.json({
+      success: true,
+      message: "All corrections applied successfully. Application resubmitted for review.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   startKyc,
   getMyApplication,
@@ -1272,4 +1638,8 @@ module.exports = {
   previewPdf,
   sendWelcome,
   generateMobileSession,
+  getSecureDocument,
+  getCorrectionSession,
+  saveCorrectionStep,
+  completeCorrectionSession,
 };

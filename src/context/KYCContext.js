@@ -883,6 +883,11 @@ export function KYCProvider({ children }) {
       window.history.replaceState({}, document.title, window.location.pathname);
 
       const decoded = decodeJwtPayload(magicToken);
+      if (decoded?.correctionMode) {
+        // Don't process in normal flow — redirect to correction route
+        window.location.href = `/correction?token=${magicToken}`;
+        return;
+      }
       const isRejection = Boolean(decoded?.rejectionMode);
       const rejSteps = decoded?.rejectedSteps || [];
 

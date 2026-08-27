@@ -17,7 +17,7 @@ function isMobileDevice() {
 }
 
 export default function SelfieStep() {
-  const { nextStep, prevStep, addToast, setApplicationId, applicationId, updateState, updateNested, correctionDraft, rejectionMode, stepStatuses, rejectedStepsList } = useKYC();
+  const { nextStep, prevStep, addToast, setApplicationId, applicationId, updateState, updateNested, correctionDraft, rejectionMode, stepStatuses, rejectedStepsList, selfie, selfieDetails } = useKYC();
   
   const isRejection = Boolean(rejectionMode);
   const isSelfieRejected = isRejection && (
@@ -66,7 +66,6 @@ export default function SelfieStep() {
       addToast("Selfie verification completed", "success");
 
       setPhase("done");
-      nextStep();
     } catch (error) {
       addToast("Error fetching verification results", "error");
       setPhase("intro");
@@ -155,7 +154,6 @@ export default function SelfieStep() {
         addToast("Selfie captured on your mobile device!", "success");
         stopCrossDevicePolling();
         setPhase("done");
-        nextStep();
       }
     } catch (err) {
       console.warn("[SelfieStep] Status check failed:", err.message);
@@ -378,6 +376,24 @@ export default function SelfieStep() {
               Match Confidence: {matchScore}%
             </p>
           )}
+          
+          {(selfie?.preview || selfieDetails?.preview) && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+              <img 
+                src={selfie?.preview || selfieDetails?.preview} 
+                alt="Captured Selfie" 
+                style={{ 
+                  maxWidth: "200px", 
+                  maxHeight: "200px",
+                  objectFit: "cover",
+                  borderRadius: "16px", 
+                  border: "2px solid var(--border-color)",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.1)"
+                }} 
+              />
+            </div>
+          )}
+
           <button className="btn btn-primary" onClick={() => nextStep()} style={{ width: "100%" }}>
             Continue <ArrowRightIcon size={18} />
           </button>

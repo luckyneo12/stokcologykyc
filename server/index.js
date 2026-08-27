@@ -85,7 +85,8 @@ app.use(cors({
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Content-Disposition"]
 }));
 
 // Request Body Parser with increased limit for large PDFs
@@ -107,19 +108,7 @@ const limiter = rateLimit({
 });
 app.use("/api/", limiter);
 
-// Static files fallback to production if not found locally
-const fs = require("fs");
-app.use("/uploads", (req, res, next) => {
-  const filePath = path.join(__dirname, "uploads", req.path);
-  if (!fs.existsSync(filePath)) {
-    const remoteHost = process.env.REMOTE_UPLOADS_URL || "https://springgreen-duck-136962.hostingersite.com";
-    const remoteUrl = `${remoteHost}/uploads${req.path}`;
-    console.log(`[Uploads Fallback] File not found locally: ${req.path}. Redirecting to ${remoteUrl}`);
-    return res.redirect(remoteUrl);
-  }
-  next();
-});
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Removed public static /uploads route for security
 
 // Routes
 app.use("/api/auth", authRoutes);

@@ -14,7 +14,11 @@ const {
   bypassEsign,
   previewPdf,
   sendWelcome,
-  generateMobileSession
+  generateMobileSession,
+  getSecureDocument,
+  getCorrectionSession,
+  saveCorrectionStep,
+  completeCorrectionSession
 } = require("../controllers/kycController");
 const { auth } = require("../middlewares/auth");
 const upload = require("../middlewares/upload");
@@ -39,6 +43,7 @@ router.put("/save-step", auth, saveStep);
 
 router.post("/upload-document", auth, upload.single("document"), uploadDocument);
 router.post("/upload-local", auth, localUpload.single("document"), uploadDocument);
+router.get("/document/:filename", auth, getSecureDocument);
 router.post("/ocr-extract", auth, ocrExtract);
 router.post("/face-match", auth, faceMatch);
 router.post("/submit", auth, submitKyc);
@@ -122,11 +127,17 @@ router.get("/proxy-pdf", auth, async (req, res) => {
     const contentType = proxyRes.headers["content-type"] || "application/pdf";
     res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Disposition", "inline");
+    res.setHeader("Cache-Control", "public, max-age=86400, immutable");
     proxyRes.pipe(res);
   } catch (err) {
     console.error("[Proxy PDF] Error:", err.message, err.stack);
     res.status(500).json({ success: false, error: "Failed to proxy PDF: " + err.message });
   }
 });
+
+// ═══ Correction Flow Routes (separate from normal save-step) ═══
+router.get("/correction/session", auth, getCorrectionSession);
+router.post("/correction/save-step", auth, saveCorrectionStep);
+router.post("/correction/complete", auth, completeCorrectionSession);
 
 module.exports = router;

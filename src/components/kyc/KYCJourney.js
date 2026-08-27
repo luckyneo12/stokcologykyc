@@ -22,7 +22,7 @@ import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 
 export default function KYCJourney() {
-  const { currentStep, steps, isRestoring, prevStep, STEPS, stepStatuses, rejectionReason, submittedAt, isResubmitted, goToStep, rejectionMode } = useKYC();
+  const { currentStep, steps, isRestoring, prevStep, STEPS, stepStatuses, rejectionReason, submittedAt, isResubmitted, goToStep, rejectionMode, status, personalDetails } = useKYC();
   const router = useRouter();
   const pathname = usePathname();
   const TOTAL_STEPS = (steps.length > 0 ? steps.length : STEPS.length) - 1;

@@ -863,17 +863,43 @@ function getStepStatuses(app) {
 
 function getSafePreviewUrl(src) {
   if (!src) return src;
-  // Cloudinary blocks direct PDF delivery via ACL for this account.
-  // Converting .pdf to .jpg instructs Cloudinary to render the PDF as an image, bypassing the ACL.
+  
   if (typeof src === 'string' && src.includes('res.cloudinary.com') && src.endsWith('.pdf')) {
-    return src.replace(/\.pdf$/, '.jpg');
+    let token = "";
+    try { token = localStorage.getItem("adminToken") || ""; } catch (e) {}
+    // Proxy Cloudinary PDFs through backend to bypass ACL/CORS
+    return `${API_BASE_URL}/api/kyc/proxy-pdf?url=${encodeURIComponent(src)}&token=${encodeURIComponent(token)}`;
   }
+  
+  // Attach token for local secure routes to bypass 401 Unauthorized in <img> and <embed> tags
+  if (typeof src === 'string' && src.includes('/api/kyc/document/')) {
+    try {
+      const token = localStorage.getItem("adminToken");
+      if (token && !src.includes("token=")) {
+        const separator = src.includes("?") ? "&" : "?";
+        return `${src}${separator}token=${token}`;
+      }
+    } catch(e) {}
+  }
+  
   return src;
 }
 
 function isPdf(src) {
   const safeSrc = getSafePreviewUrl(src);
-  return safeSrc?.startsWith("data:application/pdf") || safeSrc?.toLowerCase().endsWith(".pdf");
+  if (!safeSrc && !src) return false;
+  
+  // Strip query parameters to check the true extension
+  const safeSrcNoQuery = safeSrc?.split('?')[0];
+  const srcNoQuery = src?.split('?')[0];
+  
+  return (
+    safeSrc?.startsWith("data:application/pdf") || 
+    safeSrcNoQuery?.toLowerCase().endsWith(".pdf") || 
+    safeSrc?.includes("/api/kyc/proxy-pdf") ||
+    srcNoQuery?.toLowerCase().endsWith(".pdf") ||
+    safeSrc?.toLowerCase().includes("application/pdf")
+  );
 }
 
 function isVideo(src) {
@@ -1331,7 +1357,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
-      {isPdf(src) && shouldDisplayAsIframe(label) ? (
+      {isPdf(src) ? (
         <object data={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src).startsWith('/') ? getSafePreviewUrl(src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
           <embed src={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src).startsWith('/') ? getSafePreviewUrl(src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
@@ -1376,7 +1402,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
           </div>
         </div>
       )}
-      {!(isPdf(src) && shouldDisplayAsIframe(label)) && (
+      {!(isPdf(src)) && (
         <div style={{ position: "absolute", bottom: 12, right: 12, display: "flex", gap: 6, background: "var(--bg-primary)", padding: "4px 8px", borderRadius: 20, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)", zIndex: 10 }}>
           <button onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={14} /></button>
           <button onClick={() => setZoom(Math.min(3, zoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={14} /></button>
@@ -1943,6 +1969,19 @@ export default function AgentReview() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
+  const eSignDt = app.esignDetails?.signedAt || app.esignDetails?.completedAt || app.esignDetails?.updatedAt || app.ocrData?.digio?.ESIGN?.updatedAt || app.ocrData?.digio?.ESIGN?.createdAt || (app.currentStep >= 13 ? (app.submittedAt || app.updatedAt) : null);
+  const formattedESignDate = eSignDt ? (() => {
+    try {
+      return new Date(eSignDt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    } catch(e) { return String(eSignDt); }
+  })() : "Pending";
+  
+  const formattedKycDate = app.createdAt ? (() => {
+    try {
+      return new Date(app.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    } catch(e) { return "Pending"; }
+  })() : "Pending";
+
   return (
     <div style={{ display: "flex", width: "100vw", height: "100vh", overflow: "hidden", background: "var(--bg-secondary)" }}>
       <div style={{ 
@@ -1973,10 +2012,10 @@ export default function AgentReview() {
             <div style={{ display: "flex", flexDirection: "column", marginTop: 2 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: "bold", letterSpacing: "0.5px", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
-                  {app.applicationId}
+                  {app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId}
                 </span>
-                <button onClick={(e) => handleCopy(e, app.applicationId, 'app-id')} title="Copy App ID" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === 'app-id' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                  {copiedKey === 'app-id' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                <button onClick={(e) => handleCopy(e, app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId, 'app-pan')} title="Copy PAN" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === 'app-pan' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                  {copiedKey === 'app-pan' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
                 </button>
                 {app.clientCode && (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8, background: "rgba(159, 232, 112, 0.15)", padding: "1px 6px", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700, color: "var(--text-primary)", userSelect: "text", cursor: "text" }}>
@@ -1987,35 +2026,21 @@ export default function AgentReview() {
                   </span>
                 )}
               </div>
-              {app.user?.eStampAssigned?.certificateNo && (
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4, display: "flex", gap: 12 }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, userSelect: "text", cursor: "text" }}>
-                    <strong style={{ color: "var(--text-primary)" }}>Cert No:</strong> {app.user.eStampAssigned.certificateNo}
-                    <button onClick={(e) => handleCopy(e, app.user.eStampAssigned.certificateNo, 'app-cert')} title="Copy Cert No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-cert' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                      {copiedKey === 'app-cert' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
-                    </button>
-                  </span>
-                  {app.user.eStampAssigned.serialNo && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, userSelect: "text", cursor: "text" }}>
-                      <strong style={{ color: "var(--text-primary)" }}>Serial No:</strong> {app.user.eStampAssigned.serialNo}
-                      <button onClick={(e) => handleCopy(e, app.user.eStampAssigned.serialNo, 'app-serial')} title="Copy Serial No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-serial' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                        {copiedKey === 'app-serial' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
-                      </button>
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </div>
         
         <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>{formatDateToYMDHMS(app.updatedAt)}</span>
-             <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>Updated At</span>
+             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>
+               {formattedESignDate}
+             </span>
+             <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>eSign Date</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>{formatDateToYMDHMS(app.submittedAt || app.createdAt)}</span>
+             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>
+               {formattedKycDate}
+             </span>
              <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>Date of KYC</span>
           </div>
           <button onClick={handleGlobalApprove} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.4)", transition: "all 0.2s" }}>
@@ -2580,7 +2605,7 @@ export default function AgentReview() {
               </div>
             ) : (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
-                {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
+                {isPdf(selectedDocument.src) ? (
                   <object 
                     data={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : getSafePreviewUrl(selectedDocument.src).startsWith('/') ? getSafePreviewUrl(selectedDocument.src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} 
                     type="application/pdf"
