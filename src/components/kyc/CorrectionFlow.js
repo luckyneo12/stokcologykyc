@@ -8,7 +8,7 @@ import CorrectionPanStep from "./correction/steps/CorrectionPanStep";
 import CorrectionBankStep from "./correction/steps/CorrectionBankStep";
 import CorrectionNomineeStep from "./correction/steps/CorrectionNomineeStep";
 import CorrectionPricingStep from "./correction/steps/CorrectionPricingStep";
-import CorrectionEsignStep from "./correction/steps/CorrectionEsignStep";
+
 import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
