@@ -112,7 +112,7 @@ function reducer(state, action) {
     case "ADD_TOAST":
       return {
         ...state,
-        toasts: [...state.toasts, { id: Date.now(), message: action.payload.message, type: action.payload.type || "success" }],
+        toasts: [...state.toasts, { id: action.payload.id || Date.now(), message: action.payload.message, type: action.payload.type || "success" }],
       };
 
     case "REMOVE_TOAST":
@@ -197,9 +197,10 @@ export function CorrectionProvider({ children }) {
   }, []);
 
   const addToast = useCallback((message, type = "success") => {
-    dispatch({ type: "ADD_TOAST", payload: { message, type } });
+    const id = Date.now() + Math.random(); // Add random to ensure uniqueness if multiple called quickly
+    dispatch({ type: "ADD_TOAST", payload: { id, message, type } });
     setTimeout(() => {
-      dispatch({ type: "REMOVE_TOAST", payload: Date.now() });
+      dispatch({ type: "REMOVE_TOAST", payload: id });
     }, 4000);
   }, []);
 

@@ -5,7 +5,7 @@ import PdfMobileViewer from "../../PdfMobileViewer";
 import { initializeDigio, fetchDigioRequestResponse } from "@/utils/digio";
 
 export default function CorrectionEsignStep() {
-  const { applicationData, token, addToast } = useCorrection();
+  const { applicationData, drafts, token, addToast } = useCorrection();
   
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,18 +27,62 @@ export default function CorrectionEsignStep() {
       setError(null);
       
       // 1. Fetch latest application data (which has all merged corrections)
-      const appRes = await fetch(`${API_URL}/api/kyc/application`, {
+      const appRes = await fetch(`${API_URL}/api/kyc/me`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const appDataRes = await appRes.json();
       if (!appDataRes.success) throw new Error("Failed to load application data");
       const app = appDataRes.application;
 
-      // 2. Generate PDF with the latest data
+      // 2. Generate PDF with the latest data and merged drafts
       const safeParse = (val) => {
         if (typeof val !== 'string') return val;
         try { return JSON.parse(val || "{}"); } catch(e) { return val; }
       };
+
+      const mergedApp = {
+        personalDetails: safeParse(app.personalDetails),
+        identityDetails: safeParse(app.identityDetails),
+        address: safeParse(app.address),
+        bankDetails: safeParse(app.bankDetails),
+        nomineeDetails: safeParse(app.nomineeDetails),
+        ocrData: safeParse(app.ocrData),
+        selfieDetails: safeParse(app.selfieDetails),
+        documents: safeParse(app.documents),
+        panUpload: app.panUpload,
+        financialProof: app.financialProof,
+        selfie: app.selfie,
+        signature: app.signature,
+      };
+
+      Object.entries(drafts || {}).forEach(([stepId, draftData]) => {
+         if (!draftData) return;
+         if (stepId === 'digilocker') {
+            if (draftData.identityDetails) mergedApp.identityDetails = { ...mergedApp.identityDetails, ...draftData.identityDetails };
+            if (draftData.address) mergedApp.address = { ...mergedApp.address, ...draftData.address };
+            if (draftData.personalDetails) mergedApp.personalDetails = { ...mergedApp.personalDetails, ...draftData.personalDetails };
+         } else if (stepId === 'pricingSelection') {
+            mergedApp.segments = draftData.segments;
+            mergedApp.bsda = draftData.bsda;
+         } else if (stepId === 'personalDetails' || stepId === 'pepProof') {
+            mergedApp.personalDetails = { ...mergedApp.personalDetails, ...draftData };
+         } else if (stepId === 'bankVerification') {
+            mergedApp.bankDetails = { ...mergedApp.bankDetails, ...draftData };
+         } else if (stepId === 'nomineeChoice' || stepId === 'nomineeDetails' || stepId.startsWith('nominee') || stepId.startsWith('guardian')) {
+            if (stepId === 'nomineeAllocation') mergedApp.nomineeAllocation = draftData;
+            else mergedApp.nomineeDetails = { ...mergedApp.nomineeDetails, ...draftData };
+         } else if (stepId === 'panVerification') {
+            mergedApp.identityDetails = { ...mergedApp.identityDetails, ...draftData };
+         } else if (stepId === 'financialProof') {
+            mergedApp.financialProof = draftData;
+         } else if (stepId === 'signature') {
+            mergedApp.signature = draftData;
+         } else if (stepId === 'panUpload') {
+            mergedApp.panUpload = draftData;
+         } else if (stepId === 'ipv') {
+            mergedApp.selfieDetails = { ...mergedApp.selfieDetails, ...draftData };
+         }
+      });
 
       const pdfRes = await fetch(`${API_URL}/api/kyc/preview-pdf`, {
         method: 'POST',
@@ -46,20 +90,7 @@ export default function CorrectionEsignStep() {
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          personalDetails: safeParse(app.personalDetails),
-          identityDetails: safeParse(app.identityDetails),
-          address: safeParse(app.address),
-          bankDetails: safeParse(app.bankDetails),
-          nomineeDetails: safeParse(app.nomineeDetails),
-          ocrData: safeParse(app.ocrData),
-          selfieDetails: safeParse(app.selfieDetails),
-          documents: safeParse(app.documents),
-          panUpload: app.panUpload,
-          financialProof: app.financialProof,
-          selfie: app.selfie,
-          signature: app.signature,
-        })
+        body: JSON.stringify(mergedApp)
       });
       
       const pdfData = await pdfRes.json();
@@ -89,13 +120,13 @@ export default function CorrectionEsignStep() {
       if (!result) throw new Error("Could not verify eSign response. Please try again.");
       
       // Hit submit to finalize
-      const submitRes = await fetch(`${API_URL}/api/kyc/submit`, {
+      const submitRes = await fetch(`${API_URL}/api/kyc/correction/complete`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ currentStep: 14 })
+        body: JSON.stringify({ esignCompleted: true })
       });
       const submitData = await submitRes.json();
       

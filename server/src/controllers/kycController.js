@@ -1456,7 +1456,7 @@ const completeCorrectionSession = async (req, res, next) => {
       orderBy: { createdAt: "desc" },
     });
 
-    if (!app || app.status !== "rejected") {
+    if (!app || (app.status !== "rejected" && app.status !== "under_review")) {
       return res.status(400).json({ success: false, error: "No active correction session" });
     }
 
@@ -1577,13 +1577,19 @@ const completeCorrectionSession = async (req, res, next) => {
     }
 
     updateData.stepStatuses = JSON.stringify(stepStatuses);
-    updateData.status = "pending";
-    updateData.currentStep = 12; // esignPreview
     updateData.isResubmitted = true;
     updateData.correctionDraft = null;
-    // Reset eSign so user must re-sign
-    updateData.generatedPdfBase64 = null;
-    updateData.esignDetails = null;
+
+    if (req.body.esignCompleted) {
+      updateData.status = "under_review";
+      updateData.currentStep = 14; 
+    } else {
+      updateData.status = "pending";
+      updateData.currentStep = 12; // esignPreview
+      // Reset eSign so user must re-sign
+      updateData.generatedPdfBase64 = null;
+      updateData.esignDetails = null;
+    }
 
     await prisma.kycApplication.update({
       where: { applicationId: app.applicationId },
