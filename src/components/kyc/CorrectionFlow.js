@@ -8,6 +8,7 @@ import CorrectionPanStep from "./correction/steps/CorrectionPanStep";
 import CorrectionBankStep from "./correction/steps/CorrectionBankStep";
 import CorrectionNomineeStep from "./correction/steps/CorrectionNomineeStep";
 import CorrectionPricingStep from "./correction/steps/CorrectionPricingStep";
+import CorrectionEsignStep from "./correction/steps/CorrectionEsignStep";
 
 import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
@@ -29,12 +30,12 @@ const STEP_COMPONENT_MAP = {
   panUpload: CorrectionDocumentStep,
   ipv: CorrectionDocumentStep,
   pepProof: CorrectionDetailsStep, // PEP proof is in the DetailsStep page
-  nominee1Proof: CorrectionDocumentStep,
-  nominee2Proof: CorrectionDocumentStep,
-  nominee3Proof: CorrectionDocumentStep,
-  guardian1Proof: CorrectionDocumentStep,
-  guardian2Proof: CorrectionDocumentStep,
-  guardian3Proof: CorrectionDocumentStep,
+  nominee1Proof: CorrectionNomineeStep,
+  nominee2Proof: CorrectionNomineeStep,
+  nominee3Proof: CorrectionNomineeStep,
+  guardian1Proof: CorrectionNomineeStep,
+  guardian2Proof: CorrectionNomineeStep,
+  guardian3Proof: CorrectionNomineeStep,
 };
 
 // Document-type steps that should be grouped on a single document page
@@ -405,29 +406,7 @@ function CorrectionCompletionStep() {
   const [submitted, setSubmitted] = useState(false);
 
   if (submitted) {
-    return (
-      <div className="step-card" style={{ maxWidth: 560, margin: "0 auto", textAlign: "center", padding: "48px 36px" }}>
-        <div style={{
-          width: 80, height: 80, borderRadius: "50%",
-          background: "linear-gradient(135deg, var(--wise-green), #6fcf97)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          margin: "0 auto 24px", boxShadow: "0 8px 32px rgba(159, 232, 112, 0.3)"
-        }}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </div>
-        <h2 style={{ color: "var(--text-primary)", fontSize: "1.3rem", fontWeight: 800, marginBottom: 12 }}>
-          Corrections Applied!
-        </h2>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", lineHeight: 1.6 }}>
-          Your corrected details have been saved. You must now re-sign your application with Aadhaar.
-        </p>
-        <p style={{ color: "var(--wise-green)", fontSize: "0.85rem", marginTop: 16, fontWeight: 700 }}>
-          Redirecting to e-Sign in a few seconds...
-        </p>
-      </div>
-    );
+    return <CorrectionEsignStep />;
   }
 
   const handleSubmit = async () => {
@@ -438,9 +417,6 @@ function CorrectionCompletionStep() {
     const success = await submitCorrections();
     if (success) {
       setSubmitted(true);
-      setTimeout(() => {
-        window.location.href = "/"; // Redirect to normal flow
-      }, 3000);
     }
   };
 

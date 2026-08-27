@@ -8,7 +8,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const getAuthToken = () => {
   if (typeof window === "undefined") return null;
   return (
-    sessionStorage.getItem("kycToken")
+    sessionStorage.getItem("correctionToken")
+    || sessionStorage.getItem("kycToken")
     || localStorage.getItem("kycToken")
     || localStorage.getItem("adminToken")
     || localStorage.getItem("token")
