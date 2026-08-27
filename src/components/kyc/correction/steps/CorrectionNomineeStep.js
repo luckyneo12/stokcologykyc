@@ -683,7 +683,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
       </div>
 
       <div className="animate-slide-up">
-        {isNomineeRejected && (
+        {isNomineeDetailsRejected && (
           <div style={{
             background: "rgba(239, 68, 68, 0.08)",
             border: "1.5px solid rgba(239, 68, 68, 0.3)",
@@ -700,7 +700,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
                 Nominee Details Rejected
               </p>
               <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
-                {nomineeRejectionReason ? `Reason: ${nomineeRejectionReason}. ` : ""}Please fill in your correct nominee details and proceed.
+                {rejectionReasonText ? `Reason: ${rejectionReasonText}. ` : ""}Please fill in your correct nominee details and proceed.
               </p>
             </div>
           </div>
