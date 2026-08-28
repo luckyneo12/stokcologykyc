@@ -17,7 +17,7 @@ function isMobileDevice() {
 }
 
 export default function CorrectionSelfieStep() {
-  const { nextCorrectionStep, prevCorrectionStep, addToast, applicationData, saveDraft, rejectedSteps, stepStatuses } = useCorrection();
+  const { nextCorrectionStep, prevCorrectionStep, addToast, applicationData, saveDraft, rejectedSteps, stepStatuses, drafts } = useCorrection();
   
   const applicationId = applicationData?.applicationId;
   const isSelfieRejected = rejectedSteps?.some(r => r.stepId === "ipv" || r.stepId === "selfie") ||
@@ -137,12 +137,7 @@ export default function CorrectionSelfieStep() {
         };
         
         if (isSelfieRejected) {
-          updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: selfieDetails.preview } });
-        } else {
-          updateState({
-            selfieDetails: payloadData,
-            selfie: { preview: selfieDetails.preview },
-          });
+          saveDraft("ipv", { preview: selfieDetails.preview, matchScore: selfieDetails.matchScore, type: "selfie" });
         }
         
         addToast("Selfie captured on your mobile device!", "success");
@@ -338,7 +333,7 @@ export default function CorrectionSelfieStep() {
             </div>
           )}
 
-          <button className="btn btn-secondary" onClick={prevStep} style={{ width: "100%", height: "56px" }}>
+          <button className="btn btn-secondary" onClick={prevCorrectionStep} style={{ width: "100%", height: "56px" }}>
             Back
           </button>
         </div>
@@ -371,10 +366,10 @@ export default function CorrectionSelfieStep() {
             </p>
           )}
           
-          {(selfie?.preview || selfieDetails?.preview) && (
+          {(drafts?.ipv?.preview) && (
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
               <img 
-                src={selfie?.preview || selfieDetails?.preview} 
+                src={drafts.ipv.preview} 
                 alt="Captured Selfie" 
                 style={{ 
                   maxWidth: "200px", 
