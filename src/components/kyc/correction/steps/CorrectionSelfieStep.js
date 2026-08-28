@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
-import { ArrowRightIcon } from "../Icons";
+import { ArrowRightIcon } from "../../Icons";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
