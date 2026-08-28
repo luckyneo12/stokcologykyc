@@ -639,7 +639,8 @@ async function generateKycPdf(applicationData, options = {}) {
                     const axios = require('axios');
                     const response = await axios.get(imgRelPath, { 
                       responseType: 'arraybuffer',
-                      validateStatus: () => true 
+                      validateStatus: () => true,
+                      timeout: 10000 // 10s timeout to prevent hanging
                     });
                     
                     if (response.status >= 200 && response.status < 300) {
@@ -896,7 +897,10 @@ async function generateKycPdf(applicationData, options = {}) {
         
         if (docPathRel.startsWith('http://') || docPathRel.startsWith('https://')) {
           const axios = require('axios');
-          const response = await axios.get(docPathRel, { responseType: 'arraybuffer' });
+          const response = await axios.get(docPathRel, { 
+            responseType: 'arraybuffer',
+            timeout: 10000 // 10s timeout
+          });
           if (response.status === 200) {
             bytes = response.data;
             const contentType = response.headers['content-type'] || '';

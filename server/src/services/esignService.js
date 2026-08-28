@@ -157,8 +157,8 @@ class EsignService {
     let parsedPersonalDetails = {};
     try {
       if (typeof applicationData.personalDetails === 'string') {
-        parsedPersonalDetails = JSON.parse(applicationData.personalDetails);
-      } else if (typeof applicationData.personalDetails === 'object') {
+        parsedPersonalDetails = JSON.parse(applicationData.personalDetails) || {};
+      } else if (typeof applicationData.personalDetails === 'object' && applicationData.personalDetails !== null) {
         parsedPersonalDetails = applicationData.personalDetails;
       }
     } catch (e) {

@@ -9,6 +9,7 @@ import CorrectionBankStep from "./correction/steps/CorrectionBankStep";
 import CorrectionNomineeStep from "./correction/steps/CorrectionNomineeStep";
 import CorrectionPricingStep from "./correction/steps/CorrectionPricingStep";
 import CorrectionEsignStep from "./correction/steps/CorrectionEsignStep";
+import CorrectionSelfieStep from "./correction/steps/CorrectionSelfieStep";
 
 import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
@@ -28,7 +29,7 @@ const STEP_COMPONENT_MAP = {
   financialProof: CorrectionDocumentStep,
   signature: CorrectionDocumentStep,
   panUpload: CorrectionDocumentStep,
-  ipv: CorrectionDocumentStep,
+  ipv: CorrectionSelfieStep,
   pepProof: CorrectionDetailsStep, // PEP proof is in the DetailsStep page
   nominee1Proof: CorrectionNomineeStep,
   nominee2Proof: CorrectionNomineeStep,

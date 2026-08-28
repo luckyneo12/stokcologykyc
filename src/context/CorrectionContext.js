@@ -66,6 +66,8 @@ function reducer(state, action) {
 
     case "SESSION_LOADED": {
       const { correctionSession, applicationData, token, sessionId } = action.payload;
+      const rejectedSteps = correctionSession.rejectedSteps || [];
+      const allComplete = rejectedSteps.every(s => s.completed);
       return {
         ...state,
         isLoading: false,
@@ -73,10 +75,10 @@ function reducer(state, action) {
         sessionId,
         correctionSession,
         applicationData,
-        rejectedSteps: correctionSession.rejectedSteps || [],
+        rejectedSteps,
         drafts: correctionSession.drafts || {},
-        currentStepIndex: 0,
-        allStepsComplete: (correctionSession.rejectedSteps || []).every(s => s.completed),
+        currentStepIndex: allComplete ? rejectedSteps.length : 0,
+        allStepsComplete: allComplete,
       };
     }
 

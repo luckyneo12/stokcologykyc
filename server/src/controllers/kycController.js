@@ -1100,7 +1100,7 @@ const previewPdf = async (req, res, next) => {
         .json({ success: false, error: "Active application not found" });
     }
 
-    if (app.generatedPdfBase64) {
+    if (app.generatedPdfBase64 && !req.body.previewOnly) {
       return res.json({ success: true, pdfBase64: app.generatedPdfBase64 });
     }
 
