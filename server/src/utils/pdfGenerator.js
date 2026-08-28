@@ -1004,11 +1004,13 @@ async function generateKycPdf(applicationData, options = {}) {
       });
     }
 
-    const seenPaths = new Set();
-    for (const doc of docsToAppend) {
-      if (seenPaths.has(doc.path)) continue;
-      seenPaths.add(doc.path);
-      await appendDocument(doc.path, doc.title);
+    if (!options.skipDocumentAppend) {
+      const seenPaths = new Set();
+      for (const doc of docsToAppend) {
+        if (seenPaths.has(doc.path)) continue;
+        seenPaths.add(doc.path);
+        await appendDocument(doc.path, doc.title);
+      }
     }
 
     console.log(`[PDF Gen] Successfully generated PDF`);

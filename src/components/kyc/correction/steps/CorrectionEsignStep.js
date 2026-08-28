@@ -84,6 +84,8 @@ export default function CorrectionEsignStep() {
          }
       });
 
+      mergedApp.previewOnly = true;
+
       const pdfRes = await fetch(`${API_URL}/api/kyc/preview-pdf`, {
         method: 'POST',
         headers: {

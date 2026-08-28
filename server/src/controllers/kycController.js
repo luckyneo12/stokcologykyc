@@ -1125,7 +1125,7 @@ const previewPdf = async (req, res, next) => {
       }
     }
 
-    const pdfBase64 = await generateKycPdf(applicationData);
+    const pdfBase64 = await generateKycPdf(applicationData, { skipDocumentAppend: applicationData.previewOnly });
 
     res.json({ success: true, pdfBase64 });
   } catch (error) {
