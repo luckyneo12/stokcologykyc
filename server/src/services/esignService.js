@@ -31,6 +31,83 @@ class EsignService {
       }
     }
 
+    if (applicationData.correctionDraft) {
+      try {
+        const cDraft = typeof applicationData.correctionDraft === 'string' ? JSON.parse(applicationData.correctionDraft) : applicationData.correctionDraft;
+        const drafts = cDraft?.drafts || {};
+        
+        const safeParse = (val) => {
+          if (typeof val !== 'string') return val;
+          try { return JSON.parse(val || "{}"); } catch(e) { return val; }
+        };
+
+        const mergedApp = {
+          personalDetails: safeParse(applicationData.personalDetails),
+          identityDetails: safeParse(applicationData.identityDetails),
+          address: safeParse(applicationData.address),
+          bankDetails: safeParse(applicationData.bankDetails),
+          nomineeDetails: safeParse(applicationData.nomineeDetails),
+          ocrData: safeParse(applicationData.ocrData),
+          selfieDetails: safeParse(applicationData.selfieDetails),
+          documents: safeParse(applicationData.documents),
+          panUpload: applicationData.panUpload,
+          financialProof: applicationData.financialProof,
+          selfie: applicationData.selfie,
+          signature: applicationData.signature,
+        };
+
+        Object.entries(drafts).forEach(([stepId, draftData]) => {
+           if (!draftData) return;
+           if (stepId === 'digilocker') {
+              if (draftData.identityDetails) mergedApp.identityDetails = { ...mergedApp.identityDetails, ...draftData.identityDetails };
+              if (draftData.address) mergedApp.address = { ...mergedApp.address, ...draftData.address };
+              if (draftData.personalDetails) mergedApp.personalDetails = { ...mergedApp.personalDetails, ...draftData.personalDetails };
+           } else if (stepId === 'pricingSelection') {
+              mergedApp.segments = draftData.segments;
+              mergedApp.bsda = draftData.bsda;
+           } else if (stepId === 'personalDetails' || stepId === 'pepProof') {
+              mergedApp.personalDetails = { ...mergedApp.personalDetails, ...draftData };
+           } else if (stepId === 'bankVerification') {
+              mergedApp.bankDetails = { ...mergedApp.bankDetails, ...draftData };
+           } else if (stepId === 'nomineeChoice' || stepId === 'nomineeDetails' || stepId.startsWith('nominee') || stepId.startsWith('guardian')) {
+              if (stepId === 'nomineeAllocation') mergedApp.nomineeAllocation = draftData;
+              else mergedApp.nomineeDetails = { ...mergedApp.nomineeDetails, ...draftData };
+           } else if (stepId === 'panVerification') {
+              mergedApp.identityDetails = { ...mergedApp.identityDetails, ...draftData };
+           } else if (stepId === 'financialProof') {
+              mergedApp.financialProof = draftData;
+           } else if (stepId === 'signature') {
+              mergedApp.signature = draftData;
+           } else if (stepId === 'panUpload') {
+              mergedApp.panUpload = draftData;
+           } else if (stepId === 'ipv') {
+              mergedApp.selfieDetails = { ...mergedApp.selfieDetails, ...draftData };
+           }
+        });
+        
+        Object.assign(applicationData, {
+           personalDetails: JSON.stringify(mergedApp.personalDetails),
+           identityDetails: JSON.stringify(mergedApp.identityDetails),
+           address: JSON.stringify(mergedApp.address),
+           bankDetails: JSON.stringify(mergedApp.bankDetails),
+           nomineeDetails: JSON.stringify(mergedApp.nomineeDetails),
+           ocrData: JSON.stringify(mergedApp.ocrData),
+           selfieDetails: JSON.stringify(mergedApp.selfieDetails),
+           documents: JSON.stringify(mergedApp.documents),
+           panUpload: mergedApp.panUpload,
+           financialProof: mergedApp.financialProof,
+           selfie: mergedApp.selfie,
+           signature: mergedApp.signature,
+           segments: mergedApp.segments ? JSON.stringify(mergedApp.segments) : applicationData.segments,
+           bsda: mergedApp.bsda !== undefined ? mergedApp.bsda : applicationData.bsda,
+           nomineeAllocation: mergedApp.nomineeAllocation ? JSON.stringify(mergedApp.nomineeAllocation) : applicationData.nomineeAllocation
+        });
+        console.log(`[EsignService] Temporarily merged correctionDraft into applicationData for PDF generation`);
+      } catch (err) {
+        console.warn(`[EsignService] Failed to merge correction drafts for PDF generation:`, err.message);
+      }
+    }
+
     // 1. Generate the PDF locally on the server
     console.log(`[EsignService] Generating PDF for ${customerIdentifier}...`);
     const genResult = await generateKycPdf(applicationData, { extractEsignCoordinates: true });

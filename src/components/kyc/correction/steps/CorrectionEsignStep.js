@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
 import PdfMobileViewer from "../../PdfMobileViewer";
-import { initializeDigio, fetchDigioRequestResponse } from "@/utils/digio";
+import { initializeDigio, fetchDigioRequestResponse, createDigioRequest } from "@/utils/digio";
 
 export default function CorrectionEsignStep() {
   const { applicationData, drafts, token, addToast } = useCorrection();
@@ -146,25 +146,19 @@ export default function CorrectionEsignStep() {
   const startDigioEsign = async () => {
     setPhase("digio");
     try {
-      const res = await fetch(`${API_URL}/api/digio/esign/request`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId: `DOC-${Date.now()}` }) 
-      });
-      const data = await res.json();
-      
-      if (!data.success || !data.data?.id) {
-        throw new Error(data.error || "Failed to initialize e-Sign request");
+      const requestData = await createDigioRequest("ESIGN", { lat: null, lng: null });
+      if (!requestData?.id) {
+        throw new Error("Failed to initialize e-Sign request");
       }
 
-      const digioDocumentId = data.data.id;
+      const digioDocumentId = requestData.id;
       
-      initializeDigio({
-        environment: "sandbox",
+      const digio = initializeDigio({
+        environment: process.env.NEXT_PUBLIC_DIGIO_ENV || "production",
         logoUrl: "https://stockologysecurities.com/images/logo.png",
         theme: { primaryColor: "#9fe870", secondaryColor: "#1a1a2e" },
         callback: (response) => {
-          if (response.hasOwnProperty("error_code")) {
+          if (response.hasOwnProperty("error_code") || response.message === "cancelled") {
             addToast(response.message || "e-Sign failed or cancelled", "error");
             setPhase("error");
             return;
@@ -173,10 +167,21 @@ export default function CorrectionEsignStep() {
         }
       });
       
+      if (!digio) throw new Error("Digio SDK not loaded.");
+
       const email = typeof applicationData?.personalDetails === 'string' ? JSON.parse(applicationData.personalDetails)?.email : applicationData?.personalDetails?.email;
+      const phone = typeof applicationData?.personalDetails === 'string' ? JSON.parse(applicationData.personalDetails)?.phone : applicationData?.personalDetails?.phone;
       
-      const digioInstance = new window.Digio(digioDocumentId, email || "user@example.com", "GWT1234");
-      digioInstance.init();
+      let rawIdentifier = phone || email || "user@example.com";
+      const identifier = rawIdentifier.replace(/\D/g, '').length >= 10 
+        ? rawIdentifier.replace(/\D/g, '').slice(-10) 
+        : rawIdentifier;
+        
+      if (!digio.is_redirection_approach) {
+        digio.init();
+      }
+      
+      digio.submit(digioDocumentId, identifier, requestData.accessToken);
     } catch (err) {
       addToast(err.message || "Failed to connect to Digio", "error");
       setPhase("error");
