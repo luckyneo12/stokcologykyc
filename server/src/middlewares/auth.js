@@ -4,7 +4,8 @@ const prisma = require("../config/db");
 const JWT_SECRET = process.env.JWT_SECRET || "kyc-secret-key-change-in-production";
 
 const auth = async (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1] || req.query?.token;
+  let token = req.headers.authorization?.split(" ")[1] || req.query?.token;
+  if (token === "null" || token === "undefined") token = null;
   if (!token) return res.status(401).json({ error: "No token provided" });
 
   try {
@@ -30,6 +31,7 @@ const auth = async (req, res, next) => {
     req.user = { ...decoded, ...user };
     next();
   } catch (error) {
+    console.error("[Auth Error] JWT Verify Failed:", error.message);
     res.status(401).json({ error: "Invalid token" });
   }
 };

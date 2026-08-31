@@ -1129,7 +1129,7 @@ export default function DocumentUploadStep() {
                   <UploadIcon /> Upload Proof
                 </button>
               )}
-              {segments?.derivatives && (
+              {segments?.derivatives && personalDetails?.annualIncome !== "More Than 25 Lac" && (
                  <button onClick={() => setShowSkipDerivativesModal(true)} style={{ marginTop: "4px", width: "100%", background: "transparent", border: "none", color: "var(--text-secondary)", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", textDecoration: "underline" }}>
                    Skip & Trade only in Equity
                  </button>

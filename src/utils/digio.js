@@ -65,12 +65,12 @@ export const initializeDigio = (options) => {
   return null;
 };
 
-export const createDigioRequest = async (type, data = {}) => {
+export const createDigioRequest = async (type, data = {}, explicitApplicationId = null) => {
   const url = `${API_BASE_URL}/api/digio/create-request`;
   const body = JSON.stringify({
     type,
     data,
-    applicationId: getApplicationId() || undefined,
+    applicationId: explicitApplicationId || data.applicationId || getApplicationId() || undefined,
   });
 
   console.log(`[Digio Utility] Sending ${type} request to ${url} (Payload: ${(body.length / 1024).toFixed(2)} KB)`);
@@ -112,14 +112,14 @@ export const createDigioRequest = async (type, data = {}) => {
   }
 };
 
-export const fetchDigioRequestResponse = async (requestId, type) => {
+export const fetchDigioRequestResponse = async (requestId, type, explicitApplicationId = null) => {
   if (!requestId) return null;
   try {
     const response = await fetch(`${API_BASE_URL}/api/digio/request-response/${requestId}`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        applicationId: getApplicationId() || undefined,
+        applicationId: explicitApplicationId || getApplicationId() || undefined,
         type,
       }),
     });

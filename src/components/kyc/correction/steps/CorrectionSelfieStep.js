@@ -5,6 +5,7 @@ import { ArrowRightIcon } from "../../Icons";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
+import { VideoIcon } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -19,7 +20,7 @@ function isMobileDevice() {
 export default function CorrectionSelfieStep() {
   const { nextCorrectionStep, prevCorrectionStep, addToast, applicationData, saveDraft, rejectedSteps, stepStatuses, drafts } = useCorrection();
   
-  const applicationId = applicationData?.applicationId;
+  const [applicationId, setApplicationId] = useState(applicationData?.applicationId);
   const isSelfieRejected = rejectedSteps?.some(r => r.stepId === "ipv" || r.stepId === "selfie") ||
     stepStatuses?.ipv?.status === "rejected" ||
     stepStatuses?.selfie?.status === "rejected";
@@ -33,25 +34,27 @@ export default function CorrectionSelfieStep() {
   const hasProcessedRedirect = useRef(false);
 
   useEffect(() => {
+    if (!applicationId && applicationData) {
+      setApplicationId(applicationData.applicationId);
+    }
+  }, [applicationData, applicationId]);
+
+  // Set up mobile resume URL
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
+      const token = sessionStorage.getItem("correctionToken");
       if (token && applicationId) {
-        setResumeUrl(`${window.location.origin}/resume?token=${token}&appId=${applicationId}`);
+        setResumeUrl(`${window.location.origin}/correction?token=${token}`);
       }
     }
   }, [applicationId]);
 
   // ─── Handle successful Digio selfie completion ───────────────────────
-  const handleDigioSuccess = useCallback(async (requestId, opts = {}) => {
-    const { isMobileRedirectReturn = false } = opts;
+  const handleDigioSuccess = useCallback(async (requestId) => {
     try {
-      const result = await fetchDigioRequestResponse(requestId, "SELFIE");
+      const result = await fetchDigioRequestResponse(requestId, "SELFIE", applicationData?.applicationId);
       if (result?.success) {
         setMatchScore(result.score || result.faceMatchScore || 0);
-        const payloadData = {
-          preview: result.selfiePath,
-          matchScore: result.score,
-        };
         
         if (isSelfieRejected) {
           saveDraft("ipv", { preview: result.selfiePath, matchScore: result.score, type: "selfie" });
@@ -67,34 +70,25 @@ export default function CorrectionSelfieStep() {
   }, [addToast, saveDraft, isSelfieRejected]);
 
   // ─── Socket.IO + Polling: watch for cross-device selfie completion ──
-  // Activated when QR code is shown on desktop
   const startCrossDevicePolling = useCallback(() => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
-    const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    const token = sessionStorage.getItem("correctionToken") || sessionStorage.getItem("token");
     if (!activeAppId || !token) return;
 
-    // Connect to Socket.IO and join the application room
     const socket = io(API_BASE_URL, { withCredentials: true });
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("[SelfieStep Socket.IO] Connected, joining room:", activeAppId);
       socket.emit("join_application", activeAppId);
     });
 
-    // When the server emits kyc_updated (after mobile completes selfie),
-    // fetch the latest status and check if selfie is done
     socket.on("kyc_updated", async () => {
-      console.log("[SelfieStep Socket.IO] Received kyc_updated — checking selfie status...");
       await checkSelfieStatus(activeAppId, token);
     });
 
-    // Also set up a fallback polling interval (every 5s) in case Socket.IO events are missed
     pollRef.current = setInterval(async () => {
       await checkSelfieStatus(activeAppId, token);
     }, 5000);
-
-    console.log("[SelfieStep] Cross-device polling started (Socket.IO + 5s fallback)");
   }, [applicationId]);
 
   const checkSelfieStatus = async (appId, token) => {
@@ -108,34 +102,18 @@ export default function CorrectionSelfieStep() {
       if (!data.success || !data.application) return;
 
       const app = data.application;
-      let selfieDetails =
-        typeof app.selfieDetails === "string"
-          ? JSON.parse(app.selfieDetails)
-          : app.selfieDetails;
-
-      let draftObj = {};
-      if (app.correctionDraft) {
-        try { draftObj = typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft; } catch (e) {}
-      }
+      let selfieDetails = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : app.selfieDetails;
 
       if (isSelfieRejected) {
-        if (draftObj?.selfieDetails) {
-          selfieDetails = draftObj.selfieDetails;
-        } else {
-          selfieDetails = null; // Do not use the old rejected selfie
+        let draftObj = {};
+        if (app.correctionDraft) {
+          try { draftObj = typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft; } catch (e) {}
         }
+        selfieDetails = draftObj?.selfieDetails || null;
       }
 
-      // If selfie has been captured (preview path exists), auto-advance
       if (selfieDetails?.preview) {
-        console.log("[SelfieStep] Selfie detected from another device! Auto-advancing...");
         setMatchScore(selfieDetails.matchScore || null);
-        
-        const payloadData = {
-          preview: selfieDetails.preview,
-          matchScore: selfieDetails.matchScore,
-        };
-        
         if (isSelfieRejected) {
           saveDraft("ipv", { preview: selfieDetails.preview, matchScore: selfieDetails.matchScore, type: "selfie" });
         }
@@ -144,9 +122,7 @@ export default function CorrectionSelfieStep() {
         stopCrossDevicePolling();
         setPhase("done");
       }
-    } catch (err) {
-      console.warn("[SelfieStep] Status check failed:", err.message);
-    }
+    } catch (err) {}
   };
 
   const stopCrossDevicePolling = useCallback(() => {
@@ -160,18 +136,14 @@ export default function CorrectionSelfieStep() {
     }
   }, []);
 
-  // Start/stop polling when QR visibility changes
   useEffect(() => {
-    if (showQR && phase === "intro") {
+    if (showQR) {
       startCrossDevicePolling();
+    } else {
+      stopCrossDevicePolling();
     }
     return () => stopCrossDevicePolling();
-  }, [showQR, phase, startCrossDevicePolling, stopCrossDevicePolling]);
-
-  // Clean up on unmount
-  useEffect(() => {
-    return () => stopCrossDevicePolling();
-  }, [stopCrossDevicePolling]);
+  }, [showQR, startCrossDevicePolling, stopCrossDevicePolling]);
 
   // ─── Handle Digio redirect return (URL params) ──────────────────────
   useEffect(() => {
@@ -185,22 +157,15 @@ export default function CorrectionSelfieStep() {
       hasProcessedRedirect.current = true;
       window.history.replaceState({}, document.title, window.location.pathname);
 
-      // If opened in a popup/new tab, notify opener and close
       if (window.opener && window.opener !== window) {
-        window.opener.postMessage(
-          { type: "DIGIO_SUCCESS", documentId, step: "SELFIE", status },
-          window.location.origin
-        );
+        window.opener.postMessage({ type: "DIGIO_SUCCESS", documentId, step: "SELFIE", status }, window.location.origin);
         window.close();
         return;
       }
 
-      // Determine if this is a mobile redirect return
-      const isMobile = isMobileDevice();
-
       setPhase("processing");
       if (status.toLowerCase().includes("success") || status === "Sign completed") {
-        handleDigioSuccess(documentId, { isMobileRedirectReturn: isMobile });
+        handleDigioSuccess(documentId, { isMobileRedirectReturn: isMobileDevice() });
       } else {
         setPhase("intro");
         addToast(`Selfie verification failed: ${status}`, "error");
@@ -231,61 +196,33 @@ export default function CorrectionSelfieStep() {
   // ─── Start selfie verification ───────────────────────────────────────
   const startVerification = async () => {
     setPhase("processing");
-
     try {
-      // Capture geolocation if possible
-      let coords = { lat: null, lng: null };
-      if ("geolocation" in navigator) {
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-          });
-          coords.lat = pos.coords.latitude;
-          coords.lng = pos.coords.longitude;
-        } catch (err) {
-          console.warn("Geolocation skipped:", err.message);
-        }
-      }
-
-      const requestData = await createDigioRequest("SELFIE", coords);
-      const { requestId, customerIdentifier, applicationId: appId } = requestData;
-      if (appId) setApplicationId(appId);
-
-      const digioOptions = {
-        callback: async (response) => {
+      const requestData = await createDigioRequest("SELFIE", {}, applicationData?.applicationId);
+      const { requestId, customerIdentifier } = requestData;
+      const digio = initializeDigio({
+        callback: (response) => {
           if (response.error_code && response.error_code !== "success") {
             addToast(`Selfie verification failed: ${response.message}`, "error");
             setPhase("intro");
             return;
           }
-          handleDigioSuccess(response.digio_doc_id || response.id, {});
+          handleDigioSuccess(response.digio_doc_id || response.id);
         },
-      };
-
-      const digio = initializeDigio(digioOptions);
+      });
 
       if (!digio || !requestId) {
         addToast("Unable to initialize selfie verification flow", "error");
         setPhase("intro");
         return;
       }
-
-      if (!digio.is_redirection_approach) {
-        digio.init();
-      }
-
-      if (requestData.accessToken) {
-        digio.submit(requestId, customerIdentifier, requestData.accessToken);
-      } else {
-        digio.submit(requestId, customerIdentifier);
-      }
+      if (!digio.is_redirection_approach) digio.init();
+      digio.submit(requestId, customerIdentifier, requestData.accessToken);
     } catch (error) {
       addToast(error?.message || "Error connecting to selfie verification service", "error");
       setPhase("intro");
     }
   };
 
-  // ─── Render ──────────────────────────────────────────────────────────
   return (
     <div className="container-sm" style={{ paddingTop: "8vh", paddingBottom: "4vh" }}>
       <div className="text-center" style={{ marginBottom: 28 }}>
@@ -299,7 +236,7 @@ export default function CorrectionSelfieStep() {
             We need to capture a live selfie video to verify your identity. Please ensure you are in a well-lit area and not wearing glasses or a hat.
           </p>
           <button className="btn btn-primary" onClick={startVerification} style={{ width: "100%", height: "56px", fontSize: "1.1rem", marginBottom: 16 }}>
-            Start Selfie Capture
+            Start Selfie Capture <VideoIcon size={20} style={{ marginLeft: 8 }} />
           </button>
           
           <div style={{ margin: "24px 0", borderTop: "1px solid var(--border-color)", position: "relative" }}>

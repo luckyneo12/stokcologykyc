@@ -58,6 +58,9 @@ const initialState = {
 
 function reducer(state, action) {
   switch (action.type) {
+    case "ALREADY_SUBMITTED":
+      return { ...state, isLoading: false, alreadySubmitted: true };
+
     case "SET_LOADING":
       return { ...state, isLoading: action.payload };
 
@@ -135,7 +138,11 @@ export function CorrectionProvider({ children }) {
     initialized.current = true;
 
     const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get("token");
+    let token = urlParams.get("token");
+
+    if (!token) {
+      token = sessionStorage.getItem("correctionToken");
+    }
 
     if (!token) {
       dispatch({ type: "SET_ERROR", payload: "No correction token found. Please use the link from your rejection email." });
@@ -146,7 +153,10 @@ export function CorrectionProvider({ children }) {
     let decoded = {};
     try {
       const payloadPart = token.split(".")[1];
-      decoded = JSON.parse(atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/")));
+      const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+      const padLength = (4 - (base64.length % 4)) % 4;
+      const paddedBase64 = base64 + "=".repeat(padLength);
+      decoded = JSON.parse(atob(paddedBase64));
     } catch (e) {
       dispatch({ type: "SET_ERROR", payload: "Invalid correction token." });
       return;
@@ -174,7 +184,11 @@ export function CorrectionProvider({ children }) {
       const data = await res.json();
 
       if (!data.success) {
-        dispatch({ type: "SET_ERROR", payload: data.error || "Failed to load correction session" });
+        if (data.applicationStatus === "under_review" || data.applicationStatus === "correction_submitted") {
+          dispatch({ type: "ALREADY_SUBMITTED" });
+        } else {
+          dispatch({ type: "SET_ERROR", payload: data.error || "Failed to load correction session" });
+        }
         return;
       }
 
@@ -254,41 +268,13 @@ export function CorrectionProvider({ children }) {
   }, []);
 
   const submitCorrections = useCallback(async () => {
-    const token = sessionStorage.getItem("correctionToken");
-    if (!token) {
-      addToast("Session expired. Please use the link from your email.", "error");
-      return false;
-    }
-
     dispatch({ type: "SET_SUBMITTING", payload: true });
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/kyc/correction/complete`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const result = await res.json();
-
-      if (!result.success) {
-        addToast(result.error || "Failed to submit corrections", "error");
-        dispatch({ type: "SET_SUBMITTING", payload: false });
-        return false;
-      }
-
-      addToast("All corrections submitted successfully!");
-      // Clean up
-      sessionStorage.removeItem("correctionToken");
-      dispatch({ type: "SET_SUBMITTING", payload: false });
-      return true;
-    } catch (error) {
-      console.error("[CorrectionContext] Submit error:", error);
-      addToast("Network error. Please try again.", "error");
-      dispatch({ type: "SET_SUBMITTING", payload: false });
-      return false;
-    }
-  }, [addToast]);
+    // The actual submission and merging happens after eSign is completed in CorrectionEsignStep.js
+    // We just simulate a small delay here to show transition.
+    await new Promise(r => setTimeout(r, 600));
+    dispatch({ type: "SET_SUBMITTING", payload: false });
+    return true;
+  }, []);
 
   const value = {
     ...state,

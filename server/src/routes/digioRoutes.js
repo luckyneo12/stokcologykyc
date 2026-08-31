@@ -2392,7 +2392,6 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
     const isMismatch = nextIdentityDetails.panMismatch;
     const dataToUpdate = {
-      status: "under_review",
       ocrData: nextOcrData,
       documents: newDocuments,
       selfieDetails: nextSelfieDetails,

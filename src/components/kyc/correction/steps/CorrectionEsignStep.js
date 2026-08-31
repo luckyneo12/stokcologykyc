@@ -26,13 +26,9 @@ export default function CorrectionEsignStep() {
       setLoading(true);
       setError(null);
       
-      // 1. Fetch latest application data (which has all merged corrections)
-      const appRes = await fetch(`${API_URL}/api/kyc/me`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      const appDataRes = await appRes.json();
-      if (!appDataRes.success) throw new Error("Failed to load application data");
-      const app = appDataRes.application;
+      // 1. Use the application data from the correction context
+      const app = applicationData;
+      if (!app) throw new Error("Application data not available");
 
       // 2. Generate PDF with the latest data and merged drafts
       const safeParse = (val) => {
@@ -53,6 +49,7 @@ export default function CorrectionEsignStep() {
         financialProof: app.financialProof,
         selfie: app.selfie,
         signature: app.signature,
+        applicationId: app.applicationId,
       };
 
       Object.entries(drafts || {}).forEach(([stepId, draftData]) => {
@@ -81,6 +78,11 @@ export default function CorrectionEsignStep() {
             mergedApp.panUpload = draftData;
          } else if (stepId === 'ipv') {
             mergedApp.selfieDetails = { ...mergedApp.selfieDetails, ...draftData };
+            // Ensure old photo fields don't override the new selfie preview
+            if (draftData.preview) {
+               delete mergedApp.selfieDetails.filePreview;
+               delete mergedApp.selfieDetails.path;
+            }
          }
       });
 
@@ -118,7 +120,7 @@ export default function CorrectionEsignStep() {
   const handleDigioSuccess = async (requestId) => {
     setPhase("processing");
     try {
-      const result = await fetchDigioRequestResponse(requestId, "ESIGN");
+      const result = await fetchDigioRequestResponse(requestId, "ESIGN", applicationData?.applicationId);
       if (!result) throw new Error("Could not verify eSign response. Please try again.");
       
       // Hit submit to finalize
@@ -146,13 +148,8 @@ export default function CorrectionEsignStep() {
   const startDigioEsign = async () => {
     setPhase("digio");
     try {
-      const requestData = await createDigioRequest("ESIGN", { lat: null, lng: null });
-      if (!requestData?.id) {
-        throw new Error("Failed to initialize e-Sign request");
-      }
+      let currentDigioDocumentId = null;
 
-      const digioDocumentId = requestData.id;
-      
       const digio = initializeDigio({
         environment: process.env.NEXT_PUBLIC_DIGIO_ENV || "production",
         logoUrl: "https://stockologysecurities.com/images/logo.png",
@@ -163,25 +160,39 @@ export default function CorrectionEsignStep() {
             setPhase("error");
             return;
           }
-          handleDigioSuccess(digioDocumentId);
+          handleDigioSuccess(response.digio_doc_id || response.id || currentDigioDocumentId);
         }
       });
       
       if (!digio) throw new Error("Digio SDK not loaded.");
 
+      if (!digio.is_redirection_approach) {
+        digio.init();
+      }
+
+      const requestData = await createDigioRequest("ESIGN", { lat: null, lng: null }, applicationData?.applicationId);
+      if (!requestData?.id && !requestData?.requestId) {
+        throw new Error("Failed to initialize e-Sign request");
+      }
+
+      const digioDocumentId = requestData.id || requestData.requestId;
+      currentDigioDocumentId = digioDocumentId;
+
       const email = typeof applicationData?.personalDetails === 'string' ? JSON.parse(applicationData.personalDetails)?.email : applicationData?.personalDetails?.email;
       const phone = typeof applicationData?.personalDetails === 'string' ? JSON.parse(applicationData.personalDetails)?.phone : applicationData?.personalDetails?.phone;
       
       let rawIdentifier = phone || email || "user@example.com";
-      const identifier = rawIdentifier.replace(/\D/g, '').length >= 10 
+      const fallbackIdentifier = rawIdentifier.replace(/\D/g, '').length >= 10 
         ? rawIdentifier.replace(/\D/g, '').slice(-10) 
         : rawIdentifier;
+
+      const identifier = requestData.customerIdentifier || fallbackIdentifier;
         
-      if (!digio.is_redirection_approach) {
-        digio.init();
+      if (requestData.accessToken) {
+        digio.submit(digioDocumentId, identifier, requestData.accessToken);
+      } else {
+        digio.submit(digioDocumentId, identifier);
       }
-      
-      digio.submit(digioDocumentId, identifier, requestData.accessToken);
     } catch (err) {
       addToast(err.message || "Failed to connect to Digio", "error");
       setPhase("error");
@@ -236,8 +247,8 @@ export default function CorrectionEsignStep() {
           </div>
         ) : (
           <>
-            <div style={{ width: "100%", maxWidth: "800px", height: "65vh", border: "1px solid var(--border-color)", borderRadius: 12, overflow: "hidden", background: "#f8f9fa", position: "relative" }}>
-              <PdfMobileViewer fileUrl={pdfUrl} hideActions={true} />
+            <div style={{ width: "100%", maxWidth: "800px", height: "65vh", border: "1px solid var(--border-color)", borderRadius: 12, overflowY: "auto", background: "#f8f9fa", position: "relative" }}>
+              <PdfMobileViewer url={pdfUrl} hideActions={true} />
             </div>
 
             {(phase === "digio" || phase === "processing") ? (

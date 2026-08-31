@@ -904,8 +904,13 @@ async function generateKycPdf(applicationData, options = {}) {
           if (response.status === 200) {
             bytes = response.data;
             const contentType = response.headers['content-type'] || '';
-            if (contentType.includes('pdf')) isPdf = true;
-            if (contentType.includes('png')) isPng = true;
+            if (contentType.includes('image')) {
+              isPdf = false;
+              isPng = contentType.includes('png');
+            } else if (contentType.includes('pdf')) {
+              isPdf = true;
+              isPng = false;
+            }
           } else {
             console.error(`[PDF Gen] Error fetching doc URL: HTTP ${response.status}`);
             return;

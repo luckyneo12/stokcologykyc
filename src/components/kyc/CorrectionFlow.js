@@ -59,6 +59,7 @@ export default function CorrectionFlow() {
     drafts,
     toasts,
     submitting,
+    alreadySubmitted,
     goToCorrectionStep,
     submitCorrections,
     stepTitleMap,
@@ -148,7 +149,7 @@ export default function CorrectionFlow() {
   }
 
   // Completion state
-  if (completionShown) {
+  if (completionShown || alreadySubmitted) {
     return (
       <div style={{
         height: "100vh", display: "flex", flexDirection: "column",

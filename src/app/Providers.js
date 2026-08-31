@@ -28,6 +28,9 @@ function AntiInspect() {
   const pathname = usePathname();
 
   useEffect(() => {
+    // TEMPORARILY DISABLED FOR DEBUGGING
+    return;
+    
     // Disable anti-inspect on the admin portal
     if (pathname && pathname.startsWith('/admin')) {
       return;

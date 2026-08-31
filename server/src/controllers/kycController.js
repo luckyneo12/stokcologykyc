@@ -1088,11 +1088,21 @@ const bypassEsign = async (req, res, next) => {
 const previewPdf = async (req, res, next) => {
   try {
     const { generateKycPdf } = require("../utils/pdfGenerator");
-    const app = await prisma.kycApplication.findFirst({
-      where: { userId: req.user.id },
-      orderBy: { createdAt: "desc" },
-      include: { user: true },
-    });
+    const { applicationId } = req.body;
+    
+    let app;
+    if (applicationId) {
+      app = await prisma.kycApplication.findUnique({
+        where: { applicationId },
+        include: { user: true },
+      });
+    } else {
+      app = await prisma.kycApplication.findFirst({
+        where: { userId: req.user.id },
+        orderBy: { createdAt: "desc" },
+        include: { user: true },
+      });
+    }
 
     if (!app) {
       return res
@@ -1300,10 +1310,17 @@ const generateMobileSession = async (req, res, next) => {
  */
 const getCorrectionSession = async (req, res, next) => {
   try {
-    const app = await prisma.kycApplication.findFirst({
-      where: { userId: req.user.id },
+    let app = await prisma.kycApplication.findFirst({
+      where: { userId: req.user.id, status: "rejected" },
       orderBy: { createdAt: "desc" },
     });
+
+    if (!app) {
+      app = await prisma.kycApplication.findFirst({
+        where: { userId: req.user.id },
+        orderBy: { createdAt: "desc" },
+      });
+    }
 
     if (!app) {
       return res.status(404).json({ success: false, error: "No application found" });
@@ -1386,10 +1403,16 @@ const saveCorrectionStep = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "stepId and data are required" });
     }
 
-    const app = await prisma.kycApplication.findFirst({
-      where: { userId: req.user.id },
+    let app = await prisma.kycApplication.findFirst({
+      where: { userId: req.user.id, status: "rejected" },
       orderBy: { createdAt: "desc" },
     });
+    if (!app) {
+      app = await prisma.kycApplication.findFirst({
+        where: { userId: req.user.id },
+        orderBy: { createdAt: "desc" },
+      });
+    }
 
     if (!app || app.status !== "rejected") {
       return res.status(400).json({ success: false, error: "No active correction session" });
@@ -1451,10 +1474,16 @@ const saveCorrectionStep = async (req, res, next) => {
  */
 const completeCorrectionSession = async (req, res, next) => {
   try {
-    const app = await prisma.kycApplication.findFirst({
-      where: { userId: req.user.id },
+    let app = await prisma.kycApplication.findFirst({
+      where: { userId: req.user.id, status: "rejected" },
       orderBy: { createdAt: "desc" },
     });
+    if (!app) {
+      app = await prisma.kycApplication.findFirst({
+        where: { userId: req.user.id },
+        orderBy: { createdAt: "desc" },
+      });
+    }
 
     if (!app || (app.status !== "rejected" && app.status !== "under_review")) {
       return res.status(400).json({ success: false, error: "No active correction session" });
