@@ -5,7 +5,7 @@ const { z } = require("zod");
 const getAssignedApplications = async (req, res, next) => {
   try {
     const agentId = Number(req.user.id);
-    const { status = "all", search = "", page = 1, limit = 15, stage = "all" } = req.query;
+    const { status = "all", search = "", page = 1, limit = 15, stage = "all", startDate, endDate } = req.query;
     
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const take = Math.min(Math.max(parseInt(limit, 10) || 15, 1), 200);
@@ -32,6 +32,18 @@ const getAssignedApplications = async (req, res, next) => {
 
     if (stage !== "all" && !isNaN(parseInt(stage))) {
       where.currentStep = parseInt(stage);
+    }
+
+    if (startDate || endDate) {
+      where.updatedAt = {};
+      if (startDate) {
+        where.updatedAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.updatedAt.lte = end;
+      }
     }
 
     if (search) {

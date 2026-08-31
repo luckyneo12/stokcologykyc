@@ -203,10 +203,9 @@ const sendWelcomeEmail = async (email, name, panCard, pdfAttachment) => {
 
     if (foundPath) {
       try {
-        const fileContent = fs.readFileSync(foundPath);
         mailOptions.attachments.push({
           filename: "Client Copy Stockology.pdf",
-          content: fileContent,
+          path: foundPath,
           contentType: "application/pdf"
         });
         console.log("[EmailService] Client Copy attached successfully from:", foundPath);

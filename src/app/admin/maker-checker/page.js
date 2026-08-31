@@ -36,11 +36,22 @@ const STATUS_MAP = {
   approved: "badge-verified"
 };
 
+const FRONTEND_STEP_TITLE_MAP = {
+  phoneVerification: "Phone", emailVerification: "Email", pricingSelection: "Pricing",
+  panVerification: "PAN", digilocker: "DigiLocker", personalDetails: "Personal",
+  nomineeChoice: "Nominee Choice", nomineeDetails: "Nominee", nomineeAllocation: "Nominee Allocation",
+  bankVerification: "Bank", financialProof: "Financial Proof", signature: "Signature",
+  panUpload: "PAN Upload", ipv: "IPV/Selfie", pepProof: "PEP Proof",
+  nominee1Proof: "Nominee 1", nominee2Proof: "Nominee 2", nominee3Proof: "Nominee 3",
+  guardian1Proof: "Guardian 1", guardian2Proof: "Guardian 2", guardian3Proof: "Guardian 3",
+  esignPreview: "eSign Preview", aadhaarEsign: "Aadhaar eSign", completion: "Completion"
+};
+
 export default function MakerCheckerDashboard() {
   const router = useRouter();
   const [kycs, setKycs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState("pending");
   const [stageFilter, setStageFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -52,6 +63,9 @@ export default function MakerCheckerDashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
+  const [openRejectionsId, setOpenRejectionsId] = useState(null);
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
@@ -70,8 +84,8 @@ export default function MakerCheckerDashboard() {
     "Name": 180,
     "Client Code": 120
   };
-  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Step", "Stage", "Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date"];
-  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "Status", "E-Stamp", "Start Date", "eSign Date", "Date"]);
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date"];
+  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "Status", "Rejections", "E-Stamp", "Start Date", "eSign Date", "Date"]);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [stageFilterOpen, setStageFilterOpen] = useState(false);
@@ -135,6 +149,12 @@ export default function MakerCheckerDashboard() {
       }
       if (!e.target.closest('.status-dropdown-container')) {
         setOpenStatusMenuId(null);
+      }
+      if (!e.target.closest('.rejections-dropdown-container')) {
+        setOpenRejectionsId(null);
+      }
+      if (!e.target.closest('.date-filter-dropdown-container')) {
+        setDateFilterOpen(false);
       }
     };
     document.addEventListener("click", handleClickOutside);
@@ -272,6 +292,8 @@ export default function MakerCheckerDashboard() {
       if (filter !== "all") url.searchParams.append("status", filter);
       if (stageFilter !== "all") url.searchParams.append("stage", stageFilter);
       if (search) url.searchParams.append("search", search);
+      if (dateRange.start) url.searchParams.append("startDate", dateRange.start);
+      if (dateRange.end) url.searchParams.append("endDate", dateRange.end);
       url.searchParams.append("page", page);
       url.searchParams.append("limit", 15);
 
@@ -316,6 +338,15 @@ export default function MakerCheckerDashboard() {
             
             let parsedNominee = {};
             try { parsedNominee = typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails) : (app.nomineeDetails || {}); } catch(e) {}
+
+            let parsedStepStatuses = {};
+            try { parsedStepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {}); } catch(e) {}
+            
+            const rejectedSteps = Object.entries(parsedStepStatuses)
+              .filter(([_, info]) => info?.status === "rejected")
+              .map(([step, info]) => `${FRONTEND_STEP_TITLE_MAP[step] || step}: ${info?.reason || 'No reason'}`);
+            
+            const rejectionsText = rejectedSteps.length > 0 ? rejectedSteps.join(" | ") : (app.rejectionReason || "None");
 
             const aadhaarRaw = parsedIdentity.aadhaarNumber || parsedIdentity.aadhaar || parsedIdentity.uid || parsedIdentity.maskedAadhaar || parsedPersonal.aadhaar || "";
             const aadhaarFormatted = aadhaarRaw ? (String(aadhaarRaw).length >= 4 ? `xxxxxxxx${String(aadhaarRaw).slice(-4)}` : String(aadhaarRaw)) : "N/A";
@@ -366,6 +397,7 @@ export default function MakerCheckerDashboard() {
               pincode: rawPincode,
               occupation: parsedPersonal.occupation || "N/A",
               annualIncome: parsedPersonal.annualIncome || parsedPersonal.annual_income || "N/A",
+              rejections: rejectionsText,
             };
           });
           setKycs(mapped);
@@ -380,7 +412,7 @@ export default function MakerCheckerDashboard() {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, search, stageFilter]);
+  }, [filter, search, stageFilter, dateRange]);
 
   useEffect(() => {
     if (loadingAuth || !isAuthenticated) return;
@@ -393,7 +425,7 @@ export default function MakerCheckerDashboard() {
   useEffect(() => {
     if (loadingAuth || !isAuthenticated) return;
     fetchApplications();
-  }, [filter, stageFilter, page, loadingAuth, isAuthenticated]);
+  }, [filter, stageFilter, page, loadingAuth, isAuthenticated, dateRange]);
 
   const fetchRef = useRef(fetchApplications);
   useEffect(() => {
@@ -440,6 +472,7 @@ export default function MakerCheckerDashboard() {
       if (col === "Pincode") return k.pincode;
       if (col === "Occupation") return `"${k.occupation || ""}"`;
       if (col === "Annual Income") return `"${k.annualIncome || ""}"`;
+      if (col === "Rejections") return `"${k.rejections || ""}"`;
       if (col === "Date") return `"${k.submittedAt || ""}"`;
       return "";
     }));
@@ -542,6 +575,61 @@ export default function MakerCheckerDashboard() {
                           {filter === f && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="date-filter-dropdown-container" style={{ position: "relative", width: "220px" }}>
+                  <button 
+                    onClick={() => setDateFilterOpen(!dateFilterOpen)}
+                    style={{ 
+                      width: "100%", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", 
+                      background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, 
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                      {dateRange.start || dateRange.end ? "Custom Date" : "All Time"}
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: dateFilterOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </button>
+                  {dateFilterOpen && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "16px", minWidth: "280px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                        <button onClick={() => { setDateRange({ start: "", end: "" }); setDateFilterOpen(false); }} style={{ padding: "6px 8px", fontSize: "0.75rem", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", cursor: "pointer", fontWeight: 600 }}>All Time</button>
+                        <button onClick={() => { 
+                          const today = new Date().toISOString().split('T')[0];
+                          setDateRange({ start: today, end: today }); 
+                          setDateFilterOpen(false); 
+                        }} style={{ padding: "6px 8px", fontSize: "0.75rem", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", cursor: "pointer", fontWeight: 600 }}>Today</button>
+                        <button onClick={() => { 
+                          const end = new Date();
+                          const start = new Date();
+                          start.setDate(start.getDate() - 7);
+                          setDateRange({ start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] }); 
+                          setDateFilterOpen(false); 
+                        }} style={{ padding: "6px 8px", fontSize: "0.75rem", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", cursor: "pointer", fontWeight: 600 }}>Last Week</button>
+                        <button onClick={() => { 
+                          const end = new Date();
+                          const start = new Date();
+                          start.setDate(start.getDate() - 30);
+                          setDateRange({ start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] }); 
+                          setDateFilterOpen(false); 
+                        }} style={{ padding: "6px 8px", fontSize: "0.75rem", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", cursor: "pointer", fontWeight: 600 }}>Last Month</button>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div>
+                          <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>From</label>
+                          <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))} style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid var(--border-color)", fontSize: "0.85rem" }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>To</label>
+                          <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid var(--border-color)", fontSize: "0.85rem" }} />
+                        </div>
+                        <button onClick={() => setDateFilterOpen(false)} style={{ width: "100%", padding: "8px", marginTop: 4, borderRadius: 6, background: "var(--wise-green)", color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}>Apply Filters</button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -810,6 +898,65 @@ export default function MakerCheckerDashboard() {
                           {visibleColumns.includes("Pincode") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.pincode}</td>}
                           {visibleColumns.includes("Occupation") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.occupation}</td>}
                           {visibleColumns.includes("Annual Income") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.annualIncome}</td>}
+                          {visibleColumns.includes("Rejections") && (
+                            <td className="rejections-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
+                              {k.rejections !== "None" ? (
+                                <>
+                                  <button 
+                                    onClick={() => setOpenRejectionsId(openRejectionsId === k.id ? null : k.id)}
+                                    style={{ 
+                                      background: "#fee2e2", 
+                                      color: "#ef4444", 
+                                      border: "1px solid #fca5a5",
+                                      padding: "4px 8px",
+                                      borderRadius: "16px",
+                                      fontSize: "0.75rem",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      width: "max-content"
+                                    }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                    {k.rejections.split(" | ").length} Rejection(s)
+                                  </button>
+                                  {openRejectionsId === k.id && (
+                                    <div style={{
+                                      position: "absolute",
+                                      top: "100%",
+                                      left: 0,
+                                      marginTop: 8,
+                                      background: "var(--bg-primary)",
+                                      border: "1px solid var(--border-color)",
+                                      borderRadius: 8,
+                                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                      zIndex: 100,
+                                      padding: "12px",
+                                      width: "280px",
+                                      maxHeight: "300px",
+                                      overflowY: "auto",
+                                    }}>
+                                      <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", marginBottom: 8, borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>REJECTION HISTORY</div>
+                                      {k.rejections.split(" | ").map((r, i) => {
+                                        const parts = r.split(":");
+                                        const step = parts[0];
+                                        const reason = parts.slice(1).join(":").trim() || "No reason provided";
+                                        return (
+                                          <div key={i} style={{ marginBottom: i < k.rejections.split(" | ").length - 1 ? 12 : 0 }}>
+                                            <div style={{ fontWeight: 700, color: "#ef4444", fontSize: "0.82rem" }}>{step}</div>
+                                            <div style={{ color: "var(--text-primary)", marginTop: 2, lineHeight: 1.4, fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>{reason}</div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>None</span>
+                              )}
+                            </td>
+                          )}
                           {visibleColumns.includes("Step") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                             Step {k.stepNum || 0}/14
                           </td>}

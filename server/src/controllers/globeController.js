@@ -143,6 +143,8 @@ class GlobeController {
       const skip = (page - 1) * limit;
       const globeStatus = req.query.globeStatus;
       const stage = req.query.stage;
+      const startDate = req.query.startDate;
+      const endDate = req.query.endDate;
 
       const whereClause = { status: "verified" };
       if (globeStatus && globeStatus !== "all") {
@@ -150,6 +152,18 @@ class GlobeController {
       }
       if (stage && stage !== "all" && !isNaN(parseInt(stage))) {
         whereClause.currentStep = parseInt(stage);
+      }
+
+      if (startDate || endDate) {
+        whereClause.updatedAt = {};
+        if (startDate) {
+          whereClause.updatedAt.gte = new Date(startDate);
+        }
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          whereClause.updatedAt.lte = end;
+        }
       }
 
       const search = req.query.search ? String(req.query.search).trim() : "";
