@@ -61,7 +61,6 @@ export default function MakerCheckerDashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
-  const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
   const [openRejectionsId, setOpenRejectionsId] = useState(null);
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
