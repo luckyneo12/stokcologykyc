@@ -11,6 +11,7 @@ export default function CorrectionEsignStep() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [phase, setPhase] = useState("preview"); // preview, digio, processing, success, error
+  const [downloadingEsign, setDownloadingEsign] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -52,6 +53,11 @@ export default function CorrectionEsignStep() {
         applicationId: app.applicationId,
       };
 
+      if (mergedApp.nomineeDetails && mergedApp.nomineeDetails.nomineeDetails) {
+        mergedApp.nomineeDetails = { ...mergedApp.nomineeDetails.nomineeDetails, ...mergedApp.nomineeDetails };
+        delete mergedApp.nomineeDetails.nomineeDetails;
+      }
+
       Object.entries(drafts || {}).forEach(([stepId, draftData]) => {
          if (!draftData) return;
          if (stepId === 'digilocker') {
@@ -61,13 +67,41 @@ export default function CorrectionEsignStep() {
          } else if (stepId === 'pricingSelection') {
             mergedApp.segments = draftData.segments;
             mergedApp.bsda = draftData.bsda;
-         } else if (stepId === 'personalDetails' || stepId === 'pepProof') {
+         } else if (stepId === 'personalDetails') {
             mergedApp.personalDetails = { ...mergedApp.personalDetails, ...draftData };
+         } else if (stepId === 'pepProof') {
+            mergedApp.personalDetails = { ...mergedApp.personalDetails, pepProof: draftData.path || draftData.preview };
          } else if (stepId === 'bankVerification') {
             mergedApp.bankDetails = { ...mergedApp.bankDetails, ...draftData };
          } else if (stepId === 'nomineeChoice' || stepId === 'nomineeDetails' || stepId.startsWith('nominee') || stepId.startsWith('guardian')) {
-            if (stepId === 'nomineeAllocation') mergedApp.nomineeAllocation = draftData;
-            else mergedApp.nomineeDetails = { ...mergedApp.nomineeDetails, ...draftData };
+            if (stepId === 'nomineeAllocation') {
+               mergedApp.nomineeAllocation = draftData;
+            } else if (stepId.endsWith('Proof')) {
+               if (!mergedApp.nomineeDetails) mergedApp.nomineeDetails = {};
+               if (!mergedApp.nomineeDetails.nominees) mergedApp.nomineeDetails.nominees = [];
+               
+               let idx = 0;
+               if (stepId.startsWith('nominee')) {
+                  idx = parseInt(stepId.replace('nominee', '').replace('Proof', '')) - 1;
+                  if (!mergedApp.nomineeDetails.nominees[idx]) mergedApp.nomineeDetails.nominees[idx] = {};
+                  mergedApp.nomineeDetails.nominees[idx].proofPath = draftData.path || draftData.filePreview || draftData.preview;
+               } else if (stepId.startsWith('guardian')) {
+                  idx = parseInt(stepId.replace('guardian', '').replace('Proof', '')) - 1;
+                  if (!mergedApp.nomineeDetails.nominees[idx]) mergedApp.nomineeDetails.nominees[idx] = {};
+                  mergedApp.nomineeDetails.nominees[idx].guardianProofPath = draftData.path || draftData.filePreview || draftData.preview;
+               }
+            } else {
+               let actualDraftData = { ...draftData };
+               // If the draft only has the data nested (from legacy corruption) and no root array, use the nested data
+               if (actualDraftData.nomineeDetails && (!actualDraftData.nominees || actualDraftData.nominees.length === 0)) {
+                  actualDraftData = { ...actualDraftData.nomineeDetails };
+               }
+               // Crucial: Delete the ghost nested object so it doesn't overwrite our new data during the spread
+               delete actualDraftData.nomineeDetails;
+               
+               if (actualDraftData.nominees && actualDraftData.nominees.length > 0) actualDraftData.opted = "Yes";
+               mergedApp.nomineeDetails = { ...mergedApp.nomineeDetails, ...actualDraftData };
+            }
          } else if (stepId === 'panVerification') {
             mergedApp.identityDetails = { ...mergedApp.identityDetails, ...draftData };
          } else if (stepId === 'financialProof') {
@@ -87,6 +121,7 @@ export default function CorrectionEsignStep() {
       });
 
       mergedApp.previewOnly = true;
+      mergedApp.forceAppendDocuments = true;
 
       const pdfRes = await fetch(`${API_URL}/api/kyc/preview-pdf`, {
         method: 'POST',
@@ -147,6 +182,25 @@ export default function CorrectionEsignStep() {
 
   const startDigioEsign = async () => {
     setPhase("digio");
+
+    // Fetch live location before starting eSign, falling back to null if denied
+    let coords = { lat: null, lng: null };
+    try {
+      if ("geolocation" in navigator) {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        });
+        coords.lat = pos.coords.latitude;
+        coords.lng = pos.coords.longitude;
+      }
+    } catch (e) {
+      console.warn("Could not fetch location for eSign correction:", e.message);
+    }
+
     try {
       let currentDigioDocumentId = null;
 
@@ -170,7 +224,7 @@ export default function CorrectionEsignStep() {
         digio.init();
       }
 
-      const requestData = await createDigioRequest("ESIGN", { lat: null, lng: null }, applicationData?.applicationId);
+      const requestData = await createDigioRequest("ESIGN", coords, applicationData?.applicationId);
       if (!requestData?.id && !requestData?.requestId) {
         throw new Error("Failed to initialize e-Sign request");
       }
@@ -219,6 +273,43 @@ export default function CorrectionEsignStep() {
           Your application with all the updated details has been successfully signed and submitted. 
           Our team will review your application shortly.
         </p>
+        <button 
+          className="btn btn-primary" 
+          style={{ marginTop: 24 }}
+          onClick={async () => {
+            try {
+              setDownloadingEsign(true);
+              const res = await fetch(`${API_URL}/api/kyc/me`, {
+                headers: { "Authorization": `Bearer ${token}` }
+              });
+              const data = await res.json();
+              if (data.success && data.application) {
+                let docs = [];
+                try {
+                  docs = typeof data.application.documents === "string" ? JSON.parse(data.application.documents) : (data.application.documents || []);
+                } catch(e) {}
+                const esignDoc = [...docs].reverse().find(d => d.type === "ESIGN_DOCUMENT");
+                if (esignDoc && esignDoc.path) {
+                  window.open(esignDoc.path, "_blank");
+                  setDownloadingEsign(false);
+                  return;
+                }
+              }
+              addToast("e-Signed PDF is still being generated in the background. Please try again in a few seconds.", "info");
+            } catch (err) {
+              addToast("Failed to fetch e-Signed document", "error");
+            } finally {
+              setDownloadingEsign(false);
+            }
+          }}
+          disabled={downloadingEsign}
+        >
+          {downloadingEsign ? (
+             <><span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Fetching...</>
+          ) : (
+             "Download e-Signed PDF"
+          )}
+        </button>
       </div>
     );
   }

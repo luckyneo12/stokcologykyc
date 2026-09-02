@@ -1117,6 +1117,16 @@ const previewPdf = async (req, res, next) => {
     // Merge latest frontend state with DB state
     const applicationData = { ...app, ...req.body };
     
+    // TEMPORARY LOGGING TO DEBUG NOMINEE PDF ISSUE
+    require("fs").writeFileSync(
+      require("path").join(__dirname, "../../../preview_pdf_nominee_log.json"),
+      JSON.stringify({
+        appNomineeDetails: app.nomineeDetails,
+        reqBodyNomineeDetails: req.body.nomineeDetails,
+        mergedApplicationDataNomineeDetails: applicationData.nomineeDetails
+      }, null, 2)
+    );
+    
     // Preserve backend documents (like Digilocker PDFs) that the frontend might not have in its state
     if (app.documents) {
       try {
@@ -1135,7 +1145,8 @@ const previewPdf = async (req, res, next) => {
       }
     }
 
-    const pdfBase64 = await generateKycPdf(applicationData, { skipDocumentAppend: applicationData.previewOnly });
+    const skipAppend = applicationData.previewOnly && !applicationData.forceAppendDocuments;
+    const pdfBase64 = await generateKycPdf(applicationData, { skipDocumentAppend: skipAppend });
 
     res.json({ success: true, pdfBase64 });
   } catch (error) {
@@ -1443,6 +1454,18 @@ const saveCorrectionStep = async (req, res, next) => {
 
     // Mark step as completed
     stepEntry.completed = true;
+    
+    // Dynamically inject nomineeAllocation if they opted in and it's not already required
+    if ((stepId === 'nomineeChoice' || stepId === 'nomineeDetails') && data.opted === 'Yes') {
+      const hasAllocation = correctionDraft.rejectedSteps.some(s => s.stepId === 'nomineeAllocation');
+      if (!hasAllocation) {
+        correctionDraft.rejectedSteps.push({
+          stepId: 'nomineeAllocation',
+          reason: 'Please allocate percentages for the added nominees',
+          completed: false
+        });
+      }
+    }
 
     await prisma.kycApplication.update({
       where: { applicationId: app.applicationId },
@@ -1457,6 +1480,7 @@ const saveCorrectionStep = async (req, res, next) => {
 
     res.json({
       success: true,
+      rejectedSteps: correctionDraft.rejectedSteps,
       message: `Correction for '${stepId}' saved`,
       stepCompleted: true,
       allStepsComplete: allComplete,
@@ -1547,6 +1571,7 @@ const completeCorrectionSession = async (req, res, next) => {
         // DigiLocker: replace identity + address + name/dob fields
         if (draftData.identityDetails) {
           updateData.identityDetails = serializeJsonField(
+
             mergeJson(parseJsonField(app.identityDetails), draftData.identityDetails)
           );
         }
@@ -1580,7 +1605,35 @@ const completeCorrectionSession = async (req, res, next) => {
       const fieldName = DRAFT_TO_FIELD_MAP[stepId];
       if (fieldName) {
         const existing = parseJsonField(updateData[fieldName] || app[fieldName], fieldName === "documents" ? [] : {});
-        updateData[fieldName] = serializeJsonField(mergeJson(existing, draftData));
+        
+        let processedDraftData = draftData;
+        if (stepId === "pepProof") {
+          processedDraftData = { pepProof: draftData.path || draftData.preview };
+        } else if (stepId.endsWith("Proof") && (stepId.startsWith("nominee") || stepId.startsWith("guardian"))) {
+          if (!existing.nominees) existing.nominees = [];
+          let idx = 0;
+          if (stepId.startsWith("nominee")) {
+            idx = parseInt(stepId.replace("nominee", "").replace("Proof", "")) - 1;
+            if (!existing.nominees[idx]) existing.nominees[idx] = {};
+            existing.nominees[idx].proofPath = draftData.path || draftData.filePreview || draftData.preview;
+          } else if (stepId.startsWith("guardian")) {
+            idx = parseInt(stepId.replace("guardian", "").replace("Proof", "")) - 1;
+            if (!existing.nominees[idx]) existing.nominees[idx] = {};
+            existing.nominees[idx].guardianProofPath = draftData.path || draftData.filePreview || draftData.preview;
+          }
+          processedDraftData = {}; // We directly mutated existing for this
+        }
+        if (fieldName === "nomineeDetails") {
+          if (existing.nomineeDetails) {
+            Object.assign(existing, existing.nomineeDetails);
+            delete existing.nomineeDetails;
+          }
+          if (processedDraftData && processedDraftData.nominees) {
+            existing.nominees = []; // Clear array so mergeJson replaces it instead of deep merging indexes
+          }
+        }
+        
+        updateData[fieldName] = serializeJsonField(mergeJson(existing, processedDraftData));
       }
     }
 

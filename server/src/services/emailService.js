@@ -109,7 +109,7 @@ const sendRejectionEmail = async (email, name, rejectedSteps, modifyLink) => {
           </table>
           
           <p style="font-size: 16px; margin-bottom: 30px;">
-            Link - <a href="${modifyLink}" style="color: #0000ee; text-decoration: underline;">${modifyLink}</a>
+            <a href="${modifyLink}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">Click Here to Correct Your Application</a>
           </p>
           
           <p style="font-size: 16px; margin-bottom: 40px;">

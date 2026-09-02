@@ -196,8 +196,27 @@ export default function CorrectionSelfieStep() {
   // ─── Start selfie verification ───────────────────────────────────────
   const startVerification = async () => {
     setPhase("processing");
+
+    // Fetch live location before starting selfie, falling back to null if denied
+    let coords = { lat: null, lng: null };
     try {
-      const requestData = await createDigioRequest("SELFIE", {}, applicationData?.applicationId);
+      if ("geolocation" in navigator) {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        });
+        coords.lat = pos.coords.latitude;
+        coords.lng = pos.coords.longitude;
+      }
+    } catch (e) {
+      console.warn("Could not fetch location for selfie correction:", e.message);
+    }
+
+    try {
+      const requestData = await createDigioRequest("SELFIE", coords, applicationData?.applicationId);
       const { requestId, customerIdentifier } = requestData;
       const digio = initializeDigio({
         callback: (response) => {
@@ -297,11 +316,7 @@ export default function CorrectionSelfieStep() {
           <p className="text-body" style={{ marginBottom: 8 }}>
             Your selfie and liveness check have been successfully verified.
           </p>
-          {matchScore !== null && (
-            <p style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--wise-primary)", marginBottom: 24 }}>
-              Match Confidence: {matchScore}%
-            </p>
-          )}
+          {/* Match Confidence Score hidden as requested */}
           
           {(drafts?.ipv?.preview) && (
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>

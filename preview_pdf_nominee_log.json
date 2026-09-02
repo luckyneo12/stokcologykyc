@@ -1,0 +1,75 @@
+{
+  "appNomineeDetails": "{\"opted\":\"Yes\",\"nominees\":[{\"name\":\"Manju \",\"email\":\"Manju@gmail.com\",\"mobile\":\"9875641230\",\"relation\":\"Mother\",\"dob\":\"1978-02-14\",\"sameAddress\":true,\"address\":\"Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009\",\"city\":\"Bokaro\",\"state\":\"Jharkhand\",\"pincode\":\"827009\",\"country\":\"India\",\"proofType\":\"PAN CARD\",\"proofNumber\":\"UUUUU1234R\",\"proofPath\":\"https://res.cloudinary.com/dogfk2nyq/image/upload/v1788267779/kyc_uploads/1788267772196-7478ae6c.jpg\",\"guardianDob\":\"\",\"guardianName\":\"\",\"guardianSameAddress\":false,\"guardianAddress\":\"\",\"guardianCity\":\"\",\"guardianState\":\"\",\"guardianCountry\":\"India\",\"guardianPincode\":\"\",\"guardianMobile\":\"\",\"guardianEmail\":\"\",\"guardianRelation\":\"\",\"guardianProofType\":\"PAN CARD\",\"guardianProofNumber\":\"\",\"guardianProofPath\":\"\"},{\"name\":\"Binod \",\"email\":\"Binod@gmail.com\",\"mobile\":\"6541237890\",\"relation\":\"Father\",\"dob\":\"1972-05-12\",\"sameAddress\":true,\"address\":\"Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009\",\"city\":\"Bokaro\",\"state\":\"Jharkhand\",\"pincode\":\"827009\",\"country\":\"India\",\"proofType\":\"PAN CARD\",\"proofNumber\":\"JJJJJ1234P\",\"proofPath\":\"https://res.cloudinary.com/dogfk2nyq/image/upload/v1788267842/kyc_uploads/1788267831600-8d5b2e91.jpg\",\"guardianDob\":\"\",\"guardianName\":\"\",\"guardianSameAddress\":false,\"guardianAddress\":\"\",\"guardianCity\":\"\",\"guardianState\":\"\",\"guardianCountry\":\"India\",\"guardianPincode\":\"\",\"guardianMobile\":\"\",\"guardianEmail\":\"\",\"guardianRelation\":\"\",\"guardianProofType\":\"PAN CARD\",\"guardianProofNumber\":\"\",\"guardianProofPath\":\"\"}],\"nomineeDetails\":{\"opted\":\"No\",\"nominees\":[{\"name\":\"Aniket\",\"email\":\"A@gmail.com\",\"mobile\":\"8888888888\",\"relation\":\"Brother\",\"dob\":\"2001-05-08\",\"sameAddress\":true,\"address\":\"Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009\",\"city\":\"Bokaro\",\"state\":\"Jharkhand\",\"pincode\":\"827009\",\"country\":\"India\",\"proofType\":\"AADHAAR CARD\",\"proofNumber\":\"3134\",\"proofPath\":\"https://res.cloudinary.com/dogfk2nyq/image/upload/v1788243520/kyc_uploads/1788243517069-5ab9acb6.jpg\",\"guardianDob\":\"\",\"guardianName\":\"\",\"guardianSameAddress\":false,\"guardianAddress\":\"\",\"guardianCity\":\"\",\"guardianState\":\"\",\"guardianCountry\":\"India\",\"guardianPincode\":\"\",\"guardianMobile\":\"\",\"guardianEmail\":\"\",\"guardianRelation\":\"\",\"guardianProofType\":\"PAN CARD\",\"guardianProofNumber\":\"\",\"guardianProofPath\":\"\"}],\"numberOfNominees\":\"1\"},\"numberOfNominees\":\"2\"}",
+  "reqBodyNomineeDetails": {
+    "opted": "Yes",
+    "nominees": [
+      {
+        "name": "Binod Kumar",
+        "email": "Binod@gmail.com",
+        "mobile": "9875641230",
+        "relation": "Father",
+        "dob": "1972-02-12",
+        "sameAddress": true,
+        "address": "Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009",
+        "city": "Bokaro",
+        "state": "Jharkhand",
+        "pincode": "827009",
+        "country": "India",
+        "proofType": "PAN CARD",
+        "proofNumber": "BINOD1234R",
+        "proofPath": "https://res.cloudinary.com/dogfk2nyq/image/upload/v1788344185/kyc_uploads/1788344180093-61300bd9.jpg",
+        "guardianDob": "",
+        "guardianName": "",
+        "guardianSameAddress": false,
+        "guardianAddress": "",
+        "guardianCity": "",
+        "guardianState": "",
+        "guardianCountry": "India",
+        "guardianPincode": "",
+        "guardianMobile": "",
+        "guardianEmail": "",
+        "guardianRelation": "",
+        "guardianProofType": "PAN CARD",
+        "guardianProofNumber": "",
+        "guardianProofPath": ""
+      }
+    ],
+    "numberOfNominees": "1"
+  },
+  "mergedApplicationDataNomineeDetails": {
+    "opted": "Yes",
+    "nominees": [
+      {
+        "name": "Binod Kumar",
+        "email": "Binod@gmail.com",
+        "mobile": "9875641230",
+        "relation": "Father",
+        "dob": "1972-02-12",
+        "sameAddress": true,
+        "address": "Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009",
+        "city": "Bokaro",
+        "state": "Jharkhand",
+        "pincode": "827009",
+        "country": "India",
+        "proofType": "PAN CARD",
+        "proofNumber": "BINOD1234R",
+        "proofPath": "https://res.cloudinary.com/dogfk2nyq/image/upload/v1788344185/kyc_uploads/1788344180093-61300bd9.jpg",
+        "guardianDob": "",
+        "guardianName": "",
+        "guardianSameAddress": false,
+        "guardianAddress": "",
+        "guardianCity": "",
+        "guardianState": "",
+        "guardianCountry": "India",
+        "guardianPincode": "",
+        "guardianMobile": "",
+        "guardianEmail": "",
+        "guardianRelation": "",
+        "guardianProofType": "PAN CARD",
+        "guardianProofNumber": "",
+        "guardianProofPath": ""
+      }
+    ],
+    "numberOfNominees": "1"
+  }
+}

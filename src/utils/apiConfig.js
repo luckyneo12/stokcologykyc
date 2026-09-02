@@ -31,6 +31,10 @@ export function resolveAssetUrl(path) {
   if (!normalizedPath.startsWith("/")) {
     normalizedPath = "/" + normalizedPath;
   }
+  // Map local /uploads paths to the secure /api/kyc/document endpoint
+  if (normalizedPath.startsWith("/uploads/")) {
+    normalizedPath = normalizedPath.replace("/uploads/", "/api/kyc/document/");
+  }
   
   let finalUrl = `${API_BASE_URL}${normalizedPath}`;
   

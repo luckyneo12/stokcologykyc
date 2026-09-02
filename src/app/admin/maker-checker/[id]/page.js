@@ -473,7 +473,7 @@ const REVIEW_STEPS = [
       ["Capture Date", app.selfieDetails?.extractedAt ? new Date(app.selfieDetails.extractedAt).toLocaleString('en-GB') : app.selfieDetails?.updatedAt ? new Date(app.selfieDetails.updatedAt).toLocaleString('en-GB') : "N/A"],
     ],
     evidence: (app) => [
-      firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
+      firstMedia(app.selfieDetails?.path || app.selfie || app.selfieDetails?.preview, "Live Selfie"),
       firstMedia(app.selfieDetails?.videoPath, "Liveness Video"),
       findDocument(app, ["aadhaar", "photo", "digilocker"], "Aadhar photo", ["pan"]),
       firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document"),
@@ -517,7 +517,7 @@ const REVIEW_STEPS = [
       firstMedia(
         app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
         findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
-        (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+        (Array.isArray(app.documents) && [...app.documents].reverse().find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
         app.generatedPdfBase64,
         "eSigned PDF"
       )
@@ -689,8 +689,8 @@ function findDocument(app, keywords, label, excludeKeywords = []) {
   const lowerExclude = excludeKeywords.map((k) => k.toLowerCase());
   const docs = normalizeDocuments(app);
   
-  // Sort docs: generated ones first
-  const sortedDocs = [...docs].sort((a, b) => {
+  // Sort docs: generated ones first. Reverse to prioritize latest documents.
+  const sortedDocs = [...docs].reverse().sort((a, b) => {
     if (a?.generated && !b?.generated) return -1;
     if (!a?.generated && b?.generated) return 1;
     return 0;
@@ -758,15 +758,23 @@ function formatList(value) {
 }
 
 function nomineeSummary(app) {
-  if (Array.isArray(app.nomineeDetails?.nominees) && app.nomineeDetails.nominees.length > 0) return "Nominee added";
-  if (app.nomineeDetails?.optOut || app.nomineeDetails?.skipNominee) return "Opted out";
+  let details = app.nomineeDetails || {};
+  if (details.nomineeDetails) {
+    details = { ...details.nomineeDetails, ...details };
+  }
+  if (Array.isArray(details?.nominees) && details.nominees.length > 0) return "Nominee added";
+  if (details?.optOut || details?.skipNominee || details?.opted === "No") return "Opted out";
   return "";
 }
 
 function nomineeFields(app, tab) {
-  const preference = app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app);
-  const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
-  const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  let details = app.nomineeDetails || {};
+  if (details.nomineeDetails) {
+    details = { ...details.nomineeDetails, ...details };
+  }
+  const preference = details?.choice || details?.nomineeChoice || nomineeSummary(app);
+  const nominees = Array.isArray(details?.nominees) ? details.nominees : [];
+  const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || details?.allocations || [];
   
   const baseFields = [
     ["Nominee preference", preference],
@@ -1884,7 +1892,7 @@ export default function AgentReview() {
     if (app.signature) pushDoc(firstMedia(app.signature, "Signature"), "signature");
 
     // Live Selfie
-    const selfie = app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie;
+    const selfie = app.selfieDetails?.path || app.selfie || app.selfieDetails?.preview;
     if (selfie) pushDoc(firstMedia(selfie, "Live Selfie"), "ipv");
 
     // Assigned E-Stamp
@@ -1895,10 +1903,10 @@ export default function AgentReview() {
     // eSigned PDF
     const esignPath = app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
                       findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
-                      (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+                      (Array.isArray(app.documents) && [...app.documents].reverse().find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
                       app.generatedPdfBase64;
     if (esignPath) {
-      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
+      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && [...app.documents].reverse().find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
     }
 
     return docs;

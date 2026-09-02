@@ -65,13 +65,34 @@ class EsignService {
            } else if (stepId === 'pricingSelection') {
               mergedApp.segments = draftData.segments;
               mergedApp.bsda = draftData.bsda;
-           } else if (stepId === 'personalDetails' || stepId === 'pepProof') {
+           } else if (stepId === 'personalDetails') {
               mergedApp.personalDetails = { ...mergedApp.personalDetails, ...draftData };
+           } else if (stepId === 'pepProof') {
+              mergedApp.personalDetails = { ...mergedApp.personalDetails, pepProof: draftData.path || draftData.preview };
            } else if (stepId === 'bankVerification') {
               mergedApp.bankDetails = { ...mergedApp.bankDetails, ...draftData };
            } else if (stepId === 'nomineeChoice' || stepId === 'nomineeDetails' || stepId.startsWith('nominee') || stepId.startsWith('guardian')) {
-              if (stepId === 'nomineeAllocation') mergedApp.nomineeAllocation = draftData;
-              else mergedApp.nomineeDetails = { ...mergedApp.nomineeDetails, ...draftData };
+              if (stepId === 'nomineeAllocation') {
+                 mergedApp.nomineeAllocation = draftData;
+              } else if (stepId.endsWith('Proof')) {
+                 if (!mergedApp.nomineeDetails) mergedApp.nomineeDetails = {};
+                 if (!mergedApp.nomineeDetails.nominees) mergedApp.nomineeDetails.nominees = [];
+                 
+                 let idx = 0;
+                 if (stepId.startsWith('nominee')) {
+                    idx = parseInt(stepId.replace('nominee', '').replace('Proof', '')) - 1;
+                    if (!mergedApp.nomineeDetails.nominees[idx]) mergedApp.nomineeDetails.nominees[idx] = {};
+                    mergedApp.nomineeDetails.nominees[idx].proofPath = draftData.path || draftData.filePreview || draftData.preview;
+                 } else if (stepId.startsWith('guardian')) {
+                    idx = parseInt(stepId.replace('guardian', '').replace('Proof', '')) - 1;
+                    if (!mergedApp.nomineeDetails.nominees[idx]) mergedApp.nomineeDetails.nominees[idx] = {};
+                    mergedApp.nomineeDetails.nominees[idx].guardianProofPath = draftData.path || draftData.filePreview || draftData.preview;
+                 }
+              } else {
+                 const actualDraftData = draftData.nomineeDetails ? draftData.nomineeDetails : draftData;
+                 if (actualDraftData.nominees && actualDraftData.nominees.length > 0) actualDraftData.opted = "Yes";
+                 mergedApp.nomineeDetails = { ...mergedApp.nomineeDetails, ...actualDraftData };
+              }
            } else if (stepId === 'panVerification') {
               mergedApp.identityDetails = { ...mergedApp.identityDetails, ...draftData };
            } else if (stepId === 'financialProof') {
@@ -140,7 +161,7 @@ class EsignService {
         const pageNum = String(i);
         if (!signCoordinates[pageNum]) signCoordinates[pageNum] = [];
         
-        // Add bottom-right default Digio stamp coordinates (Standard A4 bottom right)
+        // Add bottom-right default Digio stamp coordinates (Standard A4 bottom right) on EVERY page as requested by user
         signCoordinates[pageNum].push({
           llx: 400,
           lly: 20,

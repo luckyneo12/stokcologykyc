@@ -97,11 +97,18 @@ function reducer(state, action) {
       return { ...state, currentStepIndex: action.payload };
 
     case "SAVE_DRAFT": {
-      const { stepId, data } = action.payload;
+      const { stepId, data, rejectedSteps } = action.payload;
       const newDrafts = { ...state.drafts, [stepId]: data };
-      const newRejectedSteps = state.rejectedSteps.map(s =>
-        s.stepId === stepId ? { ...s, completed: true } : s
-      );
+      
+      let newRejectedSteps;
+      if (rejectedSteps) {
+        newRejectedSteps = rejectedSteps;
+      } else {
+        newRejectedSteps = state.rejectedSteps.map(s =>
+          s.stepId === stepId ? { ...s, completed: true } : s
+        );
+      }
+      
       const allComplete = newRejectedSteps.every(s => s.completed);
       return {
         ...state,
@@ -243,7 +250,7 @@ export function CorrectionProvider({ children }) {
         return false;
       }
 
-      dispatch({ type: "SAVE_DRAFT", payload: { stepId, data } });
+      dispatch({ type: "SAVE_DRAFT", payload: { stepId, data, rejectedSteps: result.rejectedSteps } });
       addToast(`${STEP_TITLE_MAP[stepId] || stepId} correction saved`);
       return true;
     } catch (error) {

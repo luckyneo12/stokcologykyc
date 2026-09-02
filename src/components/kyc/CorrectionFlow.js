@@ -15,6 +15,8 @@ import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 
+import CorrectionNomineeAllocationStep from "./correction/steps/CorrectionNomineeAllocationStep";
+
 // Map stepId to the component that handles its correction
 const STEP_COMPONENT_MAP = {
   personalDetails: CorrectionDetailsStep,
@@ -23,7 +25,7 @@ const STEP_COMPONENT_MAP = {
   digilocker: CorrectionDigilockerStep,
   nomineeChoice: CorrectionNomineeStep,
   nomineeDetails: CorrectionNomineeStep,
-  nomineeAllocation: CorrectionNomineeStep,
+  nomineeAllocation: CorrectionNomineeAllocationStep,
   bankVerification: CorrectionBankStep,
   // Document-type steps all use CorrectionDocumentStep
   financialProof: CorrectionDocumentStep,

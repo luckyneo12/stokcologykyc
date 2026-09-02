@@ -1333,7 +1333,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         try {
           const base64Data = selfieAction.details.image || selfieAction.details.photo;
           const cleanBase64 = base64Data.replace(/^data:(image|application)\/[a-z0-9.+-]+;base64,/i, "");
-          const { uploadBufferToCloudinary } = require("../utils/cloudinaryHelper");
+
           const buffer = Buffer.from(cleanBase64, "base64");
           const cloudinaryResult = await uploadBufferToCloudinary(buffer, `kyc_selfie_${application.applicationId}_${Date.now()}`, "jpg");
           globalExtractedSelfieUrl = cloudinaryResult.secure_url;
@@ -1864,7 +1864,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
               const buffer = Buffer.from(downloadResponse.data);
               console.log(`[Background] ESIGN document downloaded (${buffer.length} bytes), uploading to Cloudinary...`);
               
-              const { uploadBufferToCloudinary } = require("../utils/cloudinaryHelper");
+
               const publicId = `digio_${requestId}_${Date.now()}`;
               
               try {

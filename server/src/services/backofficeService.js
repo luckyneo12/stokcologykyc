@@ -345,6 +345,21 @@ class BackofficeService {
   }
 
   async submitClientModification(clientCode, payload) {
+    if (payload && Array.isArray(payload.ClientDocumentDetail)) {
+      const promises = payload.ClientDocumentDetail.map(async (doc) => {
+        if (doc.FilePath && !doc.DocData && doc.FilePath.startsWith("http")) {
+          try {
+            const res = await axios.get(doc.FilePath, { responseType: 'arraybuffer' });
+            doc.DocData = Buffer.from(res.data, 'binary').toString('base64');
+            doc.FilePath = null;
+          } catch (e) {
+            console.error(`Failed to fetch image for backoffice: ${doc.FilePath}`, e.message);
+          }
+        }
+      });
+      await Promise.all(promises);
+    }
+
     const url = `${BACKOFFICE_BASE_URL}/${BACKOFFICE_MODIFY_PATH}`;
     const response = await axios.post(url, payload, {
       headers: await this.requestHeaders(),
@@ -805,7 +820,7 @@ class BackofficeService {
       ContactDetail: contactEntries.length > 0 ? contactEntries : (Object.keys(existingContact).length > 0 ? [existingContact] : []),
       BankDetail: bankEntry,
       DepositoryDetail: depositoryEntries,
-      BrokerageMappingDetail: [brokerageMappingDetail],
+      BrokerageMappingDetail: brokerageMappingDetail,
       BackOfficeDetail: backOfficeEntry,
       ExchangeDetail: exchangeEntries,
       SegmentDetail: segmentEntries,

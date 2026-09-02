@@ -127,9 +127,11 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
   const isProofRejected = stepId.includes('Proof') || stepId.includes('Photo');
   const rejectionReasonText = rejectedStep?.reason || '';
 
-  const initialData = isNomineeDetailsRejected && Array.isArray(drafts[stepId]?.nomineeDetails?.nominees) && drafts[stepId].nomineeDetails.nominees.length > 0
-    ? drafts[stepId].nomineeDetails.nominees
-    : (Array.isArray(nomineeDetails?.nominees) && nomineeDetails.nominees.length > 0 ? nomineeDetails.nominees : [createEmptyNominee()]);
+  const initialData = isNomineeDetailsRejected && Array.isArray(drafts[stepId]?.nominees) && drafts[stepId].nominees.length > 0
+    ? drafts[stepId].nominees
+    : (isNomineeDetailsRejected && Array.isArray(drafts[stepId]?.nomineeDetails?.nominees) && drafts[stepId].nomineeDetails.nominees.length > 0
+      ? drafts[stepId].nomineeDetails.nominees
+      : (Array.isArray(nomineeDetails?.nominees) && nomineeDetails.nominees.length > 0 ? nomineeDetails.nominees : [createEmptyNominee()]));
 
   const [nominees, setNominees] = useState(initialData);
   const clearNomineesDraft = () => {};
@@ -140,7 +142,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
   useEffect(() => {
     if (isRejection && !rejectionCleared.current && rejectedStep) {
       rejectionCleared.current = true;
-      if (drafts[stepId]?.nomineeDetails?.nominees) return;
+      if (drafts[stepId]?.nominees || drafts[stepId]?.nomineeDetails?.nominees) return;
 
       const isModuleRejected = rejectedStep?.stepId === "nomineeDetails" || rejectedStep?.stepId === "nomineeChoice";
 
@@ -670,8 +672,8 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
       addToast("Please fill all required fields correctly", "error");
       return;
     }
-    const payloadData = { ...nomineeDetails, numberOfNominees: nominees.length.toString(), nominees };
-    const success = await saveDraft(stepId, { nomineeDetails: payloadData });
+    const payloadData = { ...nomineeDetails, opted: "Yes", numberOfNominees: nominees.length.toString(), nominees };
+    const success = await saveDraft(stepId, payloadData);
     if (success) nextCorrectionStep();
   };
 

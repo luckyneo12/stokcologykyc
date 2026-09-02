@@ -141,9 +141,8 @@ function getVariableValue(variableName, appData) {
     case 'isPoiVoterId': return appData.identityMethod === 'voter' || !!iDetails.voterId;
     case 'isPoiPan': return appData.identityMethod === 'pan' || !!iDetails.pan;
     case 'date': {
-      const esignParsed = safeJsonParse(appData.esignDetails) || {};
-      const eDate = esignParsed.updatedAt || appData.submittedAt || appData.createdAt;
-      return eDate ? new Date(eDate).toLocaleDateString('en-GB') : '';
+      const eDate = new Date();
+      return eDate.toLocaleDateString('en-GB');
     }
     case 'place': {
       const selfie = safeJsonParse(appData.selfieDetails) || {};
@@ -156,9 +155,9 @@ function getVariableValue(variableName, appData) {
     case 'motherName': return pDetails.motherName;
     case 'dob': return pDetails.dob;
     case 'gender': return pDetails.gender;
-    case 'gender_male_tick': return String(pDetails.gender || '').toLowerCase() === 'male';
-    case 'gender_female_tick': return String(pDetails.gender || '').toLowerCase() === 'female';
-    case 'gender_transgender_tick': return String(pDetails.gender || '').toLowerCase() === 'transgender' || String(pDetails.gender || '').toLowerCase() === 'other';
+    case 'gender_male_tick': return String(pDetails.gender || '').toLowerCase() === 'male' || String(pDetails.gender || '').toLowerCase() === 'm';
+    case 'gender_female_tick': return String(pDetails.gender || '').toLowerCase() === 'female' || String(pDetails.gender || '').toLowerCase() === 'f';
+    case 'gender_transgender_tick': return String(pDetails.gender || '').toLowerCase() === 'transgender' || String(pDetails.gender || '').toLowerCase() === 't' || String(pDetails.gender || '').toLowerCase() === 'other';
     case 'pan': return iDetails.pan;
     case 'aadhaar': return iDetails.aadhaar;
     case 'maritalStatus': return pDetails.maritalStatus;
@@ -175,40 +174,35 @@ function getVariableValue(variableName, appData) {
     case 'static.false': return false;
     case 'esign': {
       const name = pDetails.fullName || 'User';
-      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
-      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      const dateStr = new Date().toLocaleString('en-GB');
       return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
     }
     case 'esignOptOut': {
       const n = safeJsonParse(appData.nomineeDetails) || {};
       if (n.opted !== 'No') return '';
       const name = pDetails.fullName || 'User';
-      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
-      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      const dateStr = new Date().toLocaleString('en-GB');
       return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
     }
     case 'esignOptIn': {
       const n = safeJsonParse(appData.nomineeDetails) || {};
       if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 0)) return '';
       const name = pDetails.fullName || 'User';
-      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
-      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      const dateStr = new Date().toLocaleString('en-GB');
       return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
     }
     case 'esignNominee2': {
       const n = safeJsonParse(appData.nomineeDetails) || {};
       if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 1 && n.nominees[1].name)) return '';
       const name = pDetails.fullName || 'User';
-      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
-      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      const dateStr = new Date().toLocaleString('en-GB');
       return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
     }
     case 'esignNominee3': {
       const n = safeJsonParse(appData.nomineeDetails) || {};
       if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 2 && n.nominees[2].name)) return '';
       const name = pDetails.fullName || 'User';
-      const esignDate = appData.esignDetails ? (safeJsonParse(appData.esignDetails)?.updatedAt || appData.updatedAt) : appData.updatedAt;
-      const dateStr = esignDate ? new Date(esignDate).toLocaleString('en-GB') : new Date().toLocaleString('en-GB');
+      const dateStr = new Date().toLocaleString('en-GB');
       return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
     }
     case 'isOccGovt': return String(pDetails.occupation || '').toLowerCase().includes('govt');
@@ -239,12 +233,14 @@ function getVariableValue(variableName, appData) {
       }
       return 'Resident Individual';
     }
-    case 'residential_resident_tick': {
+    case 'residential_resident_tick':
+    case 'isResidentIndividual': {
       const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
       const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
       return isIndian && !isTaxOutside;
     }
-    case 'residential_nri_tick': {
+    case 'residential_nri_tick':
+    case 'isNonResidentIndian': {
       const isIndian = String(pDetails.nationality || 'Indian').toLowerCase() === 'indian';
       const isTaxOutside = String(pDetails.taxResidencyOutside).toLowerCase() === 'yes' || pDetails.taxResidencyOutside === true || String(pDetails.taxResidencyOutside).toLowerCase() === 'true';
       return !isIndian || isTaxOutside;
@@ -461,6 +457,15 @@ async function generateKycPdf(applicationData, options = {}) {
 
     const parsedSelfieDetails = safeJsonParse(applicationData.selfieDetails) || {};
     const parsedSignature = safeJsonParse(applicationData.signature) || {};
+    
+    // Fix nested nomineeDetails bug gracefully without overwriting new root-level corrections
+    let tempNominee = safeJsonParse(applicationData.nomineeDetails);
+    if (tempNominee?.nomineeDetails) {
+      // Merge the nested details into the root, but let root properties take precedence (since corrections are saved at the root)
+      const mergedNominee = { ...tempNominee.nomineeDetails, ...tempNominee };
+      delete mergedNominee.nomineeDetails;
+      applicationData.nomineeDetails = JSON.stringify(mergedNominee);
+    }
     let _parsedDocuments = safeJsonParse(applicationData.documents);
     const parsedDocuments = Array.isArray(_parsedDocuments) ? _parsedDocuments : [];
     const parsedPanUpload = safeJsonParse(applicationData.panUpload) || {};
@@ -655,7 +660,10 @@ async function generateKycPdf(applicationData, options = {}) {
                     console.error(`[PDF Gen] Error fetching image URL: ${imgRelPath}`, err.message);
                   }
                 } else {
-                  const cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
+                  let cleanPath = imgRelPath.startsWith('/') ? imgRelPath.substring(1) : imgRelPath;
+                  if (cleanPath.startsWith('api/kyc/document/')) {
+                    cleanPath = cleanPath.replace('api/kyc/document/', 'uploads/');
+                  }
                   const imgPath = path.join(__dirname, '../../', cleanPath);
                   console.log(`[PDF Gen] Checking imgPath: ${imgPath}`);
                   if (fs.existsSync(imgPath)) {
@@ -722,19 +730,17 @@ async function generateKycPdf(applicationData, options = {}) {
           let val = getVariableValue(field.variable, applicationData);
           
           if (field.variable && field.variable.startsWith('esign')) {
-             // Always extract coordinates if it's an esign field (val must evaluate to true, which it does from getVariableValue)
-             if (val) {
-               const boxWidth = field.width || 150;
-               const boxHeight = field.height || 30;
-               const pageNum = String((field.page || 1));
-               if (!esignCoordinatesMap[pageNum]) esignCoordinatesMap[pageNum] = [];
-               esignCoordinatesMap[pageNum].push({
-                 x: field.x,
-                 y: yPos - boxHeight, 
-                 width: boxWidth,
-                 height: boxHeight
-               });
-             }
+             // Always extract coordinates if it's an esign field
+             const boxWidth = field.width || 150;
+             const boxHeight = field.height || 30;
+             const pageNum = String((field.page || 1));
+             if (!esignCoordinatesMap[pageNum]) esignCoordinatesMap[pageNum] = [];
+             esignCoordinatesMap[pageNum].push({
+               x: field.x,
+               y: yPos - boxHeight, 
+               width: boxWidth,
+               height: boxHeight
+             });
              // Force val to be empty so it NEVER manually draws the text!
              val = "";
           }
@@ -895,9 +901,38 @@ async function generateKycPdf(applicationData, options = {}) {
         let isPdf = lowerPath.endsWith('.pdf') || docPathRel.includes('application/pdf') || docPathRel.includes('f_pdf');
         let isPng = lowerPath.endsWith('.png') || docPathRel.includes('image/png') || docPathRel.includes('f_png');
         
-        if (docPathRel.startsWith('http://') || docPathRel.startsWith('https://')) {
+        if (docPathRel.startsWith('data:')) {
+          bytes = Buffer.from(docPathRel.split(',')[1], 'base64');
+          isPdf = docPathRel.includes('application/pdf');
+          isPng = docPathRel.includes('image/png');
+        } else if (docPathRel.startsWith('http://') || docPathRel.startsWith('https://')) {
+          let downloadUrl = docPathRel;
+          
+          if (docPathRel.includes('cloudinary.com')) {
+            const urlObj = new URL(docPathRel);
+            const pathMatch = urlObj.pathname.match(/\/(image|video|raw)\/upload\/(?:v\d+\/)?(.+)$/);
+            if (pathMatch) {
+              const { v2: cloudinary } = require("cloudinary");
+              cloudinary.config({
+                cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+                api_key: process.env.CLOUDINARY_API_KEY,
+                api_secret: process.env.CLOUDINARY_API_SECRET,
+              });
+              const resourceType = pathMatch[1];
+              const publicIdWithExt = pathMatch[2];
+              const ext = publicIdWithExt.match(/\.([^.]+)$/)?.[1] || (isPdf ? "pdf" : "png");
+              const publicId = publicIdWithExt.replace(/\.[^.]+$/, "");
+              
+              downloadUrl = cloudinary.utils.private_download_url(publicId, ext, {
+                resource_type: resourceType,
+                type: "upload",
+                attachment: false,
+              });
+            }
+          }
+
           const axios = require('axios');
-          const response = await axios.get(docPathRel, { 
+          const response = await axios.get(downloadUrl, { 
             responseType: 'arraybuffer',
             timeout: 10000 // 10s timeout
           });
@@ -916,7 +951,10 @@ async function generateKycPdf(applicationData, options = {}) {
             return;
           }
         } else {
-          const cleanPath = docPathRel.startsWith('/') ? docPathRel.substring(1) : docPathRel;
+          let cleanPath = docPathRel.startsWith('/') ? docPathRel.substring(1) : docPathRel;
+          if (cleanPath.startsWith('api/kyc/document/')) {
+            cleanPath = cleanPath.replace('api/kyc/document/', 'uploads/');
+          }
           const docPath = path.join(__dirname, '../../', cleanPath);
           if (!fs.existsSync(docPath)) return;
           bytes = fs.readFileSync(docPath);
@@ -1000,11 +1038,13 @@ async function generateKycPdf(applicationData, options = {}) {
     const bankPath = parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof;
     if (bankPath) docsToAppend.push({ path: bankPath, title: 'Bank Proof' });
     
-    const pepPath = parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview;
+    // Add fallback to path if the previous bug caused pepProof to be saved at root of personalDetails
+    const pepPath = parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview || (parsedPersonalDetails?.path && String(parsedPersonalDetails.path).includes("kyc_uploads") ? parsedPersonalDetails.path : null);
     if (pepPath) docsToAppend.push({ path: pepPath, title: 'PEP Proof' });
     
-    if (parsedNomineeDetails?.nominees && Array.isArray(parsedNomineeDetails.nominees)) {
-      parsedNomineeDetails.nominees.forEach((nom, idx) => {
+    const actualNomineeDetails = parsedNomineeDetails?.nomineeDetails || parsedNomineeDetails;
+    if (actualNomineeDetails?.nominees && Array.isArray(actualNomineeDetails.nominees)) {
+      actualNomineeDetails.nominees.forEach((nom, idx) => {
         const nomPath = nom.proofPath || nom.proofPreview || nom.preview;
         if (nomPath) docsToAppend.push({ path: nomPath, title: `Nominee ${idx + 1} Proof` });
         

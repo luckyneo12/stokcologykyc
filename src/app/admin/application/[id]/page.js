@@ -734,7 +734,7 @@ export default function ApplicationDetail() {
     || allStoredDocuments.find(isPanDocument);
   const aadhaarPhotoSrc = aadhaarPhotoDocument?.path ? resolveAssetUrl(aadhaarPhotoDocument.path) : null;
   const aadhaarPdfSrc = aadhaarPdfDocument?.path ? resolveAssetUrl(aadhaarPdfDocument.path) : null;
-  const esignDocument = allStoredDocuments.find((doc) => String(doc?.type).toUpperCase() === "ESIGN");
+  const esignDocument = allStoredDocuments.find((doc) => String(doc?.type).toUpperCase() === "ESIGN" || String(doc?.type).toUpperCase() === "ESIGN_DOCUMENT");
   const panNumber = formatPanValue(app.personalDetails?.pan || app.identityDetails?.pan);
   const selfiePreview = app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie;
 
@@ -1225,15 +1225,15 @@ export default function ApplicationDetail() {
               </div>
             </section>
 
-            <section className="card" style={{ padding: 16, ...(app.nomineeDetails?.nominees?.length > 0 ? { border: "1px solid var(--border-color)" } : getSectionStyle("nominee")) }}>
-{app.nomineeDetails?.nominees?.length > 0 ? null : renderSectionBadge("nominee")}
+            <section className="card" style={{ padding: 16, ...(((app.nomineeDetails?.nomineeDetails?.nominees || app.nomineeDetails?.nominees)?.length > 0) ? { border: "1px solid var(--border-color)" } : getSectionStyle("nominee")) }}>
+{((app.nomineeDetails?.nomineeDetails?.nominees || app.nomineeDetails?.nominees)?.length > 0) ? null : renderSectionBadge("nominee")}
               <h3 style={{ fontSize: "0.95rem", fontWeight: 900, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 3, height: 16, background: "var(--wise-green)", borderRadius: 2 }}></div>
                 Nominee Details
               </h3>
-              {app.nomineeDetails?.nominees?.length > 0 ? (
+              {((app.nomineeDetails?.nomineeDetails?.nominees || app.nomineeDetails?.nominees)?.length > 0) ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-                  {app.nomineeDetails.nominees.map((nom, idx) => (
+                  {(app.nomineeDetails?.nomineeDetails?.nominees || app.nomineeDetails?.nominees).map((nom, idx) => (
                     <div key={idx} style={{ padding: 32, background: "var(--bg-secondary)", borderRadius: 24, ...getSectionStyle("nominee_" + idx) }}>
 {renderSectionBadge("nominee_" + idx)}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
