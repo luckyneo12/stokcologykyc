@@ -347,13 +347,19 @@ class BackofficeService {
   async submitClientModification(clientCode, payload) {
     if (payload && Array.isArray(payload.ClientDocumentDetail)) {
       const promises = payload.ClientDocumentDetail.map(async (doc) => {
-        if (doc.FilePath && !doc.DocData && doc.FilePath.startsWith("http")) {
-          try {
-            const res = await axios.get(doc.FilePath, { responseType: 'arraybuffer' });
-            doc.DocData = Buffer.from(res.data, 'binary').toString('base64');
+        if (doc.FilePath && !doc.DocData) {
+          if (doc.FilePath.startsWith("http")) {
+            try {
+              const res = await axios.get(doc.FilePath, { responseType: 'arraybuffer' });
+              doc.DocData = Buffer.from(res.data, 'binary').toString('base64');
+              doc.FilePath = null;
+            } catch (e) {
+              console.error(`Failed to fetch image for backoffice: ${doc.FilePath}`, e.message);
+            }
+          } else {
+            // Bypass: If it's not a URL, assume it's already raw Base64/XML from Digilocker
+            doc.DocData = doc.FilePath;
             doc.FilePath = null;
-          } catch (e) {
-            console.error(`Failed to fetch image for backoffice: ${doc.FilePath}`, e.message);
           }
         }
       });
@@ -746,9 +752,10 @@ class BackofficeService {
       const safeName = buildString(Array.isArray(name) ? name[0] : name) || "document";
       const safeDocId = buildString(Array.isArray(documentId) ? documentId[0] : documentId) || "OTHER";
 
-      // Deduplicate by DocumentID to prevent backoffice grouping bugs
-      if (!documentEntriesMap.has(safeDocId)) {
-        documentEntriesMap.set(safeDocId, {
+      // Deduplicate by DocumentID + Name to allow multiple of the same type (like Aadhaar Front/Back)
+      const uniqueKey = `${safeDocId}_${safeName}`;
+      if (!documentEntriesMap.has(uniqueKey)) {
+        documentEntriesMap.set(uniqueKey, {
           ClientCode: clientCode,
           DocumentID: safeDocId,
           DocumentName: safeName,
@@ -774,6 +781,24 @@ class BackofficeService {
     } else {
       addDocument("UID", "aadhaar-front.jpeg", documents.frontPreview || documents.front);
       addDocument("UID", "aadhaar-back.jpeg", documents.backPreview || documents.back);
+    }
+
+    addDocument("BANK", "bank-proof.jpeg", bankDetails.proofPath || bankDetails.proofPreview || bankDetails.image);
+    addDocument("OVD", "pep-proof.jpeg", personalDetails.pepProof || personalDetails.pepProofPreview);
+
+    if (nomineeOptFlag === "Y" && Array.isArray(nomineeDetails.nominees)) {
+      nomineeDetails.nominees.forEach((nominee, i) => {
+        if (nominee.proofPath || nominee.proofPreview) {
+          addDocument("OTHER", `nominee-${i+1}-proof.jpeg`, nominee.proofPath || nominee.proofPreview);
+        }
+        if (nominee.guardianProofPath || nominee.guardianProofPreview) {
+          addDocument("OTHER", `guardian-${i+1}-proof.jpeg`, nominee.guardianProofPath || nominee.guardianProofPreview);
+        }
+      });
+    }
+
+    if (application.generatedPdfBase64) {
+      addDocument("KYCFORM", "application.pdf", application.generatedPdfBase64);
     }
 
     const backOfficeEntry = {
