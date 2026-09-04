@@ -11,13 +11,19 @@ export default function ResumePage() {
       const searchParams = new URLSearchParams(window.location.search);
       const token = searchParams.get("token");
       const appId = searchParams.get("appId");
+      const rejectionMode = searchParams.get("rejectionMode");
 
       if (token && appId) {
         sessionStorage.setItem("kycToken", token);
         sessionStorage.setItem("kycApplicationId", appId);
         
+        let redirectUrl = `/?token=${encodeURIComponent(token)}`;
+        if (rejectionMode === "true") {
+          redirectUrl += "&rejectionMode=true";
+        }
+        
         // This simulates a fresh load which will make KYCContext auto-sync and jump to the right step
-        router.replace(`/?token=${encodeURIComponent(token)}`);
+        router.replace(redirectUrl);
       } else {
         setError("Invalid resume link. Missing token or application ID.");
       }

@@ -1867,9 +1867,13 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
 
               const publicId = `digio_${requestId}_${Date.now()}`;
               
+              const filename = `${publicId}.pdf`;
+              const localPath = require("path").join(process.cwd(), "uploads", filename);
+              
               try {
-                const cloudinaryResult = await uploadBufferToCloudinary(buffer, publicId, 'pdf');
-                const finalUrl = cloudinaryResult.secure_url;
+                // Save locally first to guarantee it's accessible without 401s
+                require("fs").writeFileSync(localPath, buffer);
+                const finalUrl = `/uploads/${filename}`;
                 
                 // Fetch fresh documents array and update DB
                 const appToUpdate = await prisma.kycApplication.findUnique({ where: { applicationId: application.applicationId } });

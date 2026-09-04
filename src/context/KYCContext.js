@@ -437,6 +437,7 @@ export function KYCProvider({ children }) {
           `${API_BASE_URL}/api/kyc/status/${activeAppId}`,
           {
             headers: { Authorization: `Bearer ${activeToken}` },
+            cache: "no-store"
           },
         );
 

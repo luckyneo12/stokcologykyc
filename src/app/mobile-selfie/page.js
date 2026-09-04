@@ -44,7 +44,7 @@ function MobileSelfieContent() {
 
       if (isSuccess) {
         fetchDigioRequestResponse(documentId, "SELFIE")
-          .then((res) => {
+          .then(async (res) => {
              if (res?.success) {
                 setStatus("success");
              } else {
@@ -67,24 +67,34 @@ function MobileSelfieContent() {
 
   const startVerification = async () => {
     setStatus("processing");
-    try {
-      let coords = { lat: null, lng: null };
-      if ("geolocation" in navigator) {
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-          });
-          coords.lat = pos.coords.latitude;
-          coords.lng = pos.coords.longitude;
-        } catch (err) {
-          console.warn("Geolocation skipped:", err.message);
-        }
-      }
 
-      const requestData = await createDigioRequest("SELFIE", coords);
+    // Wait for Digio SDK to be available
+    if (typeof window !== "undefined" && !window.Digio) {
+      let waited = 0;
+      while (!window.Digio && waited < 3000) {
+        await new Promise(r => setTimeout(r, 200));
+        waited += 200;
+      }
+      if (!window.Digio) {
+        setStatus("error");
+        setErrorMessage("Verification SDK is still loading. Please try again.");
+        return;
+      }
+    }
+
+    try {
+      const requestData = await createDigioRequest("SELFIE");
       const { requestId, customerIdentifier, accessToken } = requestData;
 
+      // Build redirect URL preserving token & appId for the return trip
+      const storedToken = sessionStorage.getItem("kycToken") || "";
+      const storedAppId = sessionStorage.getItem("kycApplicationId") || "";
+      const redirectBase = window.location.origin + window.location.pathname;
+      const redirectUrl = `${redirectBase}?token=${encodeURIComponent(storedToken)}&appId=${encodeURIComponent(storedAppId)}`;
+
       const digio = initializeDigio({
+        is_redirection_approach: true,
+        redirect_url: redirectUrl,
         callback: (response) => {
           if (response.error_code && response.error_code !== "success") {
             setStatus("error");
@@ -96,7 +106,7 @@ function MobileSelfieContent() {
           const docId = response.document_id || response.digio_doc_id || requestId;
           if (docId) {
             fetchDigioRequestResponse(docId, "SELFIE")
-              .then((res) => {
+              .then(async (res) => {
                  if (res?.success) {
                     setStatus("success");
                  } else {
@@ -118,9 +128,11 @@ function MobileSelfieContent() {
         return;
       }
 
-      if (!digio.is_redirection_approach) {
-        digio.init();
-      }
+      // Always call init() before submit() — required for proper SDK setup
+      digio.init();
+
+      // Small delay to let SDK UI initialize before submitting
+      await new Promise(r => setTimeout(r, 300));
 
       if (accessToken) {
         digio.submit(requestId, customerIdentifier, accessToken);

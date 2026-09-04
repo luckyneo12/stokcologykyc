@@ -195,15 +195,30 @@ class EsignService {
           reason: "KYC Application Signing",
           sign_type: "aadhaar",
           name_match: true,
-          ...(Object.keys(signCoordinates).length > 0 && { sign_coordinates: signCoordinates })
+          display_on_page: displayOnPage,
         }
       ],
       expire_in_days: 10,
       display_on_page: displayOnPage,
       notify_signers: true,
       send_sign_link: false,
-      generate_access_token: true
+      generate_access_token: true,
+      // sign_coordinates must be at the REQUEST level (not inside signer) per Digio API
+      ...(Object.keys(signCoordinates).length > 0 && { sign_coordinates: { [customerIdentifier]: signCoordinates } })
     };
+
+    // Debug: log the esign coordinates being sent
+    console.log(`[EsignService] display_on_page: ${displayOnPage}`);
+    console.log(`[EsignService] esignCoordinatesMap pages: ${Object.keys(esignCoordinatesMap).join(', ') || 'NONE'}`);
+    if (Object.keys(signCoordinates).length > 0) {
+      for (const [pg, coords] of Object.entries(signCoordinates)) {
+        const customCoords = coords.filter(c => !(c.llx === 400 && c.lly === 20)); // filter out bottom-right default
+        if (customCoords.length > 0) {
+          console.log(`[EsignService] Page ${pg}: ${customCoords.length} custom esign position(s):`);
+          customCoords.forEach((c, i) => console.log(`  [${i}] llx=${c.llx}, lly=${c.lly}, urx=${c.urx}, ury=${c.ury}`));
+        }
+      }
+    }
 
     let parsedIdentityDetails = {};
     try {

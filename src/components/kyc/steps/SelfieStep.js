@@ -6,6 +6,18 @@ import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
 
+/** Wait for Digio SDK to be available (up to maxWait ms) */
+async function waitForDigioSDK(maxWait = 3000) {
+  if (typeof window === "undefined") return false;
+  if (window.Digio) return true;
+  let waited = 0;
+  while (!window.Digio && waited < maxWait) {
+    await new Promise(r => setTimeout(r, 200));
+    waited += 200;
+  }
+  return !!window.Digio;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 /** Detect if the current device is a mobile/tablet */
@@ -37,10 +49,11 @@ export default function SelfieStep() {
     if (typeof window !== "undefined") {
       const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
       if (token && applicationId) {
-        setResumeUrl(`${window.location.origin}/resume?token=${token}&appId=${applicationId}`);
+        const rejectionParam = isRejection ? "&rejectionMode=true" : "";
+        setResumeUrl(`${window.location.origin}/resume?token=${token}&appId=${applicationId}${rejectionParam}`);
       }
     }
-  }, [applicationId]);
+  }, [applicationId, isRejection]);
 
   // ─── Handle successful Digio selfie completion ───────────────────────
   const handleDigioSuccess = useCallback(async (requestId, opts = {}) => {
@@ -72,6 +85,9 @@ export default function SelfieStep() {
     }
   }, [addToast, nextStep, updateState]);
 
+  // Use a ref to always call the latest checkSelfieStatus (avoids stale closures in socket/interval callbacks)
+  const checkSelfieStatusRef = useRef(null);
+
   // ─── Socket.IO + Polling: watch for cross-device selfie completion ──
   // Activated when QR code is shown on desktop
   const startCrossDevicePolling = useCallback(() => {
@@ -92,12 +108,12 @@ export default function SelfieStep() {
     // fetch the latest status and check if selfie is done
     socket.on("kyc_updated", async () => {
       console.log("[SelfieStep Socket.IO] Received kyc_updated — checking selfie status...");
-      await checkSelfieStatus(activeAppId, token);
+      if (checkSelfieStatusRef.current) await checkSelfieStatusRef.current(activeAppId, token);
     });
 
     // Also set up a fallback polling interval (every 5s) in case Socket.IO events are missed
     pollRef.current = setInterval(async () => {
-      await checkSelfieStatus(activeAppId, token);
+      if (checkSelfieStatusRef.current) await checkSelfieStatusRef.current(activeAppId, token);
     }, 5000);
 
     console.log("[SelfieStep] Cross-device polling started (Socket.IO + 5s fallback)");
@@ -132,8 +148,8 @@ export default function SelfieStep() {
         }
       }
 
-      // If selfie has been captured (preview path exists), auto-advance
-      if (selfieDetails?.preview) {
+      // If selfie has been captured (preview path exists and is a real URL), auto-advance
+      if (selfieDetails?.preview && selfieDetails.preview !== "__DIGIO_SUCCESS__") {
         console.log("[SelfieStep] Selfie detected from another device! Auto-advancing...");
         setMatchScore(selfieDetails.matchScore || null);
         
@@ -153,12 +169,16 @@ export default function SelfieStep() {
         
         addToast("Selfie captured on your mobile device!", "success");
         stopCrossDevicePolling();
+        setShowQR(false);
         setPhase("done");
       }
     } catch (err) {
       console.warn("[SelfieStep] Status check failed:", err.message);
     }
   };
+
+  // Keep the ref updated on every render so socket/interval callbacks use the latest version
+  checkSelfieStatusRef.current = checkSelfieStatus;
 
   const stopCrossDevicePolling = useCallback(() => {
     if (pollRef.current) {
@@ -243,24 +263,20 @@ export default function SelfieStep() {
   const startVerification = async () => {
     setPhase("processing");
 
-    try {
-      // Capture geolocation if possible
-      let coords = { lat: null, lng: null };
-      if ("geolocation" in navigator) {
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-          });
-          coords.lat = pos.coords.latitude;
-          coords.lng = pos.coords.longitude;
-        } catch (err) {
-          console.warn("Geolocation skipped:", err.message);
-        }
-      }
+    // Wait for Digio SDK to be available (may not be loaded on first attempt on mobile)
+    const sdkReady = await waitForDigioSDK(3000);
+    if (!sdkReady) {
+      addToast("Verification SDK is still loading. Please try again in a moment.", "error");
+      setPhase("intro");
+      return;
+    }
 
-      const requestData = await createDigioRequest("SELFIE", coords);
+    try {
+      const requestData = await createDigioRequest("SELFIE");
       const { requestId, customerIdentifier, applicationId: appId } = requestData;
       if (appId) setApplicationId(appId);
+
+      const isMobile = isMobileDevice();
 
       const digioOptions = {
         callback: async (response) => {
@@ -273,6 +289,12 @@ export default function SelfieStep() {
         },
       };
 
+      // On mobile, use redirection approach to avoid popup blocking
+      if (isMobile) {
+        digioOptions.is_redirection_approach = true;
+        digioOptions.redirect_url = window.location.origin + window.location.pathname;
+      }
+
       const digio = initializeDigio(digioOptions);
 
       if (!digio || !requestId) {
@@ -281,9 +303,11 @@ export default function SelfieStep() {
         return;
       }
 
-      if (!digio.is_redirection_approach) {
-        digio.init();
-      }
+      // Always call init() before submit() — required for proper SDK setup
+      digio.init();
+
+      // Small delay to let SDK UI initialize before submitting
+      await new Promise(r => setTimeout(r, 300));
 
       if (requestData.accessToken) {
         digio.submit(requestId, customerIdentifier, requestData.accessToken);

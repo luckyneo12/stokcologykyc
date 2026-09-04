@@ -255,6 +255,8 @@ export default function DocumentUploadStep() {
 
 
   // --- Cross-device selfie polling via Socket.IO + fallback ---
+  const checkSelfieStatusRef = useRef(null);
+
   const checkSelfieStatus = useCallback(async () => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
     const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
@@ -262,6 +264,7 @@ export default function DocumentUploadStep() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/kyc/status/${activeAppId}`, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store"
       });
       if (!response.ok) return;
       const data = await response.json();
@@ -288,9 +291,6 @@ export default function DocumentUploadStep() {
 
       if (appSelfieDetails?.preview && appSelfieDetails.preview !== "__CLEARED__") {
         const fullUrl = getFullUrl(appSelfieDetails.preview);
-        if (selfiePreviewUrl && fullUrl === selfiePreviewUrl) {
-          return;
-        }
         console.log("[DocUpload] Selfie detected from another device! Updating...");
         setSelfiePreviewUrl(fullUrl);
         setSelfieError(false);
@@ -308,17 +308,26 @@ export default function DocumentUploadStep() {
            });
         }
         addToast("Selfie captured on your mobile device!", "success");
+        setShowQR(false);
         stopSelfieCrossDevicePolling();
       }
     } catch (err) {
       console.warn("[DocUpload] Selfie status check failed:", err.message);
     }
-  }, [applicationId, addToast, updateState, updateNested, selfiePreviewUrl, isRejection, isDocRejected]);
+  }, [applicationId, addToast, updateState, updateNested, isRejection, isDocRejected]);
+
+  // Keep ref always pointing to latest checkSelfieStatus
+  useEffect(() => {
+    checkSelfieStatusRef.current = checkSelfieStatus;
+  }, [checkSelfieStatus]);
 
   const startSelfieCrossDevicePolling = useCallback(() => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
     const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
     if (!activeAppId || !token) return;
+
+    // Avoid duplicate connections
+    if (selfieSocketRef.current || selfiePollRef.current) return;
 
     const socket = io(API_BASE_URL, { withCredentials: true });
     selfieSocketRef.current = socket;
@@ -328,13 +337,15 @@ export default function DocumentUploadStep() {
     });
     socket.on("kyc_updated", () => {
       console.log("[DocUpload Socket.IO] kyc_updated — checking selfie...");
-      checkSelfieStatus();
+      if (checkSelfieStatusRef.current) checkSelfieStatusRef.current();
     });
 
-    // Fallback poll every 5 seconds
-    selfiePollRef.current = setInterval(() => checkSelfieStatus(), 5000);
-    console.log("[DocUpload] Cross-device selfie polling started");
-  }, [applicationId, checkSelfieStatus]);
+    // Fallback poll every 4 seconds using the ref so it always calls the latest version
+    selfiePollRef.current = setInterval(() => {
+      if (checkSelfieStatusRef.current) checkSelfieStatusRef.current();
+    }, 4000);
+    console.log("[DocUpload] Cross-device selfie polling started for:", activeAppId);
+  }, [applicationId]);
 
   const stopSelfieCrossDevicePolling = useCallback(() => {
     if (selfiePollRef.current) {
@@ -349,11 +360,13 @@ export default function DocumentUploadStep() {
 
   // Start/stop cross-device polling when QR is shown/hidden
   useEffect(() => {
-    if (showQR && selfiePhase === "intro") {
+    if (showQR) {
       startSelfieCrossDevicePolling();
+    } else {
+      stopSelfieCrossDevicePolling();
     }
     return () => stopSelfieCrossDevicePolling();
-  }, [showQR, selfiePhase, startSelfieCrossDevicePolling, stopSelfieCrossDevicePolling]);
+  }, [showQR, startSelfieCrossDevicePolling, stopSelfieCrossDevicePolling]);
 
   // Clean up polling on unmount
   useEffect(() => {
@@ -1009,6 +1022,7 @@ export default function DocumentUploadStep() {
                     </button>
                     <button onClick={() => {
                       setSelfiePhase("intro");
+                      setSelfiePreviewUrl(null);
                     }} style={{ background: "var(--bg-secondary)", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}>Retake</button>
                   </div>
                 </div>

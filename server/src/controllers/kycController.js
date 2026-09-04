@@ -942,9 +942,8 @@ const downloadPdf = async (req, res, next) => {
         (doc.type === "DIGILOCKER_DOCUMENT" && doc.path?.includes("digio_")),
     );
 
-    // If eSign is complete but the background upload hasn't finished yet, poll for it
     if (!esignDoc && (app.currentStep >= 13 || app.status === 'under_review')) {
-       for (let i = 0; i < 10; i++) {
+       for (let i = 0; i < 40; i++) {
           await new Promise(r => setTimeout(r, 1000));
           const freshApp = await prisma.kycApplication.findUnique({ where: { applicationId: req.params.applicationId }});
           const freshDocs = parseJsonField(freshApp.documents, []);
@@ -964,34 +963,25 @@ const downloadPdf = async (req, res, next) => {
 
     if (pdfPath) {
       if (pdfPath.startsWith("http")) {
-        const https = require("https");
-        const http = require("http");
-        const client = pdfPath.startsWith("https") ? https : http;
-        
-        return client.get(pdfPath, (proxyRes) => {
-          if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
-            return client.get(proxyRes.headers.location, (redirectRes) => {
-              res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
-              res.setHeader("Content-Type", "application/pdf");
-              res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${panNumber}.pdf`);
-              redirectRes.pipe(res);
-            });
-          }
+        try {
+          const axios = require("axios");
+          const response = await axios.get(pdfPath, { responseType: "stream" });
           res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
           res.setHeader("Content-Type", "application/pdf");
           res.setHeader("Content-Disposition", `attachment; filename=KYC_Application_${panNumber}.pdf`);
-          proxyRes.pipe(res);
-        }).on("error", (err) => {
-          console.error("PDF download proxy error:", err);
-          return res.status(500).json({ success: false, error: "Failed to download PDF" });
-        });
-      }
-      const fullPath = require("path").join(__dirname, "../../", pdfPath);
-      if (require("fs").existsSync(fullPath)) {
-        return res.download(
-          fullPath,
-          `KYC_Application_${panNumber}.pdf`,
-        );
+          return response.data.pipe(res);
+        } catch (err) {
+          console.error("Cloudinary PDF fetch error:", err.message);
+          // Fall back to generating unsigned PDF below if fetch fails
+        }
+      } else {
+        const fullPath = require("path").join(__dirname, "../../", pdfPath);
+        if (require("fs").existsSync(fullPath)) {
+          return res.download(
+            fullPath,
+            `KYC_Application_${panNumber}.pdf`,
+          );
+        }
       }
     }
 
