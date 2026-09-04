@@ -2388,7 +2388,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       nextSelfieDetails.matchScore = extractedFaceScore;
     }
 
-    if (globalExtractedSelfieUrl) {
+    if (globalExtractedSelfieUrl && globalExtractedSelfieUrl !== "__DIGIO_SUCCESS__") {
        nextSelfieDetails.preview = globalExtractedSelfieUrl;
        if (globalExtractedFaceScore) nextSelfieDetails.matchScore = globalExtractedFaceScore;
     }

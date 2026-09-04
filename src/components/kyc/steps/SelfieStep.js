@@ -149,21 +149,25 @@ export default function SelfieStep() {
       }
 
       // If selfie has been captured (preview path exists and is a real URL), auto-advance
-      if (selfieDetails?.preview && selfieDetails.preview !== "__DIGIO_SUCCESS__") {
+      const selfiePreview = (selfieDetails?.preview && selfieDetails.preview !== "__DIGIO_SUCCESS__")
+        ? selfieDetails.preview
+        : (selfieDetails?.path && selfieDetails.path !== "__DIGIO_SUCCESS__" ? selfieDetails.path : null);
+        
+      if (selfiePreview) {
         console.log("[SelfieStep] Selfie detected from another device! Auto-advancing...");
         setMatchScore(selfieDetails.matchScore || null);
         
         const payloadData = {
-          preview: selfieDetails.preview,
+          preview: selfiePreview,
           matchScore: selfieDetails.matchScore,
         };
         
         if (isSelfieRejected) {
-          updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: selfieDetails.preview } });
+          updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: selfiePreview } });
         } else {
           updateState({
             selfieDetails: payloadData,
-            selfie: { preview: selfieDetails.preview },
+            selfie: { preview: selfiePreview },
           });
         }
         
