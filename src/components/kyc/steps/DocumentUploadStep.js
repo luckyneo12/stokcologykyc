@@ -256,6 +256,7 @@ export default function DocumentUploadStep() {
 
   // --- Cross-device selfie polling via Socket.IO + fallback ---
   const checkSelfieStatusRef = useRef(null);
+  const ignoredPreviewRef = useRef(null);
 
   const checkSelfieStatus = useCallback(async () => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
@@ -289,7 +290,7 @@ export default function DocumentUploadStep() {
         }
       }
 
-      if (appSelfieDetails?.preview && appSelfieDetails.preview !== "__CLEARED__") {
+      if (appSelfieDetails?.preview && appSelfieDetails.preview !== "__CLEARED__" && appSelfieDetails.preview !== ignoredPreviewRef.current) {
         const fullUrl = getFullUrl(appSelfieDetails.preview);
         console.log("[DocUpload] Selfie detected from another device! Updating...");
         setSelfiePreviewUrl(fullUrl);
@@ -321,10 +322,33 @@ export default function DocumentUploadStep() {
     checkSelfieStatusRef.current = checkSelfieStatus;
   }, [checkSelfieStatus]);
 
-  const startSelfieCrossDevicePolling = useCallback(() => {
+  const startSelfieCrossDevicePolling = useCallback(async () => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
     const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
     if (!activeAppId || !token) return;
+
+    // Fetch baseline to avoid auto-advancing on existing selfie
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/kyc/status/${activeAppId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store"
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.application) {
+          let appSelfieDetails = typeof data.application.selfieDetails === "string" ? JSON.parse(data.application.selfieDetails) : data.application.selfieDetails;
+          if (isRejection && isDocRejected("ipv")) {
+            let draftObj = {};
+            if (data.application.correctionDraft) {
+              try { draftObj = typeof data.application.correctionDraft === "string" ? JSON.parse(data.application.correctionDraft) : data.application.correctionDraft; } catch (e) {}
+            }
+            appSelfieDetails = draftObj?.selfieDetails || null;
+          }
+          ignoredPreviewRef.current = (appSelfieDetails?.preview && appSelfieDetails.preview !== "__CLEARED__")
+            ? appSelfieDetails.preview : null;
+        }
+      }
+    } catch (e) {}
 
     // Avoid duplicate connections
     if (selfieSocketRef.current || selfiePollRef.current) return;
@@ -345,7 +369,7 @@ export default function DocumentUploadStep() {
       if (checkSelfieStatusRef.current) checkSelfieStatusRef.current();
     }, 4000);
     console.log("[DocUpload] Cross-device selfie polling started for:", activeAppId);
-  }, [applicationId]);
+  }, [applicationId, isRejection, isDocRejected]);
 
   const stopSelfieCrossDevicePolling = useCallback(() => {
     if (selfiePollRef.current) {
