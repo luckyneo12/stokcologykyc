@@ -122,16 +122,17 @@ export default function DocumentUploadStep() {
   } = useKYC();
 
   const isRejection = Boolean(rejectionMode);
-  const isDocRejected = (stepId) => {
+  const isDocRejected = useCallback((stepId) => {
     if (!isRejection) return false;
     if (rejectedStepsList?.some(r => r.stepId === stepId)) return true;
     return stepStatuses?.[stepId]?.status === "rejected";
-  };
-  const getDocRejectionReason = (stepId) => {
+  }, [isRejection, rejectedStepsList, stepStatuses]);
+  
+  const getDocRejectionReason = useCallback((stepId) => {
     const inList = rejectedStepsList?.find(r => r.stepId === stepId);
     if (inList?.reason) return inList.reason;
     return stepStatuses?.[stepId]?.reason || "";
-  };
+  }, [rejectedStepsList, stepStatuses]);
   
   // Helper to ensure relative URLs load from backend on port 5000
   const getFullUrl = (url) => {
