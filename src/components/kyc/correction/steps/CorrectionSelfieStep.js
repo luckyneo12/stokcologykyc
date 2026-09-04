@@ -84,11 +84,37 @@ export default function CorrectionSelfieStep() {
   // Use a ref to always call the latest checkSelfieStatus (avoids stale closures in socket/interval callbacks)
   const checkSelfieStatusRef = useRef(null);
 
+  const ignoredPreviewRef = useRef(null);
+
   // ─── Socket.IO + Polling: watch for cross-device selfie completion ──
-  const startCrossDevicePolling = useCallback(() => {
+  const startCrossDevicePolling = useCallback(async () => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
     const token = sessionStorage.getItem("correctionToken") || sessionStorage.getItem("token");
     if (!activeAppId || !token) return;
+
+    // Fetch baseline so we don't instantly auto-advance on the already existing rejected selfie
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/kyc/status/${activeAppId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.application) {
+          const app = data.application;
+          let sDetails = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : app.selfieDetails;
+          if (isSelfieRejected) {
+            let draftObj = {};
+            if (app.correctionDraft) {
+              try { draftObj = typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft; } catch (e) {}
+            }
+            sDetails = draftObj?.selfieDetails || null;
+          }
+          ignoredPreviewRef.current = (sDetails?.preview && sDetails.preview !== "__DIGIO_SUCCESS__") 
+            ? sDetails.preview 
+            : (sDetails?.path && sDetails.path !== "__DIGIO_SUCCESS__" ? sDetails.path : null);
+        }
+      }
+    } catch (e) {}
 
     const socket = io(API_BASE_URL, { withCredentials: true });
     socketRef.current = socket;
@@ -104,7 +130,7 @@ export default function CorrectionSelfieStep() {
     pollRef.current = setInterval(async () => {
       if (checkSelfieStatusRef.current) await checkSelfieStatusRef.current(activeAppId, token);
     }, 5000);
-  }, [applicationId]);
+  }, [applicationId, isSelfieRejected]);
 
   const checkSelfieStatus = async (appId, token) => {
     try {
@@ -127,10 +153,14 @@ export default function CorrectionSelfieStep() {
         selfieDetails = draftObj?.selfieDetails || null;
       }
 
-      if (selfieDetails?.preview && selfieDetails.preview !== "__DIGIO_SUCCESS__") {
+      const selfiePreview = (selfieDetails?.preview && selfieDetails.preview !== "__DIGIO_SUCCESS__")
+        ? selfieDetails.preview
+        : (selfieDetails?.path && selfieDetails.path !== "__DIGIO_SUCCESS__" ? selfieDetails.path : null);
+
+      if (selfiePreview && selfiePreview !== ignoredPreviewRef.current) {
         setMatchScore(selfieDetails.matchScore || null);
         if (isSelfieRejected) {
-          saveDraft("ipv", { preview: selfieDetails.preview, matchScore: selfieDetails.matchScore, type: "selfie" });
+          saveDraft("ipv", { preview: selfiePreview, matchScore: selfieDetails.matchScore, type: "selfie" });
         }
         
         addToast("Selfie captured on your mobile device!", "success");
