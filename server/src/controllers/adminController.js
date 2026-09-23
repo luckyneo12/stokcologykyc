@@ -1684,6 +1684,345 @@ const testBackofficeConnection = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/admin/ap-list
+ * Returns all AP users with their referral counts.
+ */
+const getApList = async (req, res, next) => {
+  try {
+    const { date } = req.query;
+    
+    const dateFilter = {};
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      dateFilter.createdAt = {
+        gte: startOfDay,
+        lte: endOfDay
+      };
+    }
+
+    const aps = await prisma.user.findMany({
+      where: { role: "ap" },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true, email: true, phone: true, metadata: true, createdAt: true, status: true,
+      },
+    });
+
+    const apList = await Promise.all(
+      aps.map(async (ap) => {
+        const apCode = `AP${ap.id}`;
+        
+        const referredUsers = await prisma.user.findMany({
+          where: { apCode, ...dateFilter },
+          include: { kycApplications: { select: { status: true } } }
+        });
+
+        const referralCount = referredUsers.length;
+        
+        const breakdown = { pending: 0, under_review: 0, approved: 0, rejected: 0 };
+        referredUsers.forEach(u => {
+          if (u.kycApplications && u.kycApplications.length > 0) {
+            const status = u.kycApplications[0].status;
+            if (breakdown[status] !== undefined) {
+              breakdown[status]++;
+            }
+          }
+        });
+
+        let name = "";
+        let tier = "Standard";
+        try {
+          if (ap.metadata) {
+            const meta = JSON.parse(ap.metadata);
+            name = meta.name || "";
+            tier = meta.tier || "Standard";
+          }
+        } catch {}
+
+        // Calculate Estimated Commission based on tier
+        let commissionPerApproval = 300;
+        if (tier === "Premium") commissionPerApproval = 500;
+        if (tier === "VIP") commissionPerApproval = 1000;
+        const estimatedCommission = breakdown.approved * commissionPerApproval;
+
+        // Calculate overall conversion rate
+        const conversionRate = referralCount > 0 ? ((breakdown.approved / referralCount) * 100).toFixed(1) : 0;
+
+        return {
+          id: ap.id, email: ap.email, phone: ap.phone, name, apCode, tier,
+          status: ap.status || "active",
+          referralCount, breakdown, estimatedCommission, conversionRate, createdAt: ap.createdAt,
+        };
+      })
+    );
+
+    res.json({ success: true, aps: apList });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/admin/ap/:id/users
+ * Returns users referred by a specific AP.
+ */
+const getApUsers = async (req, res, next) => {
+  try {
+    const apId = parseInt(req.params.id);
+    const { date } = req.query;
+    const ap = await prisma.user.findUnique({ where: { id: apId } });
+
+    if (!ap || ap.role !== "ap") {
+      return res.status(404).json({ error: "AP not found" });
+    }
+
+    const apCode = `AP${ap.id}`;
+    const dateFilter = {};
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      dateFilter.createdAt = {
+        gte: startOfDay,
+        lte: endOfDay
+      };
+    }
+
+    const users = await prisma.user.findMany({
+      where: { apCode, ...dateFilter },
+      include: {
+        kycApplications: {
+          select: {
+            id: true, status: true, globeStatus: true, currentStep: true,
+            isResubmitted: true, submittedAt: true, applicationId: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    let apName = "";
+    let tier = "Standard";
+    try {
+      if (ap.metadata) {
+        const meta = JSON.parse(ap.metadata);
+        apName = meta.name || "";
+        tier = meta.tier || "Standard";
+      }
+    } catch {}
+
+    // Calculate Top Drop-off Step
+    const stepCounts = {};
+    users.forEach(u => {
+      const app = u.kycApplications?.[0];
+      if (app && app.status !== 'approved' && app.status !== 'verified') {
+        const step = app.currentStep || 0;
+        stepCounts[step] = (stepCounts[step] || 0) + 1;
+      }
+    });
+    let topDropOffStep = null;
+    let maxDropOffs = 0;
+    for (const [step, count] of Object.entries(stepCounts)) {
+      if (count > maxDropOffs) {
+        maxDropOffs = count;
+        topDropOffStep = parseInt(step);
+      }
+    }
+
+    // Fetch Audit Logs for this AP
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        targetType: "APUser",
+        targetId: ap.id.toString()
+      },
+      orderBy: { timestamp: "desc" },
+      take: 50
+    });
+
+    res.json({ 
+      success: true, 
+      users, 
+      ap: { id: ap.id, email: ap.email, name: apName, apCode, tier, status: ap.status || "active" },
+      stats: { topDropOffStep, maxDropOffs },
+      logs
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/admin/ap/:id
+ * Deletes an AP user.
+ */
+const deleteAp = async (req, res, next) => {
+  try {
+    const apId = parseInt(req.params.id);
+    const ap = await prisma.user.findUnique({ where: { id: apId } });
+
+    if (!ap || ap.role !== "ap") {
+      return res.status(404).json({ error: "AP not found" });
+    }
+
+    await prisma.user.delete({ where: { id: apId } });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id || null,
+        action: "AP_DELETED",
+        details: JSON.stringify({ message: `AP deleted: ${ap.email}`, apId, email: ap.email }),
+        targetId: apId.toString(),
+        targetType: "APUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
+    res.json({ success: true, message: "AP deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/admin/ap/:id/status
+ * Suspend or Activate an AP
+ */
+const changeApStatus = async (req, res, next) => {
+  try {
+    const apId = parseInt(req.params.id);
+    const { status } = req.body;
+    if (!["active", "suspended"].includes(status)) return res.status(400).json({ error: "Invalid status" });
+
+    const ap = await prisma.user.findUnique({ where: { id: apId, role: "ap" } });
+    if (!ap) return res.status(404).json({ error: "AP not found" });
+
+    await prisma.user.update({
+      where: { id: apId },
+      data: { status }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id || null,
+        action: `AP_${status.toUpperCase()}`,
+        details: JSON.stringify({ message: `AP ${status}: ${ap.email}`, apId }),
+        targetId: apId.toString(),
+        targetType: "APUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      }
+    }).catch(() => {});
+
+    res.json({ success: true, message: `AP ${status} successfully` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/admin/ap/:id/tier
+ * Update AP tier (Standard, Premium, VIP)
+ */
+const changeApTier = async (req, res, next) => {
+  try {
+    const apId = parseInt(req.params.id);
+    const { tier } = req.body;
+    if (!["Standard", "Premium", "VIP"].includes(tier)) return res.status(400).json({ error: "Invalid tier" });
+
+    const ap = await prisma.user.findUnique({ where: { id: apId, role: "ap" } });
+    if (!ap) return res.status(404).json({ error: "AP not found" });
+
+    let meta = {};
+    try { meta = ap.metadata ? JSON.parse(ap.metadata) : {}; } catch {}
+    meta.tier = tier;
+
+    await prisma.user.update({
+      where: { id: apId },
+      data: { metadata: JSON.stringify(meta) }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id || null,
+        action: "AP_TIER_CHANGED",
+        details: JSON.stringify({ message: `AP tier changed to ${tier}: ${ap.email}`, apId, tier }),
+        targetId: apId.toString(),
+        targetType: "APUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      }
+    }).catch(() => {});
+
+    res.json({ success: true, message: `AP tier updated to ${tier}` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/admin/ap/bulk-create
+ * Bulk create APs from CSV data array
+ */
+const bulkCreateAps = async (req, res, next) => {
+  try {
+    const { aps } = req.body;
+    if (!Array.isArray(aps) || aps.length === 0) {
+      return res.status(400).json({ error: "Invalid or empty AP array" });
+    }
+
+    const bcrypt = require("bcryptjs");
+    const results = { success: 0, failed: 0, errors: [] };
+
+    for (const apData of aps) {
+      try {
+        const { name, email, phone, password } = apData;
+        if (!name || !email || !phone || !password) throw new Error("Missing required fields");
+
+        const existing = await prisma.user.findFirst({
+          where: { OR: [{ email }, { phone }] }
+        });
+        if (existing) throw new Error(`Email ${email} or Phone ${phone} already exists`);
+
+        const hashedPassword = await bcrypt.hash(password.toString(), 10);
+
+        const newUser = await prisma.user.create({
+          data: {
+            email,
+            phone: phone.toString(),
+            password: hashedPassword,
+            role: "ap",
+            metadata: JSON.stringify({ name, tier: "Standard" })
+          }
+        });
+
+        results.success++;
+      } catch (e) {
+        results.failed++;
+        results.errors.push(`Row for ${apData.email || apData.phone}: ${e.message}`);
+      }
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id || null,
+        action: "AP_BULK_CREATED",
+        details: JSON.stringify({ message: `Bulk created ${results.success} APs. Failed: ${results.failed}`, results }),
+        targetType: "System",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      }
+    }).catch(() => {});
+
+    res.json({ success: true, results });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getApplications,
   getApplicationById,
@@ -1705,5 +2044,11 @@ module.exports = {
   updateEstampSequence,
   updateApplicationDetails,
   uploadAdminDocument,
-  testBackofficeConnection
+  testBackofficeConnection,
+  getApList,
+  getApUsers,
+  deleteAp,
+  changeApStatus,
+  changeApTier,
+  bulkCreateAps
 };

@@ -10,7 +10,8 @@ import {
   ChevronRight,
   Menu,
   Plug,
-  Hash
+  Hash,
+  UserPlus
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { id: "boids", label: "BOID Management", icon: Hash },
   { id: "pdf-builder", label: "PDF Builder", icon: FileCog },
   { id: "api-integration", label: "API Integration", icon: Plug },
+  { id: "ap-management", label: "AP Management", icon: UserPlus },
 ];
 
 export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }) {

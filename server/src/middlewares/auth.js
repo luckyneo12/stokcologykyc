@@ -45,4 +45,13 @@ const adminAuth = (req, res, next) => {
   });
 };
 
-module.exports = { auth, adminAuth };
+const apAuth = (req, res, next) => {
+  auth(req, res, () => {
+    if (req.user.role !== "ap" && req.user.role !== "admin") {
+      return res.status(403).json({ error: "AP access required" });
+    }
+    next();
+  });
+};
+
+module.exports = { auth, adminAuth, apAuth };

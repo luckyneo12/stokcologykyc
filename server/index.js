@@ -15,6 +15,7 @@ const agentRoutes = require("./src/routes/agentRoutes");
 const crmRoutes = require("./src/routes/crmRoutes");
 const globeRoutes = require("./src/routes/globeRoutes");
 const pdfTemplateRoutes = require("./src/routes/pdfTemplateRoutes");
+const apRoutes = require("./src/routes/apRoutes");
 const errorHandler = require("./src/middlewares/errorHandler");
 
 const app = express();
@@ -119,6 +120,7 @@ app.use("/api/agent", agentRoutes);
 app.use("/api/crm", crmRoutes);
 app.use("/api/globe", globeRoutes);
 app.use("/api/admin/pdf-templates", pdfTemplateRoutes);
+app.use("/api/ap", apRoutes);
 
 // Root route
 app.get("/", (req, res) => {

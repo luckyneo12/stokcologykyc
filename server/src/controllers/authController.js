@@ -104,11 +104,6 @@ const verifyOtp = async (req, res, next) => {
           }
         });
         console.log(`[Auth] Created local KYC user: ${phone} (AP: ${apCode || 'None'})`);
-      } else if (apCode && !user.apCode) {
-        user = await prisma.user.update({
-          where: { phone },
-          data: { apCode }
-        });
       }
 
       await prisma.auditLog.create({
@@ -160,6 +155,15 @@ const bcrypt = require("bcryptjs");
 const adminLoginSchema = z.object({
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password too short"),
+});
+
+const createApSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email"),
+  phone: z.string().regex(/^[6-9]\d{9}$/, "Invalid phone number"),
+  password: z.string()
+    .min(6, "Password must be at least 6 characters")
+    .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character"),
 });
 
 
@@ -393,4 +397,107 @@ const setupAdmin = async (req, res, next) => {
   }
 };
 
-module.exports = { sendOtp, verifyOtp, adminLogin, globeLogin, kycTeamLogin, kycTeamSignup, setupAdmin };
+const apLogin = async (req, res, next) => {
+  try {
+    const { email, password } = adminLoginSchema.parse(req.body);
+    
+    const user = await prisma.user.findFirst({
+      where: { 
+        email,
+        role: "ap"
+      }
+    });
+
+    if (!user || !user.password) {
+      return res.status(401).json({ error: "Invalid credentials or unauthorized role" });
+    }
+
+    if (user.status === "suspended") {
+      return res.status(403).json({ error: "Your account has been suspended. Please contact admin." });
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const apCode = `AP${user.id}`;
+    const name = user.metadata ? (() => { try { return JSON.parse(user.metadata).name || ''; } catch { return ''; } })() : '';
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "AP_LOGGED_IN",
+        details: JSON.stringify({ message: `AP (${name || email}) logged in successfully`, email }),
+        targetId: user.id.toString(),
+        targetType: "APUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, apCode, name },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: { id: user.id, email: user.email, role: user.role, apCode, name, phone: user.phone }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createAp = async (req, res, next) => {
+  try {
+    const { name, email, phone, password } = createApSchema.parse(req.body);
+
+    // Check for existing email or phone
+    const existingEmail = await prisma.user.findFirst({ where: { email } });
+    if (existingEmail) {
+      return res.status(400).json({ error: "Email already in use" });
+    }
+    const existingPhone = await prisma.user.findFirst({ where: { phone } });
+    if (existingPhone) {
+      return res.status(400).json({ error: "Phone number already in use" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        phone,
+        password: hashedPassword,
+        role: "ap",
+        metadata: JSON.stringify({ name }),
+      }
+    });
+
+    const apCode = `AP${user.id}`;
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user?.id || null,
+        action: "AP_CREATED",
+        details: JSON.stringify({ message: `AP created: ${name} (${email})`, apCode, name, email, phone }),
+        targetId: user.id.toString(),
+        targetType: "APUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
+    res.json({
+      success: true,
+      message: "AP created successfully",
+      ap: { id: user.id, email, phone, name, apCode }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { sendOtp, verifyOtp, adminLogin, globeLogin, kycTeamLogin, kycTeamSignup, setupAdmin, apLogin, createAp };

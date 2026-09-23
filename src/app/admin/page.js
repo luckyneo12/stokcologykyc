@@ -13,6 +13,7 @@ import {
 import PdfBuilder from "./components/sections/PdfBuilder";
 import ApiIntegration from "./components/sections/ApiIntegration";
 import BoidManagement from "./components/sections/BoidManagement";
+import APManagement from "./components/sections/APManagement";
 
 
 export default function AdminPage() {
@@ -79,6 +80,7 @@ export default function AdminPage() {
       case "audit": return <AuditLogs />;
       case "pdf-builder": return <PdfBuilder />;
       case "api-integration": return <ApiIntegration />;
+      case "ap-management": return <APManagement />;
       default: return <DashboardOverview onNavigate={handleNavigate} />;
     }
   };

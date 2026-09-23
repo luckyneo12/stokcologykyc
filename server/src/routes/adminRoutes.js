@@ -61,4 +61,13 @@ router.post("/application/:id/generate-token", adminAuth, generateUserToken);
 const upload = require("../middlewares/upload");
 router.post("/application/:id/upload-document", adminAuth, upload.single("document"), uploadAdminDocument);
 
+// AP Management
+const { getApList, getApUsers, deleteAp, changeApStatus, changeApTier, bulkCreateAps } = require("../controllers/adminController");
+router.get("/ap-list", adminAuth, getApList);
+router.get("/ap/:id/users", adminAuth, getApUsers);
+router.delete("/ap/:id", adminAuth, deleteAp);
+router.put("/ap/:id/status", adminAuth, changeApStatus);
+router.put("/ap/:id/tier", adminAuth, changeApTier);
+router.post("/ap/bulk-create", adminAuth, bulkCreateAps);
+
 module.exports = router;
