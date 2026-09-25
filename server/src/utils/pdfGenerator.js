@@ -6,7 +6,17 @@ const prisma = new PrismaClient();
 
 function getVariableValue(variableName, appData) {
   const safeJsonParse = (str) => {
-    try { return typeof str === 'string' ? JSON.parse(str) : str; } catch { return str; }
+    let result = str;
+    while (typeof result === 'string') {
+      try {
+        const parsed = JSON.parse(result);
+        if (typeof parsed === 'string' && parsed === result) break;
+        result = parsed;
+      } catch {
+        break;
+      }
+    }
+    return result || {};
   };
 
   const pDetails = safeJsonParse(appData.personalDetails) || {};
@@ -16,12 +26,37 @@ function getVariableValue(variableName, appData) {
   const fProof = safeJsonParse(appData.financialProof) || {};
   const docs = safeJsonParse(appData.documents) || [];
   const docTypesString = Array.isArray(docs) ? docs.map(d => d.type || d.name || '').join(' ') : '';
+  const ocrData = safeJsonParse(appData.ocrData) || {};
   
+  // Digilocker KYC detection across all possible representations
+  const isDigilocker = !!(
+    (ocrData.digio && (ocrData.digio.DIGILOCKER || ocrData.digio.AADHAAR || ocrData.digio.digilocker || ocrData.digio.PAN_VERIFICATION)) ||
+    ocrData.DIGILOCKER ||
+    ocrData.digilocker ||
+    String(appData.identityMethod || '').toLowerCase() === 'digilocker' ||
+    iDetails.digilocker ||
+    iDetails.digilockerPan ||
+    iDetails.isDigilocker ||
+    (Array.isArray(docs) && docs.some(d => 
+      String(d.source || '').toUpperCase() === 'DIGILOCKER' || 
+      /digilocker/i.test(d.path || '') || 
+      /digilocker/i.test(d.label || '') ||
+      /digilocker/i.test(d.name || '')
+    )) ||
+    (typeof appData.documents === 'string' && /digilocker/i.test(appData.documents)) ||
+    (typeof appData.ocrData === 'string' && /digilocker/i.test(appData.ocrData))
+  );
+
   // Ensure we don't print leftover nominee details if the user opted out
   let parsedNomDetails = safeJsonParse(appData.nomineeDetails) || {};
-  if (parsedNomDetails.opted !== 'Yes') {
+  if (parsedNomDetails?.nomineeDetails) {
+    parsedNomDetails = { ...parsedNomDetails.nomineeDetails, ...parsedNomDetails };
+  }
+  const isNomineeOptIn = (parsedNomDetails.opted === 'Yes' || parsedNomDetails.opted === true) && Array.isArray(parsedNomDetails.nominees) && parsedNomDetails.nominees.length > 0;
+  if (!isNomineeOptIn) {
     parsedNomDetails.nominees = [];
-    appData.nomineeDetails = JSON.stringify(parsedNomDetails);
+    appData.nomineeDetails = JSON.stringify({ ...parsedNomDetails, opted: 'No', nominees: [] });
+    appData.nomineeAllocation = JSON.stringify({ percentages: [] });
   }
 
   switch(variableName) {
@@ -31,7 +66,6 @@ function getVariableValue(variableName, appData) {
     case 'clientCode': return appData.clientCode || '';
     case 'openingDate': return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
     case 'ipvDate': {
-      const ocrData = safeJsonParse(appData.ocrData) || {};
       const selfieDate = ocrData?.digio?.SELFIE?.createdAt || ocrData?.digio?.LIVENESS?.createdAt;
       if (selfieDate) {
         return new Date(selfieDate).toLocaleDateString('en-GB');
@@ -49,21 +83,17 @@ function getVariableValue(variableName, appData) {
     // KYC Mode
     case 'isKycModeNormal': return false;
     case 'isKycModeEkycOtp': {
-      const ocrData = safeJsonParse(appData.ocrData) || {};
-      const isDigilocker = !!(ocrData.digio && (ocrData.digio.DIGILOCKER || ocrData.digio.AADHAAR));
       if (isDigilocker) return false;
-      return appData.identityMethod === 'aadhaar' || !!iDetails.aadhaar;
+      return appData.identityMethod === 'aadhaar' || (!isDigilocker && !!iDetails.aadhaar);
     }
     case 'isKycModeEkycBiometric': return false;
     case 'isKycModeOnlineKyc': {
-      const ocrData = safeJsonParse(appData.ocrData) || {};
-      const isDigilocker = !!(ocrData.digio && (ocrData.digio.DIGILOCKER || ocrData.digio.AADHAAR));
+      if (isDigilocker) return false;
       return !isDigilocker;
     }
     case 'isKycModeOfflineEkyc': return false;
     case 'isKycModeDigilocker': {
-      const ocrData = safeJsonParse(appData.ocrData) || {};
-      return !!(ocrData.digio && (ocrData.digio.DIGILOCKER || ocrData.digio.AADHAAR));
+      return isDigilocker;
     }
     
     // Standing Instructions
@@ -355,89 +385,89 @@ function getVariableValue(variableName, appData) {
     case 'segments.equity': { const s = safeJsonParse(appData.segments) || {}; return s.equity ? 'Yes' : 'No'; }
     case 'segments.derivatives': { const s = safeJsonParse(appData.segments) || {}; return s.derivatives ? 'Yes' : 'No'; }
     
-    // Nominee
-    case 'nomineeDetails.nominees[0].name': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.name; }
-    case 'nomineeDetails.nominees[0].relation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.relation; }
-    case 'nomineeAllocation.percentages[0]': { const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[0] || a.nominees?.[0]?.percentage; }
-    case 'nomineeDetails.nominees[0].dob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.dob; }
-    case 'nomineeDetails.nominees[0].mobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.mobile; }
-    case 'nomineeDetails.nominees[0].email': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.email; }
-    case 'nomineeDetails.nominees[0].address': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.address; }
-    case 'nomineeDetails.nominees[0].proofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.proofType; }
-    case 'nomineeDetails.nominees[0].proofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.proofNumber; }
-    case 'nomineeDetails.nominees[0].guardianName': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianName; }
-    case 'nomineeDetails.nominees[0].guardianRelation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianRelation; }
-    case 'nomineeDetails.nominees[0].city': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.city; }
-    case 'nomineeDetails.nominees[0].state': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.state; }
-    case 'nomineeDetails.nominees[0].pincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.pincode; }
-    case 'nomineeDetails.nominees[0].country': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.country; }
-    case 'nomineeDetails.nominees[0].guardianDob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianDob; }
-    case 'nomineeDetails.nominees[0].guardianMobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianMobile; }
-    case 'nomineeDetails.nominees[0].guardianEmail': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianEmail; }
-    case 'nomineeDetails.nominees[0].guardianAddress': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianAddress; }
-    case 'nomineeDetails.nominees[0].guardianCity': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianCity; }
-    case 'nomineeDetails.nominees[0].guardianState': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianState; }
-    case 'nomineeDetails.nominees[0].guardianPincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianPincode; }
-    case 'nomineeDetails.nominees[0].guardianCountry': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianCountry; }
-    case 'nomineeDetails.nominees[0].guardianProofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianProofType; }
-    case 'nomineeDetails.nominees[0].guardianProofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianProofNumber; }
+    // Nominee 1
+    case 'nomineeDetails.nominees[0].name': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.name || ''; }
+    case 'nomineeDetails.nominees[0].relation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.relation || ''; }
+    case 'nomineeAllocation.percentages[0]': { if (!isNomineeOptIn) return ''; const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[0] || a.nominees?.[0]?.percentage || ''; }
+    case 'nomineeDetails.nominees[0].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.dob || ''; }
+    case 'nomineeDetails.nominees[0].mobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.mobile || ''; }
+    case 'nomineeDetails.nominees[0].email': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.email || ''; }
+    case 'nomineeDetails.nominees[0].address': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.address || ''; }
+    case 'nomineeDetails.nominees[0].proofType': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.proofType || ''; }
+    case 'nomineeDetails.nominees[0].proofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.proofNumber || ''; }
+    case 'nomineeDetails.nominees[0].guardianName': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianName || ''; }
+    case 'nomineeDetails.nominees[0].guardianRelation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianRelation || ''; }
+    case 'nomineeDetails.nominees[0].city': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.city || ''; }
+    case 'nomineeDetails.nominees[0].state': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.state || ''; }
+    case 'nomineeDetails.nominees[0].pincode': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.pincode || ''; }
+    case 'nomineeDetails.nominees[0].country': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.country || ''; }
+    case 'nomineeDetails.nominees[0].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianDob || ''; }
+    case 'nomineeDetails.nominees[0].guardianMobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianMobile || ''; }
+    case 'nomineeDetails.nominees[0].guardianEmail': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianEmail || ''; }
+    case 'nomineeDetails.nominees[0].guardianAddress': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianAddress || ''; }
+    case 'nomineeDetails.nominees[0].guardianCity': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianCity || ''; }
+    case 'nomineeDetails.nominees[0].guardianState': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianState || ''; }
+    case 'nomineeDetails.nominees[0].guardianPincode': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianPincode || ''; }
+    case 'nomineeDetails.nominees[0].guardianCountry': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianCountry || ''; }
+    case 'nomineeDetails.nominees[0].guardianProofType': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianProofType || ''; }
+    case 'nomineeDetails.nominees[0].guardianProofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianProofNumber || ''; }
     
     // Nominee 2
-    case 'nomineeDetails.nominees[1].name': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.name; }
-    case 'nomineeDetails.nominees[1].relation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.relation; }
-    case 'nomineeAllocation.percentages[1]': { const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[1] || a.nominees?.[1]?.percentage; }
-    case 'nomineeDetails.nominees[1].dob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.dob; }
-    case 'nomineeDetails.nominees[1].mobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.mobile; }
-    case 'nomineeDetails.nominees[1].email': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.email; }
-    case 'nomineeDetails.nominees[1].address': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.address; }
-    case 'nomineeDetails.nominees[1].city': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.city; }
-    case 'nomineeDetails.nominees[1].state': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.state; }
-    case 'nomineeDetails.nominees[1].pincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.pincode; }
-    case 'nomineeDetails.nominees[1].country': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.country; }
-    case 'nomineeDetails.nominees[1].proofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.proofType; }
-    case 'nomineeDetails.nominees[1].proofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.proofNumber; }
-    case 'nomineeDetails.nominees[1].guardianName': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianName; }
-    case 'nomineeDetails.nominees[1].guardianRelation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianRelation; }
-    case 'nomineeDetails.nominees[1].guardianDob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianDob; }
-    case 'nomineeDetails.nominees[1].guardianMobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianMobile; }
-    case 'nomineeDetails.nominees[1].guardianEmail': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianEmail; }
-    case 'nomineeDetails.nominees[1].guardianAddress': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianAddress; }
-    case 'nomineeDetails.nominees[1].guardianCity': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianCity; }
-    case 'nomineeDetails.nominees[1].guardianState': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianState; }
-    case 'nomineeDetails.nominees[1].guardianPincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianPincode; }
-    case 'nomineeDetails.nominees[1].guardianCountry': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianCountry; }
-    case 'nomineeDetails.nominees[1].guardianProofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianProofType; }
-    case 'nomineeDetails.nominees[1].guardianProofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianProofNumber; }
+    case 'nomineeDetails.nominees[1].name': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.name || ''; }
+    case 'nomineeDetails.nominees[1].relation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.relation || ''; }
+    case 'nomineeAllocation.percentages[1]': { if (!isNomineeOptIn) return ''; const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[1] || a.nominees?.[1]?.percentage || ''; }
+    case 'nomineeDetails.nominees[1].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.dob || ''; }
+    case 'nomineeDetails.nominees[1].mobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.mobile || ''; }
+    case 'nomineeDetails.nominees[1].email': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.email || ''; }
+    case 'nomineeDetails.nominees[1].address': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.address || ''; }
+    case 'nomineeDetails.nominees[1].city': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.city || ''; }
+    case 'nomineeDetails.nominees[1].state': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.state || ''; }
+    case 'nomineeDetails.nominees[1].pincode': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.pincode || ''; }
+    case 'nomineeDetails.nominees[1].country': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.country || ''; }
+    case 'nomineeDetails.nominees[1].proofType': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.proofType || ''; }
+    case 'nomineeDetails.nominees[1].proofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.proofNumber || ''; }
+    case 'nomineeDetails.nominees[1].guardianName': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianName || ''; }
+    case 'nomineeDetails.nominees[1].guardianRelation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianRelation || ''; }
+    case 'nomineeDetails.nominees[1].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianDob || ''; }
+    case 'nomineeDetails.nominees[1].guardianMobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianMobile || ''; }
+    case 'nomineeDetails.nominees[1].guardianEmail': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianEmail || ''; }
+    case 'nomineeDetails.nominees[1].guardianAddress': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianAddress || ''; }
+    case 'nomineeDetails.nominees[1].guardianCity': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianCity || ''; }
+    case 'nomineeDetails.nominees[1].guardianState': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianState || ''; }
+    case 'nomineeDetails.nominees[1].guardianPincode': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianPincode || ''; }
+    case 'nomineeDetails.nominees[1].guardianCountry': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianCountry || ''; }
+    case 'nomineeDetails.nominees[1].guardianProofType': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianProofType || ''; }
+    case 'nomineeDetails.nominees[1].guardianProofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianProofNumber || ''; }
     
     // Nominee 3
-    case 'nomineeDetails.nominees[2].name': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.name; }
-    case 'nomineeDetails.nominees[2].relation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.relation; }
-    case 'nomineeAllocation.percentages[2]': { const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[2] || a.nominees?.[2]?.percentage; }
-    case 'nomineeDetails.nominees[2].dob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.dob; }
-    case 'nomineeDetails.nominees[2].mobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.mobile; }
-    case 'nomineeDetails.nominees[2].email': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.email; }
-    case 'nomineeDetails.nominees[2].address': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.address; }
-    case 'nomineeDetails.nominees[2].city': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.city; }
-    case 'nomineeDetails.nominees[2].state': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.state; }
-    case 'nomineeDetails.nominees[2].pincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.pincode; }
-    case 'nomineeDetails.nominees[2].country': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.country; }
-    case 'nomineeDetails.nominees[2].proofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.proofType; }
-    case 'nomineeDetails.nominees[2].proofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.proofNumber; }
-    case 'nomineeDetails.nominees[2].guardianName': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianName; }
-    case 'nomineeDetails.nominees[2].guardianRelation': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianRelation; }
-    case 'nomineeDetails.nominees[2].guardianDob': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianDob; }
-    case 'nomineeDetails.nominees[2].guardianMobile': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianMobile; }
-    case 'nomineeDetails.nominees[2].guardianEmail': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianEmail; }
-    case 'nomineeDetails.nominees[2].guardianAddress': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianAddress; }
-    case 'nomineeDetails.nominees[2].guardianCity': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianCity; }
-    case 'nomineeDetails.nominees[2].guardianState': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianState; }
-    case 'nomineeDetails.nominees[2].guardianPincode': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianPincode; }
-    case 'nomineeDetails.nominees[2].guardianCountry': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianCountry; }
-    case 'nomineeDetails.nominees[2].guardianProofType': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianProofType; }
-    case 'nomineeDetails.nominees[2].guardianProofNumber': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianProofNumber; }
+    case 'nomineeDetails.nominees[2].name': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.name || ''; }
+    case 'nomineeDetails.nominees[2].relation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.relation || ''; }
+    case 'nomineeAllocation.percentages[2]': { if (!isNomineeOptIn) return ''; const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[2] || a.nominees?.[2]?.percentage || ''; }
+    case 'nomineeDetails.nominees[2].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.dob || ''; }
+    case 'nomineeDetails.nominees[2].mobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.mobile || ''; }
+    case 'nomineeDetails.nominees[2].email': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.email || ''; }
+    case 'nomineeDetails.nominees[2].address': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.address || ''; }
+    case 'nomineeDetails.nominees[2].city': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.city || ''; }
+    case 'nomineeDetails.nominees[2].state': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.state || ''; }
+    case 'nomineeDetails.nominees[2].pincode': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.pincode || ''; }
+    case 'nomineeDetails.nominees[2].country': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.country || ''; }
+    case 'nomineeDetails.nominees[2].proofType': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.proofType || ''; }
+    case 'nomineeDetails.nominees[2].proofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.proofNumber || ''; }
+    case 'nomineeDetails.nominees[2].guardianName': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianName || ''; }
+    case 'nomineeDetails.nominees[2].guardianRelation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianRelation || ''; }
+    case 'nomineeDetails.nominees[2].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianDob || ''; }
+    case 'nomineeDetails.nominees[2].guardianMobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianMobile || ''; }
+    case 'nomineeDetails.nominees[2].guardianEmail': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianEmail || ''; }
+    case 'nomineeDetails.nominees[2].guardianAddress': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianAddress || ''; }
+    case 'nomineeDetails.nominees[2].guardianCity': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianCity || ''; }
+    case 'nomineeDetails.nominees[2].guardianState': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianState || ''; }
+    case 'nomineeDetails.nominees[2].guardianPincode': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianPincode || ''; }
+    case 'nomineeDetails.nominees[2].guardianCountry': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianCountry || ''; }
+    case 'nomineeDetails.nominees[2].guardianProofType': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianProofType || ''; }
+    case 'nomineeDetails.nominees[2].guardianProofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianProofNumber || ''; }
     
-    case 'isNomineeOptOut': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.opted === 'No'; }
-    case 'isNomineeOptIn': { const n = safeJsonParse(appData.nomineeDetails) || {}; return n.opted === 'Yes' && n.nominees && n.nominees.length > 0; }
+    case 'isNomineeOptOut': return !isNomineeOptIn;
+    case 'isNomineeOptIn': return isNomineeOptIn;
     
     // Audit Trail & Application Details
     case 'geo.latitude': { 
@@ -498,7 +528,16 @@ async function generateKycPdf(applicationData, options = {}) {
     const parsedFinancialProof = safeJsonParse(applicationData.financialProof) || {};
     const parsedBankDetails = safeJsonParse(applicationData.bankDetails) || {};
     const parsedPersonalDetails = safeJsonParse(applicationData.personalDetails) || {};
-    const parsedNomineeDetails = safeJsonParse(applicationData.nomineeDetails) || {};
+    let parsedNomineeDetails = safeJsonParse(applicationData.nomineeDetails) || {};
+    if (parsedNomineeDetails?.nomineeDetails) {
+      parsedNomineeDetails = { ...parsedNomineeDetails.nomineeDetails, ...parsedNomineeDetails };
+    }
+    const isNomineeOptIn = (parsedNomineeDetails.opted === 'Yes' || parsedNomineeDetails.opted === true) && Array.isArray(parsedNomineeDetails.nominees) && parsedNomineeDetails.nominees.length > 0;
+    if (!isNomineeOptIn) {
+      parsedNomineeDetails.nominees = [];
+      applicationData.nomineeDetails = JSON.stringify({ ...parsedNomineeDetails, opted: 'No', nominees: [] });
+      applicationData.nomineeAllocation = JSON.stringify({ percentages: [] });
+    }
 
     // Check if an active template exists
     const activeTemplate = await prisma.pdfTemplate.findFirst({
@@ -595,12 +634,11 @@ async function generateKycPdf(applicationData, options = {}) {
                          || (typeof applicationData.selfie === 'string' ? applicationData.selfie : applicationData.selfie?.preview);
           } else if (field.variable === 'signature' || field.variable === 'signatureOptOut' || field.variable === 'signatureOptIn' || field.variable === 'signatureNominee2' || field.variable === 'signatureNominee3') {
             let shouldShow = false;
-            const n = safeJsonParse(applicationData.nomineeDetails) || {};
             if (field.variable === 'signature') shouldShow = true;
-            else if (field.variable === 'signatureOptOut' && n.opted === 'No') shouldShow = true;
-            else if (field.variable === 'signatureOptIn' && n.opted === 'Yes' && n.nominees && n.nominees.length > 0) shouldShow = true;
-            else if (field.variable === 'signatureNominee2' && n.opted === 'Yes' && n.nominees && n.nominees.length > 1 && n.nominees[1].name) shouldShow = true;
-            else if (field.variable === 'signatureNominee3' && n.opted === 'Yes' && n.nominees && n.nominees.length > 2 && n.nominees[2].name) shouldShow = true;
+            else if (field.variable === 'signatureOptOut' && !isNomineeOptIn) shouldShow = true;
+            else if (field.variable === 'signatureOptIn' && isNomineeOptIn) shouldShow = true;
+            else if (field.variable === 'signatureNominee2' && isNomineeOptIn && parsedNomineeDetails.nominees?.length > 1 && parsedNomineeDetails.nominees[1]?.name) shouldShow = true;
+            else if (field.variable === 'signatureNominee3' && isNomineeOptIn && parsedNomineeDetails.nominees?.length > 2 && parsedNomineeDetails.nominees[2]?.name) shouldShow = true;
             
             if (shouldShow) {
               imgRelPath = typeof parsedSignature === 'string' ? parsedSignature : (parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview);
@@ -627,17 +665,29 @@ async function generateKycPdf(applicationData, options = {}) {
           } else if (field.variable === 'pepProof') {
             imgRelPath = typeof parsedPersonalDetails === 'string' ? parsedPersonalDetails : (parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview);
           } else if (field.variable === 'nominee1Proof') {
-            imgRelPath = parsedNomineeDetails?.nominees?.[0]?.proofPath || parsedNomineeDetails?.nominees?.[0]?.proofPreview || parsedNomineeDetails?.nominees?.[0]?.preview;
+            if (isNomineeOptIn) {
+              imgRelPath = parsedNomineeDetails?.nominees?.[0]?.proofPath || parsedNomineeDetails?.nominees?.[0]?.proofPreview || parsedNomineeDetails?.nominees?.[0]?.preview;
+            }
           } else if (field.variable === 'nominee2Proof') {
-            imgRelPath = parsedNomineeDetails?.nominees?.[1]?.proofPath || parsedNomineeDetails?.nominees?.[1]?.proofPreview || parsedNomineeDetails?.nominees?.[1]?.preview;
+            if (isNomineeOptIn) {
+              imgRelPath = parsedNomineeDetails?.nominees?.[1]?.proofPath || parsedNomineeDetails?.nominees?.[1]?.proofPreview || parsedNomineeDetails?.nominees?.[1]?.preview;
+            }
           } else if (field.variable === 'nominee3Proof') {
-            imgRelPath = parsedNomineeDetails?.nominees?.[2]?.proofPath || parsedNomineeDetails?.nominees?.[2]?.proofPreview || parsedNomineeDetails?.nominees?.[2]?.preview;
+            if (isNomineeOptIn) {
+              imgRelPath = parsedNomineeDetails?.nominees?.[2]?.proofPath || parsedNomineeDetails?.nominees?.[2]?.proofPreview || parsedNomineeDetails?.nominees?.[2]?.preview;
+            }
           } else if (field.variable === 'guardian1Proof') {
-            imgRelPath = parsedNomineeDetails?.nominees?.[0]?.guardianProofPath || parsedNomineeDetails?.nominees?.[0]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[0]?.guardianPreview;
+            if (isNomineeOptIn) {
+              imgRelPath = parsedNomineeDetails?.nominees?.[0]?.guardianProofPath || parsedNomineeDetails?.nominees?.[0]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[0]?.guardianPreview;
+            }
           } else if (field.variable === 'guardian2Proof') {
-            imgRelPath = parsedNomineeDetails?.nominees?.[1]?.guardianProofPath || parsedNomineeDetails?.nominees?.[1]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[1]?.guardianPreview;
+            if (isNomineeOptIn) {
+              imgRelPath = parsedNomineeDetails?.nominees?.[1]?.guardianProofPath || parsedNomineeDetails?.nominees?.[1]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[1]?.guardianPreview;
+            }
           } else if (field.variable === 'guardian3Proof') {
-            imgRelPath = parsedNomineeDetails?.nominees?.[2]?.guardianProofPath || parsedNomineeDetails?.nominees?.[2]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[2]?.guardianPreview;
+            if (isNomineeOptIn) {
+              imgRelPath = parsedNomineeDetails?.nominees?.[2]?.guardianProofPath || parsedNomineeDetails?.nominees?.[2]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[2]?.guardianPreview;
+            }
           } else if (field.variable === 'addressProof') {
             const addrDoc = parsedDocuments.find(d => d.path && /address_proof|driving_license|voter|passport/i.test(d.path));
             if (addrDoc) imgRelPath = addrDoc.path;

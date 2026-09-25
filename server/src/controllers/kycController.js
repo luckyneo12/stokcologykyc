@@ -1135,6 +1135,22 @@ const previewPdf = async (req, res, next) => {
       }
     }
 
+    // Preserve backend ocrData (like Digilocker/Digio data) that the frontend might not have in its state
+    if (app.ocrData) {
+      try {
+        const dbOcr = typeof app.ocrData === 'string' ? JSON.parse(app.ocrData) : (app.ocrData || {});
+        const bodyOcr = typeof req.body.ocrData === 'string' ? JSON.parse(req.body.ocrData) : (req.body.ocrData || {});
+        applicationData.ocrData = JSON.stringify({ 
+          ...dbOcr, 
+          ...bodyOcr, 
+          digio: bodyOcr.digio || dbOcr.digio,
+          pan_verification: bodyOcr.pan_verification || dbOcr.pan_verification 
+        });
+      } catch (e) {
+        console.error("Error merging ocrData for preview:", e);
+      }
+    }
+
     const skipAppend = applicationData.previewOnly && !applicationData.forceAppendDocuments;
     const pdfBase64 = await generateKycPdf(applicationData, { skipDocumentAppend: skipAppend });
 

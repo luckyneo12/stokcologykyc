@@ -51,14 +51,35 @@ export default function NomineeChoiceStep() {
 
     clearOptedDraft();
     clearConfirmedDraft();
-    const payloadData = { ...nomineeDetails, opted };
+    const payloadData = { 
+      ...nomineeDetails, 
+      opted, 
+      nominees: opted === "No" ? [] : (nomineeDetails?.nominees || []) 
+    };
     
     if (opted === "No") {
+      // Clear localStorage drafts for nominees if any
+      try {
+        const appId = sessionStorage.getItem("kyc_app_id") || localStorage.getItem("kyc_app_id");
+        if (appId) {
+          localStorage.removeItem(`kyc-draft-${appId}-nominees`);
+        }
+      } catch (e) {}
+
       // Skip Nominee and Allocation steps
       if (isNomineeRejected) {
-         goToStep(currentStep + 3, { correctionDraft: { ...(correctionDraft || {}), nomineeDetails: payloadData } });
+         goToStep(currentStep + 3, { 
+           correctionDraft: { 
+             ...(correctionDraft || {}), 
+             nomineeDetails: payloadData,
+             nomineeAllocation: { percentages: [] }
+           } 
+         });
       } else {
-         goToStep(currentStep + 3, { nomineeDetails: payloadData });
+         goToStep(currentStep + 3, { 
+           nomineeDetails: payloadData,
+           nomineeAllocation: { percentages: [] }
+         });
       }
     } else {
       if (isNomineeRejected) {

@@ -103,6 +103,25 @@ export default function AadhaarEsignStep() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
+  // Trigger location permission prompt on mount
+  useEffect(() => {
+    const triggerLocation = () => {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          () => { console.log("Location access granted on mount"); }, 
+          (err) => { 
+            console.warn("Location permission issue on mount:", err);
+            if (err.code === 1) { // PERMISSION_DENIED
+              addToast("Location access is blocked. Please enable it in your browser's address bar settings.", "error");
+            }
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+    };
+    triggerLocation();
+  }, [addToast]);
+
   const startESign = async () => {
     // 1. Get location FIRST — mandatory for eSign
     let coords = { lat: null, lng: null };
