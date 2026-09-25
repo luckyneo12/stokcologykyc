@@ -740,7 +740,21 @@ export default function ApplicationDetail() {
 
   const extractGeoLocation = () => {
     if (!app) return null;
-    if (app.selfieDetails?.geo) return app.selfieDetails.geo;
+    if (app.selfieDetails?.geo?.latitude || app.selfieDetails?.geo?.lat) return app.selfieDetails.geo;
+    if (app.selfieDetails?.lat || app.selfieDetails?.latitude) {
+      return {
+        latitude: app.selfieDetails.lat || app.selfieDetails.latitude,
+        longitude: app.selfieDetails.lng || app.selfieDetails.longitude,
+        address: app.selfieDetails.address || app.selfieDetails.geo?.address || null,
+      };
+    }
+    if (app.esignDetails?.lat || app.esignDetails?.latitude) {
+      return {
+        latitude: app.esignDetails.lat || app.esignDetails.latitude,
+        longitude: app.esignDetails.lng || app.esignDetails.longitude,
+        address: app.esignDetails.address || app.esignDetails.geo?.address || null,
+      };
+    }
     
     const digioSources = [
       app.ocrData?.digio?.DIGILOCKER?.response,

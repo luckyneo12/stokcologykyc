@@ -265,6 +265,16 @@ function getVariableValue(variableName, appData) {
       const raw = appData.user?.boid || appData.boid || '';
       return raw.length > 16 ? raw.slice(0, 8) + raw.slice(-10, -2) : raw;
     }
+    case 'dpId': {
+      const raw = appData.user?.boid || appData.boid || '';
+      const boid = raw.length > 16 ? raw.slice(0, 8) + raw.slice(-10, -2) : raw;
+      return boid.length === 16 ? boid.slice(0, 8) : '';
+    }
+    case 'clientId': {
+      const raw = appData.user?.boid || appData.boid || '';
+      const boid = raw.length > 16 ? raw.slice(0, 8) + raw.slice(-10, -2) : raw;
+      return boid.length === 16 ? boid.slice(8, 16) : '';
+    }
     case 'addressLine1': return aDetails.line1;
     case 'addressLine2': return aDetails.line2;
     case 'landmark': return aDetails.landmark || '';
@@ -301,7 +311,11 @@ function getVariableValue(variableName, appData) {
     case 'pepText': { const p = String(pDetails.politicallyExposed || '').toLowerCase(); return (p === 'yes' || p === 'true') ? 'Yes' : 'No'; }
     case 'isPepYes': { const p = String(pDetails.politicallyExposed || '').toLowerCase(); return p === 'yes' || p === 'true'; }
     case 'isPepNo': { const p = String(pDetails.politicallyExposed || '').toLowerCase(); return p === 'no' || p === 'false' || p === ''; }
-    case 'pepType': return pDetails.pepType;
+    case 'pepType': return pDetails.pepType || '';
+    case 'pepComment': {
+      const isPep = String(pDetails.politicallyExposed || '').toLowerCase();
+      return (isPep === 'yes' || isPep === 'true') ? (pDetails.pepComment || '') : '';
+    }
     case 'isIndianCitizen': return pDetails.isIndianCitizen;
     case 'taxResidencyOutside': return pDetails.taxResidencyOutside;
     case 'countryOfBirth': return pDetails.countryOfBirth || '';
@@ -327,6 +341,8 @@ function getVariableValue(variableName, appData) {
     case 'receiveCredits': { const d = safeJsonParse(appData.declarations) || {}; return d.receiveCredits; }
     case 'eStatement': { const d = safeJsonParse(appData.declarations) || {}; return d.eStatement; }
     case 'acceptPledgeInstructions': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions; }
+    case 'isAcceptPledgeYes': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions === 'Yes'; }
+    case 'isAcceptPledgeNo': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions === 'No'; }
     case 'receiveAnnualReports': { const d = safeJsonParse(appData.declarations) || {}; return d.receiveAnnualReports; }
     case 'settlement': { const d = safeJsonParse(appData.declarations) || {}; return d.settlement; }
     case 'smsAlert': { const d = safeJsonParse(appData.declarations) || {}; return d.smsAlert; }

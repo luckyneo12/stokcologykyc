@@ -8,6 +8,7 @@ function MobileSelfieContent() {
   const router = useRouter();
   const [status, setStatus] = useState("loading"); // loading, ready, processing, success, error, expired
   const [errorMessage, setErrorMessage] = useState("");
+  const [locationDenied, setLocationDenied] = useState(false);
   const hasProcessedRedirect = useRef(false);
 
   useEffect(() => {
@@ -43,7 +44,13 @@ function MobileSelfieContent() {
         digioMessage === "Sign completed";
 
       if (isSuccess) {
-        fetchDigioRequestResponse(documentId, "SELFIE")
+        let savedCoords = null;
+        try {
+          const rawCoords = sessionStorage.getItem("mobileSelfieCoords");
+          if (rawCoords) savedCoords = JSON.parse(rawCoords);
+        } catch (e) {}
+
+        fetchDigioRequestResponse(documentId, "SELFIE", appId, savedCoords ? { coords: savedCoords, lat: savedCoords.lat, lng: savedCoords.lng } : {})
           .then(async (res) => {
              if (res?.success) {
                 setStatus("success");
@@ -65,10 +72,53 @@ function MobileSelfieContent() {
     }
   }, [searchParams, status]);
 
+  // ─── Helper: Get location with enforcement (same as desktop SelfieStep) ───
+  const getRequiredLocation = async () => {
+    if (!("geolocation" in navigator)) {
+      return { success: false, error: "location_unavailable" };
+    }
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
+      return { success: true, lat: pos.coords.latitude, lng: pos.coords.longitude };
+    } catch (err) {
+      // err.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+      if (err.code === 1) return { success: false, error: "permission_denied" };
+      if (err.code === 3) return { success: false, error: "timeout" };
+      return { success: false, error: "position_unavailable" };
+    }
+  };
+
   const startVerification = async () => {
     setStatus("processing");
+    setLocationDenied(false);
 
-    // Wait for Digio SDK to be available
+    // 1. Get location FIRST — mandatory (same enforcement as desktop)
+    const locResult = await getRequiredLocation();
+    if (!locResult.success) {
+      setLocationDenied(true);
+      setStatus("ready");
+      if (locResult.error === "permission_denied") {
+        setErrorMessage("Location permission is required for selfie verification. Please allow location access in your browser settings and try again.");
+      } else if (locResult.error === "timeout") {
+        setErrorMessage("Could not fetch your location in time. Please check that your GPS is turned on and try again.");
+      } else {
+        setErrorMessage("Location services are not available. Please enable GPS/Location on your device and try again.");
+      }
+      return;
+    }
+
+    const coords = { lat: locResult.lat, lng: locResult.lng };
+    try {
+      sessionStorage.setItem("mobileSelfieCoords", JSON.stringify(coords));
+    } catch (e) {}
+
+    // 2. Wait for Digio SDK to be available
     if (typeof window !== "undefined" && !window.Digio) {
       let waited = 0;
       while (!window.Digio && waited < 3000) {
@@ -83,12 +133,13 @@ function MobileSelfieContent() {
     }
 
     try {
-      const requestData = await createDigioRequest("SELFIE");
+      // 3. Pass coords and explicit appId to createDigioRequest
+      const storedToken = sessionStorage.getItem("kycToken") || "";
+      const storedAppId = sessionStorage.getItem("kycApplicationId") || searchParams.get("appId") || "";
+      const requestData = await createDigioRequest("SELFIE", coords, storedAppId);
       const { requestId, customerIdentifier, accessToken } = requestData;
 
       // Build redirect URL preserving token & appId for the return trip
-      const storedToken = sessionStorage.getItem("kycToken") || "";
-      const storedAppId = sessionStorage.getItem("kycApplicationId") || "";
       const redirectBase = window.location.origin + window.location.pathname;
       const redirectUrl = `${redirectBase}?token=${encodeURIComponent(storedToken)}&appId=${encodeURIComponent(storedAppId)}`;
 
@@ -105,7 +156,7 @@ function MobileSelfieContent() {
           setStatus("processing");
           const docId = response.document_id || response.digio_doc_id || requestId;
           if (docId) {
-            fetchDigioRequestResponse(docId, "SELFIE")
+            fetchDigioRequestResponse(docId, "SELFIE", storedAppId, { coords, lat: coords.lat, lng: coords.lng })
               .then(async (res) => {
                  if (res?.success) {
                     setStatus("success");
@@ -179,7 +230,34 @@ function MobileSelfieContent() {
             </p>
           </div>
 
-          {status === "error" && (
+          {/* Location denied warning banner for mobile */}
+          {locationDenied && (
+            <div style={{
+              background: "rgba(247, 85, 85, 0.08)",
+              border: "1px solid rgba(247, 85, 85, 0.3)",
+              borderRadius: 12,
+              padding: "16px 20px",
+              marginBottom: 24,
+              textAlign: "left"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <strong style={{ color: "#ef4444", fontSize: "0.95rem" }}>Location Permission Required</strong>
+              </div>
+              <p style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                Your location is mandatory for selfie verification as per regulatory requirements. Without it, the selfie cannot be captured.
+              </p>
+              <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                <strong>How to enable:</strong> Go to your phone&apos;s Settings → turn on GPS/Location. In your browser, tap the lock icon in the address bar → Site Settings → Location → Allow. Then tap the button below to retry.
+              </p>
+            </div>
+          )}
+
+          {status === "error" && !locationDenied && (
             <div style={{ padding: 16, background: "rgba(247, 85, 85, 0.1)", border: "1px solid var(--wise-danger)", borderRadius: 12, marginBottom: 24, textAlign: "center" }}>
               <p style={{ color: "var(--wise-danger)", margin: 0, fontWeight: 600 }}>{errorMessage}</p>
             </div>
@@ -200,7 +278,7 @@ function MobileSelfieContent() {
                 cursor: "pointer", boxShadow: "0 4px 14px rgba(159, 232, 112, 0.4)"
               }}
             >
-              Start Camera
+              {locationDenied ? "Retry with Location" : "Start Camera"}
             </button>
           )}
        </div>

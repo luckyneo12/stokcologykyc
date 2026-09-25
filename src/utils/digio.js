@@ -112,7 +112,7 @@ export const createDigioRequest = async (type, data = {}, explicitApplicationId 
   }
 };
 
-export const fetchDigioRequestResponse = async (requestId, type, explicitApplicationId = null) => {
+export const fetchDigioRequestResponse = async (requestId, type, explicitApplicationId = null, extraData = {}) => {
   if (!requestId) return null;
   try {
     const response = await fetch(`${API_BASE_URL}/api/digio/request-response/${requestId}`, {
@@ -121,6 +121,7 @@ export const fetchDigioRequestResponse = async (requestId, type, explicitApplica
       body: JSON.stringify({
         applicationId: explicitApplicationId || getApplicationId() || undefined,
         type,
+        ...(extraData || {}),
       }),
     });
 

@@ -976,13 +976,25 @@ router.post("/create-request", auth, async (req, res) => {
 
     let nextSelfieDetails = parseJsonField(application.selfieDetails, {});
     if (type === "SELFIE" || type === "LIVENESS") {
+      const browserLat = data?.lat || nextSelfieDetails?.lat;
+      const browserLng = data?.lng || nextSelfieDetails?.lng;
       nextSelfieDetails = mergeJson(nextSelfieDetails, {
         ip:
           req.ip ||
           req.connection?.remoteAddress ||
           req.headers["x-forwarded-for"],
-        lat: data?.lat || nextSelfieDetails?.lat,
-        lng: data?.lng || nextSelfieDetails?.lng,
+        lat: browserLat,
+        lng: browserLng,
+        latitude: browserLat,
+        longitude: browserLng,
+        ...(browserLat && browserLng ? {
+          geo: {
+            ...(nextSelfieDetails?.geo || {}),
+            latitude: browserLat,
+            longitude: browserLng,
+            provider: "browser"
+          }
+        } : {}),
       });
     }
 
@@ -1287,6 +1299,8 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
     requestId: requestId,
     applicationId: body.applicationId,
     type: body.type,
+    lat: body.lat || body.data?.lat || body.coords?.lat,
+    lng: body.lng || body.data?.lng || body.coords?.lng,
   };
 
   try {
@@ -2260,18 +2274,21 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         ...(downloadedSelfiePath ? { path: downloadedSelfiePath } : {}),
       };
 
-      if (geoLat || geoLng) {
+      // Use Digio geo data if available, otherwise preserve browser-captured geo from create-request or request-response payload
+      const finalGeoLat = geoLat || payload.lat || nextSelfieDetails.lat || nextSelfieDetails.latitude || nextSelfieDetails.geo?.latitude;
+      const finalGeoLng = geoLng || payload.lng || nextSelfieDetails.lng || nextSelfieDetails.longitude || nextSelfieDetails.geo?.longitude;
+      if (finalGeoLat || finalGeoLng) {
         nextSelfieDetails.geo = {
           ...(nextSelfieDetails.geo || {}),
           address: geoAddress || nextSelfieDetails.geo?.address || null,
-          latitude: geoLat || nextSelfieDetails.geo?.latitude || null,
-          longitude: geoLng || nextSelfieDetails.geo?.longitude || null,
-          provider: "digio"
+          latitude: finalGeoLat || nextSelfieDetails.geo?.latitude || null,
+          longitude: finalGeoLng || nextSelfieDetails.geo?.longitude || null,
+          provider: geoLat ? "digio" : (nextSelfieDetails.geo?.provider || "browser")
         };
-        nextSelfieDetails.lat = geoLat;
-        nextSelfieDetails.lng = geoLng;
-        nextSelfieDetails.latitude = geoLat;
-        nextSelfieDetails.longitude = geoLng;
+        nextSelfieDetails.lat = finalGeoLat;
+        nextSelfieDetails.lng = finalGeoLng;
+        nextSelfieDetails.latitude = finalGeoLat;
+        nextSelfieDetails.longitude = finalGeoLng;
       }
 
       // -- MANUAL FACEMATCH & LIVENESS FALLBACK FOR WEBHOOK --
