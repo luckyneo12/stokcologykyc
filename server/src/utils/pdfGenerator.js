@@ -17,6 +17,13 @@ function getVariableValue(variableName, appData) {
   const docs = safeJsonParse(appData.documents) || [];
   const docTypesString = Array.isArray(docs) ? docs.map(d => d.type || d.name || '').join(' ') : '';
   
+  // Ensure we don't print leftover nominee details if the user opted out
+  let parsedNomDetails = safeJsonParse(appData.nomineeDetails) || {};
+  if (parsedNomDetails.opted !== 'Yes') {
+    parsedNomDetails.nominees = [];
+    appData.nomineeDetails = JSON.stringify(parsedNomDetails);
+  }
+
   switch(variableName) {
     case 'applicationId': return appData.applicationId;
     case 'status': return appData.status;
@@ -254,7 +261,10 @@ function getVariableValue(variableName, appData) {
     case 'email': return appData.email || pDetails.email || appData.user?.email;
     case 'phone': return appData.phone || pDetails.phone || appData.user?.phone;
     case 'mobile': return appData.mobile || pDetails.mobile || appData.user?.mobile || appData.user?.phone;
-    case 'boid': return appData.user?.boid || appData.boid || '';
+    case 'boid': {
+      const raw = appData.user?.boid || appData.boid || '';
+      return raw.length > 16 ? raw.slice(0, 8) + raw.slice(-10, -2) : raw;
+    }
     case 'addressLine1': return aDetails.line1;
     case 'addressLine2': return aDetails.line2;
     case 'landmark': return aDetails.landmark || '';

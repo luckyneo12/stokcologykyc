@@ -254,22 +254,29 @@ export default function CorrectionSelfieStep() {
       return;
     }
 
-    // Fetch live location before starting selfie, falling back to null if denied
+    // Fetch live location before starting selfie — MANDATORY
     let coords = { lat: null, lng: null };
     try {
       if ("geolocation" in navigator) {
         const pos = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 15000,
             maximumAge: 0,
           });
         });
         coords.lat = pos.coords.latitude;
         coords.lng = pos.coords.longitude;
+      } else {
+        addToast("Location services are not available on this device. Please enable location and try again.", "error");
+        setPhase("intro");
+        return;
       }
     } catch (e) {
-      console.warn("Could not fetch location for selfie correction:", e.message);
+      console.warn("Location denied for selfie correction:", e.message);
+      addToast("Location permission is required for selfie verification. Please allow location access and try again.", "error");
+      setPhase("intro");
+      return;
     }
 
     try {

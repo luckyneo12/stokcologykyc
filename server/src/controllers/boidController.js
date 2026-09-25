@@ -89,8 +89,15 @@ const uploadBoids = async (req, res, next) => {
     const boidsToInsert = new Set();
     
     rawNumbers.forEach(num => {
+      let boidNum = num.toUpperCase();
       // If the number already has the prefix, don't prepend it again
-      const boidNum = num.toUpperCase().startsWith(PREFIX) ? num.toUpperCase() : `${PREFIX}${num}`;
+      if (!boidNum.startsWith(PREFIX)) {
+        boidNum = `${PREFIX}${boidNum}`;
+      }
+      // If the resulting boid is in the long format, extract the actual 16-char BOID
+      if (boidNum.length > 16) {
+        boidNum = boidNum.slice(0, 8) + boidNum.slice(-10, -2);
+      }
       boidsToInsert.add(boidNum);
     });
 
@@ -140,7 +147,13 @@ const updateBoid = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "Invalid BOID number" });
     }
 
-    const trimmedNumber = boidNumber.trim().toUpperCase();
+    let trimmedNumber = boidNumber.trim().toUpperCase();
+    if (!trimmedNumber.startsWith("IN300966")) {
+      trimmedNumber = `IN300966${trimmedNumber}`;
+    }
+    if (trimmedNumber.length > 16) {
+      trimmedNumber = trimmedNumber.slice(0, 8) + trimmedNumber.slice(-10, -2);
+    }
 
     // Check if it already exists
     const existing = await prisma.boid.findUnique({

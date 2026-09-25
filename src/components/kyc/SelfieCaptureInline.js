@@ -21,6 +21,8 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
   const [submitError, setSubmitError] = useState("");
   const [showFlash, setShowFlash] = useState(false);
   const [locationData, setLocationData] = useState(null);
+  const [locationDenied, setLocationDenied] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(true);
   
   // Keep faceapi reference so we don't need to load it repeatedly
   const faceapiRef = useRef(null);
@@ -34,11 +36,24 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            if (isMounted.current) setLocationData({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            if (isMounted.current) {
+              setLocationData({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+              setLocationDenied(false);
+              setLocationLoading(false);
+            }
           },
-          (err) => console.warn("[SelfieCapture] Location denied/failed", err),
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          (err) => {
+            console.warn("[SelfieCapture] Location denied/failed", err);
+            if (isMounted.current) {
+              setLocationDenied(true);
+              setLocationLoading(false);
+            }
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
+      } else {
+        setLocationDenied(true);
+        setLocationLoading(false);
       }
 
       // 2. Get Camera immediately
@@ -208,6 +223,34 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
     }
   }, [status, modelLoaded]);
 
+  // ─── Retry location request ─────────────────────────────────────────
+  const retryLocation = useCallback(() => {
+    setLocationLoading(true);
+    setLocationDenied(false);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (isMounted.current) {
+            setLocationData({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            setLocationDenied(false);
+            setLocationLoading(false);
+          }
+        },
+        (err) => {
+          console.warn("[SelfieCapture] Location retry denied/failed", err);
+          if (isMounted.current) {
+            setLocationDenied(true);
+            setLocationLoading(false);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      setLocationDenied(true);
+      setLocationLoading(false);
+    }
+  }, []);
+
   // ─── Loops ──────────────────────────────────────────────────────────
   useEffect(() => {
     isMounted.current = true;
@@ -236,6 +279,10 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
 
   const capturePhoto = useCallback(() => {
     if (!videoRef.current) return;
+    if (!locationData) {
+      // Should not happen because button is disabled, but safety check
+      return;
+    }
     
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 150);
@@ -383,23 +430,50 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
       {/* Validation Message Box */}
       <div style={{
         padding: "16px 20px",
-        background: getMessageBg(),
-        borderTop: `1px solid ${getBorderColor()}30`,
-        borderBottom: `1px solid ${getBorderColor()}30`,
+        background: locationDenied ? "rgba(239, 68, 68, 0.15)" : getMessageBg(),
+        borderTop: `1px solid ${locationDenied ? "rgba(239, 68, 68, 0.3)" : getBorderColor() + "30"}`,
+        borderBottom: `1px solid ${locationDenied ? "rgba(239, 68, 68, 0.3)" : getBorderColor() + "30"}`,
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: "10px",
+        gap: "8px",
         transition: "all 0.3s ease"
       }}>
         <p style={{
           margin: 0, fontSize: "0.95rem", fontWeight: 600,
-          color: status === "capturing" || status === "submitting" ? "#fff" : getBorderColor(),
+          color: locationDenied ? "#ef4444" : (status === "capturing" || status === "submitting" ? "#fff" : getBorderColor()),
         }}>
-          {status === "submitting" ? "Verifying with Aadhaar..." : 
-           status === "capturing" ? "Review your photo" : 
-           validationState.msg}
+          {locationDenied
+            ? "⚠ Location permission required"
+            : status === "submitting" ? "Verifying with Aadhaar..." : 
+              status === "capturing" ? "Review your photo" : 
+              validationState.msg}
         </p>
+        {locationDenied && (
+          <>
+            <p style={{ margin: 0, fontSize: "0.8rem", color: "rgba(255,255,255,0.7)", textAlign: "center", lineHeight: 1.4 }}>
+              Please allow location access in your browser. Tap the lock icon in the address bar → Location → Allow.
+            </p>
+            <button
+              onClick={retryLocation}
+              disabled={locationLoading}
+              style={{
+                marginTop: 4,
+                padding: "8px 20px",
+                borderRadius: 8,
+                border: "1px solid rgba(239, 68, 68, 0.5)",
+                background: "rgba(239, 68, 68, 0.2)",
+                color: "#fff",
+                fontSize: "0.85rem",
+                fontWeight: 700,
+                cursor: locationLoading ? "wait" : "pointer",
+              }}
+            >
+              {locationLoading ? "Checking..." : "Retry Location"}
+            </button>
+          </>
+        )}
       </div>
 
       {/* Error Banner */}
@@ -421,17 +495,21 @@ export default function SelfieCaptureInline({ onSuccess, onCancel, applicationId
             </button>
             <button
               onClick={capturePhoto}
-              disabled={!validationState.ok && modelLoaded}
+              disabled={(!validationState.ok && modelLoaded) || !locationData}
               style={{
                 flex: 2, padding: "16px", borderRadius: "14px", border: "none",
-                background: validationState.ok || !modelLoaded ? "#9fe870" : "rgba(159, 232, 112, 0.2)",
-                color: validationState.ok || !modelLoaded ? "#000" : "rgba(255,255,255,0.3)",
+                background: !locationData
+                  ? "rgba(239, 68, 68, 0.3)"
+                  : (validationState.ok || !modelLoaded ? "#9fe870" : "rgba(159, 232, 112, 0.2)"),
+                color: !locationData
+                  ? "rgba(255,255,255,0.5)"
+                  : (validationState.ok || !modelLoaded ? "#000" : "rgba(255,255,255,0.3)"),
                 fontSize: "1rem", fontWeight: 800,
-                cursor: validationState.ok || !modelLoaded ? "pointer" : "not-allowed",
+                cursor: (!locationData || (!validationState.ok && modelLoaded)) ? "not-allowed" : "pointer",
                 transition: "all 0.2s ease"
               }}
             >
-              Take Photo
+              {!locationData ? "Location Required" : "Take Photo"}
             </button>
           </>
         )}

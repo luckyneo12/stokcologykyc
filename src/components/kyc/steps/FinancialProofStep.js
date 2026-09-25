@@ -150,7 +150,7 @@ export default function FinancialProofStep() {
 
   const options = [
     "Bank account statement of latest 6 months",
-    "Salary Slip (latest 3 months)",
+    "Salary Slip (Any one from the last 3 months.)",
     "Copy of Form 16",
     "Copy of ITR Acknowledgement",
     "Copy of Annual Accounts",

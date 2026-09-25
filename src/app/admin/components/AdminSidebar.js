@@ -11,7 +11,8 @@ import {
   Menu,
   Plug,
   Hash,
-  UserPlus
+  UserPlus,
+  LogOut
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -163,7 +164,35 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
         </nav>
 
         {/* Bottom User Area */}
-        <div style={{ padding: "16px 12px" }}>
+        <div style={{ padding: "16px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          <button 
+            onClick={() => {
+              localStorage.removeItem("adminToken");
+              localStorage.removeItem("adminActiveSection");
+              document.cookie = "adminToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+              router.push("/admin/login");
+            }}
+            className="sidebar-item"
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 12,
+              padding: collapsed ? "12px 0" : "10px 14px",
+              cursor: "pointer",
+              color: "#ef4444", 
+              fontWeight: 600,
+              fontSize: "0.85rem",
+              border: "1px solid transparent",
+              justifyContent: collapsed ? "center" : "flex-start",
+              outline: "none",
+              background: "rgba(239, 68, 68, 0.05)"
+            }}
+            title={collapsed ? "Log Out" : ""}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <LogOut size={18} strokeWidth={2} />
+            </div>
+            {!collapsed && <span style={{ whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>Log Out</span>}
+          </button>
+
           {!collapsed ? (
             <div 
               className="sidebar-item"

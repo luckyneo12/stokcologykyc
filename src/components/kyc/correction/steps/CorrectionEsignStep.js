@@ -183,22 +183,29 @@ export default function CorrectionEsignStep() {
   const startDigioEsign = async () => {
     setPhase("digio");
 
-    // Fetch live location before starting eSign, falling back to null if denied
+    // Fetch live location before starting eSign — MANDATORY
     let coords = { lat: null, lng: null };
     try {
       if ("geolocation" in navigator) {
         const pos = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 15000,
             maximumAge: 0,
           });
         });
         coords.lat = pos.coords.latitude;
         coords.lng = pos.coords.longitude;
+      } else {
+        addToast("Location services are not available on this device. Please enable location and try again.", "error");
+        setPhase("error");
+        return;
       }
     } catch (e) {
-      console.warn("Could not fetch location for eSign correction:", e.message);
+      console.warn("Location denied for eSign correction:", e.message);
+      addToast("Location permission is required for eSign. Please allow location access and try again.", "error");
+      setPhase("error");
+      return;
     }
 
     try {

@@ -7,7 +7,7 @@ import "./ap.css";
 
 const StepLabel = (step) => {
   if (step === 0) return "Not Started";
-  if (step >= 14) return "Submitted";
+  if (step >= 14) return "Completed";
   return `Step ${step}/14`;
 };
 
@@ -506,7 +506,11 @@ export default function APDashboard() {
                               {visibleColumns.includes('email') && <td>{u.email || "—"}</td>}
                               {visibleColumns.includes('applicationId') && <td><span style={{ fontFamily: "monospace", color: "#64748b", background: "#f1f5f9", padding: "2px 6px", borderRadius: 6, fontSize: "0.8rem" }}>{u.applicationId || "—"}</span></td>}
                               {visibleColumns.includes('kycStage') && <td>
-                                <span className="ap-badge ap-badge--review">
+                                <span className={`ap-badge ${
+                                  !app || app.currentStep === 0 ? 'ap-badge--pending' :
+                                  app.currentStep < 14 ? 'ap-badge--pending' :
+                                  'ap-badge--approved'
+                                }`}>
                                   {app ? StepLabel(app.currentStep) : "Not Started"}
                                 </span>
                               </td>}

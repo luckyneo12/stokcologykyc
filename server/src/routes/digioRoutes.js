@@ -2723,7 +2723,7 @@ function getStringSimilarity(s1, s2) {
 
 router.post("/face-match", auth, async (req, res) => {
   try {
-    const { applicationId, selfie } = req.body || {};
+    const { applicationId, selfie, location } = req.body || {};
 
     if (!selfie) {
       return res.status(400).json({ success: false, error: "Selfie image is required" });
@@ -2848,6 +2848,16 @@ router.post("/face-match", auth, async (req, res) => {
             preview: savedSelfiePath,
             ...(genuineFaceMatchScore !== null ? { matchScore: genuineFaceMatchScore } : {}),
             ...(genuineLivenessScore !== null ? { livenessScore: genuineLivenessScore } : {}),
+            ...(location?.lat ? { lat: location.lat, latitude: location.lat } : {}),
+            ...(location?.lng ? { lng: location.lng, longitude: location.lng } : {}),
+            ...(location?.lat && location?.lng ? {
+              geo: {
+                ...(parseJsonField(application.selfieDetails, {}).geo || {}),
+                latitude: location.lat,
+                longitude: location.lng,
+                provider: "browser"
+              }
+            } : {}),
             source: "IPV_LIVE_CAPTURE_BYPASS",
             updatedAt: new Date().toISOString(),
           },

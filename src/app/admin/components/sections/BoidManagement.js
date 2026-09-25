@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { API_BASE_URL } from "@/utils/apiConfig";
-import { Upload, FileText, CheckCircle, Clock, Edit2, Check, X } from "lucide-react";
+import { Upload, FileText, CheckCircle, Clock, Edit2, Check, X, Search } from "lucide-react";
 
 export default function BoidManagement() {
   const [boids, setBoids] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState(null);
@@ -17,11 +18,11 @@ export default function BoidManagement() {
   const [editValue, setEditValue] = useState("");
   const [savingId, setSavingId] = useState(null);
 
-  const fetchBoids = async (p = 1) => {
+  const fetchBoids = async (p = 1, search = searchQuery) => {
     setLoading(true);
     try {
       const token = localStorage.getItem("adminToken");
-      const res = await fetch(`${API_BASE_URL}/api/admin/boids?page=${p}&limit=50&status=${statusFilter}`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/boids?page=${p}&limit=50&status=${statusFilter}&search=${search}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
@@ -41,6 +42,13 @@ export default function BoidManagement() {
   useEffect(() => {
     fetchBoids(1);
   }, [statusFilter]);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchBoids(1, searchQuery);
+    }, 500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   const handleUpload = async () => {
     if (!file) return;
@@ -266,7 +274,24 @@ export default function BoidManagement() {
       <div style={{ background: "var(--bg-primary)", borderRadius: 12, border: "1px solid var(--border-color)", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h3 style={{ fontSize: "1.05rem", fontWeight: 600, margin: 0 }}>BOID Inventory</h3>
-          <div className="filter-dropdown-container" style={{ position: "relative", width: "180px" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <div style={{ position: "relative", width: "220px" }}>
+              <input
+                type="text"
+                placeholder="Search BOID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: "100%", padding: "8px 12px 8px 32px", borderRadius: 8, border: "1px solid var(--border-color)",
+                  background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: "0.85rem",
+                  outline: "none"
+                }}
+              />
+              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", display: "flex" }}>
+                <Search size={14} />
+              </span>
+            </div>
+            <div className="filter-dropdown-container" style={{ position: "relative", width: "180px" }}>
             <button 
               onClick={() => setFilterOpen(!filterOpen)}
               style={{ 
@@ -308,6 +333,7 @@ export default function BoidManagement() {
                 ))}
               </div>
             )}
+          </div>
           </div>
         </div>
 

@@ -299,7 +299,7 @@ export default function DocumentUploadStep() {
         setMatchScore(appSelfieDetails.matchScore || null);
         setSelfiePhase("done");
         
-        const payloadData = { preview: appSelfieDetails.preview, matchScore: appSelfieDetails.matchScore };
+        const payloadData = { ...appSelfieDetails, preview: appSelfieDetails.preview, matchScore: appSelfieDetails.matchScore };
         
         if (isRejection && isDocRejected("ipv")) {
            updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: appSelfieDetails.preview } });
@@ -502,7 +502,7 @@ export default function DocumentUploadStep() {
            setSelfieError(false);
            setSelfiePhase("done");
            addToast("Selfie verification completed", "success");
-           const payloadData = { preview: sd.preview, matchScore: sd.matchScore };
+           const payloadData = { ...sd, preview: sd.preview, matchScore: sd.matchScore };
            
            if (isRejection && isDocRejected("ipv")) {
               updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview: sd.preview } });
@@ -534,13 +534,18 @@ export default function DocumentUploadStep() {
       if ("geolocation" in navigator) {
         try {
           const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
           });
           coords.lat = pos.coords.latitude;
           coords.lng = pos.coords.longitude;
         } catch (err) {
-          console.warn("Geolocation skipped:", err.message);
+          console.warn("Geolocation denied:", err.message);
+          addToast("Location permission is required for selfie verification. Please allow location access in your browser settings and try again.", "error");
+          return;
         }
+      } else {
+        addToast("Location services are not available on this device. Please enable location and try again.", "error");
+        return;
       }
 
       const requestData = await createDigioRequest("SELFIE", coords);
@@ -726,7 +731,7 @@ export default function DocumentUploadStep() {
 
   const finOptions = [
     "Bank account statement of latest 6 months",
-    "Salary Slip (latest 3 months)",
+    "Salary Slip (Any one from the last 3 months.)",
     "Copy of Form 16",
     "Copy of ITR Acknowledgement",
     "Copy of Annual Accounts",
@@ -897,7 +902,7 @@ export default function DocumentUploadStep() {
                   </span>
                 )}
               </h3>
-              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Upload a clear image of your signature on blank white paper.</p>
+              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Please upload your signature exactly as it appears on your PAN card</p>
             </div>
             
             <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px" }}>

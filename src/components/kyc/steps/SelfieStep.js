@@ -41,6 +41,7 @@ export default function SelfieStep() {
   const [matchScore, setMatchScore] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
+  const [locationDenied, setLocationDenied] = useState(false);
   const pollRef = useRef(null);
   const socketRef = useRef(null);
   const hasProcessedRedirect = useRef(false);
@@ -288,11 +289,51 @@ export default function SelfieStep() {
     return () => window.removeEventListener("message", handleMessage);
   }, [addToast, handleDigioSuccess]);
 
+  // ─── Helper: Get location with enforcement ──────────────────────────
+  const getRequiredLocation = async () => {
+    if (!("geolocation" in navigator)) {
+      return { success: false, error: "location_unavailable" };
+    }
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
+      return { success: true, lat: pos.coords.latitude, lng: pos.coords.longitude };
+    } catch (err) {
+      // err.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+      if (err.code === 1) return { success: false, error: "permission_denied" };
+      if (err.code === 3) return { success: false, error: "timeout" };
+      return { success: false, error: "position_unavailable" };
+    }
+  };
+
   // ─── Start selfie verification ───────────────────────────────────────
   const startVerification = async () => {
     setPhase("processing");
+    setLocationDenied(false);
 
-    // Wait for Digio SDK to be available (may not be loaded on first attempt on mobile)
+    // 1. Get location FIRST — mandatory
+    const locResult = await getRequiredLocation();
+    if (!locResult.success) {
+      setLocationDenied(true);
+      setPhase("intro");
+      if (locResult.error === "permission_denied") {
+        addToast("Location permission is required for selfie verification. Please allow location access and try again.", "error");
+      } else if (locResult.error === "timeout") {
+        addToast("Could not fetch your location in time. Please check your GPS/network and try again.", "error");
+      } else {
+        addToast("Location services are not available on this device. Please enable location and try again.", "error");
+      }
+      return;
+    }
+
+    const coords = { lat: locResult.lat, lng: locResult.lng };
+
+    // 2. Wait for Digio SDK to be available (may not be loaded on first attempt on mobile)
     const sdkReady = await waitForDigioSDK(3000);
     if (!sdkReady) {
       addToast("Verification SDK is still loading. Please try again in a moment.", "error");
@@ -301,7 +342,7 @@ export default function SelfieStep() {
     }
 
     try {
-      const requestData = await createDigioRequest("SELFIE");
+      const requestData = await createDigioRequest("SELFIE", coords);
       const { requestId, customerIdentifier, applicationId: appId } = requestData;
       if (appId) setApplicationId(appId);
 
@@ -359,11 +400,38 @@ export default function SelfieStep() {
 
       {phase === "intro" && (
         <div className="card" style={{ padding: 48, textAlign: "center" }}>
-          <p className="text-body" style={{ marginBottom: 32, fontWeight: 600, color: "var(--text-secondary)" }}>
+          <p className="text-body" style={{ marginBottom: locationDenied ? 16 : 32, fontWeight: 600, color: "var(--text-secondary)" }}>
             We need to capture a live selfie video to verify your identity. Please ensure you are in a well-lit area and not wearing glasses or a hat.
           </p>
+
+          {locationDenied && (
+            <div style={{
+              background: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: 12,
+              padding: "16px 20px",
+              marginBottom: 24,
+              textAlign: "left"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <strong style={{ color: "#ef4444", fontSize: "0.95rem" }}>Location Permission Required</strong>
+              </div>
+              <p style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                Your location is mandatory for selfie verification as per regulatory requirements. Without it, the selfie cannot be captured.
+              </p>
+              <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                <strong>How to enable:</strong> Click the lock/info icon in your browser's address bar → find &quot;Location&quot; → set to &quot;Allow&quot; → then click the button below to retry.
+              </p>
+            </div>
+          )}
+
           <button className="btn btn-primary" onClick={startVerification} style={{ width: "100%", height: "56px", fontSize: "1.1rem", marginBottom: 16 }}>
-            Start Selfie Capture
+            {locationDenied ? "Retry with Location" : "Start Selfie Capture"}
           </button>
           
           <div style={{ margin: "24px 0", borderTop: "1px solid var(--border-color)", position: "relative" }}>

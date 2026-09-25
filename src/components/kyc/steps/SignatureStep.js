@@ -265,7 +265,7 @@ export default function SignatureStep() {
       
       <div className="text-center animate-slide-up" style={{ marginBottom: 40 }}>
         <h2 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-0.5px" }}>Your Signature</h2>
-        <p className="text-body" style={{ fontWeight: 600, marginTop: 12, color: "var(--text-secondary)" }}>Upload a clear image of your signature on plain white paper.</p>
+        <p className="text-body" style={{ fontWeight: 600, marginTop: 12, color: "var(--text-secondary)" }}>Please upload your signature exactly as it appears on your PAN card</p>
       </div>
 
       <div className="card animate-slide-up" style={{ padding: "40px", position: "relative", borderRadius: "32px", border: "1.5px solid var(--border-color)", background: "var(--bg-card)" }}>

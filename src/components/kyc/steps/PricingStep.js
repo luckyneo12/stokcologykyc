@@ -278,7 +278,7 @@ export default function PricingStep() {
               <p style={{ marginBottom: 12 }}>To enable F&O/Currency/Commodity, you need to provide one of the below proof. <strong style={{ color: "var(--text-primary)" }}>(ANY one is required)</strong></p>
               <ol style={{ paddingLeft: "clamp(12px, 4vw, 16px)", margin: 0, display: "flex", flexDirection: "column", gap: 4, listStyleType: "decimal", fontWeight: 500 }}>
                 <li>Bank account statement of latest 6 months.</li>
-                <li>Salary Slip (latest 3 months).</li>
+                <li>Salary Slip (Any one from the last 3 months.).</li>
                 <li>Copy of Form 16.</li>
                 <li>Copy of ITR Acknowledgement.</li>
                 <li>Copy of Annual Accounts.</li>

@@ -569,7 +569,7 @@ class BackofficeService {
         ClientCode: clientCode,
         DepositoryType: application.boid.startsWith('IN') ? 'NSDL' : 'CDSL',
         DepositoryID: application.boid.substring(0, 8),
-        DepositoryClientID: application.boid.substring(8),
+        DepositoryClientID: application.boid.length > 16 ? application.boid.slice(-10, -2) : application.boid.substring(8),
         POAFlag: "N",
         POAMarginFlag: "N",
         PrimaryFlag: "Y",
