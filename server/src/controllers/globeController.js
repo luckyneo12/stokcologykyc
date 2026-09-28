@@ -146,9 +146,22 @@ class GlobeController {
       const startDate = req.query.startDate;
       const endDate = req.query.endDate;
 
-      const whereClause = { status: "verified" };
-      if (globeStatus && globeStatus !== "all") {
+      const whereClause = {};
+      if (globeStatus === "in_progress" || globeStatus === "pending") {
+        whereClause.currentStep = { lt: 14 };
+        whereClause.status = { notIn: ["rejected", "on_hold", "verified"] };
+      } else if (globeStatus === "verify") {
+        whereClause.currentStep = { gte: 14 };
+        whereClause.status = { in: ["pending", "under_review"] };
+        whereClause.pushedToBackoffice = false;
+      } else if (globeStatus === "completed" || globeStatus === "approved") {
+        whereClause.status = "verified";
+        whereClause.pushedToBackoffice = false;
+      } else if (globeStatus && globeStatus !== "all") {
         whereClause.globeStatus = globeStatus;
+        whereClause.status = "verified";
+      } else {
+        whereClause.status = "verified";
       }
       if (stage && stage !== "all" && !isNaN(parseInt(stage))) {
         whereClause.currentStep = parseInt(stage);

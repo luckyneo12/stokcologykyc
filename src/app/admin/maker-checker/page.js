@@ -51,7 +51,7 @@ export default function MakerCheckerDashboard() {
   const router = useRouter();
   const [kycs, setKycs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("pending");
+  const [filter, setFilter] = useState("in_progress");
   const [stageFilter, setStageFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -557,7 +557,7 @@ export default function MakerCheckerDashboard() {
                   </button>
                   {filterOpen && (
                     <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
-                      {["all", "pending", "verified", "rejected", "on_hold", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
+                      {["all", "in_progress", "verify", "completed", "rejected", "on_hold", "pushed_to_bo"].map(f => (
                         <div 
                           key={f}
                           onClick={() => { setFilter(f); setFilterOpen(false); }}

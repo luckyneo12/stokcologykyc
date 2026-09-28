@@ -66,11 +66,17 @@ const getApplications = async (req, res, next) => {
         where.globeStatus = "rejected";
       } else if (normalizedStatus === "pushed_to_bo") {
         where.pushedToBackoffice = true;
-      } else if (normalizedStatus === "not_pushed_to_bo") {
+      } else if (normalizedStatus === "completed" || normalizedStatus === "not_pushed_to_bo") {
         where.status = "verified";
         where.pushedToBackoffice = false;
-      } else if (normalizedStatus === "pending") {
+      } else if (normalizedStatus === "verify") {
+        where.currentStep = { gte: 14 };
         where.status = { in: ["pending", "under_review"] };
+        where.pushedToBackoffice = false;
+      } else if (normalizedStatus === "in_progress" || normalizedStatus === "pending") {
+        where.currentStep = { lt: 14 };
+        where.status = { notIn: ["rejected", "on_hold", "verified"] };
+        // Removing where.status check here to ensure all applications with eSign incomplete are shown
       } else {
         where.status = normalizedStatus;
       }

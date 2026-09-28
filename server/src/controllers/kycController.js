@@ -45,6 +45,7 @@ const SAFE_PATCH_KEYS = new Set([
   "submittedAt",
   "segments",
   "bsda",
+  "declarations",
   "correctionDraft",
 ]);
 
@@ -65,6 +66,7 @@ const JSON_FIELD_KEYS = new Set([
   "nsdlRequest",
   "nsdlResponse",
   "segments",
+  "declarations",
   "stepStatuses",
 ]);
 

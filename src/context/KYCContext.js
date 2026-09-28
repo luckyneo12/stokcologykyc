@@ -1072,6 +1072,10 @@ export function KYCProvider({ children }) {
       addIfRelevant("submittedAt");
       addIfRelevant("esignPreview");
 
+      if (relevantKeys.includes("personalDetails") && snapshot.personalDetails) {
+        payload.declarations = snapshot.personalDetails;
+      }
+
       if (relevantKeys.includes("nomineeDetails")) {
         payload.nomineeDetails =
           snapshot.nomineeDetails?.opted === "No"

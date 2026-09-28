@@ -99,8 +99,8 @@ function getVariableValue(variableName, appData) {
     // Standing Instructions
     case 'isContractNoteElectronic': return true;
     case 'isContractNotePhysical': return false;
-    case 'isSettlementMonthly': { const d = safeJsonParse(appData.declarations) || {}; return d.settlement === 'Monthly'; }
-    case 'isSettlementQuarterly': { const d = safeJsonParse(appData.declarations) || {}; return d.settlement !== 'Monthly'; } // Default Quarterly
+    case 'isSettlementMonthly': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.settlement === 'Monthly'; }
+    case 'isSettlementQuarterly': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.settlement !== 'Monthly'; } // Default Quarterly
     case 'isInternetTradingYes': return true;
     case 'isInternetTradingNo': return false;
     case 'isStdDocsElectronic': return true;
@@ -364,19 +364,19 @@ function getVariableValue(variableName, appData) {
     case 'taxIdType3': return pDetails.taxIdType3 || '';
     case 'ddpi': return pDetails.ddpi || appData.ddpi;
     
-    // Declarations
-    case 'dis': { const d = safeJsonParse(appData.declarations) || {}; return d.dis || appData.dis; }
-    case 'isDisOption1': { const d = safeJsonParse(appData.declarations) || {}; const val = d.dis || appData.dis; return val === 'Yes' || val === 'Option 1'; }
-    case 'isDisOption2': { const d = safeJsonParse(appData.declarations) || {}; const val = d.dis || appData.dis; return val === 'No' || val === 'Option 2'; }
-    case 'receiveCredits': { const d = safeJsonParse(appData.declarations) || {}; return d.receiveCredits; }
-    case 'eStatement': { const d = safeJsonParse(appData.declarations) || {}; return d.eStatement; }
-    case 'acceptPledgeInstructions': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions; }
-    case 'isAcceptPledgeYes': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions === 'Yes'; }
-    case 'isAcceptPledgeNo': { const d = safeJsonParse(appData.declarations) || {}; return d.acceptPledgeInstructions === 'No'; }
-    case 'receiveAnnualReports': { const d = safeJsonParse(appData.declarations) || {}; return d.receiveAnnualReports; }
-    case 'settlement': { const d = safeJsonParse(appData.declarations) || {}; return d.settlement; }
-    case 'smsAlert': { const d = safeJsonParse(appData.declarations) || {}; return d.smsAlert; }
-    case 'operatedThroughDDPI': { const d = safeJsonParse(appData.declarations) || {}; return d.operatedThroughDDPI; }
+    // Declarations - fall back to personalDetails since they might be stored there
+    case 'dis': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.dis || appData.dis; }
+    case 'isDisOption1': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; const val = d.dis || appData.dis; return val === 'Yes' || val === 'Option 1'; }
+    case 'isDisOption2': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; const val = d.dis || appData.dis; return val === 'No' || val === 'Option 2'; }
+    case 'receiveCredits': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.receiveCredits; }
+    case 'eStatement': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.eStatement; }
+    case 'acceptPledgeInstructions': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.acceptPledgeInstructions; }
+    case 'isAcceptPledgeYes': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.acceptPledgeInstructions === 'Yes'; }
+    case 'isAcceptPledgeNo': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.acceptPledgeInstructions === 'No'; }
+    case 'receiveAnnualReports': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.receiveAnnualReports; }
+    case 'settlement': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.settlement; }
+    case 'smsAlert': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.smsAlert; }
+    case 'operatedThroughDDPI': { const d = safeJsonParse(appData.declarations || appData.personalDetails) || {}; return d.operatedThroughDDPI; }
     
     // Segments
     case 'bsda': return appData.bsda;
@@ -793,6 +793,7 @@ async function generateKycPdf(applicationData, options = {}) {
             : !!val; // if no match value, act as boolean flag
             
           if (isMatch) {
+            console.log(`[PDF TICK] Ticking checkbox for field: ${field.variable}`);
             page.drawText('✔', { // '✔' in pdf-lib's ZapfDingbats mapping is a heavy checkmark
               x: field.x + 2,
               y: yPos - (field.height || 20) + 2,

@@ -57,6 +57,7 @@ model KycApplication {
   nsdlResponse                         String?   @db.LongText
   segments                             String?   @db.LongText
   bsda                                 String?
+  declarations                         String?   @db.LongText
   generatedPdfBase64                   String?   @db.LongText
   submittedAt                          DateTime?
   reviewedAt                           DateTime?

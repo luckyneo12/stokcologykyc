@@ -33,7 +33,7 @@ export default function EsignPreviewStep() {
       setLoading(true);
       setError(null);
 
-      let pdfBase64 = generatedPdfBase64 || preGeneratedPdf;
+      let pdfBase64 = null; // FORCE FRESH PDF GENERATION FOR TESTING (generatedPdfBase64 || preGeneratedPdf);
 
       if (!pdfBase64) {
         console.log("[EsignPreview] No pre-generated PDF found, generating now...");
