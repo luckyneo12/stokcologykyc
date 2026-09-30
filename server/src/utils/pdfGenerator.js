@@ -84,10 +84,14 @@ function getVariableValue(variableName, appData) {
       return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
     }
     case 'alwaysTrueOvd': return true;
-    case 'isContactRelationSelf': return true;
-    case 'isContactRelationSpouse': return false;
-    case 'isContactRelationChildren': return false;
-    case 'isContactRelationParents': return false;
+    case 'isMobileRelationSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Self'; }
+    case 'isMobileRelationSpouse': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Spouse'; }
+    case 'isMobileRelationChildren': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Dependent children'; }
+    case 'isMobileRelationParents': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Dependent parents'; }
+    case 'isEmailRelationSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Self'; }
+    case 'isEmailRelationSpouse': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Spouse'; }
+    case 'isEmailRelationChildren': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Dependent children'; }
+    case 'isEmailRelationParents': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Dependent parents'; }
     case 'isSmsFacilityYes': return true;
     case 'isSmsFacilityNo': return false;
     
@@ -529,6 +533,8 @@ function getVariableValue(variableName, appData) {
     case 'deviceType': return appData.deviceType;
     case 'riskCategory': return appData.riskCategory;
     case 'riskScore': return appData.riskScore;
+    case 'static.mobileBelongsToSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency || 'Self'; }
+    case 'static.emailBelongsToSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency || 'Self'; }
     
     default: return '';
   }

@@ -8,20 +8,12 @@ class SelfieService {
    * Create a Liveness verification request
    */
   async createRequest(customerIdentifier, customerName = "") {
-    const endpoint = "client/kyc/v2/request";
-    
-    return await digioClient.post(endpoint, {
+    return await digioClient.createKycRequest({
       customer_identifier: customerIdentifier,
       customer_name: customerName || "KYC User",
+      template_name: "ONLY_SELFIE_FLOW",
       notify_customer: false,
       generate_access_token: true,
-      actions: [
-        {
-          type: "SELFIE",
-          title: "Selfie Verification",
-          description: "Capture a live selfie to verify your identity"
-        }
-      ]
     });
   }
 
