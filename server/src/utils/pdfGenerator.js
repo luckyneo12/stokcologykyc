@@ -19,6 +19,17 @@ function getVariableValue(variableName, appData) {
     return result || {};
   };
 
+  const formatPdfDate = (dateStr) => {
+    if (!dateStr) return '';
+    if (dateStr.includes('-')) {
+      const parts = dateStr.split('T')[0].split('-');
+      if (parts.length === 3 && parts[0].length === 4) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    return dateStr;
+  };
+
   const pDetails = safeJsonParse(appData.personalDetails) || {};
   const iDetails = safeJsonParse(appData.identityDetails) || {};
   const aDetails = safeJsonParse(appData.address) || {};
@@ -242,6 +253,34 @@ function getVariableValue(variableName, appData) {
       const dateStr = new Date().toLocaleString('en-GB');
       return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
     }
+    case 'clientNameNominee1': {
+      const n = safeJsonParse(appData.nomineeDetails) || {};
+      if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 0)) return '';
+      return pDetails.fullName || '';
+    }
+    case 'clientNameNominee2': {
+      const n = safeJsonParse(appData.nomineeDetails) || {};
+      if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 1 && n.nominees[1].name)) return '';
+      return pDetails.fullName || '';
+    }
+    case 'clientNameNominee3': {
+      const n = safeJsonParse(appData.nomineeDetails) || {};
+      if (!(n.opted === 'Yes' && n.nominees && n.nominees.length > 2 && n.nominees[2].name)) return '';
+      return pDetails.fullName || '';
+    }
+    case 'esignDdpi': {
+      if (String(pDetails.ddpi || '').toLowerCase() !== 'yes') return '';
+      const name = pDetails.fullName || 'User';
+      const dateStr = new Date().toLocaleString('en-GB');
+      return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+    }
+    case 'esignFnO': {
+      const s = safeJsonParse(appData.segments) || {};
+      if (!s.derivatives) return '';
+      const name = pDetails.fullName || 'User';
+      const dateStr = new Date().toLocaleString('en-GB');
+      return `Digitally signed by ${name}\nDate: ${dateStr}\nReason: KYC Application`;
+    }
     case 'isOccGovt': return String(pDetails.occupation || '').toLowerCase().includes('govt');
     case 'isOccPublic': return String(pDetails.occupation || '').toLowerCase().includes('public');
     case 'isOccAgri': return String(pDetails.occupation || '').toLowerCase().includes('agri');
@@ -389,7 +428,7 @@ function getVariableValue(variableName, appData) {
     case 'nomineeDetails.nominees[0].name': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.name || ''; }
     case 'nomineeDetails.nominees[0].relation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.relation || ''; }
     case 'nomineeAllocation.percentages[0]': { if (!isNomineeOptIn) return ''; const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[0] || a.nominees?.[0]?.percentage || ''; }
-    case 'nomineeDetails.nominees[0].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.dob || ''; }
+    case 'nomineeDetails.nominees[0].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return formatPdfDate(n.nominees?.[0]?.dob || ''); }
     case 'nomineeDetails.nominees[0].mobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.mobile || ''; }
     case 'nomineeDetails.nominees[0].email': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.email || ''; }
     case 'nomineeDetails.nominees[0].address': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.address || ''; }
@@ -401,7 +440,7 @@ function getVariableValue(variableName, appData) {
     case 'nomineeDetails.nominees[0].state': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.state || ''; }
     case 'nomineeDetails.nominees[0].pincode': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.pincode || ''; }
     case 'nomineeDetails.nominees[0].country': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.country || ''; }
-    case 'nomineeDetails.nominees[0].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianDob || ''; }
+    case 'nomineeDetails.nominees[0].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return formatPdfDate(n.nominees?.[0]?.guardianDob || ''); }
     case 'nomineeDetails.nominees[0].guardianMobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianMobile || ''; }
     case 'nomineeDetails.nominees[0].guardianEmail': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianEmail || ''; }
     case 'nomineeDetails.nominees[0].guardianAddress': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[0]?.guardianAddress || ''; }
@@ -416,7 +455,7 @@ function getVariableValue(variableName, appData) {
     case 'nomineeDetails.nominees[1].name': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.name || ''; }
     case 'nomineeDetails.nominees[1].relation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.relation || ''; }
     case 'nomineeAllocation.percentages[1]': { if (!isNomineeOptIn) return ''; const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[1] || a.nominees?.[1]?.percentage || ''; }
-    case 'nomineeDetails.nominees[1].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.dob || ''; }
+    case 'nomineeDetails.nominees[1].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return formatPdfDate(n.nominees?.[1]?.dob || ''); }
     case 'nomineeDetails.nominees[1].mobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.mobile || ''; }
     case 'nomineeDetails.nominees[1].email': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.email || ''; }
     case 'nomineeDetails.nominees[1].address': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.address || ''; }
@@ -428,7 +467,7 @@ function getVariableValue(variableName, appData) {
     case 'nomineeDetails.nominees[1].proofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.proofNumber || ''; }
     case 'nomineeDetails.nominees[1].guardianName': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianName || ''; }
     case 'nomineeDetails.nominees[1].guardianRelation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianRelation || ''; }
-    case 'nomineeDetails.nominees[1].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianDob || ''; }
+    case 'nomineeDetails.nominees[1].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return formatPdfDate(n.nominees?.[1]?.guardianDob || ''); }
     case 'nomineeDetails.nominees[1].guardianMobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianMobile || ''; }
     case 'nomineeDetails.nominees[1].guardianEmail': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianEmail || ''; }
     case 'nomineeDetails.nominees[1].guardianAddress': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[1]?.guardianAddress || ''; }
@@ -443,7 +482,7 @@ function getVariableValue(variableName, appData) {
     case 'nomineeDetails.nominees[2].name': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.name || ''; }
     case 'nomineeDetails.nominees[2].relation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.relation || ''; }
     case 'nomineeAllocation.percentages[2]': { if (!isNomineeOptIn) return ''; const a = safeJsonParse(appData.nomineeAllocation) || {}; return a.percentages?.[2] || a.nominees?.[2]?.percentage || ''; }
-    case 'nomineeDetails.nominees[2].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.dob || ''; }
+    case 'nomineeDetails.nominees[2].dob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return formatPdfDate(n.nominees?.[2]?.dob || ''); }
     case 'nomineeDetails.nominees[2].mobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.mobile || ''; }
     case 'nomineeDetails.nominees[2].email': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.email || ''; }
     case 'nomineeDetails.nominees[2].address': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.address || ''; }
@@ -455,7 +494,7 @@ function getVariableValue(variableName, appData) {
     case 'nomineeDetails.nominees[2].proofNumber': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.proofNumber || ''; }
     case 'nomineeDetails.nominees[2].guardianName': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianName || ''; }
     case 'nomineeDetails.nominees[2].guardianRelation': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianRelation || ''; }
-    case 'nomineeDetails.nominees[2].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianDob || ''; }
+    case 'nomineeDetails.nominees[2].guardianDob': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return formatPdfDate(n.nominees?.[2]?.guardianDob || ''); }
     case 'nomineeDetails.nominees[2].guardianMobile': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianMobile || ''; }
     case 'nomineeDetails.nominees[2].guardianEmail': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianEmail || ''; }
     case 'nomineeDetails.nominees[2].guardianAddress': { if (!isNomineeOptIn) return ''; const n = safeJsonParse(appData.nomineeDetails) || {}; return n.nominees?.[2]?.guardianAddress || ''; }
@@ -807,17 +846,18 @@ async function generateKycPdf(applicationData, options = {}) {
           let val = getVariableValue(field.variable, applicationData);
           
           if (field.variable && field.variable.startsWith('esign')) {
-             // Always extract coordinates if it's an esign field
-             const boxWidth = field.width || 150;
-             const boxHeight = field.height || 30;
-             const pageNum = String((field.page || 1));
-             if (!esignCoordinatesMap[pageNum]) esignCoordinatesMap[pageNum] = [];
-             esignCoordinatesMap[pageNum].push({
-               x: field.x,
-               y: yPos - boxHeight, 
-               width: boxWidth,
-               height: boxHeight
-             });
+             if (val !== '') {
+               const boxWidth = field.width || 150;
+               const boxHeight = field.height || 30;
+               const pageNum = String((field.page || 1));
+               if (!esignCoordinatesMap[pageNum]) esignCoordinatesMap[pageNum] = [];
+               esignCoordinatesMap[pageNum].push({
+                 x: field.x,
+                 y: yPos - boxHeight, 
+                 width: boxWidth,
+                 height: boxHeight
+               });
+             }
              // Force val to be empty so it NEVER manually draws the text!
              val = "";
           }
@@ -1129,9 +1169,107 @@ async function generateKycPdf(applicationData, options = {}) {
         if (guardPath) docsToAppend.push({ path: guardPath, title: `Nominee ${idx + 1} Guardian Proof` });
       });
     }
+    
+    const parsedSigApp = safeJsonParse(applicationData.signature) || {};
+    const sigDocPath = parsedSigApp?.path || parsedSigApp?.filePreview || parsedSigApp?.preview || (typeof parsedSigApp === 'string' && parsedSigApp.startsWith('http') ? parsedSigApp : null);
+    if (sigDocPath) docsToAppend.push({ path: sigDocPath, title: 'Customer Signature' });
+
+    const selfieDocPath = parsedSelfieDetails?.path || parsedSelfieDetails?.filePreview || parsedSelfieDetails?.preview || applicationData?.selfie?.preview;
 
     if (!options.skipDocumentAppend) {
       const seenPaths = new Set();
+      
+      // 1. Page 56: E-Stamp (or blank if no DDPI)
+      let eStampAppended = false;
+      const eStampStartIndex = pdfDoc.getPageCount();
+      
+      const hasDdpi = String(parsedPersonalDetails.ddpi || '').toLowerCase() === 'yes';
+      if (hasDdpi && applicationData.userId) {
+         try {
+           const eStamp = await prisma.eStamp.findUnique({ where: { assignedTo: applicationData.userId } });
+           if (eStamp && eStamp.fileUrl) {
+             await appendDocument(eStamp.fileUrl, 'E-Stamp');
+             seenPaths.add(eStamp.fileUrl);
+             eStampAppended = true;
+           }
+         } catch(e) {
+           console.error("[PDF Gen] Failed to append eStamp:", e.message);
+         }
+      }
+      if (!eStampAppended) {
+         pdfDoc.addPage([595.28, 841.89]); // Blank page 56
+      }
+      
+      const eStampEndIndex = pdfDoc.getPageCount() - 1;
+      if (eStampEndIndex >= eStampStartIndex) {
+         const stampPage = pdfDoc.getPage(eStampEndIndex);
+         
+         const parsedSignature = safeJsonParse(applicationData.signature) || {};
+         const sigRel = parsedSignature?.filePreview || parsedSignature?.path || parsedSignature?.preview || (typeof parsedSignature === 'string' ? parsedSignature : null);
+         if (sigRel) {
+            let sigBytes = null;
+            if (sigRel.startsWith('http')) {
+              try {
+                const axios = require('axios');
+                const sigResp = await axios.get(sigRel, { responseType: 'arraybuffer' });
+                sigBytes = sigResp.data;
+              } catch(e) {}
+            } else {
+              let cleanSigPath = sigRel.startsWith('/') ? sigRel.substring(1) : sigRel;
+              if (cleanSigPath.startsWith('api/kyc/document/')) cleanSigPath = cleanSigPath.replace('api/kyc/document/', 'uploads/');
+              const sigPath = path.join(__dirname, '../../', cleanSigPath);
+              if (fs.existsSync(sigPath)) sigBytes = fs.readFileSync(sigPath);
+            }
+            if (sigBytes) {
+               try {
+                 const sigImg = await (sigBytes[0] === 0x89 ? pdfDoc.embedPng(sigBytes) : pdfDoc.embedJpg(sigBytes));
+                 stampPage.drawImage(sigImg, { x: 50, y: 20, width: 100, height: 40 });
+               } catch(e) {}
+            }
+         }
+      }
+      
+      // 2. Page 57: Selfie
+      const selfieStartIndex = pdfDoc.getPageCount();
+      if (selfieDocPath) {
+         await appendDocument(selfieDocPath, 'Customer Selfie');
+         seenPaths.add(selfieDocPath);
+      }
+      
+      const selfieEndIndex = pdfDoc.getPageCount() - 1;
+      if (selfieEndIndex >= selfieStartIndex) {
+         const selfiePage = pdfDoc.getPage(selfieEndIndex);
+         const selfieGeo = safeJsonParse(applicationData.selfieDetails) || {};
+         const geoDetails = safeJsonParse(applicationData.geoDetails) || {};
+         
+         let lat = selfieGeo.geo?.latitude || selfieGeo.latitude || selfieGeo.lat || geoDetails.latitude || geoDetails.lat || '';
+         let lng = selfieGeo.geo?.longitude || selfieGeo.longitude || selfieGeo.lng || geoDetails.longitude || geoDetails.lng || '';
+         let addr = selfieGeo.geo?.address || geoDetails.address || '';
+         
+         if (lat && lng) {
+             try {
+                 const axios = require('axios');
+                 const res = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+                     headers: { 'User-Agent': 'KYCPortal/1.0' },
+                     timeout: 3000
+                 });
+                 if (res.data && res.data.display_name) {
+                     let placeName = res.data.name || res.data.address?.amenity || res.data.address?.building || '';
+                     let display = res.data.display_name;
+                     addr = (placeName && !display.includes(placeName)) ? `${placeName}, ${display}` : display;
+                 }
+             } catch(e) {
+                 console.error('[PDF Gen] Geocoding failed:', e.message);
+             }
+         }
+         
+         if (lat || lng || addr) {
+             const geoText = `Location: ${addr}\nLatitude: ${lat}, Longitude: ${lng}`;
+             selfiePage.drawText(geoText, { x: 50, y: 80, size: 10, font: boldFont, color: rgb(0,0,0), maxWidth: 450 });
+         }
+      }
+      
+      // 3. Rest of the proofs
       for (const doc of docsToAppend) {
         if (seenPaths.has(doc.path)) continue;
         seenPaths.add(doc.path);

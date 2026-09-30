@@ -8,6 +8,23 @@ import DateInput from "../DateInput";
 import ImageCropper from "@/components/ui/ImageCropper";
 import { Eye } from "lucide-react";
 import DocumentPreviewModal from "../DocumentPreviewModal";
+import Tesseract from "tesseract.js";
+
+const extractDocumentId = async (imageSrc, type) => {
+  try {
+    const { data: { text } } = await Tesseract.recognize(imageSrc, 'eng');
+    if (type === "PAN CARD") {
+      const panMatch = text.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
+      return panMatch ? panMatch[0] : null;
+    } else if (type === "AADHAAR CARD") {
+      const matches = text.match(/\d{4}/g);
+      return matches ? matches[matches.length - 1] : null;
+    }
+  } catch (err) {
+    console.error("OCR Error:", err);
+  }
+  return null;
+};
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", 
@@ -531,15 +548,19 @@ export default function NomineeStep() {
       }
     }
 
+    addToast("Extracting document details...", "info");
+    const docType = isGuardian ? (nominees[idx].guardianProofType || "PAN CARD") : (nominees[idx].proofType || "PAN CARD");
+    const extractedId = await extractDocumentId(finalImage, docType);
+
     try {
       addToast("Uploading document... Please wait", "info");
       const fileToUpload = base64ToFile(finalImage, fileName || "document.png");
       const uploadResult = await uploadDocument(fileToUpload);
       const updated = [...nominees];
       if (isGuardian) {
-        updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path };
+        updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path, extractedGuardianProofNumber: extractedId };
       } else {
-        updated[idx] = { ...updated[idx], proofPath: uploadResult.path };
+        updated[idx] = { ...updated[idx], proofPath: uploadResult.path, extractedProofNumber: extractedId };
       }
       setNominees(updated);
       setCropModalData(null);
@@ -590,6 +611,11 @@ export default function NomineeStep() {
             newErrors[`${idx}-proofNumber`] = "Please enter the last 4 digits";
             isValid = false;
           }
+        }
+        
+        if (nom.extractedProofNumber && nom.extractedProofNumber !== val) {
+          newErrors[`${idx}-proofNumber`] = `Mismatch: Image shows ${nom.extractedProofNumber}`;
+          isValid = false;
         }
       }
       if (!nom.proofPath) { newErrors[`${idx}-proofPath`] = true; isValid = false; }
@@ -655,6 +681,11 @@ export default function NomineeStep() {
               newErrors[`${idx}-guardianProofNumber`] = "Please enter the last 4 digits";
               isValid = false;
             }
+          }
+          
+          if (nom.extractedGuardianProofNumber && nom.extractedGuardianProofNumber !== val) {
+            newErrors[`${idx}-guardianProofNumber`] = `Mismatch: Image shows ${nom.extractedGuardianProofNumber}`;
+            isValid = false;
           }
         }
         if (!nom.guardianProofPath) { newErrors[`${idx}-guardianProofPath`] = true; isValid = false; }

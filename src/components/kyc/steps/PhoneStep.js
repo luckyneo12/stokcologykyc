@@ -12,8 +12,9 @@ const CheckIcon = ({ size = 12 }) => (
 );
 
 export default function PhoneStep() {
-  const { phone, updateState, nextStep, prevStep, goToStep, refreshProgress, addToast, setApplicationId, resetKYC } = useKYC();
+  const { phone, personalDetails = {}, updateState, nextStep, prevStep, goToStep, refreshProgress, addToast, setApplicationId, resetKYC } = useKYC();
   const [phoneNumber, setPhoneNumber] = useState(phone || "");
+  const [phoneDependency, setPhoneDependency] = useState(personalDetails.phoneDependency || "");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [timer, setTimer] = useState(30);
@@ -52,6 +53,10 @@ export default function PhoneStep() {
   const handleSendOtp = async () => {
     if (phoneNumber.length !== 10) {
       addToast("Enter 10 digits", "error");
+      return;
+    }
+    if (!phoneDependency) {
+      addToast("Please select dependency", "error");
       return;
     }
     if (!acceptedTerms) {
@@ -180,7 +185,8 @@ export default function PhoneStep() {
       const updates = { 
         applicationId: startResult.applicationId, 
         phone: phoneNumber, 
-        otpVerified: true 
+        otpVerified: true,
+        personalDetails: { ...personalDetails, phoneDependency: phoneDependency }
       };
 
       if (serverStep > 1) {
@@ -244,6 +250,30 @@ export default function PhoneStep() {
           {phoneError && (
             <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>{phoneError}</p>
           )}
+        </div>
+
+        {/* Phone Dependency Section */}
+        <div style={{ marginBottom: isOtpMode ? 20 : 28, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}>
+          <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.9rem" }}>Select Dependency <span style={{ color: "var(--wise-danger)" }}>*</span></label>
+          <select 
+            className="input-field" 
+            value={phoneDependency} 
+            onChange={e => setPhoneDependency(e.target.value)}
+            disabled={isOtpMode}
+            style={{ 
+              fontWeight: 700, 
+              color: phoneDependency ? "var(--text-primary)" : "var(--text-muted)",
+              cursor: isOtpMode ? "not-allowed" : "pointer" 
+            }}
+          >
+            <option value="" disabled>--Select--</option>
+            <option value="Self">Self</option>
+            <option value="Spouse">Spouse</option>
+            <option value="Child Dependent">Child Dependent</option>
+            <option value="Parents Dependent">Parents Dependent</option>
+            <option value="Child Dependent 2">Child Dependent 2</option>
+            <option value="Parent Dependent 2">Parent Dependent 2</option>
+          </select>
         </div>
 
         {/* Terms and Conditions */}

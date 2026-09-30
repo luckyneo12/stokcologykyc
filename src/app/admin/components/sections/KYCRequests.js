@@ -36,6 +36,12 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
   const [kycs, setKycs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState(defaultFilter || "all");
+
+  useEffect(() => {
+    setFilter(defaultFilter || "all");
+    setPage(1); // Reset to page 1 when filter changes from outside
+  }, [defaultFilter]);
+
   const [localSearch, setLocalSearch] = useState("");
   const search = searchQuery !== undefined ? searchQuery : localSearch;
   const setSearch = onSearchChange !== undefined ? onSearchChange : setLocalSearch;
@@ -371,7 +377,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
           </button>
           {filterOpen && (
             <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
-              {["all", "in_progress", "verify", "completed", "rejected", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo"].map(f => (
+              {["all", "in_progress", "verify", "completed", "rejected", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
                 <div 
                   key={f}
                   onClick={() => { setFilter(f); setFilterOpen(false); }}

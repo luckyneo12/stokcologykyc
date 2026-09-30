@@ -259,14 +259,14 @@ export default function DashboardOverview({ onNavigate }) {
 
       {/* Top Metric Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 24, marginBottom: 32 }}>
-        <StatCard label="Total Submissions" value={total} trend={getTrendIcon(trends.total)} trendValue={getTrendStr(trends.total)} icon={Users} color="#8b5cf6" onClick={() => onNavigate("kyc", { filter: "all" })} />
-        <StatCard label="Verified" value={verified} trend={getTrendIcon(trends.verified)} trendValue={getTrendStr(trends.verified)} icon={CheckCircle} color="#10b981" onClick={() => onNavigate("kyc", { filter: "verified" })} />
-        <StatCard label="Pending Review" value={review} icon={Activity} color="#f59e0b" onClick={() => onNavigate("kyc", { filter: "pending" })} />
-        <StatCard label="Rejected" value={rejected} trend={getTrendIcon(trends.rejected)} trendValue={getTrendStr(trends.rejected)} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "rejected" })} />
-        <StatCard label="Globe Approved" value={globeApproved} icon={CheckCircle} color="#10b981" onClick={() => onNavigate("kyc", { filter: "globe_approved" })} />
-        <StatCard label="Globe Rejected" value={globeRejected} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "globe_rejected" })} />
-        <StatCard label="Pushed To BO" value={pushedToBo} icon={CheckCircle} color="#8b5cf6" onClick={() => onNavigate("kyc", { filter: "pushed_to_bo" })} />
-        <StatCard label="Not Pushed" value={notPushedToBo} icon={ShieldAlert} color="#ef4444" onClick={() => onNavigate("kyc", { filter: "not_pushed_to_bo" })} />
+        <StatCard label="Total Submissions" value={total} trend={getTrendIcon(trends.total)} trendValue={getTrendStr(trends.total)} icon={Users} color="#8b5cf6" onClick={() => window.location.href = "/admin/maker-checker?filter=all"} />
+        <StatCard label="Verified" value={verified} trend={getTrendIcon(trends.verified)} trendValue={getTrendStr(trends.verified)} icon={CheckCircle} color="#10b981" onClick={() => window.location.href = "/admin/maker-checker?filter=completed"} />
+        <StatCard label="Pending Review" value={review} icon={Activity} color="#f59e0b" onClick={() => window.location.href = "/admin/maker-checker?filter=verify"} />
+        <StatCard label="Rejected" value={rejected} trend={getTrendIcon(trends.rejected)} trendValue={getTrendStr(trends.rejected)} icon={ShieldAlert} color="#ef4444" onClick={() => window.location.href = "/admin/maker-checker?filter=rejected"} />
+        <StatCard label="Globe Approved" value={globeApproved} icon={CheckCircle} color="#10b981" onClick={() => window.location.href = "/admin/maker-checker?filter=globe_approved"} />
+        <StatCard label="Globe Rejected" value={globeRejected} icon={ShieldAlert} color="#ef4444" onClick={() => window.location.href = "/admin/maker-checker?filter=globe_rejected"} />
+        <StatCard label="Pushed To BO" value={pushedToBo} icon={CheckCircle} color="#8b5cf6" onClick={() => window.location.href = "/admin/maker-checker?filter=pushed_to_bo"} />
+        <StatCard label="Not Pushed" value={notPushedToBo} icon={ShieldAlert} color="#ef4444" onClick={() => window.location.href = "/admin/maker-checker?filter=not_pushed_to_bo"} />
         <StatCard label="Agent Processing" value={avgProcessing} icon={Clock} color="#3b82f6" />
         <StatCard label="User Completion" value={avgUserCompletion} icon={Clock} color="#8b5cf6" />
       </div>
@@ -275,7 +275,7 @@ export default function DashboardOverview({ onNavigate }) {
       <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", marginBottom: 32 }}>
         <div style={{ padding: "24px 32px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
           <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>Recent Applications</div>
-          <button onClick={() => onNavigate("kyc")} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", fontWeight: 800, color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", padding: "8px 16px", borderRadius: 999, cursor: "pointer", transition: "0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
+          <button onClick={() => window.location.href = "/admin/maker-checker"} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", fontWeight: 800, color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", padding: "8px 16px", borderRadius: 999, cursor: "pointer", transition: "0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
             View All <ChevronRight size={16} />
           </button>
         </div>
@@ -310,7 +310,7 @@ export default function DashboardOverview({ onNavigate }) {
                     </td>
 
                     <td style={{ padding: "18px 32px" }}>
-                      <button onClick={() => onNavigate("kyc")} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-card)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
+                      <button onClick={() => window.location.href = "/admin/maker-checker"} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-card)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
                     </td>
                   </tr>
                   );

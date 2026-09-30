@@ -227,7 +227,7 @@ function isKycStepApproved(kycStepIndex, stepStatuses, isResubmission) {
 
 const STEP_RELEVANT_KEYS = {
   welcome: ["status"],
-  phone: ["status"],
+  phone: ["status", "personalDetails"],
   email: ["status", "personalDetails"],
   pricing: ["segments", "bsda"],
   pan: [
@@ -1443,7 +1443,7 @@ export function KYCProvider({ children }) {
       !!currentPrev.isResubmitted ||
       hasAnyRejected;
 
-    if (hasStepStatuses && isResubmission) {
+    if (hasStepStatuses && isResubmission && currentPrev.currentStep !== 12) {
       while (
         prevStepIndex > 0 &&
         isKycStepApproved(prevStepIndex, currentPrev.stepStatuses, isResubmission)
@@ -1464,7 +1464,7 @@ export function KYCProvider({ children }) {
       const freshIsResubmission =
         !!prev.rejectionReason || !!prev.submittedAt || !!prev.isResubmitted || freshHasRejected;
 
-      if (freshHasStatuses && freshIsResubmission) {
+      if (freshHasStatuses && freshIsResubmission && prev.currentStep !== 12) {
         while (
           freshPrevStepIndex > 0 &&
           isKycStepApproved(freshPrevStepIndex, prev.stepStatuses, freshIsResubmission)

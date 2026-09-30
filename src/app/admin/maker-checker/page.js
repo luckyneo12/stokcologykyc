@@ -77,6 +77,16 @@ export default function MakerCheckerDashboard() {
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
+  const handleFilterChange = (f) => {
+    setFilter(f);
+    setFilterOpen(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location);
+      url.searchParams.set("filter", f);
+      window.history.replaceState({}, '', url);
+    }
+  };
+
   const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code"];
   const PERMANENT_WIDTHS = {
     "S.No.": 60,
@@ -283,6 +293,18 @@ export default function MakerCheckerDashboard() {
     verifyToken();
   }, []);
 
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const filterParam = urlParams.get("filter");
+      if (filterParam) {
+        setFilter(filterParam);
+      } else {
+        setFilter("in_progress");
+      }
+    }
+  }, []);
 
   const fetchApplications = async (isSilent = false) => {
     if (typeof window === "undefined") return;
@@ -560,7 +582,7 @@ export default function MakerCheckerDashboard() {
                       {["all", "in_progress", "verify", "completed", "rejected", "on_hold", "pushed_to_bo"].map(f => (
                         <div 
                           key={f}
-                          onClick={() => { setFilter(f); setFilterOpen(false); }}
+                          onClick={() => handleFilterChange(f)}
                           style={{ 
                             padding: "10px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: filter === f ? 700 : 500,
                             color: filter === f ? "var(--wise-green)" : "var(--text-primary)",

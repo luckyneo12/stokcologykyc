@@ -824,7 +824,7 @@ export default function ApplicationDetail() {
         {/* Navigation Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <button 
-            onClick={() => router.push("/admin")}
+            onClick={() => router.back()}
             style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontWeight: 700, color: "var(--text-muted)" }}
           >
             ← Back to Requests

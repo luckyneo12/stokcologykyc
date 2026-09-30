@@ -75,6 +75,16 @@ export default function MakerCheckerDashboard() {
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
+  const handleFilterChange = (f) => {
+    setFilter(f);
+    setFilterOpen(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location);
+      url.searchParams.set("filter", f);
+      window.history.replaceState({}, '', url);
+    }
+  };
+
   const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code"];
   const PERMANENT_WIDTHS = {
     "S.No.": 60,

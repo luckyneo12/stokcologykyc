@@ -14,6 +14,7 @@ const CheckIcon = ({ size = 12 }) => (
 export default function EmailStep() {
   const { personalDetails, updateState, updateNested, nextStep, prevStep, addToast } = useKYC();
   const [email, setEmail] = useState(personalDetails.email || "");
+  const [emailDependency, setEmailDependency] = useState(personalDetails.emailDependency || "");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [timer, setTimer] = useState(30);
@@ -43,6 +44,10 @@ export default function EmailStep() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       addToast("Please enter a valid email address", "error");
+      return;
+    }
+    if (!emailDependency) {
+      addToast("Please select email dependency", "error");
       return;
     }
     if (!acceptedTerms) {
@@ -106,7 +111,7 @@ export default function EmailStep() {
       await verifyEmailOtp(email, otpValue);
       addToast("Email verified successfully!", "success");
       await nextStep({ 
-        personalDetails: { ...personalDetails, email: email }, 
+        personalDetails: { ...personalDetails, email: email, emailDependency: emailDependency }, 
         emailVerified: true 
       });
     } catch (error) {
@@ -162,6 +167,30 @@ export default function EmailStep() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Email Dependency Section */}
+        <div style={{ marginBottom: isOtpMode ? 20 : 28, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}>
+          <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.9rem" }}>Select Dependency <span style={{ color: "var(--wise-danger)" }}>*</span></label>
+          <select 
+            className="input-field" 
+            value={emailDependency} 
+            onChange={e => setEmailDependency(e.target.value)}
+            disabled={isOtpMode}
+            style={{ 
+              fontWeight: 700, 
+              color: emailDependency ? "var(--text-primary)" : "var(--text-muted)",
+              cursor: isOtpMode ? "not-allowed" : "pointer" 
+            }}
+          >
+            <option value="" disabled>--Select--</option>
+            <option value="Self">Self</option>
+            <option value="Spouse">Spouse</option>
+            <option value="Child Dependent">Child Dependent</option>
+            <option value="Parents Dependent">Parents Dependent</option>
+            <option value="Child Dependent 2">Child Dependent 2</option>
+            <option value="Parent Dependent 2">Parent Dependent 2</option>
+          </select>
         </div>
 
         {/* Terms and Conditions */}

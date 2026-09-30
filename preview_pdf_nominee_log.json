@@ -1,13 +1,14 @@
 {
-  "appNomineeDetails": "{\"nominees\":[{\"name\":\"Sourabhh\",\"email\":\"s@gmail.com\",\"mobile\":\"8888888888\",\"relation\":\"Brother\",\"dob\":\"2001-03-12\",\"sameAddress\":true,\"address\":\"Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009\",\"city\":\"Bokaro\",\"state\":\"Jharkhand\",\"pincode\":\"827009\",\"country\":\"India\",\"proofType\":\"AADHAAR CARD\",\"proofNumber\":\"3134\",\"proofPath\":\"https://res.cloudinary.com/dogfk2nyq/image/upload/v1790402672/kyc_uploads/1790402670835-fa65b96d.jpg\",\"guardianDob\":\"\",\"guardianName\":\"\",\"guardianSameAddress\":false,\"guardianAddress\":\"\",\"guardianCity\":\"\",\"guardianState\":\"\",\"guardianCountry\":\"India\",\"guardianPincode\":\"\",\"guardianMobile\":\"\",\"guardianEmail\":\"\",\"guardianRelation\":\"\",\"guardianProofType\":\"PAN CARD\",\"guardianProofNumber\":\"\",\"guardianProofPath\":\"\"}],\"opted\":\"No\",\"numberOfNominees\":\"1\"}",
+  "appNomineeDetails": "{\"opted\":\"No\",\"nominees\":[{\"name\":\"Amaan\",\"email\":\"amaan@gmail.com\",\"mobile\":\"7896541230\",\"relation\":\"Brother\",\"dob\":\"2005-05-08\",\"sameAddress\":true,\"address\":\"Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009\",\"city\":\"Bokaro\",\"state\":\"Jharkhand\",\"pincode\":\"827009\",\"country\":\"India\",\"proofType\":\"AADHAAR CARD\",\"proofNumber\":\"3134\",\"proofPath\":\"https://res.cloudinary.com/dogfk2nyq/image/upload/v1790593064/kyc_uploads/1790593059062-8d38dc39.jpg\",\"guardianDob\":\"\",\"guardianName\":\"\",\"guardianSameAddress\":false,\"guardianAddress\":\"\",\"guardianCity\":\"\",\"guardianState\":\"\",\"guardianCountry\":\"India\",\"guardianPincode\":\"\",\"guardianMobile\":\"\",\"guardianEmail\":\"\",\"guardianRelation\":\"\",\"guardianProofType\":\"PAN CARD\",\"guardianProofNumber\":\"\",\"guardianProofPath\":\"\",\"extractedProofNumber\":\"3134\"}],\"numberOfNominees\":\"1\"}",
   "reqBodyNomineeDetails": {
+    "opted": "No",
     "nominees": [
       {
-        "name": "Sourabhh",
-        "email": "s@gmail.com",
-        "mobile": "8888888888",
+        "name": "Amaan",
+        "email": "amaan@gmail.com",
+        "mobile": "7896541230",
         "relation": "Brother",
-        "dob": "2001-03-12",
+        "dob": "2005-05-08",
         "sameAddress": true,
         "address": "Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009",
         "city": "Bokaro",
@@ -16,7 +17,7 @@
         "country": "India",
         "proofType": "AADHAAR CARD",
         "proofNumber": "3134",
-        "proofPath": "https://res.cloudinary.com/dogfk2nyq/image/upload/v1790402672/kyc_uploads/1790402670835-fa65b96d.jpg",
+        "proofPath": "https://res.cloudinary.com/dogfk2nyq/image/upload/v1790593064/kyc_uploads/1790593059062-8d38dc39.jpg",
         "guardianDob": "",
         "guardianName": "",
         "guardianSameAddress": false,
@@ -30,20 +31,21 @@
         "guardianRelation": "",
         "guardianProofType": "PAN CARD",
         "guardianProofNumber": "",
-        "guardianProofPath": ""
+        "guardianProofPath": "",
+        "extractedProofNumber": "3134"
       }
     ],
-    "opted": "No",
     "numberOfNominees": "1"
   },
   "mergedApplicationDataNomineeDetails": {
+    "opted": "No",
     "nominees": [
       {
-        "name": "Sourabhh",
-        "email": "s@gmail.com",
-        "mobile": "8888888888",
+        "name": "Amaan",
+        "email": "amaan@gmail.com",
+        "mobile": "7896541230",
         "relation": "Brother",
-        "dob": "2001-03-12",
+        "dob": "2005-05-08",
         "sameAddress": true,
         "address": "Q No-1055,SectoR-8/B .street-15,post Office- SectoR-9,Bokaro steel city,Chas,Sector- Ix,Bokaro,Jharkhand,827009",
         "city": "Bokaro",
@@ -52,7 +54,7 @@
         "country": "India",
         "proofType": "AADHAAR CARD",
         "proofNumber": "3134",
-        "proofPath": "https://res.cloudinary.com/dogfk2nyq/image/upload/v1790402672/kyc_uploads/1790402670835-fa65b96d.jpg",
+        "proofPath": "https://res.cloudinary.com/dogfk2nyq/image/upload/v1790593064/kyc_uploads/1790593059062-8d38dc39.jpg",
         "guardianDob": "",
         "guardianName": "",
         "guardianSameAddress": false,
@@ -66,10 +68,10 @@
         "guardianRelation": "",
         "guardianProofType": "PAN CARD",
         "guardianProofNumber": "",
-        "guardianProofPath": ""
+        "guardianProofPath": "",
+        "extractedProofNumber": "3134"
       }
     ],
-    "opted": "No",
     "numberOfNominees": "1"
   }
 }
