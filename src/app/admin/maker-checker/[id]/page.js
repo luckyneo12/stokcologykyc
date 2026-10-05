@@ -971,6 +971,23 @@ async function downloadAdminDocument(src, label, pan) {
   let url = getSafePreviewUrl(src);
   if (typeof url === "string" && url.startsWith("JVBER")) url = `data:application/pdf;base64,${url}`;
 
+  // Files served by our backend: let the browser download them natively (?download=1 → attachment
+  // with the proper file name). The download bar appears right away instead of waiting for the
+  // whole file to be buffered in JS first. Opened in a new tab so an error never replaces this page;
+  // browsers close that tab automatically once the download starts.
+  // Must run before any await so it stays inside the click's user gesture.
+  if (typeof url === "string" && (url.includes("/api/kyc/proxy-pdf") || url.includes("/api/kyc/document/"))) {
+    const link = document.createElement("a");
+    link.href = `${withDownloadName(url, label, pan)}&download=1`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+
+  // Cloudinary images / inline data: small, fetch and save with the proper name
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed (${res.status})`);
   const blob = await res.blob();
@@ -1444,6 +1461,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   const [zoom, setZoom] = useState(defaultZoom);
   const [offset, setOffset] = useState(defaultOffset);
   const [rotation, setRotation] = useState(0);
+  const [downloading, setDownloading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
@@ -1516,13 +1534,17 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
           <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
           <button onClick={async (e) => {
             e.stopPropagation();
+            if (downloading) return;
+            setDownloading(true);
             try {
               await downloadAdminDocument(src, label, pan);
             } catch (err) {
               console.error("[Download] Failed:", err);
               window.alert(err.message || "Download failed");
+            } finally {
+              setTimeout(() => setDownloading(false), 1500);
             }
-          }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={14} /></button>
+          }} style={{ background: "transparent", border: "none", cursor: downloading ? "wait" : "pointer", color: "var(--text-muted)", opacity: downloading ? 0.4 : 1 }} title={downloading ? "Preparing download…" : "Download"}><Download size={14} /></button>
         </div>
       )}
     </div>
@@ -1547,6 +1569,7 @@ export default function AgentReview() {
   const [expandedModule, setExpandedModule] = useState({});
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [isDownloadingDoc, setIsDownloadingDoc] = useState(false);
   const [previewRotation, setPreviewRotation] = useState(0);
   const [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -2659,7 +2682,7 @@ export default function AgentReview() {
                     <span style={{ fontSize: "0.75rem", fontWeight: 500, flex: 1 }}>{doc.label || "Document"}</span>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <Paperclip size={14} color={isSelected ? "#16a34a" : "var(--text-muted)"} />
-                      <div 
+                      <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           if (documentRejections[doc.src]) {
@@ -2669,11 +2692,24 @@ export default function AgentReview() {
                           }
                           setRejectDocumentModal(doc);
                         }}
-                        style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        style={{ 
+                          cursor: "pointer", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          justifyContent: "center",
+                          width: 24, 
+                          height: 24,
+                          borderRadius: 6,
+                          border: documentRejections[doc.src] ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: documentRejections[doc.src] ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          transition: "all 0.2s",
+                          boxShadow: documentRejections[doc.src] ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none",
+                          padding: 0
+                        }}
                         title={documentRejections[doc.src] ? "Rejected (Click to modify reason)" : "Reject Document"}
                       >
-                        <Ban size={14} color={documentRejections[doc.src] ? "#ef4444" : "#fca5a5"} />
-                      </div>
+                        <Ban size={13} color={documentRejections[doc.src] ? "#ffffff" : "#ef4444"} />
+                      </button>
                     </div>
                   </div>
                 );
@@ -2803,13 +2839,17 @@ export default function AgentReview() {
                   )}
                   <button onClick={async (e) => {
                     e.stopPropagation();
+                    if (isDownloadingDoc) return;
+                    setIsDownloadingDoc(true);
                     try {
                       await downloadAdminDocument(selectedDocument.src, selectedDocument.label, getApplicantPan(app));
                     } catch (err) {
                       console.error("[Download] Failed:", err);
                       showToast(err.message || "Download failed", "error");
+                    } finally {
+                      setTimeout(() => setIsDownloadingDoc(false), 1500);
                     }
-                  }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={18} /></button>
+                  }} style={{ background: "transparent", border: "none", cursor: isDownloadingDoc ? "wait" : "pointer", color: "var(--text-muted)", opacity: isDownloadingDoc ? 0.4 : 1 }} title={isDownloadingDoc ? "Preparing download…" : "Download"}><Download size={18} /></button>
                   {!(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
                     <>
                       <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />

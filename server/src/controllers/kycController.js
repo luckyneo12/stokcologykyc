@@ -684,8 +684,12 @@ const getSecureDocument = (req, res) => {
 
   // Optional ?name= lets the browser's built-in viewer save with a meaningful file name
   const safeName = String(req.query.name || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
+  // ?download=1 makes the browser save the file directly (native download bar, no buffering in JS)
+  const disposition = req.query.download === "1" ? "attachment" : "inline";
   if (safeName) {
-    res.setHeader("Content-Disposition", `inline; filename="${safeName}${path.extname(filename)}"`);
+    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}${path.extname(filename)}"`);
+  } else if (disposition === "attachment") {
+    res.setHeader("Content-Disposition", "attachment");
   }
 
   res.sendFile(filePath);

@@ -128,7 +128,9 @@ router.get("/proxy-pdf", auth, async (req, res) => {
     res.setHeader("Content-Type", contentType);
     // Optional ?name= lets the browser's built-in PDF viewer save with a meaningful file name
     const safeName = String(req.query.name || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
-    res.setHeader("Content-Disposition", safeName ? `inline; filename="${safeName}.${ext}"` : "inline");
+    // ?download=1 makes the browser save the file directly (native download bar, no buffering in JS)
+    const disposition = req.query.download === "1" ? "attachment" : "inline";
+    res.setHeader("Content-Disposition", safeName ? `${disposition}; filename="${safeName}.${ext}"` : disposition);
     res.setHeader("Cache-Control", "public, max-age=86400, immutable");
     proxyRes.pipe(res);
   } catch (err) {
