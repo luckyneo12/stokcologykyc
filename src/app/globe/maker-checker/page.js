@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -26,11 +27,24 @@ const STEP_LABELS = {
   14: "Step 14: Completion"
 };
 
+// Same as the Pricing Plan module's formatBoid: long stored BOIDs → 16-char DP ID + Client ID
+const formatBoid = (boidNum) => {
+  if (!boidNum) return "N/A";
+  const b = String(boidNum).trim();
+  if (b.length > 16) return b.slice(0, 8) + b.slice(-10, -2);
+  return b;
+};
+
+// Filters offered on the Globe portal
+const GLOBE_FILTERS = ["all", "verify", "approved", "rejected"];
+
 const STATUS_MAP = { 
-  pending: "badge-pending", 
+  pending: "badge-pending",
+  under_review: "badge-review",
   identity_verified: "badge-verified",
-  verified: "badge-verified", 
-  rejected: "badge-rejected", 
+  verified: "badge-verified",
+  approved: "badge-verified", // Globe status "approved" shows green
+  rejected: "badge-rejected",
   on_hold: "badge-suspended" 
 };
 
@@ -49,7 +63,7 @@ export default function MakerCheckerDashboard() {
   const router = useRouter();
   const [kycs, setKycs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("in_progress");
+  const [filter, setFilter] = useState("verify");
   const [stageFilter, setStageFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -79,32 +93,60 @@ export default function MakerCheckerDashboard() {
     setFilter(f);
     setFilterOpen(false);
     if (typeof window !== "undefined") {
+      // Remember the filter so coming back from a review page keeps it (own key — Globe filters differ from admin's)
+      localStorage.setItem("globeMakerCheckerFilter", f);
       const url = new URL(window.location);
       url.searchParams.set("filter", f);
       window.history.replaceState({}, '', url);
     }
   };
 
-  const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code"];
+  const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "PAN"];
   const PERMANENT_WIDTHS = {
     "S.No.": 60,
     "Actions": 80,
     "Name": 180,
-    "Client Code": 120
+    "Client Code": 120,
+    "PAN": 130
   };
-  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "BOID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "MICR", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "STK Approved At", "STK Rejected At", "Globe Approved At", "Globe Rejected At", "E-Stamp", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
   const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "STK Status", "Rejections", "E-Stamp", "Start Date", "eSign Date", "Date"]);
   const [orderedColumns, setOrderedColumns] = useState(ALL_COLUMNS);
   const [draggedColumn, setDraggedColumn] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
+  const [columnValueFilters, setColumnValueFilters] = useState({}); // { [column]: [selected values] }
   const [activeFilterCol, setActiveFilterCol] = useState(null);
+  const [filterPopupPos, setFilterPopupPos] = useState(null); // screen position of the open column-filter popup
+
+  // The column-filter popup is drawn above the page (so the table can't clip it); close it if the
+  // page or table scrolls/resizes so it never drifts away from its column
+  useEffect(() => {
+    if (!activeFilterCol) return;
+    const close = (e) => {
+      if (e?.target?.closest && e.target.closest('.column-filter-container')) return; // scrolling inside the popup
+      setActiveFilterCol(null);
+    };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [activeFilterCol]);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [columnSearch, setColumnSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [stageFilterOpen, setStageFilterOpen] = useState(false);
   const [columnsLoaded, setColumnsLoaded] = useState(false);
 
   const scrollRef = useDragScroll();
+
+  // Fixed columns first (sticky), then the rest in the user's dragged order
+  const displayColumns = [
+    ...PERMANENT_COLUMNS,
+    ...orderedColumns.filter(h => !PERMANENT_COLUMNS.includes(h) && visibleColumns.includes(h)),
+  ];
 
   const getStickyStyle = (colName, isHeader = false) => {
     if (!PERMANENT_COLUMNS.includes(colName)) return {};
@@ -142,8 +184,12 @@ export default function MakerCheckerDashboard() {
         try {
           const parsedOrder = JSON.parse(savedOrder);
           const mappedOrder = parsedOrder.map(c => c === "Status" ? "STK Status" : c);
-          ALL_COLUMNS.forEach(c => {
-            if (!mappedOrder.includes(c)) mappedOrder.push(c);
+          // Columns added later (e.g. BOID) are placed right after their neighbour in ALL_COLUMNS,
+          // so they don't end up at the far right of an older saved layout
+          ALL_COLUMNS.forEach((c, i) => {
+            if (mappedOrder.includes(c)) return;
+            const prev = ALL_COLUMNS.slice(0, i).reverse().find(p => mappedOrder.includes(p));
+            mappedOrder.splice(prev ? mappedOrder.indexOf(prev) + 1 : 0, 0, c);
           });
           setOrderedColumns(mappedOrder);
         } catch (e) {
@@ -180,6 +226,9 @@ export default function MakerCheckerDashboard() {
       }
       if (!e.target.closest('.rejections-dropdown-container')) {
         setOpenRejectionsId(null);
+      }
+      if (!e.target.closest('.column-filter-container')) {
+        setActiveFilterCol(null);
       }
       if (!e.target.closest('.date-filter-dropdown-container')) {
         setDateFilterOpen(false);
@@ -331,6 +380,27 @@ export default function MakerCheckerDashboard() {
     verifyToken();
   }, []);
 
+  // Restore the last chosen filter (URL first, then saved choice) — e.g. after "Back" from a review page
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Only Globe's filters are valid; anything else (e.g. an old "in_progress") falls back to Verify
+      const valid = (f) => (GLOBE_FILTERS.includes(f) ? f : null);
+      const rawSaved = localStorage.getItem("globeMakerCheckerFilter");
+      const rawParam = new URLSearchParams(window.location.search).get("filter");
+      const savedFilter = valid(rawSaved) || (rawSaved ? "verify" : null);
+      const filterParam = valid(rawParam) || (rawParam ? "verify" : null);
+
+      if (filterParam) {
+        setFilter(filterParam);
+        localStorage.setItem("globeMakerCheckerFilter", filterParam);
+      } else if (savedFilter) {
+        setFilter(savedFilter);
+        const url = new URL(window.location);
+        url.searchParams.set("filter", savedFilter);
+        window.history.replaceState({}, '', url);
+      }
+    }
+  }, []);
 
   const fetchApplications = async (isSilent = false) => {
     if (typeof window === "undefined") return;
@@ -409,8 +479,16 @@ export default function MakerCheckerDashboard() {
             const rejectedSteps = Object.entries(parsedStepStatuses)
               .filter(([_, info]) => info?.status === "rejected")
               .map(([step, info]) => `${FRONTEND_STEP_TITLE_MAP[step] || step}: ${info?.reason || 'No reason'}`);
+            // Document rejections marked but not yet mailed count too
+            const pendingDocLabels = parsedStepStatuses._pendingDocumentRejectionLabels || {};
+            Object.entries(parsedStepStatuses._pendingDocumentRejections || {}).forEach(([src, reason]) => {
+              rejectedSteps.push(`${pendingDocLabels[src] || "Document"}: ${reason || 'No reason'}`);
+            });
             
-            const rejectionsText = rejectedSteps.length > 0 ? rejectedSteps.join(" | ") : (app.rejectionReason || "None");
+            // Module reasons first; otherwise the Globe rejection remark (Globe Reject), then the STK reason
+            const rejectionsText = rejectedSteps.length > 0
+              ? rejectedSteps.join(" | ")
+              : ((app.globeStatus === "rejected" && app.globeRemarks) || app.rejectionReason || "None");
 
             const aadhaarRaw = parsedIdentity.aadhaarNumber || parsedIdentity.aadhaar || parsedIdentity.uid || parsedIdentity.maskedAadhaar || parsedPersonal.aadhaar || "";
             const aadhaarFormatted = aadhaarRaw ? (String(aadhaarRaw).length >= 4 ? `xxxxxxxx${String(aadhaarRaw).slice(-4)}` : String(aadhaarRaw)) : "N/A";
@@ -428,6 +506,7 @@ export default function MakerCheckerDashboard() {
 
             return {
               id: app.applicationId,
+              boid: formatBoid(app.user?.boid || app.user?.boidAssigned?.boidNumber),
               dbId: app.id,
               clientCode: app.clientCode,
               number: app.user?.phone || parsedPersonal.phone || parsedPersonal.mobile || "N/A",
@@ -440,6 +519,10 @@ export default function MakerCheckerDashboard() {
               type: "Full KYC",
               status: app.status,
               globeStatus: app.globeStatus || "pending",
+              stkApprovedAt: app.stkApprovedAt ? new Date(app.stkApprovedAt).toLocaleString("en-IN") : "N/A",
+              stkRejectedAt: app.stkRejectedAt ? new Date(app.stkRejectedAt).toLocaleString("en-IN") : "N/A",
+              globeApprovedAt: app.globeApprovedAt ? new Date(app.globeApprovedAt).toLocaleString("en-IN") : "N/A",
+              globeRejectedAt: app.globeRejectedAt ? new Date(app.globeRejectedAt).toLocaleString("en-IN") : "N/A",
               isResubmitted: app.isResubmitted,
               riskScore: app.riskScore || 0,
               faceMatch: app.faceMatchScore || 0,
@@ -454,6 +537,7 @@ export default function MakerCheckerDashboard() {
               bankName: parsedBank.bankName || parsedBank.bank_name || parsedBank.name || "N/A",
               accountNo: parsedBank.accountNumber || parsedBank.account_number || parsedBank.accountNo || "N/A",
               ifsc: parsedBank.ifsc || parsedBank.ifscCode || parsedBank.ifsc_code || "N/A",
+              micr: parsedBank.micr || parsedOcr?.bank?.micr || "N/A",
               nominees: Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : (parsedNominee.nominees ? 1 : 0),
               address: rawAddr,
               city: rawCity,
@@ -519,6 +603,7 @@ export default function MakerCheckerDashboard() {
     if (col === "S.No." || col === "Actions") return "";
     if (col === "Client Code") return k.clientCode;
     if (col === "KYC ID") return k.id;
+    if (col === "BOID") return k.boid;
     if (col === "Number") return k.number;
     if (col === "Name") return k.name;
     if (col === "Email") return k.email;
@@ -527,6 +612,10 @@ export default function MakerCheckerDashboard() {
     if (col === "Stage") return k.stepLabel && k.stepLabel.includes(':') ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding");
     if (col === "STK Status") return k.status;
     if (col === "Globe Status") return k.globeStatus;
+    if (col === "STK Approved At") return k.stkApprovedAt;
+    if (col === "STK Rejected At") return k.stkRejectedAt;
+    if (col === "Globe Approved At") return k.globeApprovedAt;
+    if (col === "Globe Rejected At") return k.globeRejectedAt;
     if (col === "E-Stamp") return k.eStamp;
     if (col === "Aadhaar") return k.aadhaar;
     if (col === "DOB") return k.dob;
@@ -536,6 +625,7 @@ export default function MakerCheckerDashboard() {
     if (col === "Bank Name") return k.bankName;
     if (col === "Account No") return k.accountNo;
     if (col === "IFSC") return k.ifsc;
+    if (col === "MICR") return k.micr;
     if (col === "Nominees") return k.nominees;
     if (col === "Address") return k.address;
     if (col === "City") return k.city;
@@ -557,8 +647,21 @@ export default function MakerCheckerDashboard() {
     return "";
   };
 
+  // Value shown in a column's filter list (empty / N/A grouped as "(Blank)")
+  const toFilterValue = (v) => {
+    const str = String(v ?? "").trim();
+    return str === "" || str === "N/A" ? "(Blank)" : str;
+  };
+
   const filteredAndSortedKycs = useMemo(() => {
     let result = [...kycs];
+
+    Object.keys(columnValueFilters).forEach(col => {
+      const selected = columnValueFilters[col];
+      if (selected && selected.length > 0) {
+        result = result.filter(k => selected.includes(toFilterValue(getCellValue(k, col))));
+      }
+    });
 
     Object.keys(columnFilters).forEach(col => {
       const term = columnFilters[col]?.toLowerCase();
@@ -581,7 +684,7 @@ export default function MakerCheckerDashboard() {
     }
 
     return result;
-  }, [kycs, columnFilters, sortConfig]);
+  }, [kycs, columnFilters, columnValueFilters, sortConfig]);
 
   const handleDragStart = (e, col) => {
     if (PERMANENT_COLUMNS.includes(col)) {
@@ -622,6 +725,7 @@ export default function MakerCheckerDashboard() {
     const headers = ALL_COLUMNS.filter(c => c !== "Actions" && c !== "S.No.");
     const rows = kycs.map(k => headers.map(col => {
       if (col === "KYC ID") return k.id;
+      if (col === "BOID") return k.boid;
       if (col === "Number") return k.number;
       if (col === "Name") return `"${k.name || ""}"`;
       if (col === "Email") return `"${k.email || ""}"`;
@@ -630,6 +734,10 @@ export default function MakerCheckerDashboard() {
       if (col === "Stage") return `"${(k.stepLabel && k.stepLabel.includes(':')) ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding")}"`;
       if (col === "STK Status") return k.status;
       if (col === "Globe Status") return k.globeStatus;
+      if (col === "STK Approved At") return k.stkApprovedAt;
+      if (col === "STK Rejected At") return k.stkRejectedAt;
+      if (col === "Globe Approved At") return k.globeApprovedAt;
+      if (col === "Globe Rejected At") return k.globeRejectedAt;
       if (col === "E-Stamp") return k.eStamp;
       if (col === "Aadhaar") return k.aadhaar;
       if (col === "DOB") return `"${k.dob || ""}"`;
@@ -639,6 +747,7 @@ export default function MakerCheckerDashboard() {
       if (col === "Bank Name") return `"${k.bankName || ""}"`;
       if (col === "Account No") return `"${k.accountNo || ""}"`;
       if (col === "IFSC") return k.ifsc;
+      if (col === "MICR") return k.micr;
       if (col === "Nominees") return k.nominees;
       if (col === "Address") return `"${k.address || ""}"`;
       if (col === "City") return `"${k.city || ""}"`;
@@ -742,10 +851,10 @@ export default function MakerCheckerDashboard() {
                   </button>
                   {filterOpen && (
                     <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
-                      {["all", "in_progress", "verify", "completed", "rejected"].map(f => (
+                      {GLOBE_FILTERS.map(f => (
                         <div 
                           key={f}
-                          onClick={() => { setFilter(f); setFilterOpen(false); }}
+                          onClick={() => handleFilterChange(f)}
                           style={{ 
                             padding: "10px 16px", cursor: "pointer", fontSize: "0.85rem", fontWeight: filter === f ? 700 : 500,
                             color: filter === f ? "var(--wise-green)" : "var(--text-primary)",
@@ -876,7 +985,7 @@ export default function MakerCheckerDashboard() {
                 
                 <div className="columns-dropdown-container" style={{ position: "relative", marginLeft: "auto" }}>
                   <button 
-                    onClick={() => setColumnsOpen(!columnsOpen)}
+                    onClick={() => { setColumnsOpen(!columnsOpen); setColumnSearch(""); }}
                     style={{ 
                       padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color)", 
                       background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, 
@@ -888,8 +997,25 @@ export default function MakerCheckerDashboard() {
                   </button>
                   {columnsOpen && (
                     <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 10, minWidth: 200, padding: "8px 0", maxHeight: "400px", overflowY: "auto" }}>
-                      <div style={{ padding: "4px 16px", fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", borderBottom: "1px solid var(--border-color)", paddingBottom: 8, marginBottom: 4 }}>Toggle Columns</div>
-                      {ALL_COLUMNS.map(col => (
+                      {/* Header + search stay visible while the column list scrolls */}
+                      <div style={{ position: "sticky", top: -8, background: "var(--bg-primary)", zIndex: 1, paddingTop: 8, marginTop: -8 }}>
+                        <div style={{ padding: "4px 16px", fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", borderBottom: "1px solid var(--border-color)", paddingBottom: 8, marginBottom: 4 }}>Toggle Columns</div>
+                        <div style={{ padding: "4px 12px 8px" }}>
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Search columns..."
+                            value={columnSearch}
+                            onChange={(e) => setColumnSearch(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: "0.82rem", outline: "none", boxSizing: "border-box" }}
+                          />
+                        </div>
+                      </div>
+                      {columnSearch.trim() && !ALL_COLUMNS.some(col => col.toLowerCase().includes(columnSearch.trim().toLowerCase())) && (
+                        <div style={{ padding: "8px 16px", fontSize: "0.82rem", color: "var(--text-muted)" }}>No matching columns</div>
+                      )}
+                      {ALL_COLUMNS.filter(col => col.toLowerCase().includes(columnSearch.trim().toLowerCase())).map(col => (
                         <label key={col} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", cursor: PERMANENT_COLUMNS.includes(col) ? "not-allowed" : "pointer", fontSize: "0.85rem", color: "var(--text-primary)", opacity: PERMANENT_COLUMNS.includes(col) ? 0.6 : 1 }}>
                           <input 
                             type="checkbox" 
@@ -938,7 +1064,7 @@ export default function MakerCheckerDashboard() {
                 <div ref={scrollRef} style={{ overflowX: "auto", minHeight: kycs.length < 4 ? "300px" : "auto" }}>
                   <table className="admin-table">
                     <thead><tr>
-                      {orderedColumns.filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h)).map(h => (
+                      {displayColumns.map(h => (
                         <th 
                           key={h} 
                           style={{
@@ -955,8 +1081,15 @@ export default function MakerCheckerDashboard() {
                             <span>{h}</span>
                             <div style={{ display: "flex", gap: 4 }}>
                               <button 
-                                onClick={(e) => { e.stopPropagation(); setActiveFilterCol(activeFilterCol === h ? null : h); }}
-                                style={{ background: "transparent", border: "none", cursor: "pointer", color: columnFilters[h] ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
+                                className="column-filter-container"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (activeFilterCol === h) { setActiveFilterCol(null); return; }
+                                  const r = e.currentTarget.getBoundingClientRect();
+                                  setFilterPopupPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 8, window.innerWidth - 232)) });
+                                  setActiveFilterCol(h);
+                                }}
+                                style={{ background: "transparent", border: "none", cursor: "pointer", color: (columnFilters[h] || columnValueFilters[h]?.length) ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
                                 title="Filter"
                               >
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
@@ -1002,8 +1135,8 @@ export default function MakerCheckerDashboard() {
                             </div>
                           </div>
                           
-                          {activeFilterCol === h && (
-                            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 4, padding: 8, zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }} onClick={e => e.stopPropagation()}>
+                          {activeFilterCol === h && filterPopupPos && createPortal((
+                            <div className="column-filter-container" style={{ position: "fixed", top: filterPopupPos.top, left: filterPopupPos.left, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 6, padding: 8, zIndex: 2000, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", textAlign: "left" }} onClick={e => e.stopPropagation()}>
                               <input 
                                 type="text"
                                 autoFocus
@@ -1017,8 +1150,46 @@ export default function MakerCheckerDashboard() {
                                 }}
                                 style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: 4, border: "1px solid var(--border-color)", width: 150 }}
                               />
+                              {(() => {
+                                // Values of this column (current page), narrowed by the search text
+                                const term = (columnFilters[h] || "").toLowerCase();
+                                const values = Array.from(new Set(kycs.map(k => toFilterValue(getCellValue(k, h)))))
+                                  .filter(v => !term || v.toLowerCase().includes(term))
+                                  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                                const selected = columnValueFilters[h] || [];
+                                const toggleValue = (v) => setColumnValueFilters(prev => {
+                                  const cur = prev[h] || [];
+                                  const next = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v];
+                                  return { ...prev, [h]: next };
+                                });
+                                return (
+                                  <>
+                                    <div style={{ maxHeight: 220, overflowY: "auto", marginTop: 6, width: 200 }}>
+                                      {values.length === 0 ? (
+                                        <div style={{ padding: "6px 4px", fontSize: "0.78rem", color: "var(--text-muted)" }}>No values</div>
+                                      ) : values.map(v => (
+                                        <label key={v} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px", fontSize: "0.78rem", color: "var(--text-primary)", cursor: "pointer", fontWeight: 500, textTransform: "none", letterSpacing: "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={v}>
+                                          <input type="checkbox" checked={selected.includes(v)} onChange={() => toggleValue(v)} />
+                                          {v}
+                                        </label>
+                                      ))}
+                                    </div>
+                                    {(selected.length > 0 || columnFilters[h]) && (
+                                      <button
+                                        onClick={() => {
+                                          setColumnValueFilters(prev => { const next = { ...prev }; delete next[h]; return next; });
+                                          setColumnFilters(prev => { const next = { ...prev }; delete next[h]; return next; });
+                                        }}
+                                        style={{ marginTop: 6, width: "100%", padding: "4px 8px", fontSize: "0.75rem", fontWeight: 700, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}
+                                      >
+                                        Clear filter
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
-                          )}
+                          ), document.body)}
                         </th>
                       ))}
                     </tr></thead>
@@ -1089,6 +1260,18 @@ export default function MakerCheckerDashboard() {
                               </div>
                             </td>
                           )),
+                              "BOID": () => ((
+                            <td style={{ fontSize: "0.82rem", fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.boid}</span>
+                                {k.boid && k.boid !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.boid, `boid-${k.id}`)} title="Copy BOID" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `boid-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `boid-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )),
                               "Number": () => ((
                             <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -1114,7 +1297,7 @@ export default function MakerCheckerDashboard() {
                             </td>
                           )),
                               "PAN": () => ((
-                            <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                            <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("PAN") }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.pan}</span>
                                 {k.pan && k.pan !== "N/A" && (
@@ -1150,6 +1333,18 @@ export default function MakerCheckerDashboard() {
                                 {k.ifsc && k.ifsc !== "N/A" && (
                                   <button onClick={(e) => handleCopy(e, k.ifsc, `ifsc-${k.id}`)} title="Copy IFSC" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `ifsc-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
                                     {copiedKey === `ifsc-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )),
+                              "MICR": () => ((
+                            <td style={{ fontSize: "0.82rem", fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.micr}</span>
+                                {k.micr && k.micr !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.micr, `micr-${k.id}`)} title="Copy MICR" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `micr-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `micr-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
                                   </button>
                                 )}
                               </div>
@@ -1229,19 +1424,11 @@ export default function MakerCheckerDashboard() {
                           </td>),
                               "STK Status": () => (<td>
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
+                              {/* Read-only on Globe: the STK status is set by STK only */}
                               {k.status === 'verified' ? (
                                 <span className="badge badge-verified" style={{ padding: "6px 12px", border: "none" }}>VERIFIED</span>
                               ) : (
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateStatus(k.id, "verified", {currentStep: k.stepNum});
-                                    setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: "verified" } : app));
-                                  }}
-                                  style={{ background: "var(--wise-green)", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", fontWeight: 700, cursor: "pointer", fontSize: "0.75rem" }}
-                                >
-                                  Verify
-                                </button>
+                                <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`} style={{ padding: "6px 12px", border: "none" }}>{String(k.status || "pending").replace(/_/g, " ").toUpperCase()}</span>
                               )}
                               {k.isResubmitted && (
                                 <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
@@ -1250,6 +1437,32 @@ export default function MakerCheckerDashboard() {
                           </td>),
                               "Globe Status": () => (<td>
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
+                              {(!k.globeStatus || k.globeStatus === "pending") ? (
+                                // Pending: direct Verify / Reject buttons (same style as the admin STK Verify button)
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updateGlobeStatusAPI(k.id, "approved");
+                                      setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: "approved" } : app));
+                                    }}
+                                    style={{ background: "var(--wise-green)", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", fontWeight: 700, cursor: "pointer", fontSize: "0.75rem" }}
+                                  >
+                                    Verify
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!window.confirm(`Reject Globe status for ${k.name && k.name !== "N/A" ? k.name : k.id}?`)) return;
+                                      updateGlobeStatusAPI(k.id, "rejected");
+                                      setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: "rejected" } : app));
+                                    }}
+                                    style={{ background: "#ef4444", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", fontWeight: 700, cursor: "pointer", fontSize: "0.75rem" }}
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              ) : (
                               <div className="status-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
                                 <div 
                                   onClick={() => setOpenStatusMenuId(openStatusMenuId === k.id ? null : k.id)}
@@ -1290,8 +1503,13 @@ export default function MakerCheckerDashboard() {
                                   </div>
                                 )}
                               </div>
+                              )}
                             </div>
                           </td>),
+                              "STK Approved At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.stkApprovedAt}</td>),
+                              "STK Rejected At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.stkRejectedAt}</td>),
+                              "Globe Approved At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.globeApprovedAt}</td>),
+                              "Globe Rejected At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.globeRejectedAt}</td>),
                               "E-Stamp": () => ((
                             <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -1317,8 +1535,7 @@ export default function MakerCheckerDashboard() {
                               "Total Nominees": () => (<td style={{ fontSize: "0.82rem", textAlign: "center", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.totalNominees}</td>),
                               "Nominee Opt Date": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.nomineeOptDate}</td>),
                             };
-                            return orderedColumns
-                              .filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h))
+                            return displayColumns
                               .map(col => rowCells[col] ? <Fragment key={col}>{rowCells[col]()}</Fragment> : null);
                           })()}
                         </tr>

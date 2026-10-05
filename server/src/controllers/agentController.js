@@ -1,5 +1,12 @@
 const prisma = require("../config/db");
 const { z } = require("zod");
+const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
+
+// Document rejections a reviewer has marked but not yet mailed ({ [documentSrc]: reason }).
+// Kept on the application (reserved key inside stepStatuses, like welcomeEmailSent) so every
+// reviewer device sees them live. Code reading stepStatuses only looks at { status } entries.
+const PENDING_DOC_REJECTIONS_KEY = "_pendingDocumentRejections";
+const PENDING_DOC_LABELS_KEY = "_pendingDocumentRejectionLabels"; // { [documentSrc]: document name }
 
 // Fetch KYC submissions assigned to the currently logged in agent
 const getAssignedApplications = async (req, res, next) => {
@@ -120,15 +127,15 @@ const getAssignedApplications = async (req, res, next) => {
           riskScore: true,
           faceMatchScore: true,
           assignedCrmAgentId: true,
-          user: { select: { email: true, phone: true, eStamp: true, eStampAssigned: { select: { serialNo: true, certificateNo: true } } } }
+          user: { select: { email: true, phone: true, eStamp: true, boid: true, boidAssigned: { select: { boidNumber: true } }, eStampAssigned: { select: { serialNo: true, certificateNo: true } } } }
         }
       }),
       prisma.kycApplication.count({ where })
     ]);
 
-    res.json({ 
-      success: true, 
-      applications,
+    res.json({
+      success: true,
+      applications: await attachDecisionTimestamps(applications),
       total,
       page: pageNum,
       totalPages: Math.ceil(total / take)
@@ -255,8 +262,8 @@ const reviewStep = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    // Ensure the agent is assigned to this app or has admin privileges
-    if (Number(app.assignedCrmAgentId) !== Number(agentId) && req.user.role !== "admin") {
+    // Ensure the agent is assigned to this app, or is an admin / Globe reviewer (they review every application)
+    if (Number(app.assignedCrmAgentId) !== Number(agentId) && !["admin", "globe"].includes(req.user.role)) {
       return res.status(403).json({ success: false, error: "You are not assigned to review this application" });
     }
 
@@ -315,6 +322,23 @@ const reviewStep = async (req, res, next) => {
     if (status === "rejected") {
       updateData.rejectionReason = reason;
       updateData.status = "rejected";
+
+      // Re-saving a rejection (e.g. one field undone) after the rejection mail: keep the applicant's
+      // correction session in step, so they are only asked to fix what is still rejected
+      if (app.correctionDraft) {
+        try {
+          const session = typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft;
+          const entry = session && Array.isArray(session.rejectedSteps) ? session.rejectedSteps.find(s => s.stepId === stepName) : null;
+          if (entry) {
+            entry.reason = reason;
+            entry.rejectedFields = rejectedFields;
+            entry.rejectEntireModule = rejectEntireModule;
+            updateData.correctionDraft = JSON.stringify(session);
+          }
+        } catch (e) {
+          console.error("Error updating correctionDraft for re-saved rejection:", e);
+        }
+      }
     } else {
       // Reversal of rejection (un-reject): If there's an active correction session, remove this step
       if (app.correctionDraft) {
@@ -340,6 +364,23 @@ const reviewStep = async (req, res, next) => {
       updateData.status = hasRejectedSteps ? "rejected" : "under_review";
     }
 
+    // A module rejected on the Globe portal is a Globe rejection (shows under Globe "Rejected");
+    // once Globe has undone every rejection, it goes back to pending for Globe review.
+    // Globe never changes the STK status, the STK rejection reason or the STK review time.
+    if (req.user.role === "globe") {
+      delete updateData.status;
+      delete updateData.rejectionReason;
+      delete updateData.reviewedAt;
+      if (status === "rejected") {
+        updateData.globeStatus = "rejected";
+        updateData.globeRemarks = reason;
+        updateData.globeReviewedAt = new Date();
+        updateData.globeReviewedBy = agentId;
+      } else if (!hasRejectedSteps && app.globeStatus === "rejected") {
+        updateData.globeStatus = "pending";
+      }
+    }
+
     await prisma.kycApplication.update({
       where: { applicationId: id },
       data: updateData,
@@ -363,6 +404,13 @@ const reviewStep = async (req, res, next) => {
         ipAddress: req.ip,
       },
     });
+
+    // Real-time: other reviewers with this KYC open (any device) refresh and see the change
+    const io = req.app.get("io");
+    if (io) {
+      io.to(id).emit("kyc_updated");
+      io.to("staff_room").emit("applications_updated");
+    }
 
     res.json({ success: true, message: `Step ${stepName} ${status}` });
   } catch (error) {
@@ -631,6 +679,10 @@ const requestModifications = async (req, res, next) => {
         }
       }
 
+      // These pending (not yet mailed) document rejections are now part of the request — clear the pending list
+      delete stepStatuses[PENDING_DOC_REJECTIONS_KEY];
+      delete stepStatuses[PENDING_DOC_LABELS_KEY];
+
       // Persist the updated stepStatuses with document rejections
       await prisma.kycApplication.update({
         where: { applicationId: id },
@@ -682,8 +734,12 @@ const requestModifications = async (req, res, next) => {
     await prisma.kycApplication.update({
       where: { applicationId: id },
       data: {
-        status: "rejected",
         correctionDraft: JSON.stringify(correctionSession),
+        // Sent from the Globe portal → a Globe rejection only (the STK status is never changed by Globe);
+        // sent by STK → the STK status becomes rejected (Globe status untouched)
+        ...(req.user.role === "globe"
+          ? { globeStatus: "rejected", globeReviewedAt: new Date(), globeReviewedBy: req.user.id }
+          : { status: "rejected" }),
       },
     });
 
@@ -797,10 +853,67 @@ const getCorrectionLink = async (req, res, next) => {
   }
 };
 
+// Save the pending (not yet mailed) document rejections for an application — replaces the whole set.
+// Notifies other reviewers with this KYC open so they see it in real time.
+const savePendingDocumentRejections = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const input = req.body?.documentRejections;
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return res.status(400).json({ success: false, error: "documentRejections must be an object" });
+    }
+
+    const clean = {};
+    for (const [src, reason] of Object.entries(input)) {
+      if (typeof src === "string" && src && typeof reason === "string" && reason.trim()) {
+        clean[src] = reason.trim();
+      }
+    }
+
+    const app = await prisma.kycApplication.findUnique({ where: { applicationId: id }, select: { stepStatuses: true } });
+    if (!app) return res.status(404).json({ success: false, error: "Application not found" });
+
+    let stepStatuses = {};
+    if (app.stepStatuses) {
+      try { stepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : app.stepStatuses; } catch (e) { stepStatuses = {}; }
+    }
+    // Optional document names (e.g. "PAN Card") so lists can show which document is rejected
+    const inputLabels = req.body?.labels && typeof req.body.labels === "object" ? req.body.labels : {};
+    const labels = {};
+    for (const src of Object.keys(clean)) {
+      if (typeof inputLabels[src] === "string" && inputLabels[src].trim()) labels[src] = inputLabels[src].trim();
+    }
+
+    if (Object.keys(clean).length > 0) {
+      stepStatuses[PENDING_DOC_REJECTIONS_KEY] = clean;
+      stepStatuses[PENDING_DOC_LABELS_KEY] = labels;
+    } else {
+      delete stepStatuses[PENDING_DOC_REJECTIONS_KEY];
+      delete stepStatuses[PENDING_DOC_LABELS_KEY];
+    }
+
+    await prisma.kycApplication.update({
+      where: { applicationId: id },
+      data: { stepStatuses: JSON.stringify(stepStatuses) },
+    });
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(id).emit("kyc_updated");
+      io.to("staff_room").emit("applications_updated"); // lists refresh their Rejections column
+    }
+
+    res.json({ success: true, documentRejections: clean });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAssignedApplications,
   reviewStep,
   getApReferrals,
   requestModifications,
   getCorrectionLink,
+  savePendingDocumentRejections,
 };

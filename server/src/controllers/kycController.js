@@ -1339,10 +1339,15 @@ const generateMobileSession = async (req, res, next) => {
  * Returns the current correction session for the authenticated user.
  * Validates the sessionId from the JWT to detect stale links.
  */
+// An application is awaiting corrections when STK rejected it, or when Globe rejected it and sent the
+// correction mail (Globe never changes the STK status, so that application stays STK-verified).
+const AWAITING_CORRECTION_WHERE = { OR: [{ status: "rejected" }, { globeStatus: "rejected", correctionDraft: { not: null } }] };
+const isAwaitingCorrection = (app) => !!app && (app.status === "rejected" || (app.globeStatus === "rejected" && !!app.correctionDraft));
+
 const getCorrectionSession = async (req, res, next) => {
   try {
     let app = await prisma.kycApplication.findFirst({
-      where: { userId: req.user.id, status: "rejected" },
+      where: { userId: req.user.id, ...AWAITING_CORRECTION_WHERE },
       orderBy: { createdAt: "desc" },
     });
 
@@ -1357,7 +1362,7 @@ const getCorrectionSession = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "No application found" });
     }
 
-    if (app.status !== "rejected") {
+    if (!isAwaitingCorrection(app)) {
       return res.json({
         success: false,
         error: "No pending corrections",
@@ -1435,7 +1440,7 @@ const saveCorrectionStep = async (req, res, next) => {
     }
 
     let app = await prisma.kycApplication.findFirst({
-      where: { userId: req.user.id, status: "rejected" },
+      where: { userId: req.user.id, ...AWAITING_CORRECTION_WHERE },
       orderBy: { createdAt: "desc" },
     });
     if (!app) {
@@ -1445,7 +1450,7 @@ const saveCorrectionStep = async (req, res, next) => {
       });
     }
 
-    if (!app || app.status !== "rejected") {
+    if (!isAwaitingCorrection(app)) {
       return res.status(400).json({ success: false, error: "No active correction session" });
     }
 
@@ -1519,7 +1524,7 @@ const saveCorrectionStep = async (req, res, next) => {
 const completeCorrectionSession = async (req, res, next) => {
   try {
     let app = await prisma.kycApplication.findFirst({
-      where: { userId: req.user.id, status: "rejected" },
+      where: { userId: req.user.id, ...AWAITING_CORRECTION_WHERE },
       orderBy: { createdAt: "desc" },
     });
     if (!app) {
@@ -1529,7 +1534,7 @@ const completeCorrectionSession = async (req, res, next) => {
       });
     }
 
-    if (!app || (app.status !== "rejected" && app.status !== "under_review")) {
+    if (!app || (!isAwaitingCorrection(app) && app.status !== "under_review")) {
       return res.status(400).json({ success: false, error: "No active correction session" });
     }
 
@@ -1681,6 +1686,8 @@ const completeCorrectionSession = async (req, res, next) => {
     updateData.stepStatuses = JSON.stringify(stepStatuses);
     updateData.isResubmitted = true;
     updateData.correctionDraft = null;
+    // Corrections after a Globe rejection go back to Globe for a fresh review
+    if (app.globeStatus === "rejected") updateData.globeStatus = "pending";
 
     if (req.body.esignCompleted) {
       updateData.status = "under_review";

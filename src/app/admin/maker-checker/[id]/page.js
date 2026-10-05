@@ -1691,14 +1691,6 @@ export default function AgentReview() {
           console.error("Failed to parse visited steps", e);
         }
       }
-      const storedDocs = localStorage.getItem(`documentRejections_${id}`);
-      if (storedDocs) {
-        try {
-          setDocumentRejections(JSON.parse(storedDocs));
-        } catch (e) {
-          console.error("Failed to parse document rejections", e);
-        }
-      }
     }
   }, [id]);
 
@@ -1708,11 +1700,67 @@ export default function AgentReview() {
     }
   }, [visitedSteps, id]);
 
-  useEffect(() => {
-    if (id) {
-      localStorage.setItem(`documentRejections_${id}`, JSON.stringify(documentRejections));
+  // Pending (not yet mailed) document rejections are shared through the server, so every reviewer
+  // device with this KYC open sees them — and their undo — in real time.
+  const documentRejectionsRef = useRef(documentRejections);
+  documentRejectionsRef.current = documentRejections;
+  const docRejectionsSyncRef = useRef({ loaded: false, fromServer: false });
+  const allDocumentsRef = useRef([]); // current documents list, to send each rejected document's name
+
+  const savePendingDocRejections = useCallback(async (next) => {
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetchWithFallback(`/api/agent/kyc/${id}/document-rejections`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          documentRejections: next,
+          // Document names (e.g. "PAN Card") so the list's Rejections column can show which document
+          labels: Object.fromEntries(Object.keys(next).map(src => [src, allDocumentsRef.current.find(d => d.src === src)?.label || ""])),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) showToast(data.error || "Could not share the document rejection with other reviewers.", "error");
+    } catch (error) {
+      showToast("Network error: document rejection not shared with other reviewers.", "error");
     }
-  }, [documentRejections, id]);
+  }, [id, showToast]);
+
+  // Server → screen: on every (re)load of the application, show its pending document rejections
+  useEffect(() => {
+    if (!app || !id) return;
+    let ss = app.stepStatuses;
+    if (typeof ss === "string") { try { ss = JSON.parse(ss); } catch (e) { ss = {}; } }
+    const pending = ss && typeof ss._pendingDocumentRejections === "object" && ss._pendingDocumentRejections ? ss._pendingDocumentRejections : {};
+
+    if (!docRejectionsSyncRef.current.loaded) {
+      docRejectionsSyncRef.current.loaded = true;
+      // One-time carry-over of rejections saved only in this browser before they were shared via the server
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(`documentRejections_${id}`) || "{}") || {}; } catch (e) { stored = {}; }
+      try { localStorage.removeItem(`documentRejections_${id}`); } catch (e) {}
+      const missing = Object.keys(stored).filter(src => !(src in pending));
+      if (missing.length > 0) {
+        setDocumentRejections({ ...stored, ...pending }); // local change → saved to the server below
+        return;
+      }
+    }
+
+    if (JSON.stringify(documentRejectionsRef.current) !== JSON.stringify(pending)) {
+      docRejectionsSyncRef.current.fromServer = true;
+      setDocumentRejections(pending);
+    }
+  }, [app, id]);
+
+  // Screen → server: any reject / edit / remove / undo made here is saved and pushed to other devices
+  useEffect(() => {
+    if (!docRejectionsSyncRef.current.loaded) return; // application not loaded yet
+    if (docRejectionsSyncRef.current.fromServer) {
+      docRejectionsSyncRef.current.fromServer = false; // came from the server — nothing to save
+      return;
+    }
+    savePendingDocRejections(documentRejections);
+  }, [documentRejections, savePendingDocRejections]);
 
   const handleSaveDetails = async (requireEsign = false) => {
     if (Object.keys(editValues).length === 0) {
@@ -1933,6 +1981,37 @@ export default function AgentReview() {
     }
   };
 
+  // Right-click on a rejected field: remove just that field from the module's rejection.
+  // If it was the last rejected field (and the whole module isn't rejected), the module rejection is undone.
+  const handleUnrejectField = async (step, fieldLabel) => {
+    const st = getStepStatuses(app)[step.id] || {};
+    const remaining = (Array.isArray(st.rejectedFields) ? st.rejectedFields : []).filter(f => f !== fieldLabel);
+    if (remaining.length === 0 && !st.rejectEntireModule) {
+      return handleUnrejectStep(step.id, step.title);
+    }
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetchWithFallback(`/api/agent/kyc/${id}/step/${step.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: "rejected", reason: st.reason || "Rejected", rejectedFields: remaining, rejectEntireModule: st.rejectEntireModule === true }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Rejection removed for ${fieldLabel}.`, "success");
+        fetchDetail();
+      } else {
+        showToast(data.error || "Failed to remove field rejection.", "error");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Network error while removing field rejection.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAdminCorrection = async () => {
     setSubmitting(true);
     try {
@@ -2062,6 +2141,7 @@ export default function AgentReview() {
 
     return docs;
   }, [app]);
+  allDocumentsRef.current = allDocuments;
   if (loading) return <div className="admin-loading" style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", fontSize: "1.2rem", fontWeight: 800 }}>Loading Review Dashboard...</div>;
   if (!app) return <div className="admin-error" style={{ padding: 40, textAlign: "center" }}>Application not found for ID: {id}</div>;
 
@@ -2158,65 +2238,69 @@ export default function AgentReview() {
         />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", background: "var(--bg-secondary)", overflow: "hidden", fontFamily: "'Inter', sans-serif" }}>
       {/* Top Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 24px", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", borderTopColor: "rgba(255,255,255,0.4)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--wise-green)", color: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: "0.9rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", columnGap: 20, rowGap: 10, padding: "10px 24px", minHeight: 68, background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
+        {/* Applicant */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 0 auto" }}>
+          <div style={{ width: 38, height: 38, flexShrink: 0, borderRadius: "50%", background: "var(--wise-green)", color: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.9rem" }}>
             {getInitials(getApplicantName(app))}
           </div>
-          <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary)" }}>{getApplicantName(app)}</h1>
-              <span style={{ padding: "2px 6px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: "bold", textTransform: "uppercase" }}>Pending Review</span>
+              <h1 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.25, maxWidth: 360, overflowWrap: "anywhere" }}>{getApplicantName(app)}</h1>
+              <span style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "2px 8px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.3px" }}>Pending Review</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", marginTop: 2 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: "bold", letterSpacing: "0.5px", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 10, rowGap: 4, whiteSpace: "nowrap" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, letterSpacing: "0.5px", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                   {app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId}
                 </span>
-                <button onClick={(e) => handleCopy(e, app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId, 'app-pan')} title="Copy PAN" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === 'app-pan' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                <button onClick={(e) => handleCopy(e, app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId, 'app-pan')} title="Copy PAN" style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: copiedKey === 'app-pan' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
                   {copiedKey === 'app-pan' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
                 </button>
-                {app.clientCode && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8, background: "rgba(159, 232, 112, 0.15)", padding: "1px 6px", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700, color: "var(--text-primary)", userSelect: "text", cursor: "text" }}>
-                    CC: {app.clientCode}
-                    <button onClick={(e) => handleCopy(e, app.clientCode, 'app-cc')} title="Copy Client Code" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-cc' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                      {copiedKey === 'app-cc' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
-                    </button>
-                  </span>
-                )}
-              </div>
+              </span>
+              {app.clientCode && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(159, 232, 112, 0.15)", padding: "2px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700, color: "var(--text-primary)", userSelect: "text", cursor: "text" }}>
+                  UCC: {app.clientCode}
+                  <button onClick={(e) => handleCopy(e, app.clientCode, 'app-cc')} title="Copy UCC" style={{ background: "transparent", border: "none", cursor: "pointer", padding: 1, color: copiedKey === 'app-cc' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                    {copiedKey === 'app-cc' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                  </button>
+                </span>
+              )}
             </div>
           </div>
         </div>
-        
-        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>
-               {formattedESignDate}
-             </span>
-             <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>eSign Date</span>
+
+        {/* Dates */}
+        <div style={{ display: "flex", alignItems: "center", gap: 20, flexShrink: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{formattedESignDate}</span>
+            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>eSign Date</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>
-               {formattedKycDate}
-             </span>
-             <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>Date of KYC</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{formattedKycDate}</span>
+            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>Date of KYC</span>
           </div>
-          <button onClick={handleGlobalApprove} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.4)", transition: "all 0.2s" }}>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
+          <button onClick={handleGlobalApprove} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.35)", transition: "all 0.2s" }}>
             <CheckCircle2 size={16} /> Approve KYC
           </button>
-          
+
           {Object.values(statuses).some(s => s.status === "rejected") && (
-            <button onClick={handleAdminCorrection} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(245, 158, 11, 0.4)", transition: "all 0.2s" }} title="Open Correction Portal as User">
+            <button onClick={handleAdminCorrection} disabled={submitting} title="Open Correction Portal as User" style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(245, 158, 11, 0.35)", transition: "all 0.2s" }}>
               <LayoutTemplate size={16} /> Correct as Admin
             </button>
           )}
 
-          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.4)", transition: "all 0.2s" }}>
+          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
             <Mail size={16} /> Send Rejection Mail
           </button>
+
           <AdminThemeToggle />
-          <button onClick={() => router.push("/admin/maker-checker")} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+
+          <button onClick={() => router.push("/admin/maker-checker")} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.82rem", whiteSpace: "nowrap", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <ArrowLeft size={14} /> Back
           </button>
         </div>
@@ -2292,15 +2376,15 @@ export default function AgentReview() {
                           padding: "4px 7px",
                           borderRadius: 6,
                           cursor: "pointer",
-                          border: displayAsRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
-                          background: displayAsRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
-                          color: displayAsRejected ? "#ffffff" : "#ef4444",
+                          border: isRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: isRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          color: isRejected ? "#ffffff" : "#ef4444",
                           transition: "all 0.2s",
-                          boxShadow: displayAsRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
+                          boxShadow: isRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
                         }}
-                        title={displayAsRejected ? "Rejected (Click to modify reason)" : isModified ? "User Modified (Click to Reject)" : "Reject Step"}
+                        title={isRejected ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Step"}
                       >
-                        <Ban size={13} color={displayAsRejected ? "#ffffff" : "#ef4444"} />
+                        <Ban size={13} color={isRejected ? "#ffffff" : "#ef4444"} />
                       </button>
                     </div>
                   </div>
@@ -2410,14 +2494,20 @@ export default function AgentReview() {
                                        }
 
                                       const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
+                                      // This field is among the module's rejected fields → red; right-click undoes just this field
+                                      const fieldStatus = statuses[step.id];
+                                      const isFieldRejected = fieldStatus?.status === "rejected" && Array.isArray(fieldStatus?.rejectedFields) && fieldStatus.rejectedFields.includes(label);
                                       return (
-                                        <div key={label} style={{ 
+                                        <div key={label}
+                                          onContextMenu={isFieldRejected ? (e) => { e.preventDefault(); e.stopPropagation(); handleUnrejectField(step, label); } : undefined}
+                                          title={isFieldRejected ? "Rejected field — right-click to undo" : undefined}
+                                          style={{ 
                                           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
-                                          padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
-                                          border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                                          padding: "10px 14px", background: isFieldRejected ? "rgba(239, 68, 68, 0.08)" : "var(--bg-secondary)", borderRadius: "10px", 
+                                          border: isFieldRejected ? "1px solid #ef4444" : "1px solid var(--border-color)", boxShadow: isFieldRejected ? "0 0 0 1px rgba(239, 68, 68, 0.15)" : "0 2px 8px rgba(0,0,0,0.02)"
                                         }}>
                                           <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                                            <div style={{ fontSize: "0.65rem", color: isFieldRejected ? "#dc2626" : "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                                             {editingField === jsonPath && jsonPath ? (
                                               DROPDOWN_OPTIONS[jsonPath] ? (
                                                 <select

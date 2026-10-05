@@ -157,6 +157,13 @@ const gracefulShutdown = () => {
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown); // For Ctrl+C
 
+// For nodemon restarts
+process.once('SIGUSR2', () => {
+  serverInstance.close(() => {
+    process.kill(process.pid, 'SIGUSR2');
+  });
+});
+
 // Server restarted at: 2026-05-18T17:56:00
 
 // trigger restart

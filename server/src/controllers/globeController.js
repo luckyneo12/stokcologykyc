@@ -1,6 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const backofficeService = require("../services/backofficeService");
+const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 
 class GlobeController {
   async getDashboardKPIs(req, res) {
@@ -148,22 +149,25 @@ class GlobeController {
 
       const whereClause = {};
       if (globeStatus === "in_progress" || globeStatus === "pending") {
-        whereClause.currentStep = { lt: 14 };
-        whereClause.status = { notIn: ["rejected", "on_hold", "verified"] };
+        // Globe "In Progress": verified by STK, but no action taken on the Globe portal yet
+        whereClause.status = "verified";
+        whereClause.globeStatus = "pending";
       } else if (globeStatus === "verify") {
-        // eSign done and not yet pushed to back office — stays here even after STK/Globe are verified.
-        // Rejected / on-hold applications have their own filters.
+        // Awaiting Globe's decision: STK-verified, eSign done, Globe status still pending.
+        // Pushing to back office is done by admin, so it doesn't affect what Globe sees.
         whereClause.currentStep = { gte: 14 };
-        whereClause.status = { notIn: ["rejected", "on_hold"] };
-        whereClause.pushedToBackoffice = false;
+        whereClause.status = "verified";
+        whereClause.globeStatus = "pending";
       } else if (globeStatus === "completed" || globeStatus === "approved") {
+        // Approved by Globe (STK-verified)
         whereClause.status = "verified";
         whereClause.globeStatus = "approved";
-        whereClause.pushedToBackoffice = false;
       } else if (globeStatus && globeStatus !== "all") {
+        // e.g. "rejected": rejected on the Globe portal (Reject button, module/document reject or rejection mail)
         whereClause.globeStatus = globeStatus;
         whereClause.status = "verified";
       } else {
+        // All: Globe only ever sees applications verified by STK — if STK later changes that, they drop out
         whereClause.status = "verified";
       }
       if (stage && stage !== "all" && !isNaN(parseInt(stage))) {
@@ -214,7 +218,13 @@ class GlobeController {
           searchConditions.push({ userId: parseInt(search, 10) });
         }
 
-        whereClause.OR = searchConditions;
+        if (whereClause.OR) {
+          // Keep the filter's own OR (e.g. "All") and the search — both must match
+          whereClause.AND = [{ OR: whereClause.OR }, { OR: searchConditions }];
+          delete whereClause.OR;
+        } else {
+          whereClause.OR = searchConditions;
+        }
       }
 
       console.log(`[Globe API] fetching getPendingKYCs. globeStatus=${globeStatus}, search=${search}`);
@@ -225,10 +235,12 @@ class GlobeController {
           where: whereClause,
           include: {
             user: {
-              select: { 
-                phone: true, 
+              select: {
+                phone: true,
                 email: true,
                 eStamp: true,
+                boid: true,
+                boidAssigned: { select: { boidNumber: true } },
                 eStampAssigned: { select: { serialNo: true, certificateNo: true } }
               },
             },
@@ -244,7 +256,7 @@ class GlobeController {
 
       res.status(200).json({
         success: true,
-        data: applications,
+        data: await attachDecisionTimestamps(applications),
         pagination: {
           total,
           pages: Math.ceil(total / limit),

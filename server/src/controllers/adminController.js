@@ -1364,6 +1364,11 @@ const updateApplicationDetails = async (req, res, next) => {
   const agentId = req.user.id;
   const agentName = req.user.email || `Agent ${agentId}`;
 
+  // Sending back for a new eSign resets the STK status — only STK may do that, never Globe
+  if (requireEsign && req.user.role === "globe") {
+    return res.status(403).json({ success: false, error: "Only STK can send an application back for a new eSign." });
+  }
+
   try {
     const app = await prisma.kycApplication.findUnique({
       where: { applicationId: id },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -23,6 +23,7 @@ import {
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
 import GlobeSidebar from "../../components/GlobeSidebar";
+import AdminThemeToggle from "../../../admin/components/AdminThemeToggle";
 // Globe layout uses consistent theme
 import "../../globe-table.css";
 
@@ -43,6 +44,37 @@ const USER_STEP_LABELS = {
   13: "Aadhaar eSign", 
   14: "Completion"
 };
+
+const ReverseGeocode = ({ lat, lng, fallback }) => {
+  const [address, setAddress] = useState("Fetching location...");
+  
+  useEffect(() => {
+    if (!lat || !lng || lat === "N/A" || lng === "N/A") {
+      setAddress(fallback || "N/A");
+      return;
+    }
+    const cacheKey = `geo_${lat}_${lng}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      setAddress(cached);
+      return;
+    }
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.display_name) {
+          setAddress(data.display_name);
+          sessionStorage.setItem(cacheKey, data.display_name);
+        } else {
+          setAddress(fallback || "N/A");
+        }
+      })
+      .catch(() => setAddress(fallback || "N/A"));
+  }, [lat, lng, fallback]);
+
+  return <span style={{ fontSize: "0.95rem" }}>{address}</span>;
+};
+
 const DROPDOWN_OPTIONS = {
   "personalDetails.gender": ["Male", "Female", "Transgender", "Other"],
   "personalDetails.maritalStatus": ["Single", "Married", "Others"],
@@ -95,32 +127,6 @@ const REVIEW_STEPS = [
     ],
     evidence: () => [],
   },
-  // {
-  //   id: "phoneVerification",
-  //   kycIndex: 1,
-  //   title: "Phone Verification",
-  //   evidenceTitle: "",
-  //   evidenceHint: "Confirm the applicant's verified mobile number and reference their photo.",
-  //   fields: (app) => [
-  //     ["Mobile number", app.user?.phone, "user.phone"],
-  //   ],
-  //   evidence: (app) => {
-  //     const doc = findDocument(app, ["aadhaar", "digilocker", "photo"], "", ["pan"]);
-  //     return doc ? [{ ...doc, label: "" }] : [];
-  //   },
-  // },
-  // {
-  //   id: "emailVerification",
-  //   kycIndex: 2,
-  //   title: "Email Verification",
-  //   evidenceTitle: "",
-  //   evidenceHint: "Confirm the applicant's verified email address.",
-  //   fields: (app) => [
-  //     ["Email", app.personalDetails?.email || app.user?.email, "personalDetails.email"],
-  //     ["Mobile number", app.user?.phone, "user.phone"],
-  //   ],
-  //   evidence: () => [],
-  // },
   {
     id: "pricingSelection",
     kycIndex: 3,
@@ -294,7 +300,7 @@ const REVIEW_STEPS = [
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["Operate ddpi", app.personalDetails?.operatedThroughDDPI || "Yes", "personalDetails.operatedThroughDDPI"],
-      ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
+      // ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
       ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
@@ -388,8 +394,16 @@ const REVIEW_STEPS = [
     evidenceHint: "Verify account holder name, account number, IFSC, and bank proof if uploaded.",
     fields: (app) => [
       ["Account holder", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", "bankDetails.accountHolderName"],
+      ["Account type", (() => {
+        const at = app.bankDetails?.accountType || app.bankDetails?.accType;
+        if (!at) return "N/A";
+        if (at === "10" || at === 10 || String(at).toLowerCase().includes("sav")) return "Saving Account";
+        if (at === "11" || at === 11 || String(at).toLowerCase().includes("curr")) return "Current Account";
+        return String(at);
+      })(), "bankDetails.accountType"],
       ["Account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
       ["IFSC", app.bankDetails?.ifsc || "N/A", "bankDetails.ifsc"],
+      ["MICR", app.bankDetails?.micr || "N/A", "bankDetails.micr"],
       ["Penny drop status", (() => {
         const bd = app.bankDetails;
         if (!bd) return "No";
@@ -408,23 +422,19 @@ const REVIEW_STEPS = [
         
         return "No";
       })()],
-      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A"],
-      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
-      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A"],
-      // ["Bank add", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
-      // ["Reject reason bank", app.bankDetails?.rejectReason || app.ocrData?.bank?.rejectReason || "N/A"],
-      // ["Rejected by bank", app.bankDetails?.rejectedBy || app.ocrData?.bank?.rejectedBy || "N/A"],
-      // ["Rejected timestamp bank", app.bankDetails?.rejectedAt ? new Date(app.bankDetails.rejectedAt).toLocaleString() : app.ocrData?.bank?.rejectedAt || "N/A"],
-      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
-      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A"],
+      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A", null, true],
+      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A", null, true],
+      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A", null, true],
+      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A", null, true],
+      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A", null, true],
       ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A", null, true],
       ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A", null, true],
       ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A", null, true],
       ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A", null, true],
-      ["Name on pan", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.panName || "N/A"],
-      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
-      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
-      ["Bank Log", JSON.stringify(app.bankDetails || {})],
+      ["Name on pan", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.panName || "N/A", null, true],
+      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", null, true],
+      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A", null, true],
+      ["Bank Log", JSON.stringify(app.bankDetails || {}), null, true],
     ],
     evidence: (app) => [firstMedia(app.bankDetails?.proofPreview || app.bankDetails?.proofPath || app.bankDetails?.proof, "Bank Proof")].filter(Boolean),
   },
@@ -493,15 +503,15 @@ const REVIEW_STEPS = [
     fields: (app) => [
       ["Face match score", app.selfieDetails?.faceMatchScore != null ? `${app.selfieDetails.faceMatchScore}%` : app.selfieDetails?.matchScore != null ? `${app.selfieDetails.matchScore}%` : "Not Captured"],
       // ["Liveness check", app.selfieDetails?.livenessScore != null ? `Pass (${app.selfieDetails.livenessScore}%)` : app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Pass" : "Not Captured"],
-      ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
+      // ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
+      // ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
       ["Latitude", app.selfieDetails?.lat || app.selfieDetails?.latitude || "N/A"],
-      ["Location", app.selfieDetails?.location || "N/A"],
       ["Longitude", app.selfieDetails?.lng || app.selfieDetails?.longitude || "N/A"],
       ["Capture Date", app.selfieDetails?.extractedAt ? new Date(app.selfieDetails.extractedAt).toLocaleString('en-GB') : app.selfieDetails?.updatedAt ? new Date(app.selfieDetails.updatedAt).toLocaleString('en-GB') : "N/A"],
+      ["Location", <ReverseGeocode key="geo" lat={app.selfieDetails?.lat || app.selfieDetails?.latitude} lng={app.selfieDetails?.lng || app.selfieDetails?.longitude} fallback={app.selfieDetails?.location} />],
     ],
     evidence: (app) => [
-      firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
+      firstMedia(app.selfieDetails?.path || app.selfie || app.selfieDetails?.preview, "Live Selfie"),
       firstMedia(app.selfieDetails?.videoPath, "Liveness Video"),
       findDocument(app, ["aadhaar", "photo", "digilocker"], "Aadhar photo", ["pan", "pdf"]),
       firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document"),
@@ -525,16 +535,31 @@ const REVIEW_STEPS = [
     kycIndex: 16,
     title: "eSign",
     evidenceTitle: "eSigned Document",
-    evidenceHint: "Review the e-signed application.",
+    evidenceHint: "Review the e-signed application and signer details.",
     fields: (app) => [
-      ["Email", app.personalDetails?.email || app.user?.email || "Pending", "personalDetails.email"],
-      ["Mobile", app.user?.phone || "Pending", "user.phone"],
-      ["Name", app.personalDetails?.fullName || "Pending", "personalDetails.fullName"],
-      ["Ip", app.esignDetails?.ip || "Pending", "esignDetails.ip"],
-      ["Lat", app.esignDetails?.lat || "Pending", "esignDetails.lat"],
-      ["Lng", app.esignDetails?.lng || "Pending", "esignDetails.lng"],
+      ["eSigner Name", app.esignDetails?.signerName || app.esignDetails?.name || app.ocrData?.digio?.ESIGN?.signerName || app.personalDetails?.fullName || app.user?.name || "Pending", "esignDetails.name"],
+      ["eSign Date & Time", (() => {
+        const dt = app.esignDetails?.signedAt || app.esignDetails?.completedAt || app.esignDetails?.updatedAt || app.ocrData?.digio?.ESIGN?.updatedAt || app.ocrData?.digio?.ESIGN?.createdAt || (app.currentStep >= 13 ? (app.submittedAt || app.updatedAt) : null);
+        if (!dt) return "Pending";
+        try {
+          return new Date(dt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        } catch(e) {
+          return String(dt);
+        }
+      })()],
+      // ["IP Address", app.esignDetails?.ip || "Pending", "esignDetails.ip"],
+      // ["Latitude", app.esignDetails?.lat || "Pending", "esignDetails.lat"],
+      // ["Longitude", app.esignDetails?.lng || "Pending", "esignDetails.lng"],
     ],
-    evidence: () => [],
+    evidence: (app) => [
+      firstMedia(
+        app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
+        findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
+        (Array.isArray(app.documents) && [...app.documents].reverse().find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+        app.generatedPdfBase64,
+        "eSigned PDF"
+      )
+    ].filter(Boolean),
   }
 ];
 
@@ -702,8 +727,8 @@ function findDocument(app, keywords, label, excludeKeywords = []) {
   const lowerExclude = excludeKeywords.map((k) => k.toLowerCase());
   const docs = normalizeDocuments(app);
   
-  // Sort docs: generated ones first
-  const sortedDocs = [...docs].sort((a, b) => {
+  // Sort docs: generated ones first. Reverse to prioritize latest documents.
+  const sortedDocs = [...docs].reverse().sort((a, b) => {
     if (a?.generated && !b?.generated) return -1;
     if (!a?.generated && b?.generated) return 1;
     return 0;
@@ -771,15 +796,23 @@ function formatList(value) {
 }
 
 function nomineeSummary(app) {
-  if (Array.isArray(app.nomineeDetails?.nominees) && app.nomineeDetails.nominees.length > 0) return "Nominee added";
-  if (app.nomineeDetails?.optOut || app.nomineeDetails?.skipNominee) return "Opted out";
+  let details = app.nomineeDetails || {};
+  if (details.nomineeDetails) {
+    details = { ...details.nomineeDetails, ...details };
+  }
+  if (Array.isArray(details?.nominees) && details.nominees.length > 0) return "Nominee added";
+  if (details?.optOut || details?.skipNominee || details?.opted === "No") return "Opted out";
   return "";
 }
 
 function nomineeFields(app, tab) {
-  const preference = app.nomineeDetails?.choice || app.nomineeDetails?.nomineeChoice || nomineeSummary(app);
-  const nominees = Array.isArray(app.nomineeDetails?.nominees) ? app.nomineeDetails.nominees : [];
-  const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || app.nomineeDetails?.allocations || [];
+  let details = app.nomineeDetails || {};
+  if (details.nomineeDetails) {
+    details = { ...details.nomineeDetails, ...details };
+  }
+  const preference = details?.choice || details?.nomineeChoice || nomineeSummary(app);
+  const nominees = Array.isArray(details?.nominees) ? details.nominees : [];
+  const percentages = app.nomineeAllocation?.percentages || app.nomineeAllocation?.allocations || details?.allocations || [];
   
   const baseFields = [
     ["Nominee preference", preference],
@@ -876,11 +909,29 @@ function getStepStatuses(app) {
 
 function getSafePreviewUrl(src) {
   if (!src) return src;
-  // Cloudinary blocks direct PDF delivery via ACL for this account.
-  // Converting .pdf to .jpg instructs Cloudinary to render the PDF as an image, bypassing the ACL.
+  
   if (typeof src === 'string' && src.includes('res.cloudinary.com') && src.endsWith('.pdf')) {
-    return src.replace(/\.pdf$/, '.jpg');
+    let token = "";
+    try { token = localStorage.getItem("globeToken") || ""; } catch (e) {}
+    // Proxy Cloudinary PDFs through backend to bypass ACL/CORS
+    return `${API_BASE_URL}/api/kyc/proxy-pdf?url=${encodeURIComponent(src)}&token=${encodeURIComponent(token)}`;
   }
+  
+  // Attach token for local secure routes to bypass 401 Unauthorized in <img> and <embed> tags.
+  // Always use the staff token here — resolveAssetUrl may already have attached an applicant's
+  // kycToken (if one is in this browser's storage), which the server rejects for staff documents.
+  if (typeof src === 'string' && src.includes('/api/kyc/document/')) {
+    try {
+      const token = localStorage.getItem("globeToken");
+      if (token) {
+        const [base, query = ""] = src.split("?");
+        const params = new URLSearchParams(query);
+        params.set("token", token);
+        return `${base}?${params.toString()}`;
+      }
+    } catch(e) {}
+  }
+
   return src;
 }
 
@@ -890,7 +941,7 @@ function getApplicantPan(app) {
   ).toUpperCase().trim();
 }
 
-// eSigned PDF → KYC_Application_<PAN>, everything else → <Document_Name>_<PAN> (same as admin portal)
+// eSigned PDF → KYC_Application_<PAN>, everything else → <Document_Name>_<PAN>
 function buildDownloadFileName(label, pan) {
   const isEsignedPdf = String(label || "").toLowerCase().startsWith("esigned pdf");
   const name = isEsignedPdf
@@ -899,14 +950,11 @@ function buildDownloadFileName(label, pan) {
   return name.replace(/[^a-zA-Z0-9-_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
 }
 
-// Builds the URL for the embedded PDF viewer; ?name= lets the browser's own PDF viewer save with the proper name
-function getPdfViewerUrl(src, label, pan) {
-  const url = getSafePreviewUrl(src);
-  if (url.startsWith('data:')) return url;
-  if (url.startsWith('JVBER')) return `data:application/pdf;base64,${url}`;
-  if (url.startsWith('/')) return url;
-  const nameParam = label ? `&name=${encodeURIComponent(buildDownloadFileName(label, pan))}` : "";
-  return `/api/pdf-proxy?url=${encodeURIComponent(url)}${nameParam}`;
+// Adds ?name= to server-served files so the browser's own PDF viewer download uses the proper name
+function withDownloadName(url, label, pan) {
+  if (typeof url !== "string" || !(url.includes("/api/kyc/proxy-pdf") || url.includes("/api/kyc/document/"))) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}name=${encodeURIComponent(buildDownloadFileName(label, pan))}`;
 }
 
 const MIME_EXTENSIONS = {
@@ -920,25 +968,18 @@ const MIME_EXTENSIONS = {
   "video/mp4": ".mp4",
 };
 
-async function downloadGlobeDocument(src, label, pan) {
-  let url = src;
+async function downloadAdminDocument(src, label, pan) {
+  let url = getSafePreviewUrl(src);
   if (typeof url === "string" && url.startsWith("JVBER")) url = `data:application/pdf;base64,${url}`;
-  const fileName = buildDownloadFileName(label, pan);
 
-  // Files served by our backend (local uploads, or Cloudinary PDFs via the backend proxy):
-  // native browser download (?download=1 → attachment with the proper name), no buffering in JS.
-  // Opened in a new tab so an error never replaces this page. Must run before any await.
-  let backendUrl = null;
-  if (typeof url === "string" && url.includes("/api/kyc/document/")) {
-    backendUrl = url;
-  } else if (typeof url === "string" && url.includes("res.cloudinary.com") && url.split("?")[0].endsWith(".pdf")) {
-    let token = "";
-    try { token = localStorage.getItem("globeToken") || ""; } catch (e) {}
-    backendUrl = `${API_BASE_URL}/api/kyc/proxy-pdf?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
-  }
-  if (backendUrl) {
+  // Files served by our backend: let the browser download them natively (?download=1 → attachment
+  // with the proper file name). The download bar appears right away instead of waiting for the
+  // whole file to be buffered in JS first. Opened in a new tab so an error never replaces this page;
+  // browsers close that tab automatically once the download starts.
+  // Must run before any await so it stays inside the click's user gesture.
+  if (typeof url === "string" && (url.includes("/api/kyc/proxy-pdf") || url.includes("/api/kyc/document/"))) {
     const link = document.createElement("a");
-    link.href = `${backendUrl}${backendUrl.includes("?") ? "&" : "?"}name=${encodeURIComponent(fileName)}&download=1`;
+    link.href = `${withDownloadName(url, label, pan)}&download=1`;
     link.target = "_blank";
     link.rel = "noopener";
     document.body.appendChild(link);
@@ -960,7 +1001,7 @@ async function downloadGlobeDocument(src, label, pan) {
   const blobUrl = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = blobUrl;
-  link.download = `${fileName}${ext}`;
+  link.download = `${buildDownloadFileName(label, pan)}${ext}`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -969,7 +1010,19 @@ async function downloadGlobeDocument(src, label, pan) {
 
 function isPdf(src) {
   const safeSrc = getSafePreviewUrl(src);
-  return safeSrc?.startsWith("data:application/pdf") || safeSrc?.toLowerCase().endsWith(".pdf");
+  if (!safeSrc && !src) return false;
+  
+  // Strip query parameters to check the true extension
+  const safeSrcNoQuery = safeSrc?.split('?')[0];
+  const srcNoQuery = src?.split('?')[0];
+  
+  return (
+    safeSrc?.startsWith("data:application/pdf") || 
+    safeSrcNoQuery?.toLowerCase().endsWith(".pdf") || 
+    safeSrc?.includes("/api/kyc/proxy-pdf") ||
+    srcNoQuery?.toLowerCase().endsWith(".pdf") ||
+    safeSrc?.toLowerCase().includes("application/pdf")
+  );
 }
 
 function isVideo(src) {
@@ -1428,9 +1481,9 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
-      {isPdf(src) && shouldDisplayAsIframe(label) ? (
-        <object data={getPdfViewerUrl(src, label, pan)} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={getPdfViewerUrl(src, label, pan)} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+      {isPdf(src) ? (
+        <object data={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : withDownloadName(getSafePreviewUrl(src), label, pan)} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : withDownloadName(getSafePreviewUrl(src), label, pan)} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
@@ -1473,7 +1526,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
           </div>
         </div>
       )}
-      {!(isPdf(src) && shouldDisplayAsIframe(label)) && (
+      {!(isPdf(src)) && (
         <div style={{ position: "absolute", bottom: 12, right: 12, display: "flex", gap: 6, background: "var(--bg-primary)", padding: "4px 8px", borderRadius: 20, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)", zIndex: 10 }}>
           <button onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={14} /></button>
           <button onClick={() => setZoom(Math.min(3, zoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={14} /></button>
@@ -1485,7 +1538,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
             if (downloading) return;
             setDownloading(true);
             try {
-              await downloadGlobeDocument(src, label, pan);
+              await downloadAdminDocument(src, label, pan);
             } catch (err) {
               console.error("[Download] Failed:", err);
               window.alert(err.message || "Download failed");
@@ -1529,6 +1582,8 @@ export default function AgentReview() {
   const [globalRejectReason, setGlobalRejectReason] = useState("");
   const [rejectStepModal, setRejectStepModal] = useState(null);
   const [stepRejectReason, setStepRejectReason] = useState("");
+  const [selectedRejectedFields, setSelectedRejectedFields] = useState([]);
+  const [rejectEntireModule, setRejectEntireModule] = useState(false);
   const [showRejectionConfirmModal, setShowRejectionConfirmModal] = useState(false);
   const [documentRejections, setDocumentRejections] = useState({});
   const [rejectDocumentModal, setRejectDocumentModal] = useState(null);
@@ -1599,7 +1654,7 @@ export default function AgentReview() {
       });
 
       if (response.status === 401) {
-        router.push("/admin/login");
+        router.push("/globe/login");
         return;
       }
 
@@ -1637,14 +1692,6 @@ export default function AgentReview() {
           console.error("Failed to parse visited steps", e);
         }
       }
-      const storedDocs = localStorage.getItem(`documentRejections_${id}`);
-      if (storedDocs) {
-        try {
-          setDocumentRejections(JSON.parse(storedDocs));
-        } catch (e) {
-          console.error("Failed to parse document rejections", e);
-        }
-      }
     }
   }, [id]);
 
@@ -1654,11 +1701,67 @@ export default function AgentReview() {
     }
   }, [visitedSteps, id]);
 
-  useEffect(() => {
-    if (id) {
-      localStorage.setItem(`documentRejections_${id}`, JSON.stringify(documentRejections));
+  // Pending (not yet mailed) document rejections are shared through the server, so every reviewer
+  // device with this KYC open sees them — and their undo — in real time.
+  const documentRejectionsRef = useRef(documentRejections);
+  documentRejectionsRef.current = documentRejections;
+  const docRejectionsSyncRef = useRef({ loaded: false, fromServer: false });
+  const allDocumentsRef = useRef([]); // current documents list, to send each rejected document's name
+
+  const savePendingDocRejections = useCallback(async (next) => {
+    try {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/kyc/${id}/document-rejections`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          documentRejections: next,
+          // Document names (e.g. "PAN Card") so the list's Rejections column can show which document
+          labels: Object.fromEntries(Object.keys(next).map(src => [src, allDocumentsRef.current.find(d => d.src === src)?.label || ""])),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) showToast(data.error || "Could not share the document rejection with other reviewers.", "error");
+    } catch (error) {
+      showToast("Network error: document rejection not shared with other reviewers.", "error");
     }
-  }, [documentRejections, id]);
+  }, [id, showToast]);
+
+  // Server → screen: on every (re)load of the application, show its pending document rejections
+  useEffect(() => {
+    if (!app || !id) return;
+    let ss = app.stepStatuses;
+    if (typeof ss === "string") { try { ss = JSON.parse(ss); } catch (e) { ss = {}; } }
+    const pending = ss && typeof ss._pendingDocumentRejections === "object" && ss._pendingDocumentRejections ? ss._pendingDocumentRejections : {};
+
+    if (!docRejectionsSyncRef.current.loaded) {
+      docRejectionsSyncRef.current.loaded = true;
+      // One-time carry-over of rejections saved only in this browser before they were shared via the server
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(`documentRejections_${id}`) || "{}") || {}; } catch (e) { stored = {}; }
+      try { localStorage.removeItem(`documentRejections_${id}`); } catch (e) {}
+      const missing = Object.keys(stored).filter(src => !(src in pending));
+      if (missing.length > 0) {
+        setDocumentRejections({ ...stored, ...pending }); // local change → saved to the server below
+        return;
+      }
+    }
+
+    if (JSON.stringify(documentRejectionsRef.current) !== JSON.stringify(pending)) {
+      docRejectionsSyncRef.current.fromServer = true;
+      setDocumentRejections(pending);
+    }
+  }, [app, id]);
+
+  // Screen → server: any reject / edit / remove / undo made here is saved and pushed to other devices
+  useEffect(() => {
+    if (!docRejectionsSyncRef.current.loaded) return; // application not loaded yet
+    if (docRejectionsSyncRef.current.fromServer) {
+      docRejectionsSyncRef.current.fromServer = false; // came from the server — nothing to save
+      return;
+    }
+    savePendingDocRejections(documentRejections);
+  }, [documentRejections, savePendingDocRejections]);
 
   const handleSaveDetails = async (requireEsign = false) => {
     if (Object.keys(editValues).length === 0) {
@@ -1730,7 +1833,7 @@ export default function AgentReview() {
       const data = await res.json();
       if (data.success) {
         showToast("Rejection email sent and application returned to user.");
-        // We no longer clear local document rejections here so they remain visible in the UI
+        setDocumentRejections({});
         fetchDetail();
       } else {
         showToast(data.error || "Failed to send rejection email.", "error");
@@ -1752,10 +1855,10 @@ export default function AgentReview() {
     setSubmitting(true);
     try {
       const token = localStorage.getItem("globeToken");
-      const res = await fetchWithFallback(`/api/globe/kycs/${id}/approve`, {
+      const res = await fetchWithFallback(`/api/globe/kycs/${id}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "rejected", reason: globalRejectReason }),
+        body: JSON.stringify({ globeStatus: "rejected", remarks: globalRejectReason }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1763,7 +1866,7 @@ export default function AgentReview() {
         setShowGlobalReject(false);
         fetchDetail();
       } else {
-        showToast(data.error || "Failed to reject application.", "error");
+        showToast(data.error || data.message || "Failed to reject application.", "error");
       }
     } catch (error) {
       console.error(error);
@@ -1784,10 +1887,10 @@ export default function AgentReview() {
     setSubmitting(true);
     try {
       const token = localStorage.getItem("globeToken");
-      const res = await fetchWithFallback(`/api/globe/kycs/${id}/approve`, {
+      const res = await fetchWithFallback(`/api/globe/kycs/${id}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "verified", reason: "" }),
+        body: JSON.stringify({ globeStatus: "approved" }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1796,7 +1899,7 @@ export default function AgentReview() {
         // Optionally redirect back after a delay
         setTimeout(() => router.push("/globe/maker-checker"), 1500);
       } else {
-        showToast(data.error || "Failed to approve application.", "error");
+        showToast(data.error || data.message || "Failed to approve application.", "error");
       }
     } catch (error) {
       console.error(error);
@@ -1817,7 +1920,12 @@ export default function AgentReview() {
       const res = await fetchWithFallback(`/api/globe/kyc/${id}/step/${rejectStepModal.id}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "rejected", reason: stepRejectReason }),
+        body: JSON.stringify({ 
+          status: "rejected", 
+          reason: stepRejectReason,
+          rejectedFields: selectedRejectedFields,
+          rejectEntireModule: rejectEntireModule,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1825,6 +1933,8 @@ export default function AgentReview() {
         const stepId = rejectStepModal.id;
         setRejectStepModal(null);
         setStepRejectReason("");
+        setSelectedRejectedFields([]);
+        setRejectEntireModule(false);
         setVisitedSteps(prev => {
           const next = new Set(prev);
           next.delete(stepId);
@@ -1867,6 +1977,60 @@ export default function AgentReview() {
     } catch (error) {
       console.error(error);
       showToast("Network error while removing rejection.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Right-click on a rejected field: remove just that field from the module's rejection.
+  // If it was the last rejected field (and the whole module isn't rejected), the module rejection is undone.
+  const handleUnrejectField = async (step, fieldLabel) => {
+    const st = getStepStatuses(app)[step.id] || {};
+    const remaining = (Array.isArray(st.rejectedFields) ? st.rejectedFields : []).filter(f => f !== fieldLabel);
+    if (remaining.length === 0 && !st.rejectEntireModule) {
+      return handleUnrejectStep(step.id, step.title);
+    }
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/kyc/${id}/step/${step.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: "rejected", reason: st.reason || "Rejected", rejectedFields: remaining, rejectEntireModule: st.rejectEntireModule === true }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Rejection removed for ${fieldLabel}.`, "success");
+        fetchDetail();
+      } else {
+        showToast(data.error || "Failed to remove field rejection.", "error");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Network error while removing field rejection.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAdminCorrection = async () => {
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("globeToken");
+      const res = await fetchWithFallback(`/api/globe/kyc/${id}/correction-link`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.correctionLink) {
+        window.open(data.correctionLink, '_blank');
+        showToast("Opening Correction Portal...", "success");
+      } else {
+        showToast(data.error || "Failed to get correction link. Please click 'Send Rejection Mail' first to generate a session.", "error");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Network error while generating correction link.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -1959,7 +2123,7 @@ export default function AgentReview() {
     if (app.signature) pushDoc(firstMedia(app.signature, "Signature"), "signature");
 
     // Live Selfie
-    const selfie = app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie;
+    const selfie = app.selfieDetails?.path || app.selfie || app.selfieDetails?.preview;
     if (selfie) pushDoc(firstMedia(selfie, "Live Selfie"), "ipv");
 
     // Assigned E-Stamp
@@ -1970,14 +2134,15 @@ export default function AgentReview() {
     // eSigned PDF
     const esignPath = app.esignDetails?.signedPdf || app.esignDetails?.url || app.esignDetails?.fileUrl || app.esignDetails?.path ||
                       findDocument(app, ["esign", "pdf", "signed", "application"])?.path ||
-                      (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
+                      (Array.isArray(app.documents) && [...app.documents].reverse().find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ||
                       app.generatedPdfBase64;
     if (esignPath) {
-      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && app.documents.find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
+      pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && [...app.documents].reverse().find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
     }
 
     return docs;
   }, [app]);
+  allDocumentsRef.current = allDocuments;
   if (loading) return <div className="admin-loading" style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", fontSize: "1.2rem", fontWeight: 800 }}>Loading Review Dashboard...</div>;
   if (!app) return <div className="admin-error" style={{ padding: 40, textAlign: "center" }}>Application not found for ID: {id}</div>;
 
@@ -2044,6 +2209,19 @@ export default function AgentReview() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
+  const eSignDt = app.esignDetails?.signedAt || app.esignDetails?.completedAt || app.esignDetails?.updatedAt || app.ocrData?.digio?.ESIGN?.updatedAt || app.ocrData?.digio?.ESIGN?.createdAt || (app.currentStep >= 13 ? (app.submittedAt || app.updatedAt) : null);
+  const formattedESignDate = eSignDt ? (() => {
+    try {
+      return new Date(eSignDt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    } catch(e) { return String(eSignDt); }
+  })() : "Pending";
+  
+  const formattedKycDate = app.createdAt ? (() => {
+    try {
+      return new Date(app.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    } catch(e) { return "Pending"; }
+  })() : "Pending";
+
   return (
     <div style={{ display: "flex", width: "100vw", height: "100vh", overflow: "hidden", background: "var(--bg-secondary)" }}>
       <div style={{ 
@@ -2065,72 +2243,69 @@ export default function AgentReview() {
         />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", background: "var(--bg-secondary)", overflow: "hidden", fontFamily: "'Inter', sans-serif" }}>
       {/* Top Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 24px", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", borderTopColor: "rgba(255,255,255,0.4)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--wise-green)", color: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: "0.9rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", columnGap: 20, rowGap: 10, padding: "10px 24px", minHeight: 68, background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
+        {/* Applicant */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 0 auto" }}>
+          <div style={{ width: 38, height: 38, flexShrink: 0, borderRadius: "50%", background: "var(--wise-green)", color: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.9rem" }}>
             {getInitials(getApplicantName(app))}
           </div>
-          <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary)" }}>{getApplicantName(app)}</h1>
-              <span style={{ padding: "2px 6px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: "bold", textTransform: "uppercase" }}>Pending Review</span>
+              <h1 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.25, maxWidth: 360, overflowWrap: "anywhere" }}>{getApplicantName(app)}</h1>
+              <span style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "2px 8px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.3px" }}>Pending Review</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", marginTop: 2 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: "bold", letterSpacing: "0.5px", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
-                  {app.applicationId}
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 10, rowGap: 4, whiteSpace: "nowrap" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, letterSpacing: "0.5px", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                  {app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId}
                 </span>
-                <button onClick={(e) => handleCopy(e, app.applicationId, 'app-id')} title="Copy App ID" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === 'app-id' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                  {copiedKey === 'app-id' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                <button onClick={(e) => handleCopy(e, app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId, 'app-pan')} title="Copy PAN" style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: copiedKey === 'app-pan' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                  {copiedKey === 'app-pan' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
                 </button>
-                {app.clientCode && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8, background: "rgba(159, 232, 112, 0.15)", padding: "1px 6px", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700, color: "var(--text-primary)", userSelect: "text", cursor: "text" }}>
-                    CC: {app.clientCode}
-                    <button onClick={(e) => handleCopy(e, app.clientCode, 'app-cc')} title="Copy Client Code" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-cc' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                      {copiedKey === 'app-cc' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
-                    </button>
-                  </span>
-                )}
-              </div>
-              {app.user?.eStampAssigned?.certificateNo && (
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4, display: "flex", gap: 12 }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, userSelect: "text", cursor: "text" }}>
-                    <strong style={{ color: "var(--text-primary)" }}>Cert No:</strong> {app.user.eStampAssigned.certificateNo}
-                    <button onClick={(e) => handleCopy(e, app.user.eStampAssigned.certificateNo, 'app-cert')} title="Copy Cert No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-cert' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                      {copiedKey === 'app-cert' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
-                    </button>
-                  </span>
-                  {app.user.eStampAssigned.serialNo && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, userSelect: "text", cursor: "text" }}>
-                      <strong style={{ color: "var(--text-primary)" }}>Serial No:</strong> {app.user.eStampAssigned.serialNo}
-                      <button onClick={(e) => handleCopy(e, app.user.eStampAssigned.serialNo, 'app-serial')} title="Copy Serial No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "1px", color: copiedKey === 'app-serial' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                        {copiedKey === 'app-serial' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
-                      </button>
-                    </span>
-                  )}
-                </div>
+              </span>
+              {app.clientCode && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(159, 232, 112, 0.15)", padding: "2px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700, color: "var(--text-primary)", userSelect: "text", cursor: "text" }}>
+                  UCC: {app.clientCode}
+                  <button onClick={(e) => handleCopy(e, app.clientCode, 'app-cc')} title="Copy UCC" style={{ background: "transparent", border: "none", cursor: "pointer", padding: 1, color: copiedKey === 'app-cc' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
+                    {copiedKey === 'app-cc' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                  </button>
+                </span>
               )}
             </div>
           </div>
         </div>
-        
-        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>{formatDateToYMDHMS(app.updatedAt)}</span>
-             <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>Updated At</span>
+
+        {/* Dates */}
+        <div style={{ display: "flex", alignItems: "center", gap: 20, flexShrink: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{formattedESignDate}</span>
+            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>eSign Date</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-             <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: "bold", letterSpacing: "0.5px" }}>{formatDateToYMDHMS(app.submittedAt || app.createdAt)}</span>
-             <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "500", marginTop: 2 }}>Date of KYC</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{formattedKycDate}</span>
+            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>Date of KYC</span>
           </div>
-          <button onClick={handleGlobalApprove} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.4)", transition: "all 0.2s" }}>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
+          <button onClick={handleGlobalApprove} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.35)", transition: "all 0.2s" }}>
             <CheckCircle2 size={16} /> Approve KYC
           </button>
-          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.4)", transition: "all 0.2s" }}>
+
+          {Object.values(statuses).some(s => s.status === "rejected") && (
+            <button onClick={handleAdminCorrection} disabled={submitting} title="Open Correction Portal as User" style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(245, 158, 11, 0.35)", transition: "all 0.2s" }}>
+              <LayoutTemplate size={16} /> Correct as Admin
+            </button>
+          )}
+
+          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
             <Mail size={16} /> Send Rejection Mail
           </button>
-          
-          <button onClick={() => router.push("/globe/maker-checker")} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+
+          <AdminThemeToggle />
+
+          <button onClick={() => router.push("/globe/maker-checker")} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.82rem", whiteSpace: "nowrap", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <ArrowLeft size={14} /> Back
           </button>
         </div>
@@ -2185,8 +2360,12 @@ export default function AgentReview() {
                           e.stopPropagation();
                           if (displayAsRejected || isRejected) {
                             setStepRejectReason(statuses[step.id]?.reason || "");
+                            setSelectedRejectedFields(Array.isArray(statuses[step.id]?.rejectedFields) ? statuses[step.id].rejectedFields : []);
+                            setRejectEntireModule(statuses[step.id]?.rejectEntireModule === true);
                           } else {
                             setStepRejectReason("");
+                            setSelectedRejectedFields([]);
+                            setRejectEntireModule(false);
                           }
                           setRejectStepModal(step);
                         }}
@@ -2202,15 +2381,15 @@ export default function AgentReview() {
                           padding: "4px 7px",
                           borderRadius: 6,
                           cursor: "pointer",
-                          border: displayAsRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
-                          background: displayAsRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
-                          color: displayAsRejected ? "#ffffff" : "#ef4444",
+                          border: isRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: isRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          color: isRejected ? "#ffffff" : "#ef4444",
                           transition: "all 0.2s",
-                          boxShadow: displayAsRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
+                          boxShadow: isRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
                         }}
-                        title={displayAsRejected ? "Rejected (Click to modify reason)" : isModified ? "User Modified (Click to Reject)" : "Reject Step"}
+                        title={isRejected ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Step"}
                       >
-                        <Ban size={13} color={displayAsRejected ? "#ffffff" : "#ef4444"} />
+                        <Ban size={13} color={isRejected ? "#ffffff" : "#ef4444"} />
                       </button>
                     </div>
                   </div>
@@ -2265,7 +2444,7 @@ export default function AgentReview() {
                                   "Country of tax residence1", "Tax payer identification number1",
                                   "Country of tax residence2", "Tax payer identification number2",
                                   "Country tax residence3", "Tax payer identification number3",
-                                  "Place of birth", "Tax exempt", "Tax exempt reason",
+                                  "Tax exempt reason",
                                   "Country birth1", "Citizen1"
                                 ];
                                 const taxResidencyFields = [];
@@ -2288,95 +2467,208 @@ export default function AgentReview() {
                                 
                                 const renderField = ([label, value, jsonPath]) => {
                                   
-                                const isDivider = label.startsWith("---");
-                                if (isDivider) {
-                                  const headerText = label.replace(/-/g, "").trim();
-                                  return (
-                                    <div key={label} style={{
-                                      marginTop: 12,
-                                      marginBottom: 4,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 16
-                                    }}>
-                                      <div style={{
-                                        fontSize: "0.75rem",
-                                        fontWeight: 900,
-                                        color: "var(--text-primary)",
-                                        letterSpacing: "1px",
-                                        textTransform: "uppercase",
-                                        whiteSpace: "nowrap"
-                                      }}>
-                                        {headerText}
-                                      </div>
-                                      <div style={{
-                                        flex: 1,
-                                        height: "2px",
-                                        background: "linear-gradient(90deg, rgba(16, 185, 129, 0.7), transparent)",
-                                        boxShadow: "0 0 8px rgba(16, 185, 129, 0.5)"
-                                      }} />
-                                    </div>
-                                  );
-                                }
+                                       const isDivider = label.startsWith("---");
+                                       if (isDivider) {
+                                         const headerText = label.replace(/-/g, "").trim();
+                                         return (
+                                           <div key={label} style={{
+                                             marginTop: 12,
+                                             marginBottom: 4,
+                                             display: "flex",
+                                             alignItems: "center",
+                                             gap: 16
+                                           }}>
+                                             <div style={{
+                                               fontSize: "0.75rem",
+                                               fontWeight: 900,
+                                               color: "var(--text-primary)",
+                                               letterSpacing: "1px",
+                                               textTransform: "uppercase",
+                                               whiteSpace: "nowrap"
+                                             }}>
+                                               {headerText}
+                                             </div>
+                                             <div style={{
+                                               flex: 1,
+                                               height: "2px",
+                                               background: "linear-gradient(90deg, rgba(16, 185, 129, 0.7), transparent)",
+                                               boxShadow: "0 0 8px rgba(16, 185, 129, 0.5)"
+                                             }} />
+                                           </div>
+                                         );
+                                       }
 
-                                const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
-                                return (
-                                  <div key={label} style={{ 
-                                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
-                                    padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
-                                    border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-                                  }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-                                      <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
-                                        {label === "Segments" && typeof currentValue === "string" 
-                                          ? currentValue.split(",").join(", ") 
-                                          : (currentValue !== undefined && currentValue !== null ? (typeof currentValue === "object" ? (currentValue.$$typeof ? currentValue : (() => { try { return JSON.stringify(currentValue); } catch(e) { return "[Object]"; } })()) : String(currentValue)) : "")
-                                        }
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
-                                      {currentValue && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => handleCopy(e, currentValue, `field-${label}`)}
-                                          title={`Copy ${label}`}
-                                          style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `field-${label}` ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}
-                                        >
-                                          {copiedKey === `field-${label}` ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              
+                                      const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
+                                      // This field is among the module's rejected fields → red; right-click undoes just this field
+                                      const fieldStatus = statuses[step.id];
+                                      const isFieldRejected = fieldStatus?.status === "rejected" && Array.isArray(fieldStatus?.rejectedFields) && fieldStatus.rejectedFields.includes(label);
+                                      return (
+                                        <div key={label}
+                                          onContextMenu={isFieldRejected ? (e) => { e.preventDefault(); e.stopPropagation(); handleUnrejectField(step, label); } : undefined}
+                                          title={isFieldRejected ? "Rejected field — right-click to undo" : undefined}
+                                          style={{ 
+                                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
+                                          padding: "10px 14px", background: isFieldRejected ? "rgba(239, 68, 68, 0.08)" : "var(--bg-secondary)", borderRadius: "10px", 
+                                          border: isFieldRejected ? "1px solid #ef4444" : "1px solid var(--border-color)", boxShadow: isFieldRejected ? "0 0 0 1px rgba(239, 68, 68, 0.15)" : "0 2px 8px rgba(0,0,0,0.02)"
+                                        }}>
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: "0.65rem", color: isFieldRejected ? "#dc2626" : "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                                            {editingField === jsonPath && jsonPath ? (
+                                              DROPDOWN_OPTIONS[jsonPath] ? (
+                                                <select
+                                                  autoFocus
+                                                  className="admin-input"
+                                                  style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                                                  value={currentValue || ""}
+                                                  onChange={e => {
+                                                    setEditValues({ ...editValues, [jsonPath]: e.target.value });
+                                                    setEditingField(null);
+                                                    if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                      const val = e.target.value;
+                                                      setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
+                                                      autoSaveField(jsonPath, val);
+                                                    }
+                                                  }}
+                                                  onBlur={(e) => {
+                                                    setEditingField(null);
+                                                    if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                      const val = e.target.value;
+                                                      setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
+                                                      autoSaveField(jsonPath, val);
+                                                    }
+                                                  }}
+                                                >
+                                                  <option value="">--Select--</option>
+                                                  {DROPDOWN_OPTIONS[jsonPath].map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                  ))}
+                                                </select>
+                                              ) : (
+                                                <input 
+                                                  autoFocus
+                                                  className="admin-input"
+                                                  style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)" }}
+                                                  value={currentValue || ""}
+                                                  onChange={e => setEditValues({ ...editValues, [jsonPath]: e.target.value })}
+                                                  onBlur={(e) => {
+                                                    setEditingField(null);
+                                                    if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                      const val = e.target.value;
+                                                      setEditValues(prev => {
+                                                        const next = { ...prev };
+                                                        delete next[jsonPath];
+                                                        return next;
+                                                      });
+                                                      autoSaveField(jsonPath, val);
+                                                    }
+                                                  }}
+                                                  onKeyDown={e => { 
+                                                    if (e.key === "Enter") {
+                                                      setEditingField(null);
+                                                      if (jsonPath.startsWith("user.eStampAssigned")) {
+                                                        const val = e.currentTarget.value;
+                                                        setEditValues(prev => {
+                                                          const next = { ...prev };
+                                                          delete next[jsonPath];
+                                                          return next;
+                                                        });
+                                                        autoSaveField(jsonPath, val);
+                                                      }
+                                                    }
+                                                  }}
+                                                />
+                                              )
+                                            ) : (
+                                              <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", wordBreak: "break-word", fontWeight: 700, minHeight: 18, marginTop: 4, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                                                {(() => {
+                                                  if (currentValue === undefined || currentValue === null) return "";
+                                                  if (React.isValidElement(currentValue)) return currentValue;
+                                                  if (label === "Segments" && typeof currentValue === "string") return currentValue.split(",").join(", ");
+                                                  if (typeof currentValue === "object") {
+                                                    if (Array.isArray(currentValue)) {
+                                                      return currentValue.map((item, idx) => (
+                                                        <React.Fragment key={idx}>
+                                                          {idx > 0 && ", "}
+                                                          {React.isValidElement(item) ? item : (typeof item === "object" ? (JSON.stringify(item) || "") : String(item))}
+                                                        </React.Fragment>
+                                                      ));
+                                                    }
+                                                    try {
+                                                      return JSON.stringify(currentValue);
+                                                    } catch {
+                                                      return "[Object]";
+                                                    }
+                                                  }
+                                                  return String(currentValue);
+                                                })()}
+                                              </div>
+                                            )}
+                                          </div>
+                                          {jsonPath && (
+                                            <div style={{ display: "flex", alignItems: "center", alignSelf: "center", marginLeft: 8 }}>
+                                              <Edit2 
+                                                onClick={() => setEditingField(jsonPath)} 
+                                                size={14} 
+                                                color="var(--text-muted)" 
+                                                style={{ cursor: "pointer" }} 
+                                                title={`Edit ${label}`}
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    
                                 };
                                 return (
                                   <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: section.label ? 16 : 0 }}>
-                                    {filteredTabFields.map(renderField)}
-                                    
-                                    {isTaxResidencyOutside && taxResidencyFields.length > 0 && (
-                                      <div style={{ marginTop: 4, padding: "8px", background: "var(--bg-secondary)", borderRadius: 8, border: "1px dashed var(--border-color)" }}>
-                                        <button 
-                                          type="button"
-                                          onClick={(e) => { e.stopPropagation(); setShowTaxResidency(prev => !prev); }}
-                                          style={{
-                                            width: "100%", padding: "8px", borderRadius: 4, background: "transparent",
-                                            color: "var(--text-primary)", border: "none",
-                                            fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center"
-                                          }}
-                                        >
-                                          <span>Tax Residency Details</span>
-                                          <span>{showTaxResidency ? "▲" : "▼"}</span>
-                                        </button>
-                                        
-                                        {showTaxResidency && (
-                                          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-                                            {taxResidencyFields.map(renderField)}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
+                                    {filteredTabFields.map((fieldTuple) => {
+                                      const label = fieldTuple[0];
+                                      const renderedField = renderField(fieldTuple);
+                                      if (label === "Tax residency outside" && isTaxResidencyOutside) {
+                                        return (
+                                          <React.Fragment key={label}>
+                                            <div 
+                                              onClick={(e) => { e.stopPropagation(); setShowTaxResidency(prev => !prev); }}
+                                              style={{ 
+                                                cursor: "pointer", 
+                                                transition: "all 0.2s",
+                                                display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
+                                                padding: "10px 14px", background: "var(--bg-secondary)", borderRadius: "10px", 
+                                                border: "1px solid var(--border-color)", boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                                              }}
+                                            >
+                                              <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                <div>
+                                                  <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                                                  <div style={{ fontSize: "0.8rem", color: "var(--text-primary)", fontWeight: 600, wordBreak: "break-word" }}>
+                                                    Yes <span style={{ marginLeft: 8, color: "var(--wise-green)", fontSize: "0.7rem" }}>{showTaxResidency ? "▲" : "▼"}</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              <div style={{ display: "flex", alignItems: "center", alignSelf: "center", marginLeft: 8 }}>
+                                                <Edit2 
+                                                  onClick={(e) => { e.stopPropagation(); setEditingField("personalDetails.taxResidencyOutside"); }} 
+                                                  size={14} 
+                                                  color="var(--text-muted)" 
+                                                  style={{ cursor: "pointer" }} 
+                                                  title={`Edit ${label}`}
+                                                />
+                                              </div>
+                                            </div>
+                                            {showTaxResidency && (
+                                              <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingLeft: 16, borderLeft: "2px solid var(--wise-green)", marginLeft: 8, marginTop: 4 }}>
+                                                {taxResidencyFields.length > 0 ? (
+                                                  taxResidencyFields.map(renderField)
+                                                ) : (
+                                                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", padding: 8 }}>No additional details provided.</div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </React.Fragment>
+                                        );
+                                      }
+                                      return renderedField;
+                                    })}
 
                                     {extraBankFields.length > 0 && (
                                       <div style={{ marginTop: 4, padding: "8px", background: "var(--bg-secondary)", borderRadius: 8, border: "1px dashed var(--border-color)" }}>
@@ -2403,58 +2695,58 @@ export default function AgentReview() {
                                   </div>
                                 );
     
-                        };
+                              };
 
-                        if (!section.label) {
-                          return <div key="default">{renderFieldBlock()}</div>;
-                        }
+                              if (!section.label) {
+                                return <div key="default">{renderFieldBlock()}</div>;
+                              }
 
-                        return (
-                          <div id={`accordion-${step.id}-${section.id}`} key={section.id} style={{ 
-                            border: `1px solid ${section.isActive ? 'var(--wise-dark-green)' : 'var(--border-color)'}`, 
-                            borderRadius: 8, 
-                            overflow: "hidden",
-                            background: "var(--bg-primary)",
-                            boxShadow: section.isActive ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
-                            transition: "all 0.2s"
-                          }}>
-                            <div 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const isCurrentlyActive = section.isActive;
-                                setSidebarActiveTabs(prev => ({...prev, [step.id]: isCurrentlyActive ? null : section.id})); 
-                                if (!isCurrentlyActive) {
-                                  const stepDocs = step.evidence(app, section.id);
-                                  if (stepDocs && stepDocs.length > 0) {
-                                    setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
-                                    setPreviewZoom(1); setPreviewRotation(0); setPreviewOffset({ x: 0, y: 0 });
-                                  }
-                                }
-                              }}
-                              style={{ 
-                                padding: "12px 16px", 
-                                display: "flex", 
-                                justifyContent: "space-between", 
-                                alignItems: "center", 
-                                cursor: "pointer",
-                                background: section.isActive ? "var(--wise-dark-green)" : "var(--bg-secondary)",
-                                color: section.isActive ? "white" : "var(--text-primary)",
-                                fontWeight: 800,
-                                fontSize: "0.85rem",
-                                borderBottom: section.isActive ? "1px solid var(--border-color)" : "none"
-                              }}
-                            >
-                              <span>{section.label}</span>
-                              {section.isActive ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            </div>
-                            
-                            {section.isActive && renderFieldBlock()}
+                              return (
+                                <div id={`accordion-${step.id}-${section.id}`} key={section.id} style={{ 
+                                  border: `1px solid ${section.isActive ? 'var(--wise-dark-green)' : 'var(--border-color)'}`, 
+                                  borderRadius: 8, 
+                                  overflow: "hidden",
+                                  background: "var(--bg-primary)",
+                                  boxShadow: section.isActive ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
+                                  transition: "all 0.2s"
+                                }}>
+                                  <div 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const isCurrentlyActive = section.isActive;
+                                      setSidebarActiveTabs(prev => ({...prev, [step.id]: isCurrentlyActive ? null : section.id})); 
+                                      if (!isCurrentlyActive) {
+                                        const stepDocs = step.evidence(app, section.id);
+                                        if (stepDocs && stepDocs.length > 0) {
+                                          setSelectedDocument({ ...stepDocs[0], stepKey: step.id, isModuleView: true });
+                                          setPreviewZoom(1); setPreviewRotation(0); setPreviewOffset({ x: 0, y: 0 });
+                                        }
+                                      }
+                                    }}
+                                    style={{ 
+                                      padding: "12px 16px", 
+                                      display: "flex", 
+                                      justifyContent: "space-between", 
+                                      alignItems: "center", 
+                                      cursor: "pointer",
+                                      background: section.isActive ? "var(--wise-dark-green)" : "var(--bg-secondary)",
+                                      color: section.isActive ? "white" : "var(--text-primary)",
+                                      fontWeight: 800,
+                                      fontSize: "0.85rem",
+                                      borderBottom: section.isActive ? "1px solid var(--border-color)" : "none"
+                                    }}
+                                  >
+                                    <span>{section.label}</span>
+                                    {section.isActive ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                  </div>
+                                  
+                                  {section.isActive && renderFieldBlock()}
+                                </div>
+                              );
+                            })}
                           </div>
                         );
-                      })}
-                    </div>
-                  );
-                })()}
+                      })()}
                     </div>
                   )}
                 </div>
@@ -2485,7 +2777,7 @@ export default function AgentReview() {
                     <span style={{ fontSize: "0.75rem", fontWeight: 500, flex: 1 }}>{doc.label || "Document"}</span>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <Paperclip size={14} color={isSelected ? "#16a34a" : "var(--text-muted)"} />
-                      <div 
+                      <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           if (documentRejections[doc.src]) {
@@ -2499,7 +2791,7 @@ export default function AgentReview() {
                           e.preventDefault();
                           e.stopPropagation();
                           if (!documentRejections[doc.src]) return;
-                          // Undo the (not yet sent) document rejection
+                          // Same as "Remove" in the rejection summary
                           setDocumentRejections(prev => {
                             const next = { ...prev };
                             delete next[doc.src];
@@ -2507,11 +2799,24 @@ export default function AgentReview() {
                           });
                           showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
                         }}
-                        style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        style={{
+                          cursor: "pointer",
+                          display: "flex", 
+                          alignItems: "center", 
+                          justifyContent: "center",
+                          width: 24, 
+                          height: 24,
+                          borderRadius: 6,
+                          border: documentRejections[doc.src] ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: documentRejections[doc.src] ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          transition: "all 0.2s",
+                          boxShadow: documentRejections[doc.src] ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none",
+                          padding: 0
+                        }}
                         title={documentRejections[doc.src] ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Document"}
                       >
-                        <Ban size={14} color={documentRejections[doc.src] ? "#ef4444" : "#fca5a5"} />
-                      </div>
+                        <Ban size={13} color={documentRejections[doc.src] ? "#ffffff" : "#ef4444"} />
+                      </button>
                     </div>
                   </div>
                 );
@@ -2590,59 +2895,61 @@ export default function AgentReview() {
               </div>
             ) : (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
-                {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
-                  <object 
-                    data={getPdfViewerUrl(selectedDocument.src, selectedDocument.label, getApplicantPan(app))} 
-                    type="application/pdf"
-                    style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
-                  >
-                    <embed src={getPdfViewerUrl(selectedDocument.src, selectedDocument.label, getApplicantPan(app))} type="application/pdf" style={{ width: "100%", height: "100%" }} />
-                  </object>
-                ) : (
-                  <div style={{ 
-                    transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom}) rotate(${previewRotation}deg)`, 
-                    transition: isDragging ? "none" : "transform 0.2s ease",
-                    maxHeight: "100%",
-                    maxWidth: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    pointerEvents: "none"
-                  }}>
-                    {isPdf(selectedDocument.src) ? (
-                      <PdfThumbnail src={getSafePreviewUrl(selectedDocument.src)} />
-                    ) : isVideo(selectedDocument.src) ? (
-                      <video 
-                        src={getSafePreviewUrl(selectedDocument.src)} 
-                        controls autoPlay loop 
-                        style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", pointerEvents: "auto" }} 
-                      />
-                    ) : (
-                      <img 
-                        src={getSafePreviewUrl(selectedDocument.src)} 
-                        alt="Preview" 
-                        draggable={false}
-                        style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", userSelect: "none" }} 
-                      />
-                    )}
-                  </div>
-                )}
+                <div style={{ 
+                  transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom}) rotate(${previewRotation}deg)`, 
+                  transition: isDragging ? "none" : "transform 0.2s ease",
+                  maxHeight: "100%",
+                  maxWidth: "100%",
+                  width: isPdf(selectedDocument.src) ? "100%" : "auto",
+                  height: isPdf(selectedDocument.src) ? "100%" : "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: isPdf(selectedDocument.src) ? "auto" : "none"
+                }}>
+                  {isPdf(selectedDocument.src) ? (
+                    <object 
+                      data={getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : withDownloadName(getSafePreviewUrl(selectedDocument.src), selectedDocument.label, getApplicantPan(app))} 
+                      type="application/pdf"
+                      style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
+                    >
+                      <embed src={getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : withDownloadName(getSafePreviewUrl(selectedDocument.src), selectedDocument.label, getApplicantPan(app))} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    </object>
+                  ) : isVideo(selectedDocument.src) ? (
+                    <video 
+                      src={getSafePreviewUrl(selectedDocument.src)} 
+                      controls autoPlay loop 
+                      style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", pointerEvents: "auto" }} 
+                    />
+                  ) : (
+                    <img 
+                      src={getSafePreviewUrl(selectedDocument.src)} 
+                      alt="Preview" 
+                      draggable={false}
+                      style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", userSelect: "none" }} 
+                    />
+                  )}
+                </div>
               </div>
             )}
 
             {selectedDocument && (
                <div style={{ position: "absolute", bottom: 24, right: 24, display: "flex", gap: 8, background: "var(--bg-primary)", padding: "8px 12px", borderRadius: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)" }}>
-                  <button onClick={() => handleZoomChange(Math.max(0.5, previewZoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={18} /></button>
-                  <button onClick={() => handleZoomChange(Math.min(3, previewZoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={18} /></button>
-                  <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
-                  <button onClick={() => setPreviewRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={18} /></button>
-                  <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                  {!(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
+                    <>
+                      <button onClick={() => handleZoomChange(Math.max(0.5, previewZoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={18} /></button>
+                      <button onClick={() => handleZoomChange(Math.min(3, previewZoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={18} /></button>
+                      <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                      <button onClick={() => setPreviewRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={18} /></button>
+                      <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                    </>
+                  )}
                   <button onClick={async (e) => {
                     e.stopPropagation();
                     if (isDownloadingDoc) return;
                     setIsDownloadingDoc(true);
                     try {
-                      await downloadGlobeDocument(selectedDocument.src, selectedDocument.label, getApplicantPan(app));
+                      await downloadAdminDocument(selectedDocument.src, selectedDocument.label, getApplicantPan(app));
                     } catch (err) {
                       console.error("[Download] Failed:", err);
                       showToast(err.message || "Download failed", "error");
@@ -2650,8 +2957,12 @@ export default function AgentReview() {
                       setTimeout(() => setIsDownloadingDoc(false), 1500);
                     }
                   }} style={{ background: "transparent", border: "none", cursor: isDownloadingDoc ? "wait" : "pointer", color: "var(--text-muted)", opacity: isDownloadingDoc ? 0.4 : 1 }} title={isDownloadingDoc ? "Preparing download…" : "Download"}><Download size={18} /></button>
-                  <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
-                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{Math.round(previewZoom * 100)}%</span>
+                  {!(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
+                    <>
+                      <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{Math.round(previewZoom * 100)}%</span>
+                    </>
+                  )}
                </div>
             )}
           </div>
@@ -2677,6 +2988,18 @@ export default function AgentReview() {
                   setRejectStepModal({ id: finalId, title: selectedDocument.label });
                }} disabled={submitting || !selectedDocument} style={{ padding: "8px 16px", fontSize: "0.85rem", color: "#ffffff", background: "#ef4444", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.5 : 1, boxShadow: (!submitting && selectedDocument) ? "0 0 16px rgba(239, 68, 68, 0.4)" : "none", transition: "all 0.2s" }}>
                   Reject
+               </button>
+               <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleUploadFile} accept="image/*,application/pdf" />
+               <button onClick={() => fileInputRef.current?.click()} disabled={submitting || !selectedDocument} style={{ padding: "8px 16px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || !selectedDocument ? "not-allowed" : "pointer", opacity: submitting || !selectedDocument ? 0.5 : 1, boxShadow: (!submitting && selectedDocument) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
+                  Upload File
+               </button>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+               <button onClick={() => handleSaveDetails(false)} disabled={submitting || Object.keys(editValues).length === 0} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", borderRadius: 8, fontWeight: 700, cursor: submitting || Object.keys(editValues).length === 0 ? "not-allowed" : "pointer", opacity: submitting || Object.keys(editValues).length === 0 ? 0.5 : 1, transition: "all 0.2s" }}>
+                  Save
+               </button>
+               <button onClick={() => handleSaveDetails(true)} disabled={submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0)} style={{ padding: "8px 20px", fontSize: "0.85rem", color: "#ffffff", background: "var(--wise-green)", border: "none", borderRadius: 8, fontWeight: 700, cursor: submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0) ? "not-allowed" : "pointer", opacity: submitting || (Object.keys(editValues).length === 0 && Object.keys(accumulatedEdits).length === 0) ? 0.5 : 1, boxShadow: (!submitting && (Object.keys(editValues).length > 0 || Object.keys(accumulatedEdits).length > 0)) ? "0 0 16px rgba(0, 217, 138, 0.4)" : "none", transition: "all 0.2s" }}>
+                  Save & Generate PDF
                </button>
             </div>
           </div>
@@ -2727,10 +3050,49 @@ export default function AgentReview() {
         </div>
       )}
 
-      {rejectStepModal && (
+      {rejectStepModal && (() => {
+        // Determine if this is a module step (not a document step)
+        const DOCUMENT_STEP_IDS = new Set(["financialProof", "signature", "panUpload", "ipv", "pepProof", "nominee1Proof", "nominee2Proof", "nominee3Proof", "guardian1Proof", "guardian2Proof", "guardian3Proof"]);
+        const isModuleStep = !DOCUMENT_STEP_IDS.has(rejectStepModal.id);
+        
+        // Get available fields for this module from REVIEW_STEPS
+        let availableFields = [];
+        if (isModuleStep && app) {
+          const reviewStepDef = REVIEW_STEPS.find(s => s.id === rejectStepModal.id);
+          if (reviewStepDef && reviewStepDef.fields) {
+            try {
+              const fieldEntries = reviewStepDef.fields(app);
+              availableFields = fieldEntries
+                .filter(f => Array.isArray(f) && f[0] && typeof f[0] === 'string')
+                .map(f => f[0])
+                .filter(label => label !== "Bank Log"); // Exclude debug fields
+            } catch (e) {
+              console.error("Error getting fields for step:", rejectStepModal.id, e);
+            }
+          }
+        }
+
+        const toggleField = (fieldLabel) => {
+          setSelectedRejectedFields(prev => 
+            prev.includes(fieldLabel) 
+              ? prev.filter(f => f !== fieldLabel) 
+              : [...prev, fieldLabel]
+          );
+        };
+
+        const toggleSelectAll = () => {
+          if (selectedRejectedFields.length === availableFields.length) {
+            setSelectedRejectedFields([]);
+          } else {
+            setSelectedRejectedFields([...availableFields]);
+          }
+        };
+
+        return (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 10005, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--bg-card)", padding: 32, borderRadius: 16, width: 420, maxWidth: "90%", boxShadow: "var(--card-shadow)", border: "1px solid var(--border-color)" }}>
+          <div style={{ background: "var(--bg-card)", padding: 32, borderRadius: 16, width: isModuleStep ? 520 : 420, maxWidth: "90%", boxShadow: "var(--card-shadow)", border: "1px solid var(--border-color)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
             <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)", fontSize: "1.2rem", fontWeight: 800 }}>Reject Step: {rejectStepModal.title}</h3>
+            
             <textarea
               className="admin-input"
               autoFocus
@@ -2738,10 +3100,119 @@ export default function AgentReview() {
               placeholder={`Provide a reason for rejecting the ${rejectStepModal.title} step...`}
               value={stepRejectReason}
               onChange={e => setStepRejectReason(e.target.value)}
-              style={{ width: "100%", minHeight: 120, padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", marginBottom: 24, fontSize: "0.95rem" }}
+              style={{ width: "100%", minHeight: 90, padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", marginBottom: 16, fontSize: "0.95rem", resize: "vertical" }}
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-              <button onClick={() => setRejectStepModal(null)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}>
+
+            {isModuleStep && availableFields.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                {/* Reject Entire Module Toggle */}
+                <div 
+                  onClick={() => {
+                    const newVal = !rejectEntireModule;
+                    setRejectEntireModule(newVal);
+                    if (newVal) {
+                      setSelectedRejectedFields([...availableFields]);
+                    } else {
+                      setSelectedRejectedFields([]);
+                    }
+                  }}
+                  style={{ 
+                    display: "flex", alignItems: "center", gap: 10, 
+                    padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                    background: rejectEntireModule ? "rgba(239, 68, 68, 0.08)" : "var(--bg-secondary)", 
+                    border: rejectEntireModule ? "1.5px solid rgba(239, 68, 68, 0.4)" : "1.5px solid var(--border-color)",
+                    marginBottom: 12, transition: "all 0.2s"
+                  }}
+                >
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 4,
+                    background: rejectEntireModule ? "linear-gradient(135deg, #ef4444, #dc2626)" : "var(--bg-primary)",
+                    border: rejectEntireModule ? "none" : "1.5px solid var(--border-color)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "all 0.2s", flexShrink: 0
+                  }}>
+                    {rejectEntireModule && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: "0.85rem", color: rejectEntireModule ? "#ef4444" : "var(--text-primary)" }}>
+                      Reject Entire Module
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>
+                      User will need to refill all fields in this module
+                    </div>
+                  </div>
+                </div>
+
+                {/* Field-level selection */}
+                {!rejectEntireModule && (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                        Select Fields to Reject
+                      </span>
+                      <button 
+                        type="button"
+                        onClick={toggleSelectAll}
+                        style={{ background: "none", border: "none", color: "var(--wise-green)", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", padding: "2px 6px" }}
+                      >
+                        {selectedRejectedFields.length === availableFields.length ? "Deselect All" : "Select All"}
+                      </button>
+                    </div>
+                    <div 
+                      className="premium-sidebar-list"
+                      style={{ 
+                        maxHeight: 200, overflowY: "auto", 
+                        border: "1.5px solid var(--border-color)", borderRadius: 12, 
+                        padding: 6, background: "var(--bg-secondary)",
+                      }}
+                    >
+                      {availableFields.map((fieldLabel) => {
+                        const isSelected = selectedRejectedFields.includes(fieldLabel);
+                        return (
+                          <div 
+                            key={fieldLabel}
+                            onClick={() => toggleField(fieldLabel)}
+                            style={{ 
+                              display: "flex", alignItems: "center", gap: 8, 
+                              padding: "7px 10px", borderRadius: 8, cursor: "pointer",
+                              background: isSelected ? "rgba(239, 68, 68, 0.08)" : "transparent",
+                              transition: "all 0.15s", marginBottom: 1
+                            }}
+                            onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                            onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                          >
+                            <div style={{
+                              width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                              background: isSelected ? "linear-gradient(135deg, #ef4444, #dc2626)" : "var(--bg-primary)",
+                              border: isSelected ? "none" : "1.5px solid var(--border-color)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              transition: "all 0.15s"
+                            }}>
+                              {isSelected && (
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                              )}
+                            </div>
+                            <span style={{ fontSize: "0.82rem", fontWeight: 600, color: isSelected ? "#ef4444" : "var(--text-primary)" }}>
+                              {fieldLabel}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {selectedRejectedFields.length > 0 && (
+                      <div style={{ marginTop: 8, fontSize: "0.75rem", color: "#ef4444", fontWeight: 700 }}>
+                        {selectedRejectedFields.length} field{selectedRejectedFields.length !== 1 ? "s" : ""} selected for rejection
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: "auto" }}>
+              <button onClick={() => { setRejectStepModal(null); setSelectedRejectedFields([]); setRejectEntireModule(false); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}>
                 Cancel
               </button>
               <button 
@@ -2764,7 +3235,8 @@ export default function AgentReview() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {showRejectionConfirmModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
