@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { annotateRejectedBy } = require("../utils/rejectedBy");
 const { z } = require("zod");
 const digioClient = require("../services/digioClient");
 const crmService = require("../services/crmService");
@@ -239,7 +240,8 @@ const getApplicationById = async (req, res, next) => {
       return !linkedAppId || linkedAppId === app.applicationId;
     });
 
-    res.json({ success: true, application: normalizeApplication(app), logs });
+    const [annotatedApp] = await annotateRejectedBy([app]); // who rejected (STK / Globe) for older rejections
+    res.json({ success: true, application: normalizeApplication(annotatedApp), logs });
   } catch (error) {
     next(error);
   }

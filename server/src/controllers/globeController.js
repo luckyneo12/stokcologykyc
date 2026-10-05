@@ -2,6 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const backofficeService = require("../services/backofficeService");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
+const { annotateRejectedBy } = require("../utils/rejectedBy");
 
 class GlobeController {
   async getDashboardKPIs(req, res) {
@@ -256,7 +257,7 @@ class GlobeController {
 
       res.status(200).json({
         success: true,
-        data: await attachDecisionTimestamps(applications),
+        data: await attachDecisionTimestamps(await annotateRejectedBy(applications)),
         pagination: {
           total,
           pages: Math.ceil(total / limit),

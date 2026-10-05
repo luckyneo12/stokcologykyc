@@ -478,11 +478,12 @@ export default function MakerCheckerDashboard() {
             
             const rejectedSteps = Object.entries(parsedStepStatuses)
               .filter(([_, info]) => info?.status === "rejected")
-              .map(([step, info]) => `${FRONTEND_STEP_TITLE_MAP[step] || step}: ${info?.reason || 'No reason'}`);
+              .map(([step, info]) => `${info?.docLabel || FRONTEND_STEP_TITLE_MAP[step] || step}${info?.rejectedBy ? ` (rejected by ${info.rejectedBy})` : ""}: ${info?.reason || 'No reason'}`);
             // Document rejections marked but not yet mailed count too
             const pendingDocLabels = parsedStepStatuses._pendingDocumentRejectionLabels || {};
+            const pendingDocBy = parsedStepStatuses._pendingDocumentRejectionBy || {};
             Object.entries(parsedStepStatuses._pendingDocumentRejections || {}).forEach(([src, reason]) => {
-              rejectedSteps.push(`${pendingDocLabels[src] || "Document"}: ${reason || 'No reason'}`);
+              rejectedSteps.push(`${pendingDocLabels[src] || "Document"}${pendingDocBy[src] ? ` (rejected by ${pendingDocBy[src]})` : ""}: ${reason || 'No reason'}`);
             });
             
             // Module reasons first; otherwise the Globe rejection remark (Globe Reject), then the STK reason

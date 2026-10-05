@@ -41,15 +41,13 @@ router.put("/kycs/:id/status", globeOnly, globeController.updateGlobeStatus);
 router.get("/application/:id", getApplicationById);
 
 const { updateApplicationDetails, uploadAdminDocument } = require("../controllers/adminController");
-const { requestModifications, reviewStep, getCorrectionLink, savePendingDocumentRejections } = require("../controllers/agentController");
+const { requestModifications, reviewStep, savePendingDocumentRejections } = require("../controllers/agentController");
 const upload = require("../middlewares/upload");
 
 router.put("/application/:id/update-details", updateApplicationDetails);
 router.post("/application/:id/request-modifications", requestModifications);
 router.post("/application/:id/upload-document", upload.single("document"), uploadAdminDocument);
 router.post("/kyc/:id/step/:stepName/review", reviewStep);
-// Same as the admin review page's "Correct as Admin" (opens the correction portal for this application)
-router.get("/kyc/:id/correction-link", getCorrectionLink);
 // Pending (not yet mailed) document rejections, shared live across reviewer devices
 router.put("/kyc/:id/document-rejections", savePendingDocumentRejections);
 

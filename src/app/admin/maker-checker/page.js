@@ -452,11 +452,12 @@ export default function MakerCheckerDashboard() {
             
             const rejectedSteps = Object.entries(parsedStepStatuses)
               .filter(([_, info]) => info?.status === "rejected")
-              .map(([step, info]) => `${FRONTEND_STEP_TITLE_MAP[step] || step}: ${info?.reason || 'No reason'}`);
+              .map(([step, info]) => `${info?.docLabel || FRONTEND_STEP_TITLE_MAP[step] || step}${info?.rejectedBy ? ` (rejected by ${info.rejectedBy})` : ""}: ${info?.reason || 'No reason'}`);
             // Document rejections marked but not yet mailed count too
             const pendingDocLabels = parsedStepStatuses._pendingDocumentRejectionLabels || {};
+            const pendingDocBy = parsedStepStatuses._pendingDocumentRejectionBy || {};
             Object.entries(parsedStepStatuses._pendingDocumentRejections || {}).forEach(([src, reason]) => {
-              rejectedSteps.push(`${pendingDocLabels[src] || "Document"}: ${reason || 'No reason'}`);
+              rejectedSteps.push(`${pendingDocLabels[src] || "Document"}${pendingDocBy[src] ? ` (rejected by ${pendingDocBy[src]})` : ""}: ${reason || 'No reason'}`);
             });
             
             const rejectionsText = rejectedSteps.length > 0 ? rejectedSteps.join(" | ") : (app.rejectionReason || "None");
@@ -818,7 +819,7 @@ export default function MakerCheckerDashboard() {
                   </button>
                   {filterOpen && (
                     <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
-                      {["all", "in_progress", "verify", "completed", "rejected", "on_hold", "pushed_to_bo"].map(f => (
+                      {["all", "in_progress", "verify", "completed", "rejected", "on_hold", "pushed_to_bo", "globe_approved", "globe_rejected"].map(f => (
                         <div 
                           key={f}
                           onClick={() => handleFilterChange(f)}

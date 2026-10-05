@@ -1,12 +1,17 @@
 const prisma = require("../config/db");
 const { z } = require("zod");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
+const { annotateRejectedBy } = require("../utils/rejectedBy");
 
 // Document rejections a reviewer has marked but not yet mailed ({ [documentSrc]: reason }).
 // Kept on the application (reserved key inside stepStatuses, like welcomeEmailSent) so every
 // reviewer device sees them live. Code reading stepStatuses only looks at { status } entries.
 const PENDING_DOC_REJECTIONS_KEY = "_pendingDocumentRejections";
 const PENDING_DOC_LABELS_KEY = "_pendingDocumentRejectionLabels"; // { [documentSrc]: document name }
+const PENDING_DOC_BY_KEY = "_pendingDocumentRejectionBy"; // { [documentSrc]: "STK" | "Globe" }
+
+// Which side made a rejection — shown as a tag in both portals
+const reviewerSide = (req) => (req.user?.role === "globe" ? "Globe" : "STK");
 
 // Fetch KYC submissions assigned to the currently logged in agent
 const getAssignedApplications = async (req, res, next) => {
@@ -25,7 +30,13 @@ const getAssignedApplications = async (req, res, next) => {
     
     const normalizedStatus = String(status || "").toLowerCase();
     if (normalizedStatus && normalizedStatus !== "all") {
-      if (normalizedStatus === "pushed_to_bo") {
+      if (normalizedStatus === "globe_approved") {
+        // Approved on the Globe portal
+        where.globeStatus = "approved";
+      } else if (normalizedStatus === "globe_rejected") {
+        // Rejected on the Globe portal
+        where.globeStatus = "rejected";
+      } else if (normalizedStatus === "pushed_to_bo") {
         where.pushedToBackoffice = true;
       } else if (normalizedStatus === "completed" || normalizedStatus === "not_pushed_to_bo") {
         where.status = "verified";
@@ -135,7 +146,7 @@ const getAssignedApplications = async (req, res, next) => {
 
     res.json({
       success: true,
-      applications: await attachDecisionTimestamps(applications),
+      applications: await attachDecisionTimestamps(await annotateRejectedBy(applications)),
       total,
       page: pageNum,
       totalPages: Math.ceil(total / take)
@@ -310,6 +321,7 @@ const reviewStep = async (req, res, next) => {
       rejectEntireModule: status === "rejected" ? rejectEntireModule : false,
       reviewedAt: new Date().toISOString(),
       reviewedBy: agentId,
+      rejectedBy: status === "rejected" ? reviewerSide(req) : null,
     };
 
     let hasRejectedSteps = Object.values(stepStatuses).some(s => s.status === "rejected");
@@ -675,13 +687,21 @@ const requestModifications = async (req, res, next) => {
           });
 
           // Also save to stepStatuses so frontend can detect it
-          stepStatuses[finalStepId] = { status: "rejected", reason: reason };
+          stepStatuses[finalStepId] = {
+            status: "rejected",
+            reason: reason,
+            docSrc,
+            docLabel: finalTitle,
+            rejectedBy: (stepStatuses[PENDING_DOC_BY_KEY] || {})[docSrc] || reviewerSide(req),
+            reviewedAt: new Date().toISOString(),
+          };
         }
       }
 
       // These pending (not yet mailed) document rejections are now part of the request — clear the pending list
       delete stepStatuses[PENDING_DOC_REJECTIONS_KEY];
       delete stepStatuses[PENDING_DOC_LABELS_KEY];
+      delete stepStatuses[PENDING_DOC_BY_KEY];
 
       // Persist the updated stepStatuses with document rejections
       await prisma.kycApplication.update({
@@ -887,9 +907,14 @@ const savePendingDocumentRejections = async (req, res, next) => {
     if (Object.keys(clean).length > 0) {
       stepStatuses[PENDING_DOC_REJECTIONS_KEY] = clean;
       stepStatuses[PENDING_DOC_LABELS_KEY] = labels;
+      const prevBy = stepStatuses[PENDING_DOC_BY_KEY] || {};
+      const by = {};
+      for (const src of Object.keys(clean)) by[src] = prevBy[src] || reviewerSide(req);
+      stepStatuses[PENDING_DOC_BY_KEY] = by;
     } else {
       delete stepStatuses[PENDING_DOC_REJECTIONS_KEY];
       delete stepStatuses[PENDING_DOC_LABELS_KEY];
+      delete stepStatuses[PENDING_DOC_BY_KEY];
     }
 
     await prisma.kycApplication.update({

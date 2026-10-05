@@ -141,17 +141,10 @@ const serverInstance = server.listen(PORT, () => {
 
 // Graceful Shutdown handling to free up port
 const gracefulShutdown = () => {
-  console.log('\nShutting down gracefully...');
-  serverInstance.close(() => {
-    console.log('Closed out remaining connections.');
-    process.exit(0);
-  });
-  
-  // Force close after 10 seconds
-  setTimeout(() => {
-    console.error('Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 10000);
+  console.log('\nShutting down forcefully to free port for nodemon...');
+  serverInstance.close();
+  // Don't wait for connections to close (Socket.IO keeps them alive), just exit instantly.
+  process.exit(0);
 };
 
 process.on('SIGTERM', gracefulShutdown);
@@ -159,9 +152,8 @@ process.on('SIGINT', gracefulShutdown); // For Ctrl+C
 
 // For nodemon restarts
 process.once('SIGUSR2', () => {
-  serverInstance.close(() => {
-    process.kill(process.pid, 'SIGUSR2');
-  });
+  console.log('\nNodemon restart detected, forcefully shutting down to free port...');
+  process.kill(process.pid, 'SIGUSR2');
 });
 
 // Server restarted at: 2026-05-18T17:56:00

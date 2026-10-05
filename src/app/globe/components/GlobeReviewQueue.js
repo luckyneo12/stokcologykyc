@@ -283,7 +283,7 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                 const startDate = app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A";
                 const esignDate = parsedEsign.timestamp || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending");
                 const submittedAt = new Date(app.updatedAt || app.createdAt).toLocaleString();
-                const routeId = app.id || app.applicationId;
+                const routeId = app.applicationId || app.id; // application ID — the review page's actions look it up by this
                 const displayKycId = app.applicationId || app.id;
 
                 return (

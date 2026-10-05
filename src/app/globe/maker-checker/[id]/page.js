@@ -935,6 +935,24 @@ function getSafePreviewUrl(src) {
   return src;
 }
 
+// Document addresses for locally stored files carry the viewer's login token (?token=...), which differs
+// per reviewer/device — compare documents without it
+const normDocSrc = (u) => String(u || "").replace(/([?&])token=[^&]*(&|$)/, (m, p1, p2) => (p2 ? p1 : "")).replace(/[?&]$/, "");
+
+// Document name → the review step its rejection is stored under (for rejections saved before docSrc was kept)
+const DOC_LABEL_REJECTION_STEP = {
+  "Signature": "signature",
+  "Live Selfie": "ipv",
+  "F&O Document": "financialProof",
+  "PEP Document": "pepProof",
+  "Uploaded PAN Card": "panUpload",
+};
+
+// Small "STK" / "Globe" tag showing which side made a rejection
+const RejectedByTag = ({ by }) => !by ? null : (
+  <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "1px 5px", borderRadius: 4, letterSpacing: "0.3px", whiteSpace: "nowrap", background: by === "Globe" ? "#dbeafe" : "#fee2e2", color: by === "Globe" ? "#1d4ed8" : "#b91c1c" }}>by {by}</span>
+);
+
 function getApplicantPan(app) {
   return String(
     app?.identityDetails?.pan || app?.personalDetails?.pan || app?.identityDetails?.digilockerPan || app?.ocrData?.pan?.panNumber || ""
@@ -1647,6 +1665,7 @@ export default function AgentReview() {
 
   const fetchDetail = useCallback(async () => {
     if (!id || typeof window === "undefined") return;
+    let redirecting = false;
     try {
       const token = localStorage.getItem("globeToken");
       const response = await fetchWithFallback(`/api/globe/application/${id}`, {
@@ -1660,6 +1679,14 @@ export default function AgentReview() {
 
       const data = await response.json();
       if (data.success) {
+        // Opened by another id (e.g. the internal record number)? Switch to the application ID —
+        // every save/reject action looks the application up by its application ID
+        const canonicalId = data.application?.applicationId;
+        if (canonicalId && String(canonicalId) !== String(id)) {
+          redirecting = true; // keep the loading screen while the address switches
+          router.replace(`/globe/maker-checker/${canonicalId}`);
+          return;
+        }
         setApp(normalizeApp(data.application));
       } else {
         showToast(data.error || "Unable to load application", "error");
@@ -1668,7 +1695,7 @@ export default function AgentReview() {
       console.error("Fetch failed", error);
       showToast("Network error while loading application", "error");
     } finally {
-      setLoading(false);
+      if (!redirecting) setLoading(false);
     }
   }, [id, router, showToast]);
 
@@ -1717,7 +1744,7 @@ export default function AgentReview() {
         body: JSON.stringify({
           documentRejections: next,
           // Document names (e.g. "PAN Card") so the list's Rejections column can show which document
-          labels: Object.fromEntries(Object.keys(next).map(src => [src, allDocumentsRef.current.find(d => d.src === src)?.label || ""])),
+          labels: Object.fromEntries(Object.keys(next).map(src => [src, allDocumentsRef.current.find(d => normDocSrc(d.src) === normDocSrc(src))?.label || ""])),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -2013,29 +2040,6 @@ export default function AgentReview() {
     }
   };
 
-  const handleAdminCorrection = async () => {
-    setSubmitting(true);
-    try {
-      const token = localStorage.getItem("globeToken");
-      const res = await fetchWithFallback(`/api/globe/kyc/${id}/correction-link`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success && data.correctionLink) {
-        window.open(data.correctionLink, '_blank');
-        showToast("Opening Correction Portal...", "success");
-      } else {
-        showToast(data.error || "Failed to get correction link. Please click 'Send Rejection Mail' first to generate a session.", "error");
-      }
-    } catch (error) {
-      console.error(error);
-      showToast("Network error while generating correction link.", "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleUploadFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2147,6 +2151,19 @@ export default function AgentReview() {
   if (!app) return <div className="admin-error" style={{ padding: 40, textAlign: "center" }}>Application not found for ID: {id}</div>;
 
   const statuses = getStepStatuses(app);
+
+  // A document rejection already sent to the applicant (stored as a rejected step), if any
+  const getSentDocRejection = (doc) => {
+    for (const [stepId, st] of Object.entries(statuses)) {
+      if (st?.status === "rejected" && st.docSrc && normDocSrc(st.docSrc) === normDocSrc(doc.src)) return { stepId, ...st };
+    }
+    let stepId = DOC_LABEL_REJECTION_STEP[doc.label];
+    const m = /^Nominee (\d) (Guardian )?Document$/.exec(doc.label || "");
+    if (m) stepId = m[2] ? `guardian${m[1]}Proof` : `nominee${m[1]}Proof`;
+    const st = stepId ? statuses[stepId] : null;
+    return st?.status === "rejected" && !st.docSrc ? { stepId, ...st } : null;
+  };
+  const pendingDocRejectionBy = statuses._pendingDocumentRejectionBy || {};
   const currentUserStep = Number(app.currentStep || 0);
   const isNomineeOptOut = app.nomineeDetails?.choice === "opt-out" || app.nomineeDetails?.nomineeChoice === "opt-out" || nomineeSummary(app) === "Opted out";
   const hasCompletedJourneyOnce = !!app.submittedAt || !!app.isResubmitted || !!app.rejectionReason || Object.keys(statuses).length > 0;
@@ -2293,12 +2310,6 @@ export default function AgentReview() {
             <CheckCircle2 size={16} /> Approve KYC
           </button>
 
-          {Object.values(statuses).some(s => s.status === "rejected") && (
-            <button onClick={handleAdminCorrection} disabled={submitting} title="Open Correction Portal as User" style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(245, 158, 11, 0.35)", transition: "all 0.2s" }}>
-              <LayoutTemplate size={16} /> Correct as Admin
-            </button>
-          )}
-
           <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
             <Mail size={16} /> Send Rejection Mail
           </button>
@@ -2346,6 +2357,7 @@ export default function AgentReview() {
                         <Circle size={16} color="var(--text-muted)" style={{ opacity: 0.35, flexShrink: 0 }} title="Not visited" />
                       )}
                       <span>{step.title}</span>
+                      {isRejected && <RejectedByTag by={statuses[step.id]?.rejectedBy} />}
                       {step.id === "financialProof" && app.financialProof?.type === "Skipped" && (
                         <span style={{ padding: "2px 6px", background: "var(--bg-secondary)", borderRadius: 4, fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", marginLeft: 8 }}>SKIPPED</span>
                       )}
@@ -2767,6 +2779,12 @@ export default function AgentReview() {
             ) : (
               allDocuments.map((doc, idx) => {
                 const isSelected = selectedDocument?.src === doc.src;
+                // Pending = marked here, mail not sent yet; sent = already part of a rejection sent to the applicant
+                const pendingKey = Object.keys(documentRejections).find(k => normDocSrc(k) === normDocSrc(doc.src));
+                const pendingReason = pendingKey ? documentRejections[pendingKey] : null;
+                const sentRejection = pendingReason ? null : getSentDocRejection(doc);
+                const isDocRejected = !!pendingReason || !!sentRejection;
+                const docRejectedBy = pendingReason ? pendingDocRejectionBy[pendingKey] : sentRejection?.rejectedBy;
                 return (
                   <div 
                     key={idx}
@@ -2774,30 +2792,33 @@ export default function AgentReview() {
                     className={`premium-sidebar-item ${isSelected ? 'active' : ''}`}
                     style={{ color: isSelected ? "var(--wise-green)" : "var(--text-primary)" }}
                   >
-                    <span style={{ fontSize: "0.75rem", fontWeight: 500, flex: 1 }}>{doc.label || "Document"}</span>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 500, flex: 1, display: "flex", alignItems: "center", gap: 6 }}>{doc.label || "Document"}{isDocRejected && <RejectedByTag by={docRejectedBy} />}</span>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <Paperclip size={14} color={isSelected ? "#16a34a" : "var(--text-muted)"} />
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (documentRejections[doc.src]) {
-                            setDocumentRejectReason(documentRejections[doc.src]);
-                          } else {
-                            setDocumentRejectReason("");
+                          if (sentRejection) {
+                            showToast(`${doc.label || "Document"} is already rejected${sentRejection.rejectedBy ? ` by ${sentRejection.rejectedBy}` : ""}: ${sentRejection.reason || "No reason"}. Right-click to undo.`, "error");
+                            return;
                           }
+                          setDocumentRejectReason(pendingReason || "");
                           setRejectDocumentModal(doc);
                         }}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (!documentRejections[doc.src]) return;
-                          // Same as "Remove" in the rejection summary
-                          setDocumentRejections(prev => {
-                            const next = { ...prev };
-                            delete next[doc.src];
-                            return next;
-                          });
-                          showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
+                          if (pendingKey) {
+                            // Same as "Remove" in the rejection summary
+                            setDocumentRejections(prev => {
+                              const next = { ...prev };
+                              delete next[pendingKey];
+                              return next;
+                            });
+                            showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
+                          } else if (sentRejection) {
+                            handleUnrejectStep(sentRejection.stepId, doc.label || "Document");
+                          }
                         }}
                         style={{
                           cursor: "pointer",
@@ -2807,15 +2828,19 @@ export default function AgentReview() {
                           width: 24, 
                           height: 24,
                           borderRadius: 6,
-                          border: documentRejections[doc.src] ? "1px solid #ef4444" : "1px solid #fca5a5",
-                          background: documentRejections[doc.src] ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          border: isDocRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: isDocRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
                           transition: "all 0.2s",
-                          boxShadow: documentRejections[doc.src] ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none",
+                          boxShadow: isDocRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none",
                           padding: 0
                         }}
-                        title={documentRejections[doc.src] ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Document"}
+                        title={pendingReason
+                          ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${pendingReason} — not sent yet (click to modify, right-click to undo)`
+                          : sentRejection
+                            ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${sentRejection.reason || "No reason"} (right-click to undo)`
+                            : "Reject Document"}
                       >
-                        <Ban size={13} color={documentRejections[doc.src] ? "#ffffff" : "#ef4444"} />
+                        <Ban size={13} color={isDocRejected ? "#ffffff" : "#ef4444"} />
                       </button>
                     </div>
                   </div>
@@ -3027,7 +3052,10 @@ export default function AgentReview() {
               </button>
               <button 
                 onClick={() => {
-                  setDocumentRejections(prev => ({ ...prev, [rejectDocumentModal.src]: documentRejectReason.trim() }));
+                  setDocumentRejections(prev => {
+                    const existingKey = Object.keys(prev).find(k => normDocSrc(k) === normDocSrc(rejectDocumentModal.src));
+                    return { ...prev, [existingKey || rejectDocumentModal.src]: documentRejectReason.trim() };
+                  });
                   setRejectDocumentModal(null);
                 }} 
                 disabled={!documentRejectReason.trim()} 
