@@ -735,7 +735,8 @@ export default function DocumentUploadStep() {
     "Copy of Form 16",
     "Copy of ITR Acknowledgement",
     "Copy of Annual Accounts",
-    "Net worth certificate"
+    "Net worth certificate",
+    "Demat Holding Statement"
   ];
 
   return (

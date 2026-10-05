@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
 import { API_BASE_URL } from "@/utils/apiConfig";
+import { logoutUser } from "@/utils/auth";
 import "./ap.css";
 
 const StepLabel = (step) => {
@@ -148,9 +149,7 @@ export default function APDashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("apToken");
-    localStorage.removeItem("apUser");
-    router.push("/ap/login");
+    logoutUser({ redirectPath: "/ap/login" });
   };
 
   const getReferralLink = () => {

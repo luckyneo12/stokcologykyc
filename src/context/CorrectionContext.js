@@ -70,6 +70,14 @@ function reducer(state, action) {
     case "SESSION_LOADED": {
       const { correctionSession, applicationData, token, sessionId } = action.payload;
       const rejectedSteps = correctionSession.rejectedSteps || [];
+      if (rejectedSteps.length === 0) {
+        return {
+          ...state,
+          isLoading: false,
+          error: "There are no pending corrections for your application.",
+        };
+      }
+
       const allComplete = rejectedSteps.every(s => s.completed);
       return {
         ...state,
@@ -261,8 +269,12 @@ export function CorrectionProvider({ children }) {
   }, [addToast]);
 
   const nextCorrectionStep = useCallback(() => {
-    dispatch({ type: "SET_STEP_INDEX", payload: state.currentStepIndex + 1 });
-  }, [state.currentStepIndex]);
+    let nextIndex = state.currentStepIndex + 1;
+    while (nextIndex < state.rejectedSteps.length && state.rejectedSteps[nextIndex].completed) {
+      nextIndex++;
+    }
+    dispatch({ type: "SET_STEP_INDEX", payload: nextIndex });
+  }, [state.currentStepIndex, state.rejectedSteps]);
 
   const prevCorrectionStep = useCallback(() => {
     if (state.currentStepIndex > 0) {

@@ -2,6 +2,15 @@ import React, { useState, useEffect } from "react";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { Upload, FileText, CheckCircle, Clock, Edit2, Check, X, Search } from "lucide-react";
 
+const formatBoid = (boidNum) => {
+  if (!boidNum) return "N/A";
+  let b = String(boidNum).trim();
+  if (b.length > 16) {
+    return b.slice(0, 8) + b.slice(-10, -2);
+  }
+  return b;
+};
+
 export default function BoidManagement() {
   const [boids, setBoids] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -365,7 +374,7 @@ export default function BoidManagement() {
                           style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border-color)", outline: "none", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, width: "200px" }}
                         />
                       ) : (
-                        boid.boidNumber
+                        formatBoid(boid.boidNumber)
                       )}
                     </td>
                     <td style={{ padding: "14px 24px", fontSize: "0.85rem" }}>

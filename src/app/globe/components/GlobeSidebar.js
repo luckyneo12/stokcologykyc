@@ -1,6 +1,7 @@
 "use client";
 import Logo from "../../../components/kyc/Logo";
 import { usePathname, useRouter } from "next/navigation";
+import { logoutUser } from "@/utils/auth";
 
 const NAV_ITEMS = [
   { id: "overview", label: "Dashboard", icon: "grid" },
@@ -22,10 +23,9 @@ export default function GlobeSidebar({ active, onNavigate, collapsed, onToggle }
   const router = useRouter();
 
   const handleLogout = () => {
-    localStorage.removeItem("globeToken");
-    localStorage.removeItem("globeUser");
-    localStorage.removeItem("globeActiveSection");
-    window.location.href = "/globe/login";
+    // Clears all portal tokens across both storages and redirects to the
+    // Globe login. Server is notified (best-effort) to record the logout.
+    logoutUser({ redirectPath: "/globe/login" });
   };
 
   return (

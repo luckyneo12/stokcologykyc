@@ -218,8 +218,8 @@ function getVariableValue(variableName, appData) {
     
     case 'occupation': return pDetails.occupation;
     case 'education': return pDetails.education;
-    case 'static.emailBelongsToSelf': return 'Self';
-    case 'static.mobileBelongsToSelf': return 'Self';
+    case 'static.emailBelongsToSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency || 'Self'; }
+    case 'static.mobileBelongsToSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency || 'Self'; }
     case 'static.yes': return 'Yes';
     case 'static.no': return 'No';
     case 'static.true': return true;
@@ -533,9 +533,6 @@ function getVariableValue(variableName, appData) {
     case 'deviceType': return appData.deviceType;
     case 'riskCategory': return appData.riskCategory;
     case 'riskScore': return appData.riskScore;
-    case 'static.mobileBelongsToSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency || 'Self'; }
-    case 'static.emailBelongsToSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency || 'Self'; }
-    
     default: return '';
   }
 }

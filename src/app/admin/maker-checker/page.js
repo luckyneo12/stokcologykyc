@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -81,6 +81,7 @@ export default function MakerCheckerDashboard() {
     setFilter(f);
     setFilterOpen(false);
     if (typeof window !== "undefined") {
+      localStorage.setItem("makerCheckerFilter", f);
       const url = new URL(window.location);
       url.searchParams.set("filter", f);
       window.history.replaceState({}, '', url);
@@ -94,8 +95,13 @@ export default function MakerCheckerDashboard() {
     "Name": 180,
     "Client Code": 120
   };
-  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date"];
-  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "Status", "Rejections", "E-Stamp", "Start Date", "eSign Date", "Date"]);
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
+  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "STK Status", "Rejections", "E-Stamp", "Start Date", "eSign Date", "Date"]);
+  const [orderedColumns, setOrderedColumns] = useState(ALL_COLUMNS);
+  const [draggedColumn, setDraggedColumn] = useState(null);
+  const [columnFilters, setColumnFilters] = useState({});
+  const [activeFilterCol, setActiveFilterCol] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [stageFilterOpen, setStageFilterOpen] = useState(false);
@@ -128,9 +134,23 @@ export default function MakerCheckerDashboard() {
       const saved = localStorage.getItem("makerCheckerVisibleColumns");
       if (saved) {
         try {
-          setVisibleColumns(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          setVisibleColumns(parsed.map(c => c === "Status" ? "STK Status" : c));
         } catch (e) {
           console.error("Failed to parse visible columns", e);
+        }
+      }
+      const savedOrder = localStorage.getItem("makerCheckerOrderedColumns");
+      if (savedOrder) {
+        try {
+          const parsedOrder = JSON.parse(savedOrder);
+          const mappedOrder = parsedOrder.map(c => c === "Status" ? "STK Status" : c);
+          ALL_COLUMNS.forEach(c => {
+            if (!mappedOrder.includes(c)) mappedOrder.push(c);
+          });
+          setOrderedColumns(mappedOrder);
+        } catch (e) {
+          console.error("Failed to parse ordered columns", e);
         }
       }
     }
@@ -140,8 +160,9 @@ export default function MakerCheckerDashboard() {
   useEffect(() => {
     if (columnsLoaded && typeof window !== "undefined") {
       localStorage.setItem("makerCheckerVisibleColumns", JSON.stringify(visibleColumns));
+      localStorage.setItem("makerCheckerOrderedColumns", JSON.stringify(orderedColumns));
     }
-  }, [visibleColumns, columnsLoaded]);
+  }, [visibleColumns, orderedColumns, columnsLoaded]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -296,10 +317,18 @@ export default function MakerCheckerDashboard() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const savedFilter = localStorage.getItem("makerCheckerFilter");
       const urlParams = new URLSearchParams(window.location.search);
       const filterParam = urlParams.get("filter");
+      
       if (filterParam) {
         setFilter(filterParam);
+        localStorage.setItem("makerCheckerFilter", filterParam);
+      } else if (savedFilter) {
+        setFilter(savedFilter);
+        const url = new URL(window.location);
+        url.searchParams.set("filter", savedFilter);
+        window.history.replaceState({}, '', url);
       } else {
         setFilter("in_progress");
       }
@@ -361,6 +390,21 @@ export default function MakerCheckerDashboard() {
             let parsedNominee = {};
             try { parsedNominee = typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails) : (app.nomineeDetails || {}); } catch(e) {}
 
+            let parsedSelfie = {};
+            try { parsedSelfie = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : (app.selfieDetails || {}); } catch(e) {}
+            
+            let parsedSignature = {};
+            try { parsedSignature = typeof app.signature === "string" ? JSON.parse(app.signature) : (app.signature || {}); } catch(e) {}
+
+            let parsedSegments = {};
+            try { parsedSegments = typeof app.segments === "string" ? JSON.parse(app.segments) : (app.segments || {}); } catch(e) {}
+
+            let parsedOcr = {};
+            try { parsedOcr = typeof app.ocrData === "string" ? JSON.parse(app.ocrData) : (app.ocrData || {}); } catch(e) {}
+            
+            let parsedDocuments = [];
+            try { parsedDocuments = typeof app.documents === "string" ? JSON.parse(app.documents) : (app.documents || []); } catch(e) {}
+
             let parsedStepStatuses = {};
             try { parsedStepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {}); } catch(e) {}
             
@@ -420,6 +464,13 @@ export default function MakerCheckerDashboard() {
               occupation: parsedPersonal.occupation || "N/A",
               annualIncome: parsedPersonal.annualIncome || parsedPersonal.annual_income || "N/A",
               rejections: rejectionsText,
+              pennydropVerify: parsedBank.verified ? "Verified" : (parsedBank.pennyDropStatus || "Pending"),
+              aadhaarSeeding: parsedOcr.pan_verification?.data?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.pan_verification?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.aadhaarSeedingStatus || parsedIdentity.seedingStatus || "N/A",
+              liveImageTime: parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt ? new Date(parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt).toLocaleString("en-IN") : "N/A",
+              signUploadTime: parsedSignature.timestamp || parsedSignature.uploadedAt ? new Date(parsedSignature.timestamp || parsedSignature.uploadedAt).toLocaleString("en-IN") : (parsedSignature.filePreview ? (new Date(app.updatedAt).toLocaleString("en-IN")) : "N/A"),
+              segmentsSelected: Object.keys(parsedSegments).filter(k => parsedSegments[k] === true || parsedSegments[k] === "true").join(", ") || "None",
+              totalNominees: parsedNominee.numberOfNominees || (Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : (parsedNominee.nominees ? 1 : 0)),
+              nomineeOptDate: parsedNominee.optInDate || parsedNominee.optOutDate || parsedNominee.timestamp ? new Date(parsedNominee.optInDate || parsedNominee.optOutDate || parsedNominee.timestamp).toLocaleString("en-IN") : (parsedNominee.opted ? new Date(app.updatedAt).toLocaleString("en-IN") : "N/A"),
             };
           });
           setKycs(mapped);
@@ -465,6 +516,109 @@ export default function MakerCheckerDashboard() {
     
     return () => socket.disconnect();
   }, [loadingAuth, isAuthenticated]);
+
+  const getCellValue = (k, col) => {
+    if (col === "S.No." || col === "Actions") return "";
+    if (col === "Client Code") return k.clientCode;
+    if (col === "KYC ID") return k.id;
+    if (col === "Number") return k.number;
+    if (col === "Name") return k.name;
+    if (col === "Email") return k.email;
+    if (col === "PAN") return k.pan;
+    if (col === "Step") return `Step ${k.stepNum || 0}/14`;
+    if (col === "Stage") return k.stepLabel && k.stepLabel.includes(':') ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding");
+    if (col === "STK Status") return k.status;
+    if (col === "Globe Status") return k.globeStatus;
+    if (col === "E-Stamp") return k.eStamp;
+    if (col === "Aadhaar") return k.aadhaar;
+    if (col === "DOB") return k.dob;
+    if (col === "Gender") return k.gender;
+    if (col === "Father Name") return k.fatherName;
+    if (col === "Mother Name") return k.motherName;
+    if (col === "Bank Name") return k.bankName;
+    if (col === "Account No") return k.accountNo;
+    if (col === "IFSC") return k.ifsc;
+    if (col === "Nominees") return k.nominees;
+    if (col === "Address") return k.address;
+    if (col === "City") return k.city;
+    if (col === "State") return k.state;
+    if (col === "Pincode") return k.pincode;
+    if (col === "Occupation") return k.occupation;
+    if (col === "Annual Income") return k.annualIncome;
+    if (col === "Rejections") return k.rejections;
+    if (col === "Date") return k.submittedAt;
+    if (col === "Start Date") return k.startDate;
+    if (col === "eSign Date") return k.esignDate;
+    if (col === "Pennydrop Verify") return k.pennydropVerify;
+    if (col === "Aadhaar Seeding") return k.aadhaarSeeding;
+    if (col === "LiveImage Time") return k.liveImageTime;
+    if (col === "Sign Upload Time") return k.signUploadTime;
+    if (col === "Segments Selected") return k.segmentsSelected;
+    if (col === "Total Nominees") return k.totalNominees;
+    if (col === "Nominee Opt Date") return k.nomineeOptDate;
+    return "";
+  };
+
+  const filteredAndSortedKycs = useMemo(() => {
+    let result = [...kycs];
+
+    Object.keys(columnFilters).forEach(col => {
+      const term = columnFilters[col]?.toLowerCase();
+      if (term) {
+        result = result.filter(k => {
+          const val = String(getCellValue(k, col) || "").toLowerCase();
+          return val.includes(term);
+        });
+      }
+    });
+
+    if (sortConfig.key && sortConfig.direction) {
+      result.sort((a, b) => {
+        const aVal = String(getCellValue(a, sortConfig.key) || "").toLowerCase();
+        const bVal = String(getCellValue(b, sortConfig.key) || "").toLowerCase();
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [kycs, columnFilters, sortConfig]);
+
+  const handleDragStart = (e, col) => {
+    if (PERMANENT_COLUMNS.includes(col)) {
+      e.preventDefault();
+      return;
+    }
+    setDraggedColumn(col);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e, col) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e, targetCol) => {
+    e.preventDefault();
+    if (!draggedColumn || draggedColumn === targetCol) return;
+    if (PERMANENT_COLUMNS.includes(draggedColumn) || PERMANENT_COLUMNS.includes(targetCol)) return;
+    
+    const draggedIdx = orderedColumns.indexOf(draggedColumn);
+    const targetIdx = orderedColumns.indexOf(targetCol);
+    
+    if (draggedIdx === -1 || targetIdx === -1) return;
+    
+    const newCols = [...orderedColumns];
+    newCols.splice(draggedIdx, 1);
+    newCols.splice(targetIdx, 0, draggedColumn);
+    
+    setOrderedColumns(newCols);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("makerCheckerOrderedColumns", JSON.stringify(newCols));
+    }
+    setDraggedColumn(null);
+  };
   const exportToCSV = () => {
     if (!kycs || kycs.length === 0) return;
     const headers = ALL_COLUMNS.filter(c => c !== "Actions" && c !== "S.No.");
@@ -476,7 +630,7 @@ export default function MakerCheckerDashboard() {
       if (col === "PAN") return k.pan;
       if (col === "Step") return `Step ${k.stepNum || 0}/14`;
       if (col === "Stage") return `"${(k.stepLabel && k.stepLabel.includes(':')) ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding")}"`;
-      if (col === "Status") return k.status;
+      if (col === "STK Status") return k.status;
       if (col === "Globe Status") return k.globeStatus;
       if (col === "E-Stamp") return k.eStamp;
       if (col === "Aadhaar") return k.aadhaar;
@@ -496,6 +650,13 @@ export default function MakerCheckerDashboard() {
       if (col === "Annual Income") return `"${k.annualIncome || ""}"`;
       if (col === "Rejections") return `"${k.rejections || ""}"`;
       if (col === "Date") return `"${k.submittedAt || ""}"`;
+      if (col === "Pennydrop Verify") return `"${k.pennydropVerify || ""}"`;
+      if (col === "Aadhaar Seeding") return `"${k.aadhaarSeeding || ""}"`;
+      if (col === "LiveImage Time") return `"${k.liveImageTime || ""}"`;
+      if (col === "Sign Upload Time") return `"${k.signUploadTime || ""}"`;
+      if (col === "Segments Selected") return `"${k.segmentsSelected || ""}"`;
+      if (col === "Total Nominees") return k.totalNominees;
+      if (col === "Nominee Opt Date") return `"${k.nomineeOptDate || ""}"`;
       return "";
     }));
     const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
@@ -775,16 +936,98 @@ export default function MakerCheckerDashboard() {
                 <div ref={scrollRef} style={{ overflowX: "auto", minHeight: kycs.length < 4 ? "300px" : "auto" }}>
                   <table className="admin-table">
                     <thead><tr>
-                      {ALL_COLUMNS.filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h)).map(h => <th key={h} style={getStickyStyle(h, true)}>{h}</th>)}
+                      {orderedColumns.filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h)).map(h => (
+                        <th 
+                          key={h} 
+                          style={{
+                            position: "relative",
+                            ...getStickyStyle(h, true),
+                            cursor: PERMANENT_COLUMNS.includes(h) ? "default" : "grab"
+                          }}
+                          draggable={!PERMANENT_COLUMNS.includes(h)}
+                          onDragStart={(e) => handleDragStart(e, h)}
+                          onDragOver={(e) => handleDragOver(e, h)}
+                          onDrop={(e) => handleDrop(e, h)}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                            <span>{h}</span>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setActiveFilterCol(activeFilterCol === h ? null : h); }}
+                                style={{ background: "transparent", border: "none", cursor: "pointer", color: columnFilters[h] ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
+                                title="Filter"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                              </button>
+
+                              <button 
+                                onClick={(e) => { 
+                                  e.stopPropagation();
+                                  setSortConfig(prev => {
+                                    if (prev.key === h) {
+                                      if (prev.direction === 'asc') return { key: h, direction: 'desc' };
+                                      return { key: null, direction: null };
+                                    }
+                                    return { key: h, direction: 'asc' };
+                                  });
+                                }}
+                                style={{ background: "transparent", border: "none", cursor: "pointer", color: sortConfig.key === h ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
+                                title="Sort"
+                              >
+                                {sortConfig.key === h ? (
+                                  sortConfig.direction === 'asc' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                ) : (
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                                )}
+                              </button>
+
+                              {!PERMANENT_COLUMNS.includes(h) && (
+                                <button 
+                                  onClick={(e) => { 
+                                    e.stopPropagation();
+                                    setVisibleColumns(prev => {
+                                      const next = prev.filter(c => c !== h);
+                                      localStorage.setItem("makerCheckerVisibleColumns", JSON.stringify(next));
+                                      return next;
+                                    });
+                                  }}
+                                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}
+                                  title="Hide Column"
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {activeFilterCol === h && (
+                            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 4, padding: 8, zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }} onClick={e => e.stopPropagation()}>
+                              <input 
+                                type="text"
+                                autoFocus
+                                placeholder={`Search ${h}...`}
+                                value={columnFilters[h] || ""}
+                                onChange={(e) => setColumnFilters(prev => ({ ...prev, [h]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    setActiveFilterCol(null);
+                                  }
+                                }}
+                                style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: 4, border: "1px solid var(--border-color)", width: 150 }}
+                              />
+                            </div>
+                          )}
+                        </th>
+                      ))}
                     </tr></thead>
                     <tbody>
-                      {kycs.length === 0 ? (
+                      {filteredAndSortedKycs.length === 0 ? (
                         <tr>
-                          <td colSpan="9" style={{ textAlign: "center", padding: "40px" }}>
+                          <td colSpan={visibleColumns.length} style={{ textAlign: "center", padding: "40px" }}>
                             {loading ? "Loading..." : "No matching KYC requests found."}
                           </td>
                         </tr>
-                      ) : kycs.map((k, index) => (
+                      ) : filteredAndSortedKycs.map((k, index) => (
                         <tr 
                           key={k.id} 
                           onClick={() => {
@@ -985,49 +1228,22 @@ export default function MakerCheckerDashboard() {
                           {visibleColumns.includes("Stage") && <td style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-primary)" }}>
                             {k.stepLabel && k.stepLabel.includes(':') ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding")}
                           </td>}
-                          {visibleColumns.includes("Status") && <td>
+                          {visibleColumns.includes("STK Status") && <td>
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
-                              <div className="status-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
-                                <div 
-                                  onClick={() => setOpenStatusMenuId(openStatusMenuId === k.id ? null : k.id)}
-                                  className={`badge ${STATUS_MAP[k.status === 'under_review' ? 'pending' : k.status] || "badge-pending"}`}
-                                  style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, border: "none" }}
+                              {k.status === 'verified' ? (
+                                <span className="badge badge-verified" style={{ padding: "6px 12px", border: "none" }}>VERIFIED</span>
+                              ) : (
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateStatus(k.id, "verified", {currentStep: k.stepNum});
+                                    setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: "verified" } : app));
+                                  }}
+                                  style={{ background: "var(--wise-green)", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", fontWeight: 700, cursor: "pointer", fontSize: "0.75rem" }}
                                 >
-                                  {(k.status === 'under_review' ? 'pending' : k.status).replace("_", " ").toUpperCase()}
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: openStatusMenuId === k.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                </div>
-                                {openStatusMenuId === k.id && (
-                                  <div style={{ position: "absolute", top: (index >= kycs.length - 3 && kycs.length > 3) ? "auto" : "100%", bottom: (index >= kycs.length - 3 && kycs.length > 3) ? "100%" : "auto", marginTop: (index >= kycs.length - 3 && kycs.length > 3) ? 0 : 4, marginBottom: (index >= kycs.length - 3 && kycs.length > 3) ? 4 : 0, left: 0, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px", minWidth: "120px" }}>
-                                    {[
-                                      { value: "pending", label: "PENDING" },
-                                      { value: "verified", label: "VERIFIED" },
-                                      { value: "rejected", label: "REJECTED" },
-                                      { value: "on_hold", label: "ON HOLD" }
-                                    ].map(opt => (
-                                      <div 
-                                        key={opt.value}
-                                        onClick={() => {
-                                          if ((k.status === 'under_review' ? 'pending' : k.status) !== opt.value) {
-                                            updateStatus(k.id, opt.value);
-                                            setKycs(prev => prev.map(app => app.id === k.id ? { ...app, status: opt.value } : app));
-                                          }
-                                          setOpenStatusMenuId(null);
-                                        }}
-                                        style={{ 
-                                          padding: "8px 12px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700, borderRadius: 6,
-                                          color: "var(--text-primary)", display: "flex", alignItems: "center", justifyContent: "space-between",
-                                          background: "transparent", transition: "background 0.2s"
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = "var(--bg-secondary)"}
-                                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                                      >
-                                        {opt.label}
-                                        {(k.status === 'under_review' ? 'pending' : k.status) === opt.value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                                  Verify
+                                </button>
+                              )}
                               {k.isResubmitted && (
                                 <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
                               )}
@@ -1049,7 +1265,16 @@ export default function MakerCheckerDashboard() {
                           )}
                           {visibleColumns.includes("Start Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.startDate}</td>}
                           {visibleColumns.includes("eSign Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.esignDate}</td>}
-                          {visibleColumns.includes("Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.submittedAt}</td>}
+                          {visibleColumns.includes("Date") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text", color: "var(--text-muted)" }}>{k.submittedAt}</td>}
+                          {visibleColumns.includes("Pennydrop Verify") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                            <span className={`badge ${k.pennydropVerify?.toLowerCase() === 'verified' ? 'badge-verified' : 'badge-pending'}`}>{k.pennydropVerify}</span>
+                          </td>}
+                          {visibleColumns.includes("Aadhaar Seeding") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.aadhaarSeeding}</td>}
+                          {visibleColumns.includes("LiveImage Time") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.liveImageTime}</td>}
+                          {visibleColumns.includes("Sign Upload Time") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.signUploadTime}</td>}
+                          {visibleColumns.includes("Segments Selected") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.segmentsSelected}</td>}
+                          {visibleColumns.includes("Total Nominees") && <td style={{ fontSize: "0.82rem", textAlign: "center", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.totalNominees}</td>}
+                          {visibleColumns.includes("Nominee Opt Date") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.nomineeOptDate}</td>}
                         </tr>
                       ))}
                     </tbody>

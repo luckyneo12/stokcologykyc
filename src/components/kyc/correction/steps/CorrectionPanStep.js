@@ -16,9 +16,32 @@ export default function CorrectionPanStep({ stepId, rejectedStep }) {
     addToast,
   } = useCorrection();
 
-  const existingPan = applicationData?.identityDetails?.pan || "";
-  const [panNumber, setPanNumber] = useState(drafts[stepId]?.pan || "");
-  const [panName, setPanName] = useState(drafts[stepId]?.panName || "");
+  const existingPan = applicationData?.identityDetails?.pan || applicationData?.personalDetails?.pan || "";
+  const existingName = applicationData?.identityDetails?.pan_name || applicationData?.personalDetails?.fullName || "";
+  
+  // Field-level rejection data
+  const rejectedFields = rejectedStep?.rejectedFields || [];
+  const rejectEntireModule = rejectedStep?.rejectEntireModule === true;
+  const hasFieldLevelRejection = rejectedFields.length > 0 && !rejectEntireModule;
+
+  const ADMIN_LABEL_TO_FORM_KEY = {
+    "PAN number": "panNumber",
+    "Name as per PAN": "panName",
+  };
+
+  const rejectedFormKeys = new Set(
+    rejectedFields.map(label => ADMIN_LABEL_TO_FORM_KEY[label]).filter(Boolean)
+  );
+
+  const isFieldRejected = (formKey) => {
+    if (rejectEntireModule) return true;
+    if (!hasFieldLevelRejection) return true;
+    return rejectedFormKeys.has(formKey);
+  };
+
+  const draft = drafts[stepId] || {};
+  const [panNumber, setPanNumber] = useState(draft.pan || (isFieldRejected("panNumber") ? "" : existingPan));
+  const [panName, setPanName] = useState(draft.panName || (isFieldRejected("panName") ? "" : existingName));
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -52,6 +75,11 @@ export default function CorrectionPanStep({ stepId, rejectedStep }) {
         <p style={{ color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, margin: 0 }}>
           ⚠️ Reason: {rejectedStep.reason || "PAN verification needs correction"}
         </p>
+        <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", fontWeight: 700, margin: "4px 0 0" }}>
+          {rejectEntireModule ? "Please re-fill all fields in this module." : 
+           rejectedFields.length > 0 ? `Fields to correct: ${rejectedFields.join(', ')}` :
+           "Please fill in your correct details and proceed."}
+        </p>
       </div>
 
       <h2 style={{ color: "var(--text-primary)", fontSize: "1.15rem", fontWeight: 800, marginBottom: 8 }}>
@@ -71,7 +99,7 @@ export default function CorrectionPanStep({ stepId, rejectedStep }) {
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>
-          PAN Number <span style={{ color: "var(--wise-danger)" }}>*</span>
+          PAN Number {isFieldRejected("panNumber") && <span style={{ color: "var(--wise-danger)" }}>*</span>}
         </label>
         <input
           type="text"
@@ -79,12 +107,16 @@ export default function CorrectionPanStep({ stepId, rejectedStep }) {
           onChange={(e) => { setPanNumber(e.target.value.toUpperCase()); if (errors.panNumber) setErrors(prev => ({ ...prev, panNumber: "" })); }}
           placeholder="ABCDE1234F"
           maxLength={10}
+          disabled={!isFieldRejected("panNumber")}
           className="input-field"
           style={{
             width: "100%", padding: "12px 16px", borderRadius: 12,
-            background: "var(--input-bg)", border: `1.5px solid ${errors.panNumber ? "var(--wise-danger)" : "var(--border-color)"}`,
-            color: "var(--text-primary)", fontSize: "1rem", fontWeight: 700,
+            background: isFieldRejected("panNumber") ? "var(--input-bg)" : "var(--bg-secondary)", 
+            border: `1.5px solid ${errors.panNumber ? "var(--wise-danger)" : isFieldRejected("panNumber") && hasFieldLevelRejection ? "#ef4444" : "var(--border-color)"}`,
+            color: isFieldRejected("panNumber") ? "var(--text-primary)" : "var(--text-muted)", fontSize: "1rem", fontWeight: 700,
             letterSpacing: 2, textTransform: "uppercase", outline: "none",
+            opacity: isFieldRejected("panNumber") ? 1 : 0.7,
+            cursor: isFieldRejected("panNumber") ? "text" : "not-allowed"
           }}
         />
         {errors.panNumber && <p style={{ color: "var(--wise-danger)", fontSize: "0.75rem", marginTop: 4 }}>{errors.panNumber}</p>}
@@ -92,22 +124,27 @@ export default function CorrectionPanStep({ stepId, rejectedStep }) {
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>
-          Name as per PAN <span style={{ color: "var(--wise-danger)" }}>*</span>
+          Name as per PAN {isFieldRejected("panName") && <span style={{ color: "var(--wise-danger)" }}>*</span>}
         </label>
         <input
           type="text"
           value={panName}
           onChange={(e) => { setPanName(e.target.value); if (errors.panName) setErrors(prev => ({ ...prev, panName: "" })); }}
-          placeholder="Enter name exactly as on PAN card"
+          placeholder="Name on PAN card"
+          disabled={!isFieldRejected("panName")}
           className="input-field"
           style={{
             width: "100%", padding: "12px 16px", borderRadius: 12,
-            background: "var(--input-bg)", border: `1.5px solid ${errors.panName ? "var(--wise-danger)" : "var(--border-color)"}`,
-            color: "var(--text-primary)", fontSize: "0.95rem", fontWeight: 700, outline: "none",
+            background: isFieldRejected("panName") ? "var(--input-bg)" : "var(--bg-secondary)", 
+            border: `1.5px solid ${errors.panName ? "var(--wise-danger)" : isFieldRejected("panName") && hasFieldLevelRejection ? "#ef4444" : "var(--border-color)"}`,
+            color: isFieldRejected("panName") ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.95rem", fontWeight: 700, outline: "none",
+            opacity: isFieldRejected("panName") ? 1 : 0.7,
+            cursor: isFieldRejected("panName") ? "text" : "not-allowed"
           }}
         />
         {errors.panName && <p style={{ color: "var(--wise-danger)", fontSize: "0.75rem", marginTop: 4 }}>{errors.panName}</p>}
       </div>
+
 
       <div style={{ display: "flex", gap: 12, marginTop: 32 }}>
         {currentStepIndex > 0 && (

@@ -72,6 +72,15 @@ const DROPDOWN_OPTIONS = {
   "segments.selected": ["equity", "equity, derivatives", "derivatives"]
 };
 
+const formatBoid = (boidNum) => {
+  if (!boidNum) return "N/A";
+  let b = String(boidNum).trim();
+  if (b.length > 16) {
+    return b.slice(0, 8) + b.slice(-10, -2);
+  }
+  return b;
+};
+
 const REVIEW_STEPS = [
   {
     id: "nameMatch",
@@ -122,7 +131,7 @@ const REVIEW_STEPS = [
       ["Selected plan", app.pricingSelection?.plan || app.segments?.pricingPlan || app.segments?.plan, "pricingSelection.plan"],
       ["Segments", formatList(app.segments?.selected || app.segments?.segments || app.segments), "segments.selected"],
       ["BSDA", app.bsda, "bsda"],
-      ["BOID", app.user?.boid, "user.boid"],
+      ["BOID", formatBoid(app.user?.boid), "user.boid"],
       ["Brokerage Plan", (
         <details key="brokerage">
           <summary style={{ cursor: "pointer", outline: "none", color: "var(--wise-green)", userSelect: "none" }}>Standard</summary>
@@ -494,7 +503,7 @@ const REVIEW_STEPS = [
     evidence: (app) => [
       firstMedia(app.selfieDetails?.preview || app.selfieDetails?.path || app.selfie, "Live Selfie"),
       firstMedia(app.selfieDetails?.videoPath, "Liveness Video"),
-      findDocument(app, ["aadhaar", "photo", "digilocker"], "Aadhar photo", ["pan"]),
+      findDocument(app, ["aadhaar", "photo", "digilocker"], "Aadhar photo", ["pan", "pdf"]),
       firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document"),
     ].filter(Boolean),
   },

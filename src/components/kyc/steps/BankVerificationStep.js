@@ -386,12 +386,7 @@ export default function BankVerificationStep() {
       
       
       <div className="text-center animate-slide-up" style={{ marginBottom: 32, position: "relative" }}>
-        <button 
-          onClick={handleReset} 
-          style={{ position: "absolute", right: 0, top: 0, color: "var(--wise-danger)", background: "transparent", border: "none", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700, padding: "4px 8px", borderRadius: "8px" }}
-        >
-          Reset Test
-        </button>
+
 
         
         <h1 className="text-section" style={{ fontSize: "2.4rem", marginBottom: 16, color: "var(--text-primary)" }}>Bank Details</h1>

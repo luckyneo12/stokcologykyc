@@ -27,11 +27,10 @@ const STEP_COMPONENT_MAP = {
   nomineeDetails: CorrectionNomineeStep,
   nomineeAllocation: CorrectionNomineeAllocationStep,
   bankVerification: CorrectionBankStep,
-  // Document-type steps all use CorrectionDocumentStep
   financialProof: CorrectionDocumentStep,
   signature: CorrectionDocumentStep,
   panUpload: CorrectionDocumentStep,
-  ipv: CorrectionSelfieStep,
+  ipv: CorrectionDocumentStep, // Rendered inline in CorrectionDocumentStep now
   pepProof: CorrectionDetailsStep, // PEP proof is in the DetailsStep page
   nominee1Proof: CorrectionNomineeStep,
   nominee2Proof: CorrectionNomineeStep,
@@ -250,14 +249,47 @@ export default function CorrectionFlow() {
               ITEMS TO CORRECT
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {rejectedSteps.map((step, idx) => {
-                const isActive = idx === currentStepIndex;
-                const isComplete = step.completed;
-                return (
-                  <div
-                    key={step.stepId}
-                    onClick={() => goToCorrectionStep(idx)}
-                    style={{
+              {(() => {
+                const displaySteps = [];
+                let hasGroupedDoc = false;
+                
+                rejectedSteps.forEach((step, idx) => {
+                  if (DOCUMENT_STEP_IDS.has(step.stepId)) {
+                    if (!hasGroupedDoc) {
+                      hasGroupedDoc = true;
+                      displaySteps.push({
+                        isGroup: true,
+                        id: "docGroup",
+                        label: "Document Verification",
+                        completed: step.completed,
+                        isActive: idx === currentStepIndex,
+                        originalIndex: idx
+                      });
+                    } else {
+                      const groupStep = displaySteps[displaySteps.length - 1];
+                      groupStep.completed = groupStep.completed && step.completed;
+                      if (idx === currentStepIndex) groupStep.isActive = true;
+                    }
+                  } else {
+                    displaySteps.push({
+                      isGroup: false,
+                      id: step.stepId,
+                      label: stepTitleMap[step.stepId] || step.stepId,
+                      completed: step.completed,
+                      isActive: idx === currentStepIndex,
+                      originalIndex: idx
+                    });
+                  }
+                });
+
+                return displaySteps.map((step, idx) => {
+                  const isActive = step.isActive;
+                  const isComplete = step.completed;
+                  return (
+                    <div
+                      key={step.id}
+                      onClick={() => goToCorrectionStep(step.originalIndex)}
+                      style={{
                       display: "flex", alignItems: "center", gap: 10,
                       padding: "8px 12px", borderRadius: 10,
                       cursor: "pointer",
@@ -279,11 +311,12 @@ export default function CorrectionFlow() {
                       fontSize: "0.8rem", fontWeight: 700,
                       color: isActive ? "#ffffff" : isComplete ? "rgba(159,232,112,0.8)" : "rgba(255,255,255,0.5)",
                     }}>
-                      {stepTitleMap[step.stepId] || step.stepId}
+                      {step.label}
                     </span>
                   </div>
                 );
-              })}
+              });
+            })()}
 
               {/* Completion step */}
               <div

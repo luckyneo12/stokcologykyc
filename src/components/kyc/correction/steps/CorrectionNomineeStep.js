@@ -134,6 +134,11 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
       : (Array.isArray(nomineeDetails?.nominees) && nomineeDetails.nominees.length > 0 ? nomineeDetails.nominees : [createEmptyNominee()]));
 
   const [nominees, setNominees] = useState(initialData);
+  const [isOptedOut, setIsOptedOut] = useState(() => {
+    if (drafts[stepId]?.opted === "No") return true;
+    if (nomineeDetails?.opted === "No") return true;
+    return false;
+  });
   const clearNomineesDraft = () => {};
   
   const rejectionCleared = useRef(false);
@@ -668,6 +673,13 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
   };
 
   const handleNext = async () => {
+    if (isOptedOut) {
+      const payloadData = { ...nomineeDetails, opted: "No", numberOfNominees: "0", nominees: [] };
+      const success = await saveDraft(stepId, payloadData);
+      if (success) nextCorrectionStep();
+      return;
+    }
+
     if (!validate()) {
       addToast("Please fill all required fields correctly", "error");
       return;
@@ -682,6 +694,33 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
       <div className="text-center animate-slide-up" style={{ marginBottom: 48 }}>
         <h1 className="text-section" style={{ fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-1px" }}>Add Nominee Details</h1>
         <p style={{ color: "var(--text-secondary)", marginTop: "8px", fontWeight: 600 }}>Specify who should receive the assets in your account</p>
+      </div>
+
+      <div className="animate-slide-up" style={{ marginBottom: "32px", display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap" }}>
+        <div 
+          onClick={() => setIsOptedOut(false)}
+          style={{ 
+            flex: "1 1 240px", maxWidth: "300px", padding: "16px", borderRadius: "16px", cursor: "pointer",
+            border: !isOptedOut ? "2px solid var(--wise-green)" : "1.5px solid var(--border-color)",
+            background: !isOptedOut ? "rgba(159, 232, 112, 0.1)" : "var(--bg-elevated)",
+            display: "flex", alignItems: "center", gap: "12px", transition: "all 0.2s"
+          }}
+        >
+          <div style={{ width: 24, height: 24, borderRadius: "50%", border: !isOptedOut ? "6px solid var(--wise-green)" : "2px solid var(--text-muted)", background: !isOptedOut ? "#fff" : "transparent", flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem" }}>I wish to nominate</span>
+        </div>
+        <div 
+          onClick={() => setIsOptedOut(true)}
+          style={{ 
+            flex: "1 1 240px", maxWidth: "300px", padding: "16px", borderRadius: "16px", cursor: "pointer",
+            border: isOptedOut ? "2px solid var(--wise-green)" : "1.5px solid var(--border-color)",
+            background: isOptedOut ? "rgba(159, 232, 112, 0.1)" : "var(--bg-elevated)",
+            display: "flex", alignItems: "center", gap: "12px", transition: "all 0.2s"
+          }}
+        >
+          <div style={{ width: 24, height: 24, borderRadius: "50%", border: isOptedOut ? "6px solid var(--wise-green)" : "2px solid var(--text-muted)", background: isOptedOut ? "#fff" : "transparent", flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem" }}>I do not wish to nominate</span>
+        </div>
       </div>
 
       <div className="animate-slide-up">
@@ -702,13 +741,15 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
                 Nominee Details Rejected
               </p>
               <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
-                {rejectionReasonText ? `Reason: ${rejectionReasonText}. ` : ""}Please fill in your correct nominee details and proceed.
+                {rejectionReasonText ? `Reason: ${rejectionReasonText}. ` : ""}Please review your nominee selection.
               </p>
             </div>
           </div>
         )}
         
-        {nominees.map((nom, idx) => (
+        {!isOptedOut ? (
+          <>
+            {nominees.map((nom, idx) => (
           <div key={idx} style={{ 
             marginBottom: idx === nominees.length - 1 ? 40 : 80,
             paddingBottom: idx === nominees.length - 1 ? 0 : 40,
@@ -1294,6 +1335,15 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
             >
               <span style={{ fontSize: "1.6rem" }}>+</span> Add Another Nominee
             </button>
+          </div>
+        )}
+          </>
+        ) : (
+          <div style={{ padding: "32px", textAlign: "center", background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "16px", marginBottom: "32px" }}>
+            <h3 style={{ color: "var(--text-primary)", fontSize: "1.1rem", marginBottom: "8px", fontWeight: 800 }}>You have chosen not to nominate</h3>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.5 }}>
+              If you proceed, any previously provided nominee details will be completely removed.
+            </p>
           </div>
         )}
       </div>

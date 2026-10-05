@@ -1,12 +1,88 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
+import Logo from "../../Logo";
+import { Eye, EyeOff } from "lucide-react";
 
-/**
- * CorrectionBankStep — Bank re-verification correction wrapper.
- */
+const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={dropdownRef} style={{ position: "relative", width: "100%" }}>
+      <div 
+        tabIndex={disabled ? -1 : 0}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setIsOpen(!isOpen); } 
+          else if (e.key === "Escape") { setIsOpen(false); }
+        }}
+        className="input-field"
+        style={{ 
+          cursor: disabled ? "not-allowed" : "pointer",
+          borderColor: error ? "var(--wise-danger)" : isOpen ? "var(--wise-green)" : "var(--border-color)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          opacity: disabled ? 0.6 : 1, padding: "0 16px"
+        }}
+      >
+        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.85rem", fontWeight: 700 }}>
+          {value || placeholder}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", opacity: 0.5 }}>
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+      
+      {isOpen && (
+        <div style={{ 
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1000, 
+          background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)", 
+          borderRadius: "12px", marginTop: "4px", 
+          boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.1)",
+          maxHeight: "220px", overflowY: "auto", padding: "6px"
+        }}>
+          {options.map((opt) => (
+            <div 
+              key={opt} tabIndex={0}
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChange(opt); setIsOpen(false); } 
+                else if (e.key === "Escape") { setIsOpen(false); }
+              }}
+              style={{ 
+                padding: "10px 14px", borderRadius: "8px", cursor: "pointer", fontSize: "0.9rem", fontWeight: 700,
+                background: value === opt ? "var(--wise-green)" : "transparent",
+                color: value === opt ? "var(--wise-dark-green)" : "var(--text-primary)",
+                transition: "all 0.2s", marginBottom: "1px"
+              }}
+              onMouseOver={e => { if (value !== opt) e.currentTarget.style.background = "rgba(159, 232, 112, 0.15)"; }}
+              onMouseOut={e => { if (value !== opt) e.currentTarget.style.background = "transparent"; }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
+
 export default function CorrectionBankStep({ stepId, rejectedStep }) {
-  const {
+    const {
     applicationData,
     drafts,
     saveDraft,
@@ -17,135 +93,538 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
   } = useCorrection();
 
   const existingBank = applicationData?.bankDetails || {};
+  const personalDetails = applicationData?.personalDetails || {};
+  const ocrData = applicationData?.ocrData || {};
   const draft = drafts[stepId] || {};
 
-  const [form, setForm] = useState({
-    accountNumber: draft.accountNumber || "",
-    confirmAccountNumber: draft.confirmAccountNumber || "",
-    ifscCode: draft.ifscCode || "",
-    bankName: draft.bankName || "",
-    branchName: draft.branchName || "",
-    accountType: draft.accountType || "Savings",
+  const isBankRejected = true;
+  const bankRejectionReason = rejectedStep?.reason || "Bank details need correction";
+
+  // Field-level rejection data
+  const rejectedFields = rejectedStep?.rejectedFields || [];
+  const rejectEntireModule = rejectedStep?.rejectEntireModule === true;
+  const hasFieldLevelRejection = rejectedFields.length > 0 && !rejectEntireModule;
+  const ADMIN_LABEL_TO_FORM_KEY = {
+    "Account number": ["accountNumber", "confirmAccountNumber"],
+    "IFSC": "ifsc",
+    "Account type": "accountType",
+    "Bankname": "bankName",
+    "Branchname": "branch",
+  };
+
+  const rejectedFormKeys = new Set(
+    rejectedFields
+      .flatMap(label => {
+        const key = ADMIN_LABEL_TO_FORM_KEY[label];
+        return Array.isArray(key) ? key : [key];
+      })
+      .filter(Boolean)
+  );
+
+  const isFieldRejected = (formKey) => {
+    if (rejectEntireModule) return true;
+    if (!hasFieldLevelRejection) return true;
+    return rejectedFormKeys.has(formKey);
+  };
+
+  
+  // Local state for the dropdown selection
+  const clearFormDraft = () => {}; const [form, setForm] = useState({
+    accountNumber: draft.accountNumber || (isFieldRejected("accountNumber") ? "" : existingBank.accountNumber || ""),
+    ifsc: draft.ifsc || (isFieldRejected("ifsc") ? "" : existingBank.ifsc || existingBank.ifscCode || ""),
+    bankName: draft.bankName || (isFieldRejected("bankName") ? "" : existingBank.bankName || ""),
+    upiId: draft.upiId || existingBank.upiId || "",
+    micr: draft.micr || existingBank.micr || "",
+    accountType: draft.accountType || (isFieldRejected("accountType") ? "Savings" : existingBank.accountType || "Savings"),
+    branch: draft.branch || (isFieldRejected("branch") ? "" : existingBank.branchName || existingBank.branch || ""),
+    address: draft.address || existingBank.address || "",
+    city: draft.city || existingBank.city || "",
+    district: draft.district || existingBank.district || "",
+    state: draft.state || existingBank.state || "",
+    confirmAccountNumber: draft.confirmAccountNumber || (isFieldRejected("confirmAccountNumber") ? "" : existingBank.accountNumber || "")
   });
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
+  const [showAccountNumber, setShowAccountNumber] = useState(false);
 
-  const update = (key, value) => {
-    setForm(prev => ({ ...prev, [key]: value }));
-    if (errors[key]) setErrors(prev => ({ ...prev, [key]: "" }));
-  };
+  const [verificationState, setVerificationState] = useState("idle");
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showMismatchModal, setShowMismatchModal] = useState(null);
+  const [isFetchingIfsc, setIsFetchingIfsc] = useState(false);
 
-  const validate = () => {
-    const e = {};
-    if (!form.accountNumber.trim()) e.accountNumber = "Required";
-    if (form.accountNumber !== form.confirmAccountNumber) e.confirmAccountNumber = "Account numbers don't match";
-    if (!form.ifscCode.trim()) e.ifscCode = "Required";
-    else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifscCode.toUpperCase())) e.ifscCode = "Invalid IFSC format";
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const handleSave = async () => {
-    if (!validate()) {
-      addToast("Please fix the errors", "error");
-      return;
-    }
-    setSaving(true);
-    const success = await saveDraft(stepId, {
-      ...form,
-      ifscCode: form.ifscCode.toUpperCase(),
+  const isAlreadyProcessed = false;
+  
+  const handleReset = () => {
+    clearFormDraft();
+    setForm({
+      accountNumber: "",
+      ifsc: "",
+      bankName: "",
+      upiId: "",
+      micr: "",
+      accountType: "",
+      branch: "",
+      address: "",
+      city: "",
+      district: "",
+      state: "",
+      confirmAccountNumber: ""
     });
-    setSaving(false);
-    if (success) nextCorrectionStep();
+    updateNested("bankDetails", {
+      method: "Manual Data Entry",
+      accountNumber: "",
+      ifsc: "",
+      bankName: "",
+      upiId: "",
+      micr: "",
+      accountType: "",
+      branch: "",
+      address: "",
+      city: "",
+      district: "",
+      state: "",
+      accountHolderName: "",
+      verified: false
+    });
+    setVerificationState("idle");
+    addToast("Bank form reset for testing.", "success");
   };
+
+  const rejectionCleared = useRef(false);
+
+  useEffect(() => {
+    if (isBankRejected && !rejectionCleared.current) {
+      rejectionCleared.current = true;
+      if (Object.keys(draft).length === 0) {
+        clearFormDraft();
+        setForm({
+          accountNumber: "",
+          ifsc: "",
+          bankName: "",
+          upiId: "",
+          micr: "",
+          accountType: "",
+          branch: "",
+          address: "",
+          city: "",
+          district: "",
+          state: "",
+          confirmAccountNumber: ""
+        });
+      }
+    }
+  }, [isBankRejected, draft]);
+
+  useEffect(() => {
+    const fetchBankDetails = async () => {
+      const ifsc = form.ifsc?.trim().toUpperCase();
+      
+      // Clear details if IFSC is not complete
+      if (!ifsc || ifsc.length < 11) {
+        if (form.micr || form.bankName) {
+          setForm(prev => ({ ...prev, micr: "", bankName: "" }));
+        }
+        return;
+      }
+
+      if (ifsc.length === 11) {
+        setIsFetchingIfsc(true);
+        try {
+          const result = await verifyIfsc(ifsc);
+          if (result.success && result.data) {
+            const root = result.data;
+            const bankInfo = root.data || root.result || root;
+            
+            const micr = bankInfo.micr || bankInfo.MICR || bankInfo.micr_code;
+            const bankName = bankInfo.bank || bankInfo.bank_name || bankInfo.name;
+            const branch = bankInfo.branch;
+            const address = bankInfo.address;
+            const city = bankInfo.city;
+            const district = bankInfo.district;
+            const state = bankInfo.state;
+            
+            setForm(prev => ({
+              ...prev,
+              ...(micr ? { micr } : {}),
+              ...(bankName ? { bankName } : {}),
+              ...(branch ? { branch } : {}),
+              ...(address ? { address } : {}),
+              ...(city ? { city } : {}),
+              ...(district ? { district } : {}),
+              ...(state ? { state } : {})
+            }));
+          }
+        } catch (error) {
+          console.error("IFSC fetch error:", error);
+        } finally {
+          setIsFetchingIfsc(false);
+        }
+      }
+    };
+    fetchBankDetails();
+  }, [form.ifsc]);
+
+  
+
+  const update = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const validateBankDetails = () => {
+    if (!form.accountNumber || !form.ifsc || !form.accountType) {
+      addToast("Please fill all bank details", "error");
+      return false;
+    }
+    if (form.accountNumber !== form.confirmAccountNumber) {
+      addToast("Account numbers do not match", "error");
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateBankDetails()) return;
+    if (isAlreadyProcessed) {
+       const payloadData = { ...existingBank, ...form, method: "Manual Data Entry (Correction)", verified: false };
+       const success = await saveDraft(stepId, payloadData);
+       if (success) nextCorrectionStep();
+       return;
+    }
+    
+    setShowSubmitConfirm(true);
+  };
+
+  const handleVerifyAndProceed = async () => {
+    setShowSubmitConfirm(false);
+
+    // Start verification
+    setVerificationState("verifying");
+    
+    try {
+      const result = await verifyBank(form.accountNumber, form.ifsc, null, form.accountType, applicationData?.applicationId || applicationData?.id);
+
+      if (result.success) {
+        setVerificationState("idle");
+        const accountHolder = result.data.beneficiary_name_with_bank || form.accountHolderName;
+
+        if (result.nameMismatch) {
+          const kycName = personalDetails?.fullName || ocrData?.name || "Unknown";
+          
+          const hashName = (name) => {
+            if (!name) return "";
+            return name.split(" ").map(word => {
+              if (word.length <= 2) return word + "***";
+              return word.substring(0, 2) + "***";
+            }).join(" ");
+          };
+          
+          setShowMismatchModal({
+             kycName,
+             bankName: hashName(accountHolder),
+             accountHolder
+          });
+        } else {
+          addToast("Name matched. Penny drop verified.", "success");
+          update("accountHolderName", accountHolder);
+          // Record verification fingerprint so this step auto-skips on re-navigation
+
+          clearFormDraft();
+          const payloadData = { ...form, method: "Penny Drop Verified", accountHolderName: accountHolder, verified: true };
+          const success = await saveDraft(stepId, payloadData);
+          if (success) nextCorrectionStep();
+        }
+      } else {
+        setVerificationState("idle");
+        addToast(result.error || "Bank verification failed", "error");
+      }
+    } catch (error) {
+      addToast(error.message || "Error connecting to bank verification service", "error");
+      setVerificationState("idle");
+    }
+  };
+
+  const inputStyle = {
+    width: "100%", 
+    padding: "10px 14px", 
+    fontSize: "0.95rem", 
+    height: "44px",
+    border: "1px solid var(--border-color)", 
+    borderRadius: "12px",
+    outline: "none", 
+    color: "var(--text-primary)",
+    background: "var(--bg-elevated)",
+    fontWeight: 600,
+    transition: "all var(--transition-fast)"
+  };
+
+  // Payment Successful Screen (Removed as requested)
 
   return (
-    <div className="step-card" style={{ maxWidth: 560, margin: "0 auto", padding: "32px 28px" }}>
-      <div style={{
-        background: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.2)",
-        borderRadius: 12, padding: "14px 18px", marginBottom: 24,
-      }}>
-        <p style={{ color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, margin: 0 }}>
-          ⚠️ Reason: {rejectedStep.reason || "Bank details need correction"}
-        </p>
+    <div className="container-sm">
+      
+      
+      <div className="text-center animate-slide-up" style={{ marginBottom: 32, position: "relative" }}>
+
+
+        
+        <h1 className="text-section" style={{ fontSize: "2.4rem", marginBottom: 16, color: "var(--text-primary)" }}>Bank Details</h1>
       </div>
 
-      <h2 style={{ color: "var(--text-primary)", fontSize: "1.15rem", fontWeight: 800, marginBottom: 8 }}>
-        Bank Details Correction
-      </h2>
-      <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: 24 }}>
-        Please re-enter your bank account details.
-      </p>
-
-      {existingBank.accountNumber && (
-        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.78rem", margin: 0 }}>
-            Previous A/C: <span style={{ textDecoration: "line-through", color: "#ef4444" }}>
-              ****{(existingBank.accountNumber || "").slice(-4)}
-            </span>
-            {existingBank.bankName && <> | {existingBank.bankName}</>}
-          </p>
+      {isBankRejected && (
+        <div className="animate-slide-up" style={{
+          background: "rgba(239, 68, 68, 0.08)",
+          border: "1.5px solid rgba(239, 68, 68, 0.3)",
+          borderRadius: "16px",
+          padding: "16px 20px",
+          marginBottom: "24px",
+          display: "flex",
+          alignItems: "center",
+          gap: "14px"
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 800, color: "var(--wise-danger)", fontSize: "0.95rem" }}>
+              Bank Verification Rejected
+            </p>
+            <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+              {bankRejectionReason ? `Reason: ${bankRejectionReason}. ` : ""}Please enter your correct bank account details to verify.
+            </p>
+          </div>
         </div>
       )}
 
-      {[
-        { key: "accountNumber", label: "Account Number", type: "text", placeholder: "Enter account number" },
-        { key: "confirmAccountNumber", label: "Confirm Account Number", type: "text", placeholder: "Re-enter account number" },
-        { key: "ifscCode", label: "IFSC Code", type: "text", placeholder: "e.g., SBIN0001234" },
-        { key: "bankName", label: "Bank Name", type: "text", placeholder: "Bank name" },
-        { key: "branchName", label: "Branch Name", type: "text", placeholder: "Branch name" },
-      ].map(({ key, label, type, placeholder }) => (
-        <div key={key} style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>
-            {label} <span style={{ color: "var(--wise-danger)" }}>*</span>
-          </label>
-          <input
-            type={type}
-            value={form[key]}
-            onChange={(e) => update(key, key === "ifscCode" ? e.target.value.toUpperCase() : e.target.value)}
-            placeholder={placeholder}
-            className="input-field"
-            style={{
-              width: "100%", padding: "12px 16px", borderRadius: 12,
-              background: "var(--input-bg)",
-              border: `1.5px solid ${errors[key] ? "var(--wise-danger)" : "var(--border-color)"}`,
-              color: "var(--text-primary)", fontSize: "0.95rem", fontWeight: 700, outline: "none",
-            }}
-          />
-          {errors[key] && <p style={{ color: "var(--wise-danger)", fontSize: "0.75rem", marginTop: 4 }}>{errors[key]}</p>}
-        </div>
-      ))}
-
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>Account Type</label>
-        <select value={form.accountType} onChange={(e) => update("accountType", e.target.value)}
-          style={{
-            width: "100%", padding: "12px 16px", borderRadius: 12,
-            background: "var(--input-bg)", border: "1.5px solid var(--border-color)",
-            color: "var(--text-primary)", fontSize: "0.95rem", fontWeight: 700, outline: "none",
+      <div className="card animate-slide-up" style={{ 
+            background: "var(--bg-card)", 
+            border: "1px solid var(--border-color)", 
+            borderRadius: "24px",
+            filter: showSubmitConfirm ? "blur(2px)" : "none", 
+            pointerEvents: showSubmitConfirm ? "none" : "auto" 
           }}>
-          <option value="Savings">Savings</option>
-          <option value="Current">Current</option>
-        </select>
-      </div>
+            
+            <div className="form-grid-2" style={{ marginBottom: "20px" }}>
+              <div>
+                <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+                  IFSC <span style={{ color: "var(--wise-danger)" }}>*</span>
+                </label>
+                <input 
+                  placeholder="IFSC" 
+                  value={form.ifsc} 
+                  onChange={e => update("ifsc", e.target.value.toUpperCase())} 
+                  className="input-field"
+                  style={{ textTransform: "uppercase", background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }} 
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+                  MICR
+                </label>
+                <input 
+                  placeholder={isFetchingIfsc ? "Loading..." : "MICR"} 
+                  value={isFetchingIfsc ? "Fetching..." : form.micr} 
+                  readOnly={isFetchingIfsc}
+                  onChange={e => update("micr", e.target.value)} 
+                  className="input-field"
+                  style={{ 
+                    opacity: isFetchingIfsc ? 0.7 : 1,
+                    fontStyle: isFetchingIfsc ? "italic" : "normal",
+                    background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px"
+                  }} 
+                />
+              </div>
+            </div>
 
-      <div style={{ display: "flex", gap: 12, marginTop: 32 }}>
-        {currentStepIndex > 0 && (
-          <button onClick={prevCorrectionStep} style={{
-            flex: 1, padding: "14px", borderRadius: 14,
-            background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)",
-            color: "var(--text-primary)", fontSize: "0.9rem", fontWeight: 700, cursor: "pointer",
-          }}>Back</button>
-        )}
-        <button onClick={handleSave} disabled={saving} style={{
-          flex: 2, padding: "14px", borderRadius: 14,
-          background: "var(--wise-green)", border: "none",
-          color: "#1a1a2e", fontSize: "0.95rem", fontWeight: 800,
-          cursor: saving ? "wait" : "pointer", opacity: saving ? 0.7 : 1,
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+                Account Type <span style={{ color: "var(--wise-danger)" }}>*</span>
+              </label>
+              <CustomSelect 
+                value={
+                  form.accountType === "10" || form.accountType === 10 ? "Saving Account" : 
+                  form.accountType === "11" || form.accountType === 11 ? "Current Account" : 
+                  (form.accountType === "Savings" ? "Saving Account" : 
+                   form.accountType === "Current" ? "Current Account" : form.accountType)
+                }
+                onChange={val => update("accountType", val)}
+                options={["Saving Account", "Current Account"]}
+                placeholder="--Select--"
+              />
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+                Account Number <span style={{ color: "var(--wise-danger)" }}>*</span>
+              </label>
+              <input 
+                placeholder="Enter Account Number" 
+                value={form.accountNumber} 
+                onChange={e => update("accountNumber", e.target.value)} 
+                className="input-field" 
+                style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }}
+              />
+            </div>
+
+            <div style={{ marginBottom: "32px" }}>
+              <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
+                Confirm Account Number <span style={{ color: "var(--wise-danger)" }}>*</span>
+              </label>
+              <div style={{ position: "relative" }}>
+                <input 
+                  type={showAccountNumber ? "text" : "password"}
+                  placeholder="Confirm Account Number" 
+                  value={form.confirmAccountNumber} 
+                  onChange={e => {
+                    update("confirmAccountNumber", e.target.value);
+                    if (showAccountNumber) setShowAccountNumber(false);
+                  }}
+                  className="input-field" 
+                  style={{ 
+                    background: "var(--input-bg)", 
+                    color: "var(--text-primary)", 
+                    border: `1.5px solid ${form.confirmAccountNumber && form.accountNumber !== form.confirmAccountNumber ? "var(--wise-danger)" : "var(--border-color)"}`, 
+                    height: "56px", 
+                    borderRadius: "16px", 
+                    paddingRight: "50px" 
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAccountNumber(!showAccountNumber)}
+                  style={{
+                    position: "absolute",
+                    right: "16px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center"
+                  }}
+                >
+                  {showAccountNumber ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+              {form.confirmAccountNumber && form.accountNumber !== form.confirmAccountNumber && (
+                <p style={{ fontSize: "0.75rem", color: "var(--wise-danger)", marginTop: "6px", fontWeight: 700 }}>
+                  Account numbers do not match
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+              <button 
+                className="btn-primary" 
+                onClick={handleSubmit} 
+                style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
+              >
+               {verificationState === "verifying" ? "Verifying..." : isAlreadyProcessed ? (bankDetails?.verified ? "Verified - Continue" : "Mismatched - Continue") : "Submit"}
+              </button>
+
+              <button 
+                onClick={() => prevCorrectionStep()} 
+                className="btn-back"
+                style={{ color: "var(--text-secondary)", background: "transparent", border: "none", cursor: "pointer", fontSize: "1rem", fontWeight: 700, marginTop: "8px" }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+
+      {/* Penny Drop Verified Modal Overlay */}
+      {showSubmitConfirm && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
+          display: "flex", alignItems: "center", justifyContent: "center",
+          paddingBottom: "40px",
+          zIndex: 1000, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)"
         }}>
-          {saving ? "Saving..." : "Save & Continue"}
-        </button>
-      </div>
+          <div className="animate-slide-up" style={{ 
+            background: "var(--bg-card)", padding: "32px", borderRadius: "24px", 
+            width: "90%", maxWidth: "380px", textAlign: "center",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
+            border: "1px solid var(--border-color)"
+          }}>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "4px" }}>Confirm Bank Verification</p>
+            <h3 style={{ color: "var(--text-primary)", fontSize: "1.5rem", fontWeight: 800, marginBottom: "32px" }}>
+              Proceed with Penny Drop?
+            </h3>
+            
+            <button 
+              onClick={() => setShowSubmitConfirm(false)} 
+              className="btn-secondary"
+              style={{ 
+                width: "100%", marginBottom: "12px", height: "56px", borderRadius: "16px",
+                fontWeight: 700, fontSize: "1rem"
+              }}
+            >
+              Modify
+            </button>
+            
+            <button 
+              onClick={handleVerifyAndProceed}
+              disabled={verificationState === "verifying"}
+              className="btn-primary"
+              style={{ 
+                width: "100%", height: "56px", borderRadius: "16px",
+                fontWeight: 800, fontSize: "1.1rem"
+              }}
+            >
+              {verificationState === "verifying" ? "Verifying..." : "Proceed"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Name Mismatch Modal */}
+      {showMismatchModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
+          display: "flex", alignItems: "center", justifyContent: "center",
+          paddingBottom: "40px",
+          zIndex: 1000, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)"
+        }}>
+          <div className="animate-slide-up" style={{ 
+            background: "var(--bg-card)", padding: "32px", borderRadius: "24px", 
+            width: "90%", maxWidth: "380px", textAlign: "center",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
+            border: "1px solid var(--border-color)"
+          }}>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "8px" }}>Penny Drop</p>
+            <h3 style={{ color: "var(--text-primary)", fontSize: "1.1rem", fontWeight: 700, marginBottom: "32px", lineHeight: 1.5 }}>
+              Your name ({showMismatchModal.kycName}) does not match with your Bank Account Name ({showMismatchModal.bankName})
+            </h3>
+            
+            <button 
+              onClick={() => setShowMismatchModal(null)} 
+              className="btn-secondary"
+              style={{ 
+                width: "100%", marginBottom: "12px", height: "56px", borderRadius: "16px",
+                fontWeight: 700, fontSize: "1rem"
+              }}
+            >
+              Modify
+            </button>
+            
+            <button 
+              onClick={() => {
+                const accountHolder = showMismatchModal.accountHolder;
+                setShowMismatchModal(null);
+                addToast("Name not matched penny drop not verified. Proceeding to upload bank proof.", "warning");
+                update("accountHolderName", accountHolder);
+                markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
+                clearFormDraft();
+                nextStep({ bankDetails: { ...form, method: "Manual Data Entry", accountHolderName: accountHolder, verified: false } });
+              }}
+              className="btn-primary"
+              style={{ 
+                width: "100%", height: "56px", borderRadius: "16px",
+                fontWeight: 800, fontSize: "1.1rem"
+              }}
+            >
+              Proceed
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

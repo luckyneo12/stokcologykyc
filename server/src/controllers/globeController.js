@@ -156,6 +156,7 @@ class GlobeController {
         whereClause.pushedToBackoffice = false;
       } else if (globeStatus === "completed" || globeStatus === "approved") {
         whereClause.status = "verified";
+        whereClause.globeStatus = "approved";
         whereClause.pushedToBackoffice = false;
       } else if (globeStatus && globeStatus !== "all") {
         whereClause.globeStatus = globeStatus;

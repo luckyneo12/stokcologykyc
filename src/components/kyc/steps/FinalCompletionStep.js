@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useKYC } from "@/context/KYCContext";
+import { logoutUser } from "@/utils/auth";
 import Logo from "../Logo";
 
 export default function FinalCompletionStep() {
@@ -60,7 +61,7 @@ export default function FinalCompletionStep() {
   };
 
   useEffect(() => {
-    handleDownloadPdf(true);
+    // handleDownloadPdf(true);
   }, [applicationId, downloaded]);
 
   return (
@@ -185,16 +186,18 @@ export default function FinalCompletionStep() {
             )}
           </button>
 
-          <button 
+          <button
             onClick={() => {
-              resetKYC();
-              window.location.href = "/";
+              logoutUser({
+                redirectPath: "/",
+                resetKyc: resetKYC,
+              });
             }}
             className="btn-interactive"
-            style={{ 
-              padding: "16px 40px", 
-              borderRadius: "16px", 
-              fontSize: "1.1rem", 
+            style={{
+              padding: "16px 40px",
+              borderRadius: "16px",
+              fontSize: "1.1rem",
               fontWeight: 800,
               background: "var(--text-primary)",
               color: "var(--bg-primary)",

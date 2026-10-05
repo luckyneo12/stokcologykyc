@@ -22,6 +22,7 @@ const getAssignedApplications = async (req, res, next) => {
         where.pushedToBackoffice = true;
       } else if (normalizedStatus === "completed" || normalizedStatus === "not_pushed_to_bo") {
         where.status = "verified";
+        where.globeStatus = "approved";
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "verify") {
         where.currentStep = { gte: 14 };
@@ -109,6 +110,9 @@ const getAssignedApplications = async (req, res, next) => {
           esignDetails: true,
           ocrData: true,
           stepStatuses: true,
+          selfieDetails: true,
+          signature: true,
+          segments: true,
           globeStatus: true,
           isResubmitted: true,
           riskScore: true,
@@ -233,6 +237,10 @@ const reviewStep = async (req, res, next) => {
       reason: req.body.reason
     });
 
+    // Extract field-level rejection info
+    const rejectedFields = Array.isArray(req.body.rejectedFields) ? req.body.rejectedFields : [];
+    const rejectEntireModule = req.body.rejectEntireModule === true;
+
     if (status === "rejected" && (!reason || reason.trim() === "")) {
       return res.status(400).json({ success: false, error: "Rejection reason is required" });
     }
@@ -264,7 +272,7 @@ const reviewStep = async (req, res, next) => {
     }
 
     // Update stepStatuses JSON
-    // stepStatuses structure: { [stepName]: { status, reason, reviewedAt, reviewedBy } }
+    // stepStatuses structure: { [stepName]: { status, reason, reviewedAt, reviewedBy, rejectedFields?, rejectEntireModule? } }
     let stepStatuses = {};
     if (app.stepStatuses) {
       try {
@@ -289,18 +297,45 @@ const reviewStep = async (req, res, next) => {
     stepStatuses[stepName] = {
       status,
       reason: status === "rejected" ? reason : null,
+      rejectedFields: status === "rejected" ? rejectedFields : [],
+      rejectEntireModule: status === "rejected" ? rejectEntireModule : false,
       reviewedAt: new Date().toISOString(),
       reviewedBy: agentId,
     };
 
+    let hasRejectedSteps = Object.values(stepStatuses).some(s => s.status === "rejected");
+
     const updateData = {
       stepStatuses: JSON.stringify(stepStatuses),
-      status: status === "rejected" ? "rejected" : "under_review",
       reviewedAt: new Date(),
     };
 
     if (status === "rejected") {
       updateData.rejectionReason = reason;
+      updateData.status = "rejected";
+    } else {
+      // Reversal of rejection (un-reject): If there's an active correction session, remove this step
+      if (app.correctionDraft) {
+        try {
+          let session = typeof app.correctionDraft === 'string' 
+            ? JSON.parse(app.correctionDraft) 
+            : app.correctionDraft;
+            
+          if (session && Array.isArray(session.rejectedSteps)) {
+            session.rejectedSteps = session.rejectedSteps.filter(s => s.stepId !== stepName);
+            
+            if (session.rejectedSteps.length > 0) {
+              hasRejectedSteps = true; // Other steps (e.g. documents) are still rejected
+              updateData.correctionDraft = JSON.stringify(session);
+            } else {
+              updateData.correctionDraft = null;
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing correctionDraft during un-reject:", e);
+        }
+      }
+      updateData.status = hasRejectedSteps ? "rejected" : "under_review";
     }
 
     await prisma.kycApplication.update({
@@ -433,6 +468,8 @@ const requestModifications = async (req, res, next) => {
         stepTitle: STEP_TITLE_MAP[stepId] || stepId,
         reason: info.reason || "",
         kycIndex: REVIEW_STEP_TO_KYC_INDEX[stepId] || 1,
+        rejectedFields: Array.isArray(info.rejectedFields) ? info.rejectedFields : [],
+        rejectEntireModule: info.rejectEntireModule === true,
       }));
 
     // Merge document rejections from the frontend (localStorage-based)
@@ -607,6 +644,9 @@ const requestModifications = async (req, res, next) => {
     const crypto = require("crypto");
     const correctionSessionId = `CORR-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 
+    // Sort rejected entries by kycIndex to preserve normal flow order
+    rejectedEntries.sort((a, b) => a.kycIndex - b.kycIndex);
+
     const correctionSession = {
       sessionId: correctionSessionId,
       createdAt: new Date().toISOString(),
@@ -615,6 +655,8 @@ const requestModifications = async (req, res, next) => {
         type: DOCUMENT_REVIEW_STEPS.includes(e.stepId) ? "document" : "module",
         reason: e.reason,
         kycIndex: e.kycIndex,
+        rejectedFields: e.rejectedFields || [],
+        rejectEntireModule: e.rejectEntireModule || false,
         completed: false,
       })),
       drafts: {},
@@ -652,7 +694,6 @@ const requestModifications = async (req, res, next) => {
         role: app.user.role || "user",
         correctionMode: true,
         sessionId: correctionSessionId,
-        rejectedSteps: correctionSession.rejectedSteps,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -707,7 +748,48 @@ const requestModifications = async (req, res, next) => {
       message: `Modification request sent to ${userEmail}`,
       rejectedSteps: rejectedEntries.map(e => e.stepTitle),
       correctionSessionId,
+      correctionLink: modifyLink,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getCorrectionLink = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const app = await prisma.kycApplication.findUnique({
+      where: { applicationId: id },
+      include: { user: true },
+    });
+
+    if (!app || !app.correctionDraft) {
+      return res.status(404).json({ success: false, error: "No active correction session found." });
+    }
+
+    let session;
+    try {
+      session = JSON.parse(app.correctionDraft);
+    } catch (e) {
+      return res.status(500).json({ success: false, error: "Invalid correction session data." });
+    }
+
+    const jwt = require("jsonwebtoken");
+    const magicToken = jwt.sign(
+      {
+        id: app.user.id,
+        phone: app.user.phone,
+        role: app.user.role || "user",
+        correctionMode: true,
+        sessionId: session.sessionId,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const modifyLink = `${frontendUrl}/correction?token=${magicToken}`;
+
+    res.json({ success: true, correctionLink: modifyLink });
   } catch (error) {
     next(error);
   }
@@ -718,4 +800,5 @@ module.exports = {
   reviewStep,
   getApReferrals,
   requestModifications,
+  getCorrectionLink,
 };

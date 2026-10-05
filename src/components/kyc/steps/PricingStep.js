@@ -283,6 +283,7 @@ export default function PricingStep() {
                 <li>Copy of ITR Acknowledgement.</li>
                 <li>Copy of Annual Accounts.</li>
                 <li>Net worth certificate</li>
+                <li>Demat Holding Statement</li>
               </ol>
             </div>
 

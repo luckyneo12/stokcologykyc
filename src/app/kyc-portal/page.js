@@ -65,8 +65,10 @@ export default function KYCPortal() {
                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-dark-green)" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
               </div>
             </div>
-            <button 
-              onClick={() => { localStorage.clear(); router.push("/kyc-portal/login"); }}
+            <button
+              onClick={() => {
+                logoutUser({ redirectPath: "/kyc-portal/login" });
+              }}
               style={{ padding: "8px 16px", borderRadius: "10px", border: "1px solid var(--border-color)", background: "transparent", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer" }}
             >
               Logout

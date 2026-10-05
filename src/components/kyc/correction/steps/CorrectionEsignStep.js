@@ -286,21 +286,27 @@ export default function CorrectionEsignStep() {
           onClick={async () => {
             try {
               setDownloadingEsign(true);
-              const res = await fetch(`${API_URL}/api/kyc/me`, {
+              const res = await fetch(`${API_URL}/api/kyc/download-pdf/${applicationData.applicationId}`, {
                 headers: { "Authorization": `Bearer ${token}` }
               });
-              const data = await res.json();
-              if (data.success && data.application) {
-                let docs = [];
-                try {
-                  docs = typeof data.application.documents === "string" ? JSON.parse(data.application.documents) : (data.application.documents || []);
-                } catch(e) {}
-                const esignDoc = [...docs].reverse().find(d => d.type === "ESIGN_DOCUMENT");
-                if (esignDoc && esignDoc.path) {
-                  window.open(esignDoc.path, "_blank");
-                  setDownloadingEsign(false);
-                  return;
+              
+              if (res.ok) {
+                let filename = `KYC_Application_${applicationData.applicationId}_Signed.pdf`;
+                const disposition = res.headers.get("Content-Disposition");
+                if (disposition && disposition.includes("filename=")) {
+                  filename = disposition.split("filename=")[1].replace(/["']/g, "");
                 }
+                
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                return;
               }
               addToast("e-Signed PDF is still being generated in the background. Please try again in a few seconds.", "info");
             } catch (err) {

@@ -65,7 +65,7 @@ export const initializeDigio = (options) => {
   return null;
 };
 
-export const createDigioRequest = async (type, data = {}, explicitApplicationId = null) => {
+export const createDigioRequest = async (type, data = {}, explicitApplicationId = null, customToken = null) => {
   const url = `${API_BASE_URL}/api/digio/create-request`;
   const body = JSON.stringify({
     type,
@@ -75,10 +75,15 @@ export const createDigioRequest = async (type, data = {}, explicitApplicationId 
 
   console.log(`[Digio Utility] Sending ${type} request to ${url} (Payload: ${(body.length / 1024).toFixed(2)} KB)`);
 
+  const headers = getAuthHeaders();
+  if (customToken) {
+    headers.Authorization = `Bearer ${customToken}`;
+  }
+
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: getAuthHeaders(),
+      headers: headers,
       body: body,
     }).catch(err => {
       console.error("[Digio Utility] Fetch failed immediately:", err);
@@ -165,7 +170,7 @@ export const verifyPanDirect = async (pan, fullName, dob) => {
   }
 };
 
-export const verifyBank = async (accountNumber, ifsc, beneficiaryName, accountType) => {
+export const verifyBank = async (accountNumber, ifsc, beneficiaryName, accountType, passedApplicationId) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/digio/verify-bank`, {
       method: "POST",
@@ -175,7 +180,7 @@ export const verifyBank = async (accountNumber, ifsc, beneficiaryName, accountTy
         ifsc,
         beneficiaryName,
         accountType,
-        applicationId: getApplicationId() || undefined,
+        applicationId: passedApplicationId || getApplicationId() || undefined,
       }),
     });
 

@@ -43,6 +43,37 @@ const USER_STEP_LABELS = {
   13: "Aadhaar eSign", 
   14: "Completion"
 };
+
+const ReverseGeocode = ({ lat, lng, fallback }) => {
+  const [address, setAddress] = useState("Fetching location...");
+  
+  useEffect(() => {
+    if (!lat || !lng || lat === "N/A" || lng === "N/A") {
+      setAddress(fallback || "N/A");
+      return;
+    }
+    const cacheKey = `geo_${lat}_${lng}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      setAddress(cached);
+      return;
+    }
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.display_name) {
+          setAddress(data.display_name);
+          sessionStorage.setItem(cacheKey, data.display_name);
+        } else {
+          setAddress(fallback || "N/A");
+        }
+      })
+      .catch(() => setAddress(fallback || "N/A"));
+  }, [lat, lng, fallback]);
+
+  return <span style={{ fontSize: "0.95rem" }}>{address}</span>;
+};
+
 const DROPDOWN_OPTIONS = {
   "personalDetails.gender": ["Male", "Female", "Transgender", "Other"],
   "personalDetails.maritalStatus": ["Single", "Married", "Others"],
@@ -72,6 +103,15 @@ const DROPDOWN_OPTIONS = {
   "segments.selected": ["equity", "equity, derivatives", "derivatives"]
 };
 
+const formatBoid = (boidNum) => {
+  if (!boidNum) return "N/A";
+  let b = String(boidNum).trim();
+  if (b.length > 16) {
+    return b.slice(0, 8) + b.slice(-10, -2);
+  }
+  return b;
+};
+
 const REVIEW_STEPS = [
   {
     id: "nameMatch",
@@ -96,7 +136,7 @@ const REVIEW_STEPS = [
       ["Selected plan", app.pricingSelection?.plan || app.segments?.pricingPlan || app.segments?.plan, "pricingSelection.plan"],
       ["Segments", formatList(app.segments?.selected || app.segments?.segments || app.segments), "segments.selected"],
       ["BSDA", app.bsda, "bsda"],
-      ["BOID", app.user?.boid, "user.boid"],
+      ["BOID", formatBoid(app.user?.boid), "user.boid"],
       ["Brokerage Plan", (
         <details key="brokerage">
           <summary style={{ cursor: "pointer", outline: "none", color: "var(--wise-green)", userSelect: "none" }}>Standard</summary>
@@ -259,7 +299,7 @@ const REVIEW_STEPS = [
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["Operate ddpi", app.personalDetails?.operatedThroughDDPI || "Yes", "personalDetails.operatedThroughDDPI"],
-      ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
+      // ["Stampaper number", app.user?.eStampAssigned?.certificateNo || app.user?.eStampAssigned?.serialNo || "N/A", "user.eStampAssigned.certificateNo"],
       ["Modeofjourney", app.identityDetails?.journeyMode || "DIGILOCKER", "identityDetails.journeyMode"],
       ["Account settlement", app.personalDetails?.settlement || "Quarterly", "personalDetails.settlement"],
 
@@ -380,23 +420,19 @@ const REVIEW_STEPS = [
         
         return "No";
       })()],
-      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A"],
-      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A"],
-      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A"],
-      // ["Bank add", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
-      // ["Reject reason bank", app.bankDetails?.rejectReason || app.ocrData?.bank?.rejectReason || "N/A"],
-      // ["Rejected by bank", app.bankDetails?.rejectedBy || app.ocrData?.bank?.rejectedBy || "N/A"],
-      // ["Rejected timestamp bank", app.bankDetails?.rejectedAt ? new Date(app.bankDetails.rejectedAt).toLocaleString() : app.ocrData?.bank?.rejectedAt || "N/A"],
-      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A"],
-      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A"],
+      ["Branchname", app.bankDetails?.branch || app.ocrData?.bank?.branch || "N/A", null, true],
+      ["Micr", app.bankDetails?.micr || app.ocrData?.bank?.micr || "N/A", null, true],
+      ["Pennydrop verify time", app.bankDetails?.verifiedAt ? new Date(app.bankDetails.verifiedAt).toLocaleString() : app.ocrData?.bank?.verifiedAt || "N/A", null, true],
+      ["Bankaddress", app.bankDetails?.address || app.ocrData?.bank?.address || "N/A", null, true],
+      ["Bankname", app.bankDetails?.bankName || app.ocrData?.bank?.bankName || "N/A", null, true],
       ["Bank city", app.bankDetails?.city || app.ocrData?.bank?.city || "N/A", null, true],
       ["Bank district", app.bankDetails?.district || app.ocrData?.bank?.district || "N/A", null, true],
       ["Bank pincode", app.bankDetails?.pincode || app.ocrData?.bank?.pincode || "N/A", null, true],
       ["Bank state", app.bankDetails?.state || app.ocrData?.bank?.state || "N/A", null, true],
-      ["Name on pan", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.panName || "N/A"],
-      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A"],
-      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A"],
-      ["Bank Log", JSON.stringify(app.bankDetails || {})],
+      ["Name on pan", app.personalDetails?.fullName || app.identityDetails?.pan_name || app.identityDetails?.panName || "N/A", null, true],
+      ["Name on bank", app.bankDetails?.beneficiaryName || app.bankDetails?.accountHolderName || "N/A", null, true],
+      ["Name match score", app.bankDetails?.name_match_score ? `${app.bankDetails.name_match_score}%` : app.ocrData?.bank?.name_match_score ? `${app.ocrData.bank.name_match_score}%` : "N/A", null, true],
+      ["Bank Log", JSON.stringify(app.bankDetails || {}), null, true],
     ],
     evidence: (app) => [firstMedia(app.bankDetails?.proofPreview || app.bankDetails?.proofPath || app.bankDetails?.proof, "Bank Proof")].filter(Boolean),
   },
@@ -465,17 +501,17 @@ const REVIEW_STEPS = [
     fields: (app) => [
       ["Face match score", app.selfieDetails?.faceMatchScore != null ? `${app.selfieDetails.faceMatchScore}%` : app.selfieDetails?.matchScore != null ? `${app.selfieDetails.matchScore}%` : "Not Captured"],
       // ["Liveness check", app.selfieDetails?.livenessScore != null ? `Pass (${app.selfieDetails.livenessScore}%)` : app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Pass" : "Not Captured"],
-      ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
-      ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
+      // ["Selfie captured", app.selfie || app.selfieDetails?.preview || app.selfieDetails?.path ? "Yes" : "No"],
+      // ["Applicant", app.personalDetails?.fullName, "personalDetails.fullName"],
       ["Latitude", app.selfieDetails?.lat || app.selfieDetails?.latitude || "N/A"],
-      ["Location", app.selfieDetails?.location || "N/A"],
       ["Longitude", app.selfieDetails?.lng || app.selfieDetails?.longitude || "N/A"],
       ["Capture Date", app.selfieDetails?.extractedAt ? new Date(app.selfieDetails.extractedAt).toLocaleString('en-GB') : app.selfieDetails?.updatedAt ? new Date(app.selfieDetails.updatedAt).toLocaleString('en-GB') : "N/A"],
+      ["Location", <ReverseGeocode key="geo" lat={app.selfieDetails?.lat || app.selfieDetails?.latitude} lng={app.selfieDetails?.lng || app.selfieDetails?.longitude} fallback={app.selfieDetails?.location} />],
     ],
     evidence: (app) => [
       firstMedia(app.selfieDetails?.path || app.selfie || app.selfieDetails?.preview, "Live Selfie"),
       firstMedia(app.selfieDetails?.videoPath, "Liveness Video"),
-      findDocument(app, ["aadhaar", "photo", "digilocker"], "Aadhar photo", ["pan"]),
+      findDocument(app, ["aadhaar", "photo", "digilocker"], "Aadhar photo", ["pan", "pdf"]),
       firstMedia(app.panUpload, "Uploaded PAN Card") || findDocument(app, ["pan"], "PAN Document"),
     ].filter(Boolean),
   },
@@ -509,9 +545,9 @@ const REVIEW_STEPS = [
           return String(dt);
         }
       })()],
-      ["IP Address", app.esignDetails?.ip || "Pending", "esignDetails.ip"],
-      ["Latitude", app.esignDetails?.lat || "Pending", "esignDetails.lat"],
-      ["Longitude", app.esignDetails?.lng || "Pending", "esignDetails.lng"],
+      // ["IP Address", app.esignDetails?.ip || "Pending", "esignDetails.ip"],
+      // ["Latitude", app.esignDetails?.lat || "Pending", "esignDetails.lat"],
+      // ["Longitude", app.esignDetails?.lng || "Pending", "esignDetails.lng"],
     ],
     evidence: (app) => [
       firstMedia(
@@ -1462,6 +1498,8 @@ export default function AgentReview() {
   const [globalRejectReason, setGlobalRejectReason] = useState("");
   const [rejectStepModal, setRejectStepModal] = useState(null);
   const [stepRejectReason, setStepRejectReason] = useState("");
+  const [selectedRejectedFields, setSelectedRejectedFields] = useState([]);
+  const [rejectEntireModule, setRejectEntireModule] = useState(false);
   const [showRejectionConfirmModal, setShowRejectionConfirmModal] = useState(false);
   const [documentRejections, setDocumentRejections] = useState({});
   const [rejectDocumentModal, setRejectDocumentModal] = useState(null);
@@ -1750,7 +1788,12 @@ export default function AgentReview() {
       const res = await fetchWithFallback(`/api/agent/kyc/${id}/step/${rejectStepModal.id}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: "rejected", reason: stepRejectReason }),
+        body: JSON.stringify({ 
+          status: "rejected", 
+          reason: stepRejectReason,
+          rejectedFields: selectedRejectedFields,
+          rejectEntireModule: rejectEntireModule,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1758,6 +1801,8 @@ export default function AgentReview() {
         const stepId = rejectStepModal.id;
         setRejectStepModal(null);
         setStepRejectReason("");
+        setSelectedRejectedFields([]);
+        setRejectEntireModule(false);
         setVisitedSteps(prev => {
           const next = new Set(prev);
           next.delete(stepId);
@@ -1800,6 +1845,29 @@ export default function AgentReview() {
     } catch (error) {
       console.error(error);
       showToast("Network error while removing rejection.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAdminCorrection = async () => {
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetchWithFallback(`/api/agent/kyc/${id}/correction-link`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && data.correctionLink) {
+        window.open(data.correctionLink, '_blank');
+        showToast("Opening Correction Portal...", "success");
+      } else {
+        showToast(data.error || "Failed to get correction link. Please click 'Send Rejection Mail' first to generate a session.", "error");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Network error while generating correction link.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -2054,6 +2122,13 @@ export default function AgentReview() {
           <button onClick={handleGlobalApprove} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.4)", transition: "all 0.2s" }}>
             <CheckCircle2 size={16} /> Approve KYC
           </button>
+          
+          {Object.values(statuses).some(s => s.status === "rejected") && (
+            <button onClick={handleAdminCorrection} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(245, 158, 11, 0.4)", transition: "all 0.2s" }} title="Open Correction Portal as User">
+              <LayoutTemplate size={16} /> Correct as Admin
+            </button>
+          )}
+
           <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.4)", transition: "all 0.2s" }}>
             <Mail size={16} /> Send Rejection Mail
           </button>
@@ -2113,8 +2188,12 @@ export default function AgentReview() {
                           e.stopPropagation();
                           if (displayAsRejected || isRejected) {
                             setStepRejectReason(statuses[step.id]?.reason || "");
+                            setSelectedRejectedFields(Array.isArray(statuses[step.id]?.rejectedFields) ? statuses[step.id].rejectedFields : []);
+                            setRejectEntireModule(statuses[step.id]?.rejectEntireModule === true);
                           } else {
                             setStepRejectReason("");
+                            setSelectedRejectedFields([]);
+                            setRejectEntireModule(false);
                           }
                           setRejectStepModal(step);
                         }}
@@ -2759,10 +2838,49 @@ export default function AgentReview() {
         </div>
       )}
 
-      {rejectStepModal && (
+      {rejectStepModal && (() => {
+        // Determine if this is a module step (not a document step)
+        const DOCUMENT_STEP_IDS = new Set(["financialProof", "signature", "panUpload", "ipv", "pepProof", "nominee1Proof", "nominee2Proof", "nominee3Proof", "guardian1Proof", "guardian2Proof", "guardian3Proof"]);
+        const isModuleStep = !DOCUMENT_STEP_IDS.has(rejectStepModal.id);
+        
+        // Get available fields for this module from REVIEW_STEPS
+        let availableFields = [];
+        if (isModuleStep && app) {
+          const reviewStepDef = REVIEW_STEPS.find(s => s.id === rejectStepModal.id);
+          if (reviewStepDef && reviewStepDef.fields) {
+            try {
+              const fieldEntries = reviewStepDef.fields(app);
+              availableFields = fieldEntries
+                .filter(f => Array.isArray(f) && f[0] && typeof f[0] === 'string')
+                .map(f => f[0])
+                .filter(label => label !== "Bank Log"); // Exclude debug fields
+            } catch (e) {
+              console.error("Error getting fields for step:", rejectStepModal.id, e);
+            }
+          }
+        }
+
+        const toggleField = (fieldLabel) => {
+          setSelectedRejectedFields(prev => 
+            prev.includes(fieldLabel) 
+              ? prev.filter(f => f !== fieldLabel) 
+              : [...prev, fieldLabel]
+          );
+        };
+
+        const toggleSelectAll = () => {
+          if (selectedRejectedFields.length === availableFields.length) {
+            setSelectedRejectedFields([]);
+          } else {
+            setSelectedRejectedFields([...availableFields]);
+          }
+        };
+
+        return (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 10005, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--bg-card)", padding: 32, borderRadius: 16, width: 420, maxWidth: "90%", boxShadow: "var(--card-shadow)", border: "1px solid var(--border-color)" }}>
+          <div style={{ background: "var(--bg-card)", padding: 32, borderRadius: 16, width: isModuleStep ? 520 : 420, maxWidth: "90%", boxShadow: "var(--card-shadow)", border: "1px solid var(--border-color)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
             <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)", fontSize: "1.2rem", fontWeight: 800 }}>Reject Step: {rejectStepModal.title}</h3>
+            
             <textarea
               className="admin-input"
               autoFocus
@@ -2770,10 +2888,119 @@ export default function AgentReview() {
               placeholder={`Provide a reason for rejecting the ${rejectStepModal.title} step...`}
               value={stepRejectReason}
               onChange={e => setStepRejectReason(e.target.value)}
-              style={{ width: "100%", minHeight: 120, padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", marginBottom: 24, fontSize: "0.95rem" }}
+              style={{ width: "100%", minHeight: 90, padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", marginBottom: 16, fontSize: "0.95rem", resize: "vertical" }}
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-              <button onClick={() => setRejectStepModal(null)} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}>
+
+            {isModuleStep && availableFields.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                {/* Reject Entire Module Toggle */}
+                <div 
+                  onClick={() => {
+                    const newVal = !rejectEntireModule;
+                    setRejectEntireModule(newVal);
+                    if (newVal) {
+                      setSelectedRejectedFields([...availableFields]);
+                    } else {
+                      setSelectedRejectedFields([]);
+                    }
+                  }}
+                  style={{ 
+                    display: "flex", alignItems: "center", gap: 10, 
+                    padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                    background: rejectEntireModule ? "rgba(239, 68, 68, 0.08)" : "var(--bg-secondary)", 
+                    border: rejectEntireModule ? "1.5px solid rgba(239, 68, 68, 0.4)" : "1.5px solid var(--border-color)",
+                    marginBottom: 12, transition: "all 0.2s"
+                  }}
+                >
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 4,
+                    background: rejectEntireModule ? "linear-gradient(135deg, #ef4444, #dc2626)" : "var(--bg-primary)",
+                    border: rejectEntireModule ? "none" : "1.5px solid var(--border-color)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "all 0.2s", flexShrink: 0
+                  }}>
+                    {rejectEntireModule && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: "0.85rem", color: rejectEntireModule ? "#ef4444" : "var(--text-primary)" }}>
+                      Reject Entire Module
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>
+                      User will need to refill all fields in this module
+                    </div>
+                  </div>
+                </div>
+
+                {/* Field-level selection */}
+                {!rejectEntireModule && (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                        Select Fields to Reject
+                      </span>
+                      <button 
+                        type="button"
+                        onClick={toggleSelectAll}
+                        style={{ background: "none", border: "none", color: "var(--wise-green)", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", padding: "2px 6px" }}
+                      >
+                        {selectedRejectedFields.length === availableFields.length ? "Deselect All" : "Select All"}
+                      </button>
+                    </div>
+                    <div 
+                      className="premium-sidebar-list"
+                      style={{ 
+                        maxHeight: 200, overflowY: "auto", 
+                        border: "1.5px solid var(--border-color)", borderRadius: 12, 
+                        padding: 6, background: "var(--bg-secondary)",
+                      }}
+                    >
+                      {availableFields.map((fieldLabel) => {
+                        const isSelected = selectedRejectedFields.includes(fieldLabel);
+                        return (
+                          <div 
+                            key={fieldLabel}
+                            onClick={() => toggleField(fieldLabel)}
+                            style={{ 
+                              display: "flex", alignItems: "center", gap: 8, 
+                              padding: "7px 10px", borderRadius: 8, cursor: "pointer",
+                              background: isSelected ? "rgba(239, 68, 68, 0.08)" : "transparent",
+                              transition: "all 0.15s", marginBottom: 1
+                            }}
+                            onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                            onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                          >
+                            <div style={{
+                              width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                              background: isSelected ? "linear-gradient(135deg, #ef4444, #dc2626)" : "var(--bg-primary)",
+                              border: isSelected ? "none" : "1.5px solid var(--border-color)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              transition: "all 0.15s"
+                            }}>
+                              {isSelected && (
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                              )}
+                            </div>
+                            <span style={{ fontSize: "0.82rem", fontWeight: 600, color: isSelected ? "#ef4444" : "var(--text-primary)" }}>
+                              {fieldLabel}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {selectedRejectedFields.length > 0 && (
+                      <div style={{ marginTop: 8, fontSize: "0.75rem", color: "#ef4444", fontWeight: 700 }}>
+                        {selectedRejectedFields.length} field{selectedRejectedFields.length !== 1 ? "s" : ""} selected for rejection
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: "auto" }}>
+              <button onClick={() => { setRejectStepModal(null); setSelectedRejectedFields([]); setRejectEntireModule(false); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)", transition: "all 0.2s" }}>
                 Cancel
               </button>
               <button 
@@ -2796,7 +3023,8 @@ export default function AgentReview() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {showRejectionConfirmModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>

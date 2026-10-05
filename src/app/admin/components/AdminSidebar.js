@@ -1,11 +1,11 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  ShieldCheck, 
-  FileText, 
-  ListOrdered, 
-  Stamp, 
+import {
+  LayoutDashboard,
+  ShieldCheck,
+  FileText,
+  ListOrdered,
+  Stamp,
   FileCog,
   ChevronRight,
   Menu,
@@ -14,6 +14,7 @@ import {
   UserPlus,
   LogOut
 } from "lucide-react";
+import { logoutUser } from "@/utils/auth";
 
 const NAV_ITEMS = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
@@ -30,6 +31,16 @@ const NAV_ITEMS = [
 export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }) {
   const router = useRouter();
   const pathname = usePathname();
+
+  const handleLogout = () => {
+    // Logout clears every portal's tokens across both localStorage and
+    // sessionStorage, then redirects to the admin login page. The server
+    // receives the JWT and records an audit event.
+    logoutUser({
+      redirectPath: "/admin/login",
+      // The admin portal has no KYC context to reset.
+    });
+  };
 
   return (
     <>
@@ -87,20 +98,20 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
               Admin Portal
             </div>
           )}
-          <button 
-            onClick={onToggle} 
+          <button
+            onClick={onToggle}
             className="sidebar-toggle-btn"
-            style={{ 
-              width: 32, 
-              height: 32, 
-              borderRadius: 6, 
-              border: "1px solid transparent", 
-              background: "transparent", 
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 6,
+              border: "1px solid transparent",
+              background: "transparent",
               color: "var(--text-muted)",
-              display: "flex", 
-              alignItems: "center", 
-              justifyContent: "center", 
-              cursor: "pointer", 
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
               flexShrink: 0,
               margin: collapsed ? "0 auto" : "0"
             }}
@@ -117,7 +128,7 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
               isActive = true;
             }
             const Icon = item.icon;
-            
+
             return (
               <button key={item.id} onClick={() => {
                 if (item.id === "maker_checker") {
@@ -165,19 +176,14 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
 
         {/* Bottom User Area */}
         <div style={{ padding: "16px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-          <button 
-            onClick={() => {
-              localStorage.removeItem("adminToken");
-              localStorage.removeItem("adminActiveSection");
-              document.cookie = "adminToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-              router.push("/admin/login");
-            }}
+          <button
+            onClick={handleLogout}
             className="sidebar-item"
             style={{
               width: "100%", display: "flex", alignItems: "center", gap: 12,
               padding: collapsed ? "12px 0" : "10px 14px",
               cursor: "pointer",
-              color: "#ef4444", 
+              color: "#ef4444",
               fontWeight: 600,
               fontSize: "0.85rem",
               border: "1px solid transparent",
@@ -194,12 +200,12 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
           </button>
 
           {!collapsed ? (
-            <div 
+            <div
               className="sidebar-item"
-              style={{ 
-                padding: "10px 12px", 
-                display: "flex", 
-                alignItems: "center", 
+              style={{
+                padding: "10px 12px",
+                display: "flex",
+                alignItems: "center",
                 justifyContent: "space-between",
                 cursor: "pointer",
                 border: "1px solid transparent",

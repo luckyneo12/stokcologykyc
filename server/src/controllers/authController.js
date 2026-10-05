@@ -500,4 +500,48 @@ const createAp = async (req, res, next) => {
   }
 };
 
-module.exports = { sendOtp, verifyOtp, adminLogin, globeLogin, kycTeamLogin, kycTeamSignup, setupAdmin, apLogin, createAp };
+/**
+ * Client-side logout handler.
+ * Tokens are stateless JWTs stored client-side, so logout is primarily a
+ * client-side cleanup. The server-side step records the logout event in the
+ * audit log for accountability and tracks session termination.
+ */
+const logout = async (req, res, next) => {
+  try {
+    // req.user is already set by the auth middleware at the route level
+    const userId = req.user?.id;
+    const userRole = req.user?.role || "unknown";
+
+    // Record the logout event in audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: userId || null,
+        action: "USER_LOGGED_OUT",
+        details: JSON.stringify({
+          message: `User ${userRole} (${userId}) logged out`,
+          role: userRole,
+          userId: userId,
+          ipAddress: req.ip || req.connection?.remoteAddress,
+        }),
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  sendOtp,
+  verifyOtp,
+  adminLogin,
+  globeLogin,
+  kycTeamLogin,
+  kycTeamSignup,
+  setupAdmin,
+  apLogin,
+  createAp,
+  logout,
+};

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
 import { uploadDocument } from "@/utils/kycApi";
+import CorrectionSelfieStep from "./CorrectionSelfieStep";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -95,6 +96,14 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
   const handleSaveAll = async () => {
     // Validate all rejected docs have uploads
     for (const docId of rejectedDocIds) {
+      if (docId === "ipv") {
+        const selfiePreview = drafts["ipv"]?.selfieDetails?.preview || drafts["ipv"]?.selfie?.preview;
+        if (!selfiePreview || selfiePreview === "__DIGIO_SUCCESS__") {
+          addToast("Please complete the Selfie Verification", "error");
+          return;
+        }
+        continue;
+      }
       if (!uploads[docId]) {
         addToast(`Please upload a new ${docId} document`, "error");
         return;
@@ -105,6 +114,8 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     let allSaved = true;
 
     for (const docId of rejectedDocIds) {
+      if (docId === "ipv") continue; // SelfieStep saves its own draft
+
       const draftData = {
         filePreview: uploads[docId],
         preview: uploads[docId],
@@ -140,6 +151,19 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     }
 
     if (isRejected) {
+      if (section.id === "ipv") {
+        return (
+          <div key={section.id} style={{
+            padding: 20, borderRadius: 14,
+            border: "1.5px solid rgba(239, 68, 68, 0.3)",
+            background: "rgba(239, 68, 68, 0.03)",
+            marginBottom: 16,
+          }}>
+            <CorrectionSelfieStep stepId="ipv" rejectedStep={rejInfo} inline={true} />
+          </div>
+        );
+      }
+
       return (
         <div key={section.id} style={{
           padding: 20, borderRadius: 14,
@@ -185,6 +209,7 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
                 <option value="Salary Slip">Salary Slip (3 months)</option>
                 <option value="CA Certificate">CA Certificate</option>
                 <option value="Form 16">Form 16</option>
+                <option value="Demat Holding Statement">Demat Holding Statement</option>
               </select>
             </div>
           )}

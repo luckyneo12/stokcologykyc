@@ -1,6 +1,6 @@
 const express = require("express");
-const { sendOtp, verifyOtp, adminLogin, globeLogin, kycTeamLogin, kycTeamSignup, setupAdmin, apLogin, createAp } = require("../controllers/authController");
-const { adminAuth } = require("../middlewares/auth");
+const { sendOtp, verifyOtp, adminLogin, globeLogin, kycTeamLogin, kycTeamSignup, setupAdmin, apLogin, createAp, logout } = require("../controllers/authController");
+const { auth, adminAuth } = require("../middlewares/auth");
 
 const router = express.Router();
 
@@ -14,5 +14,8 @@ router.post("/kyc-signup", kycTeamSignup);
 router.post("/setup-admin", setupAdmin);
 router.post("/ap-login", apLogin);
 router.post("/create-ap", adminAuth, createAp);
+
+// Logout — validates JWT via auth middleware, then logs audit event
+router.post("/logout", auth, logout);
 
 module.exports = router;

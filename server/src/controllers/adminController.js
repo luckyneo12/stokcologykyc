@@ -68,6 +68,7 @@ const getApplications = async (req, res, next) => {
         where.pushedToBackoffice = true;
       } else if (normalizedStatus === "completed" || normalizedStatus === "not_pushed_to_bo") {
         where.status = "verified";
+        where.globeStatus = "approved";
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "verify") {
         where.currentStep = { gte: 14 };
@@ -139,6 +140,10 @@ const getApplications = async (req, res, next) => {
           nomineeDetails: true,
           esignDetails: true,
           ocrData: true,
+          selfieDetails: true,
+          signature: true,
+          segments: true,
+          documents: true,
           isResubmitted: true,
           assignedCrmAgentId: true,
           globeStatus: true,

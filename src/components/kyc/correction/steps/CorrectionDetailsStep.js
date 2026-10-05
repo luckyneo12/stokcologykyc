@@ -47,16 +47,16 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
         className="input-field"
         style={{ 
           cursor: disabled ? "not-allowed" : "pointer",
-          borderColor: error ? "var(--wise-danger)" : (isOpen || isFocused) ? "var(--wise-green)" : "var(--border-color)",
+          borderColor: error ? "var(--wise-danger)" : (isOpen || isFocused) ? "var(--wise-green)" : !disabled ? "#ef4444" : "var(--border-color)",
           boxShadow: isFocused ? "0 0 0 3px rgba(159, 232, 112, 0.3)" : "none",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          opacity: disabled ? 0.6 : 1,
+          opacity: disabled ? 0.7 : 1,
           padding: "0 16px",
           height: "46px",
           minHeight: "46px",
-          background: "var(--input-bg)",
+          background: disabled ? "var(--bg-secondary)" : "var(--input-bg)",
           borderRadius: "12px",
           borderWidth: "1.5px",
           borderStyle: "solid",
@@ -206,7 +206,64 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
   const isRejection = true;
   const rejectionReasonText = rejectedStep?.reason || '';
   
-  
+  // Field-level rejection data
+  const rejectedFields = rejectedStep?.rejectedFields || [];
+  const rejectEntireModule = rejectedStep?.rejectEntireModule === true;
+  const hasFieldLevelRejection = rejectedFields.length > 0 && !rejectEntireModule;
+
+  // Map admin review field labels to form field keys
+  const ADMIN_LABEL_TO_FORM_KEY = {
+    "Father/Spouse name": "fatherName",
+    "Mother's name": "motherName",
+    "Gender": "gender",
+    "Marital status": "maritalStatus",
+    "Education": "education",
+    "Annual income": "annualIncome",
+    "Trading experience": "experience",
+    "Occupation": "occupation",
+    "Politically exposed": "politicallyExposed",
+    "Politically exposed category": "pepType",
+    "Comment": "pepComment",
+    "Ddpi": "ddpi",
+    "Operate ddpi": "operatedThroughDDPI",
+    "Modeofjourney": "journeyMode",
+    "Account settlement": "settlement",
+    "Country of tax residence1": "taxResidence1",
+    "Tax payer identification number1": "taxId1",
+    "Country of tax residence2": "taxResidence2",
+    "Tax payer identification number2": "taxId2",
+    "Country tax residence3": "taxResidence3",
+    "Tax payer identification number3": "taxId3",
+    "Place of birth": "placeOfBirth",
+    "Tax exempt": "taxExempt",
+    "Tax exempt reason": "taxExemptReason",
+    "State code": "state",
+    "Are you citizen of india": "citizenOfIndia",
+    "Tax residency outside": "taxResidencyOutside",
+    "Country birth1": "countryOfBirth",
+    "Citizen1": "citizenship",
+    "Sms alert": "smsAlert",
+    "Nsdl4 communication in electronic form": "receiveAnnualReports",
+    "Nsdl1 receive credit": "receiveCredits",
+    "Nsdl2 e statement": "eStatement",
+    "Nsdl3 pledge instruction": "acceptPledgeInstructions",
+    "Dis booklet": "dis",
+    "Clientcode": "clientCode",
+  };
+
+  // Compute which form field keys are rejected
+  const rejectedFormKeys = new Set(
+    rejectedFields
+      .map(label => ADMIN_LABEL_TO_FORM_KEY[label])
+      .filter(Boolean)
+  );
+
+  // Helper to check if a field is rejected (for visual highlighting)
+  const isFieldRejected = (formKey) => {
+    if (rejectEntireModule) return true;
+    if (!hasFieldLevelRejection) return true; // backwards compat: if no field-level info, treat all as rejected
+    return rejectedFormKeys.has(formKey);
+  };
 
   const initialForm = drafts[stepId] || personalDetails || {};
   const [form, setForm] = useState(initialForm);
@@ -226,41 +283,60 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
         // ONLY BLANK IF CORRECTION DRAFT IS EMPTY
         if (!drafts[stepId]) {
           clearFormDraft(); // Clear localStorage draft
-          // Keep DigiLocker-sourced/extracted fields and revert dropdowns to default values
-          setForm(prev => ({
-            // Preserve read-only & extracted fields
-            fullName: prev?.fullName || "",
-            dob: prev?.dob || "",
-            email: prev?.email || "",
-            fatherName: prev?.fatherName || "",
-            gender: prev?.gender || "",
-            
-            // Restore Default Values for Dropdowns
-            citizenOfIndia: "Yes",
-            politicallyExposed: "No",
-            taxResidencyOutside: "No",
-            taxExempt: "No",
-            ddpiOptIn: "Yes",
-            
-            // Blank purely user-editable fields
-            prefix: "",
-            motherName: "",
-            maritalStatus: "",
-            education: "",
-            occupation: "",
-            annualIncome: "",
-            experience: "",
-            pepType: "",
-          pepProof: "",
-          countryOfBirth: "",
-          citizenship: "",
-          taxResidence1: "",
-          taxId1: "",
-          taxResidence2: "",
-          taxId2: "",
-          placeOfBirth: "",
-          taxExemptReason: "",
-        }));
+          
+          if (hasFieldLevelRejection) {
+            // FIELD-LEVEL REJECTION: Only clear specific rejected fields
+            setForm(prev => {
+              const updated = { ...prev };
+              for (const formKey of rejectedFormKeys) {
+                // Clear the rejected field — set to empty string or appropriate default
+                if (["citizenOfIndia", "politicallyExposed", "taxResidencyOutside", "taxExempt", "ddpiOptIn", "ddpi", "operatedThroughDDPI", "smsAlert", "receiveAnnualReports", "receiveCredits", "eStatement", "acceptPledgeInstructions", "dis"].includes(formKey)) {
+                  // These are toggles/dropdowns — set to empty to force re-selection
+                  updated[formKey] = "";
+                } else {
+                  updated[formKey] = "";
+                }
+              }
+              return updated;
+            });
+          } else {
+            // ENTIRE MODULE REJECTION: Clear all editable fields (original behavior)
+            // Keep DigiLocker-sourced/extracted fields and revert dropdowns to default values
+            setForm(prev => ({
+              // Preserve read-only & extracted fields
+              fullName: prev?.fullName || "",
+              dob: prev?.dob || "",
+              email: prev?.email || "",
+              fatherName: prev?.fatherName || "",
+              gender: prev?.gender || "",
+              
+              // Restore Default Values for Dropdowns
+              citizenOfIndia: "Yes",
+              politicallyExposed: "No",
+              taxResidencyOutside: "No",
+              taxExempt: "No",
+              ddpiOptIn: "Yes",
+              
+              // Blank purely user-editable fields
+              prefix: "",
+              motherName: "",
+              maritalStatus: "",
+              education: "",
+              occupation: "",
+              annualIncome: "",
+              experience: "",
+              pepType: "",
+            pepProof: "",
+            countryOfBirth: "",
+            citizenship: "",
+            taxResidence1: "",
+            taxId1: "",
+            taxResidence2: "",
+            taxId2: "",
+            placeOfBirth: "",
+            taxExemptReason: "",
+          }));
+          }
         }
         initializedForm.current = true;
       } else if (isPepProofRejected) {
@@ -407,7 +483,12 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                 Personal Details Rejected
               </p>
               <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
-                {rejectionReasonText ? `Reason: ${rejectionReasonText}. ` : ""}Please fill in your correct details and proceed.
+                {rejectionReasonText ? `Reason: ${rejectionReasonText}. ` : ""}
+              </p>
+              <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4, fontWeight: 700 }}>
+                {rejectEntireModule ? "Please re-fill all fields in this module." : 
+                 rejectedFields.length > 0 ? `Fields to correct: ${rejectedFields.join(', ')}` :
+                 "Please fill in your correct details and proceed."}
               </p>
             </div>
           </div>
@@ -421,12 +502,13 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="Full Name" 
               value={form.fatherName || ""} 
               onChange={e => update("fatherName", e.target.value)} 
-              disabled={!!personalDetails.fatherName}
+              disabled={!isFieldRejected("fatherName")}
               style={{ 
                 ...COMMON_INPUT_STYLE,
-                borderColor: errors.fatherName ? "var(--wise-danger)" : "var(--border-color)",
-                opacity: personalDetails.fatherName ? 0.7 : 1,
-                cursor: personalDetails.fatherName ? "not-allowed" : "text"
+                background: !isFieldRejected("fatherName") ? "var(--bg-secondary)" : "var(--input-bg)",
+                borderColor: errors.fatherName ? "var(--wise-danger)" : (isFieldRejected("fatherName") && hasFieldLevelRejection) ? "#ef4444" : "var(--border-color)",
+                opacity: !isFieldRejected("fatherName") ? 0.7 : 1,
+                cursor: !isFieldRejected("fatherName") ? "not-allowed" : "text"
               }} 
             />
           </InputGroup>
@@ -437,9 +519,13 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="Full Name" 
               value={form.motherName || ""} 
               onChange={handleAlphabetInput("motherName")} 
+              disabled={!isFieldRejected("motherName")}
               style={{ 
                 ...COMMON_INPUT_STYLE,
-                borderColor: errors.motherName ? "var(--wise-danger)" : "var(--border-color)",
+                background: !isFieldRejected("motherName") ? "var(--bg-secondary)" : "var(--input-bg)",
+                borderColor: errors.motherName ? "var(--wise-danger)" : (isFieldRejected("motherName") && hasFieldLevelRejection) ? "#ef4444" : "var(--border-color)",
+                opacity: !isFieldRejected("motherName") ? 0.7 : 1,
+                cursor: !isFieldRejected("motherName") ? "not-allowed" : "text"
               }} 
             />
           </InputGroup>
@@ -451,7 +537,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="--Select--"
               onChange={val => update("gender", val)}
               error={errors.gender}
-              disabled={!!personalDetails.gender}
+              disabled={!isFieldRejected("gender")}
             />
           </InputGroup>
   
@@ -462,6 +548,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="--Select--"
               onChange={val => update("maritalStatus", val)}
               error={errors.maritalStatus}
+              disabled={!isFieldRejected("maritalStatus")}
             />
           </InputGroup>
   
@@ -472,6 +559,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="--Select--"
               onChange={val => update("education", val)}
               error={errors.education}
+              disabled={!isFieldRejected("education")}
             />
           </InputGroup>
   
@@ -482,6 +570,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="--Select--"
               onChange={val => update("annualIncome", val)}
               error={errors.annualIncome}
+              disabled={!isFieldRejected("annualIncome")}
             />
           </InputGroup>
   
@@ -492,6 +581,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="--Select--"
               onChange={val => update("experience", val)}
               error={errors.experience}
+              disabled={!isFieldRejected("experience")}
             />
           </InputGroup>
   
@@ -502,6 +592,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               placeholder="--Select--"
               onChange={val => update("occupation", val)}
               error={errors.occupation}
+              disabled={!isFieldRejected("occupation")}
             />
           </InputGroup>
 
@@ -517,6 +608,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                 }
               }}
               error={errors.politicallyExposed}
+              disabled={!isFieldRejected("politicallyExposed")}
             />
           </InputGroup>
 
@@ -529,6 +621,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                   placeholder="--Select--"
                   onChange={val => update("pepType", val)}
                   error={errors.pepType}
+                  disabled={!isFieldRejected("pepType")}
                 />
               </InputGroup>
 
@@ -626,6 +719,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                   }));
                 }
               }} 
+              disabled={!isFieldRejected("taxResidencyOutside")}
             />
           </InputGroup>
           
@@ -636,7 +730,14 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                   className="input-field" placeholder="Country of birth" 
                   value={form.countryOfBirth || ""} 
                   onChange={handleAlphabetInput("countryOfBirth")} 
-                  style={{ ...COMMON_INPUT_STYLE, borderColor: errors.countryOfBirth ? "var(--wise-danger)" : "var(--border-color)" }} 
+                  disabled={!isFieldRejected("countryOfBirth")}
+              style={{ 
+                ...COMMON_INPUT_STYLE,
+                background: !isFieldRejected("countryOfBirth") ? "var(--bg-secondary)" : "var(--input-bg)",
+                borderColor: errors.countryOfBirth ? "var(--wise-danger)" : (isFieldRejected("countryOfBirth") && hasFieldLevelRejection) ? "#ef4444" : "var(--border-color)",
+                opacity: !isFieldRejected("countryOfBirth") ? 0.7 : 1,
+                cursor: !isFieldRejected("countryOfBirth") ? "not-allowed" : "text"
+              }} 
                 />
               </InputGroup>
               <InputGroup label="Citizenship" mandatory>
@@ -644,7 +745,14 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                   className="input-field" placeholder="Citizenship" 
                   value={form.citizenship || ""} 
                   onChange={handleAlphabetInput("citizenship")} 
-                  style={{ ...COMMON_INPUT_STYLE, borderColor: errors.citizenship ? "var(--wise-danger)" : "var(--border-color)" }} 
+                  disabled={!isFieldRejected("citizenship")}
+              style={{ 
+                ...COMMON_INPUT_STYLE,
+                background: !isFieldRejected("citizenship") ? "var(--bg-secondary)" : "var(--input-bg)",
+                borderColor: errors.citizenship ? "var(--wise-danger)" : (isFieldRejected("citizenship") && hasFieldLevelRejection) ? "#ef4444" : "var(--border-color)",
+                opacity: !isFieldRejected("citizenship") ? 0.7 : 1,
+                cursor: !isFieldRejected("citizenship") ? "not-allowed" : "text"
+              }} 
                 />
               </InputGroup>
               <InputGroup label="Country of Tax Residence1" mandatory>
@@ -652,7 +760,14 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                   className="input-field" placeholder="Country of Tax Residence 1" 
                   value={form.taxResidence1 || ""} 
                   onChange={handleAlphabetInput("taxResidence1")} 
-                  style={{ ...COMMON_INPUT_STYLE, borderColor: errors.taxResidence1 ? "var(--wise-danger)" : "var(--border-color)" }} 
+                  disabled={!isFieldRejected("taxResidence1")}
+              style={{ 
+                ...COMMON_INPUT_STYLE,
+                background: !isFieldRejected("taxResidence1") ? "var(--bg-secondary)" : "var(--input-bg)",
+                borderColor: errors.taxResidence1 ? "var(--wise-danger)" : (isFieldRejected("taxResidence1") && hasFieldLevelRejection) ? "#ef4444" : "var(--border-color)",
+                opacity: !isFieldRejected("taxResidence1") ? 0.7 : 1,
+                cursor: !isFieldRejected("taxResidence1") ? "not-allowed" : "text"
+              }} 
                 />
               </InputGroup>
               <InputGroup label="Tax Payer Identification Number1" mandatory>
@@ -700,7 +815,14 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                   className="input-field" placeholder="Place of Birth" 
                   value={form.placeOfBirth || ""} 
                   onChange={handleAlphabetInput("placeOfBirth")} 
-                  style={{ ...COMMON_INPUT_STYLE, borderColor: errors.placeOfBirth ? "var(--wise-danger)" : "var(--border-color)" }} 
+                  disabled={!isFieldRejected("placeOfBirth")}
+              style={{ 
+                ...COMMON_INPUT_STYLE,
+                background: !isFieldRejected("placeOfBirth") ? "var(--bg-secondary)" : "var(--input-bg)",
+                borderColor: errors.placeOfBirth ? "var(--wise-danger)" : (isFieldRejected("placeOfBirth") && hasFieldLevelRejection) ? "#ef4444" : "var(--border-color)",
+                opacity: !isFieldRejected("placeOfBirth") ? 0.7 : 1,
+                cursor: !isFieldRejected("placeOfBirth") ? "not-allowed" : "text"
+              }} 
                 />
               </InputGroup>
               <InputGroup label="TAX Exempt" mandatory>
@@ -710,6 +832,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                   placeholder="--Select--"
                   onChange={val => update("taxExempt", val)} 
                   error={errors.taxExempt} 
+                  disabled={!isFieldRejected("taxExempt")}
                 />
               </InputGroup>
               {form.taxExempt === "Yes" && (
@@ -764,6 +887,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                       tenderingShares: isYes 
                     }));
                   }}
+                  disabled={!isFieldRejected("ddpi")}
                 />
               </InputGroup>
 
@@ -797,27 +921,27 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
               )}
 
               <InputGroup label="Do you wish to apply for DIS (Delivery Instruction Slip) Booklet" mandatory>
-                <CustomSelect value={form.dis} options={["No", "Yes"]} onChange={val => update("dis", val)} />
+                <CustomSelect value={form.dis} options={["No", "Yes"]} onChange={val => update("dis", val)} disabled={!isFieldRejected("dis")} />
               </InputGroup>
 
               <InputGroup label="I/We authorise you to receive credits automatically into my/our account" mandatory>
-                <CustomSelect value={form.receiveCredits} options={["Yes", "No"]} onChange={val => update("receiveCredits", val)} />
+                <CustomSelect value={form.receiveCredits} options={["Yes", "No"]} onChange={val => update("receiveCredits", val)} disabled={!isFieldRejected("receiveCredits")} />
               </InputGroup>
 
               <InputGroup label="Client option to receive e-statement" mandatory>
-                <CustomSelect value={form.eStatement} options={["Yes", "No"]} onChange={val => update("eStatement", val)} />
+                <CustomSelect value={form.eStatement} options={["Yes", "No"]} onChange={val => update("eStatement", val)} disabled={!isFieldRejected("eStatement")} />
               </InputGroup>
 
               <InputGroup label="I/We would like to instruct the DP to accept all the pledge instructions in my/our account without any other further instruction from my/our end." mandatory>
-                <CustomSelect value={form.acceptPledgeInstructions} options={["No", "Yes"]} onChange={val => update("acceptPledgeInstructions", val)} />
+                <CustomSelect value={form.acceptPledgeInstructions} options={["No", "Yes"]} onChange={val => update("acceptPledgeInstructions", val)} disabled={!isFieldRejected("acceptPledgeInstructions")} />
               </InputGroup>
 
               <InputGroup label="Receive Annual Reports, AGM notices and other communication from Issuer & RTA in Electronic form Account to be opened through DDPI" mandatory>
-                <CustomSelect value={form.receiveAnnualReports} options={["Yes", "No"]} onChange={val => update("receiveAnnualReports", val)} />
+                <CustomSelect value={form.receiveAnnualReports} options={["Yes", "No"]} onChange={val => update("receiveAnnualReports", val)} disabled={!isFieldRejected("receiveAnnualReports")} />
               </InputGroup>
 
               <InputGroup label="Account Settlement" mandatory>
-                <CustomSelect value={form.settlement} options={["Quarterly", "Monthly"]} onChange={val => update("settlement", val)} />
+                <CustomSelect value={form.settlement} options={["Quarterly", "Monthly"]} onChange={val => update("settlement", val)} disabled={!isFieldRejected("settlement")} />
               </InputGroup>
 
               <InputGroup label="SMS Alert Facility (Mandatory if given DDPI)" mandatory>
