@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -1039,12 +1039,15 @@ export default function MakerCheckerDashboard() {
                           }} 
                           style={{ cursor: "pointer", userSelect: "text", WebkitUserSelect: "text" }}
                         >
-                          {visibleColumns.includes("S.No.") && (
+                          {(() => {
+                            // Cells follow the same (draggable) order as the headers
+                            const rowCells = {
+                              "S.No.": () => ((
                             <td style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text-muted)", ...getStickyStyle("S.No.") }}>
                               {(page - 1) * 15 + index + 1}
                             </td>
-                          )}
-                          {visibleColumns.includes("Actions") && (<td style={{ ...getStickyStyle("Actions"), zIndex: openMenuId === k.id ? 20 : 2 }}>
+                          )),
+                              "Actions": () => ((<td style={{ ...getStickyStyle("Actions"), zIndex: openMenuId === k.id ? 20 : 2 }}>
                             <div className="action-menu-container" style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
                               <button 
                                 onClick={(e) => {
@@ -1062,9 +1065,9 @@ export default function MakerCheckerDashboard() {
                                 </div>
                               )}
                             </div>
-                          </td>)}
-                          {visibleColumns.includes("Name") && <td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Name") }}>{k.name}</td>}
-                          {visibleColumns.includes("Client Code") && (
+                          </td>)),
+                              "Name": () => (<td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Name") }}>{k.name}</td>),
+                              "Client Code": () => ((
                             <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Client Code") }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.clientCode || "N/A"}</span>
@@ -1075,8 +1078,8 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("KYC ID") && (
+                          )),
+                              "KYC ID": () => ((
                             <td style={{ fontWeight: 800, fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.id}</span>
@@ -1085,8 +1088,8 @@ export default function MakerCheckerDashboard() {
                                 </button>
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("Number") && (
+                          )),
+                              "Number": () => ((
                             <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.number}</span>
@@ -1097,8 +1100,8 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("Email") && (
+                          )),
+                              "Email": () => ((
                             <td style={{ fontSize: "0.82rem", color: "var(--text-primary)", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.email}</span>
@@ -1109,8 +1112,8 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("PAN") && (
+                          )),
+                              "PAN": () => ((
                             <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.pan}</span>
@@ -1121,14 +1124,14 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("Aadhaar") && <td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.aadhaar}</td>}
-                          {visibleColumns.includes("DOB") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.dob}</td>}
-                          {visibleColumns.includes("Gender") && <td style={{ fontSize: "0.82rem", textTransform: "capitalize", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.gender}</td>}
-                          {visibleColumns.includes("Father Name") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.fatherName}</td>}
-                          {visibleColumns.includes("Mother Name") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.motherName}</td>}
-                          {visibleColumns.includes("Bank Name") && <td style={{ fontSize: "0.82rem", fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.bankName}</td>}
-                          {visibleColumns.includes("Account No") && (
+                          )),
+                              "Aadhaar": () => (<td style={{ fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.aadhaar}</td>),
+                              "DOB": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.dob}</td>),
+                              "Gender": () => (<td style={{ fontSize: "0.82rem", textTransform: "capitalize", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.gender}</td>),
+                              "Father Name": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.fatherName}</td>),
+                              "Mother Name": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.motherName}</td>),
+                              "Bank Name": () => (<td style={{ fontSize: "0.82rem", fontWeight: 600, userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.bankName}</td>),
+                              "Account No": () => ((
                             <td style={{ fontSize: "0.82rem", fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.accountNo}</span>
@@ -1139,8 +1142,8 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("IFSC") && (
+                          )),
+                              "IFSC": () => ((
                             <td style={{ fontSize: "0.82rem", fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.ifsc}</span>
@@ -1151,15 +1154,15 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("Nominees") && <td style={{ fontSize: "0.82rem", textAlign: "center", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.nominees}</td>}
-                          {visibleColumns.includes("Address") && <td style={{ fontSize: "0.82rem", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }} title={k.address}>{k.address}</td>}
-                          {visibleColumns.includes("City") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.city}</td>}
-                          {visibleColumns.includes("State") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.state}</td>}
-                          {visibleColumns.includes("Pincode") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.pincode}</td>}
-                          {visibleColumns.includes("Occupation") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.occupation}</td>}
-                          {visibleColumns.includes("Annual Income") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.annualIncome}</td>}
-                          {visibleColumns.includes("Rejections") && (
+                          )),
+                              "Nominees": () => (<td style={{ fontSize: "0.82rem", textAlign: "center", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.nominees}</td>),
+                              "Address": () => (<td style={{ fontSize: "0.82rem", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }} title={k.address}>{k.address}</td>),
+                              "City": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.city}</td>),
+                              "State": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.state}</td>),
+                              "Pincode": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.pincode}</td>),
+                              "Occupation": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.occupation}</td>),
+                              "Annual Income": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.annualIncome}</td>),
+                              "Rejections": () => ((
                             <td className="rejections-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
                               {k.rejections !== "None" ? (
                                 <>
@@ -1217,14 +1220,14 @@ export default function MakerCheckerDashboard() {
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>None</span>
                               )}
                             </td>
-                          )}
-                          {visibleColumns.includes("Step") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
+                          )),
+                              "Step": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                             Step {k.stepNum || 0}/14
-                          </td>}
-                          {visibleColumns.includes("Stage") && <td style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                          </td>),
+                              "Stage": () => (<td style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-primary)" }}>
                             {k.stepLabel && k.stepLabel.includes(':') ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding")}
-                          </td>}
-                          {visibleColumns.includes("STK Status") && <td>
+                          </td>),
+                              "STK Status": () => (<td>
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
                               {k.status === 'verified' ? (
                                 <span className="badge badge-verified" style={{ padding: "6px 12px", border: "none" }}>VERIFIED</span>
@@ -1244,9 +1247,8 @@ export default function MakerCheckerDashboard() {
                                 <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
                               )}
                             </div>
-                          </td>}
-
-                          {visibleColumns.includes("Globe Status") && <td>
+                          </td>),
+                              "Globe Status": () => (<td>
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
                               <div className="status-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
                                 <div 
@@ -1289,8 +1291,8 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </div>
-                          </td>}
-                          {visibleColumns.includes("E-Stamp") && (
+                          </td>),
+                              "E-Stamp": () => ((
                             <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.eStamp}</span>
@@ -1301,19 +1303,24 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                             </td>
-                          )}
-                          {visibleColumns.includes("Start Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.startDate}</td>}
-                          {visibleColumns.includes("eSign Date") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.esignDate}</td>}
-                          {visibleColumns.includes("Date") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text", color: "var(--text-muted)" }}>{k.submittedAt}</td>}
-                          {visibleColumns.includes("Pennydrop Verify") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                          )),
+                              "Start Date": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.startDate}</td>),
+                              "eSign Date": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{k.esignDate}</td>),
+                              "Date": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text", color: "var(--text-muted)" }}>{k.submittedAt}</td>),
+                              "Pennydrop Verify": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                             <span className={`badge ${k.pennydropVerify?.toLowerCase() === 'verified' ? 'badge-verified' : 'badge-pending'}`}>{k.pennydropVerify}</span>
-                          </td>}
-                          {visibleColumns.includes("Aadhaar Seeding") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.aadhaarSeeding}</td>}
-                          {visibleColumns.includes("LiveImage Time") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.liveImageTime}</td>}
-                          {visibleColumns.includes("Sign Upload Time") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.signUploadTime}</td>}
-                          {visibleColumns.includes("Segments Selected") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.segmentsSelected}</td>}
-                          {visibleColumns.includes("Total Nominees") && <td style={{ fontSize: "0.82rem", textAlign: "center", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.totalNominees}</td>}
-                          {visibleColumns.includes("Nominee Opt Date") && <td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.nomineeOptDate}</td>}
+                          </td>),
+                              "Aadhaar Seeding": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.aadhaarSeeding}</td>),
+                              "LiveImage Time": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.liveImageTime}</td>),
+                              "Sign Upload Time": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.signUploadTime}</td>),
+                              "Segments Selected": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.segmentsSelected}</td>),
+                              "Total Nominees": () => (<td style={{ fontSize: "0.82rem", textAlign: "center", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.totalNominees}</td>),
+                              "Nominee Opt Date": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.nomineeOptDate}</td>),
+                            };
+                            return orderedColumns
+                              .filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h))
+                              .map(col => rowCells[col] ? <Fragment key={col}>{rowCells[col]()}</Fragment> : null);
+                          })()}
                         </tr>
                       ))}
                     </tbody>

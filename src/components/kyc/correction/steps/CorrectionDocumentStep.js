@@ -406,7 +406,7 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
         Document Corrections
       </h2>
       <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: 24 }}>
-        Please re-upload the rejected documents below. Approved documents are shown for reference.
+        Please re-upload the rejected documents below.
       </p>
 
       {/* Main document sections */}

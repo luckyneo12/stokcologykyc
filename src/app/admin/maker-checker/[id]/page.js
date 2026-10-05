@@ -2692,8 +2692,20 @@ export default function AgentReview() {
                           }
                           setRejectDocumentModal(doc);
                         }}
-                        style={{ 
-                          cursor: "pointer", 
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!documentRejections[doc.src]) return;
+                          // Same as "Remove" in the rejection summary
+                          setDocumentRejections(prev => {
+                            const next = { ...prev };
+                            delete next[doc.src];
+                            return next;
+                          });
+                          showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
+                        }}
+                        style={{
+                          cursor: "pointer",
                           display: "flex", 
                           alignItems: "center", 
                           justifyContent: "center",
@@ -2706,7 +2718,7 @@ export default function AgentReview() {
                           boxShadow: documentRejections[doc.src] ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none",
                           padding: 0
                         }}
-                        title={documentRejections[doc.src] ? "Rejected (Click to modify reason)" : "Reject Document"}
+                        title={documentRejections[doc.src] ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Document"}
                       >
                         <Ban size={13} color={documentRejections[doc.src] ? "#ffffff" : "#ef4444"} />
                       </button>

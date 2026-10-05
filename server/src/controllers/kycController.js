@@ -662,9 +662,9 @@ const getSecureDocument = (req, res) => {
   const userId = req.user?.id;
 
   // Authorization check to prevent IDOR
-  // Staff (same roles as adminAuth) can open any applicant document, e.g. eSigned PDFs saved
-  // locally as digio_*.pdf, which are not prefixed with user_<id>_.
-  if (!["admin", "kyc_team"].includes(userRole)) {
+  // Staff (admin / KYC team / Globe reviewers) can open any applicant document, e.g. eSigned PDFs
+  // saved locally as digio_*.pdf, which are not prefixed with user_<id>_.
+  if (!["admin", "kyc_team", "globe"].includes(userRole)) {
     // If the user is not an admin, they must own the file.
     // Our local files are prefixed with `user_${userId}_`
     const isOwner = filename.startsWith(`user_${userId}_`);
@@ -1269,7 +1269,7 @@ const sendWelcome = async (req, res) => {
     
     // Mark email as sent in the database
     stepStatuses.welcomeEmailSent = true;
-    await prisma.kYCApplication.update({
+    await prisma.kycApplication.update({
       where: { applicationId },
       data: { stepStatuses: JSON.stringify(stepStatuses) }
     });

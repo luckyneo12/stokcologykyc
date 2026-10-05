@@ -151,8 +151,10 @@ class GlobeController {
         whereClause.currentStep = { lt: 14 };
         whereClause.status = { notIn: ["rejected", "on_hold", "verified"] };
       } else if (globeStatus === "verify") {
+        // eSign done and not yet pushed to back office — stays here even after STK/Globe are verified.
+        // Rejected / on-hold applications have their own filters.
         whereClause.currentStep = { gte: 14 };
-        whereClause.status = { in: ["pending", "under_review"] };
+        whereClause.status = { notIn: ["rejected", "on_hold"] };
         whereClause.pushedToBackoffice = false;
       } else if (globeStatus === "completed" || globeStatus === "approved") {
         whereClause.status = "verified";

@@ -884,6 +884,89 @@ function getSafePreviewUrl(src) {
   return src;
 }
 
+function getApplicantPan(app) {
+  return String(
+    app?.identityDetails?.pan || app?.personalDetails?.pan || app?.identityDetails?.digilockerPan || app?.ocrData?.pan?.panNumber || ""
+  ).toUpperCase().trim();
+}
+
+// eSigned PDF → KYC_Application_<PAN>, everything else → <Document_Name>_<PAN> (same as admin portal)
+function buildDownloadFileName(label, pan) {
+  const isEsignedPdf = String(label || "").toLowerCase().startsWith("esigned pdf");
+  const name = isEsignedPdf
+    ? `KYC_Application_${pan || "Unknown"}`
+    : `${label || "Document"}${pan ? `_${pan}` : ""}`;
+  return name.replace(/[^a-zA-Z0-9-_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+}
+
+// Builds the URL for the embedded PDF viewer; ?name= lets the browser's own PDF viewer save with the proper name
+function getPdfViewerUrl(src, label, pan) {
+  const url = getSafePreviewUrl(src);
+  if (url.startsWith('data:')) return url;
+  if (url.startsWith('JVBER')) return `data:application/pdf;base64,${url}`;
+  if (url.startsWith('/')) return url;
+  const nameParam = label ? `&name=${encodeURIComponent(buildDownloadFileName(label, pan))}` : "";
+  return `/api/pdf-proxy?url=${encodeURIComponent(url)}${nameParam}`;
+}
+
+const MIME_EXTENSIONS = {
+  "application/pdf": ".pdf",
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "video/webm": ".webm",
+  "video/mp4": ".mp4",
+};
+
+async function downloadGlobeDocument(src, label, pan) {
+  let url = src;
+  if (typeof url === "string" && url.startsWith("JVBER")) url = `data:application/pdf;base64,${url}`;
+  const fileName = buildDownloadFileName(label, pan);
+
+  // Files served by our backend (local uploads, or Cloudinary PDFs via the backend proxy):
+  // native browser download (?download=1 → attachment with the proper name), no buffering in JS.
+  // Opened in a new tab so an error never replaces this page. Must run before any await.
+  let backendUrl = null;
+  if (typeof url === "string" && url.includes("/api/kyc/document/")) {
+    backendUrl = url;
+  } else if (typeof url === "string" && url.includes("res.cloudinary.com") && url.split("?")[0].endsWith(".pdf")) {
+    let token = "";
+    try { token = localStorage.getItem("globeToken") || ""; } catch (e) {}
+    backendUrl = `${API_BASE_URL}/api/kyc/proxy-pdf?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
+  }
+  if (backendUrl) {
+    const link = document.createElement("a");
+    link.href = `${backendUrl}${backendUrl.includes("?") ? "&" : "?"}name=${encodeURIComponent(fileName)}&download=1`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+
+  // Cloudinary images / inline data: small, fetch and save with the proper name
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const blob = await res.blob();
+  if (blob.type.includes("json")) throw new Error("Server returned an error instead of the document");
+
+  const mime = blob.type.split(";")[0].toLowerCase();
+  const urlPath = String(url).split("?")[0].toLowerCase();
+  const ext = MIME_EXTENSIONS[mime] || (urlPath.endsWith(".pdf") ? ".pdf" : ".jpg");
+
+  const blobUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = `${fileName}${ext}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+}
+
 function isPdf(src) {
   const safeSrc = getSafePreviewUrl(src);
   return safeSrc?.startsWith("data:application/pdf") || safeSrc?.toLowerCase().endsWith(".pdf");
@@ -1322,10 +1405,11 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   );
 }
 
-function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, y: 0 }, label }) {
+function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, y: 0 }, label, pan }) {
   const [zoom, setZoom] = useState(defaultZoom);
   const [offset, setOffset] = useState(defaultOffset);
   const [rotation, setRotation] = useState(0);
+  const [downloading, setDownloading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
@@ -1345,8 +1429,8 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) && shouldDisplayAsIframe(label) ? (
-        <object data={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src).startsWith('/') ? getSafePreviewUrl(src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={getSafePreviewUrl(src).startsWith('data:') ? getSafePreviewUrl(src) : getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src).startsWith('/') ? getSafePreviewUrl(src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        <object data={getPdfViewerUrl(src, label, pan)} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={getPdfViewerUrl(src, label, pan)} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
@@ -1396,16 +1480,19 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
           <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
           <button onClick={() => setRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={14} /></button>
           <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
-          <button onClick={(e) => {
+          <button onClick={async (e) => {
             e.stopPropagation();
-            const link = document.createElement('a');
-            link.href = getSafePreviewUrl(src);
-            link.target = '_blank';
-            link.download = 'document';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={14} /></button>
+            if (downloading) return;
+            setDownloading(true);
+            try {
+              await downloadGlobeDocument(src, label, pan);
+            } catch (err) {
+              console.error("[Download] Failed:", err);
+              window.alert(err.message || "Download failed");
+            } finally {
+              setTimeout(() => setDownloading(false), 1500);
+            }
+          }} style={{ background: "transparent", border: "none", cursor: downloading ? "wait" : "pointer", color: "var(--text-muted)", opacity: downloading ? 0.4 : 1 }} title={downloading ? "Preparing download…" : "Download"}><Download size={14} /></button>
         </div>
       )}
     </div>
@@ -1430,6 +1517,7 @@ export default function AgentReview() {
   const [expandedModule, setExpandedModule] = useState({});
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [isDownloadingDoc, setIsDownloadingDoc] = useState(false);
   const [previewRotation, setPreviewRotation] = useState(0);
   const [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -2407,8 +2495,20 @@ export default function AgentReview() {
                           }
                           setRejectDocumentModal(doc);
                         }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!documentRejections[doc.src]) return;
+                          // Undo the (not yet sent) document rejection
+                          setDocumentRejections(prev => {
+                            const next = { ...prev };
+                            delete next[doc.src];
+                            return next;
+                          });
+                          showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
+                        }}
                         style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                        title={documentRejections[doc.src] ? "Rejected (Click to modify reason)" : "Reject Document"}
+                        title={documentRejections[doc.src] ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Document"}
                       >
                         <Ban size={14} color={documentRejections[doc.src] ? "#ef4444" : "#fca5a5"} />
                       </div>
@@ -2484,7 +2584,7 @@ export default function AgentReview() {
                     <div style={{ padding: "8px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)", fontSize: "0.75rem", fontWeight: 700, textAlign: "center", color: "var(--text-primary)" }}>
                       {doc.label || "Document"}
                     </div>
-                    <IndependentImageViewer src={doc.src} defaultZoom={doc.defaultZoom} defaultOffset={doc.defaultOffset} label={doc.label} />
+                    <IndependentImageViewer src={doc.src} defaultZoom={doc.defaultZoom} defaultOffset={doc.defaultOffset} label={doc.label} pan={getApplicantPan(app)} />
                   </div>
                 ))}
               </div>
@@ -2492,11 +2592,11 @@ export default function AgentReview() {
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
                 {isPdf(selectedDocument.src) && shouldDisplayAsIframe(selectedDocument.label) ? (
                   <object 
-                    data={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : getSafePreviewUrl(selectedDocument.src).startsWith('/') ? getSafePreviewUrl(selectedDocument.src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} 
+                    data={getPdfViewerUrl(selectedDocument.src, selectedDocument.label, getApplicantPan(app))} 
                     type="application/pdf"
                     style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
                   >
-                    <embed src={getSafePreviewUrl(selectedDocument.src).startsWith('data:') ? getSafePreviewUrl(selectedDocument.src) : getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : getSafePreviewUrl(selectedDocument.src).startsWith('/') ? getSafePreviewUrl(selectedDocument.src) : `/api/pdf-proxy?url=${encodeURIComponent(getSafePreviewUrl(selectedDocument.src))}`} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    <embed src={getPdfViewerUrl(selectedDocument.src, selectedDocument.label, getApplicantPan(app))} type="application/pdf" style={{ width: "100%", height: "100%" }} />
                   </object>
                 ) : (
                   <div style={{ 
@@ -2537,16 +2637,19 @@ export default function AgentReview() {
                   <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
                   <button onClick={() => setPreviewRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={18} /></button>
                   <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
-                  <button onClick={(e) => {
+                  <button onClick={async (e) => {
                     e.stopPropagation();
-                    const link = document.createElement('a');
-                    link.href = selectedDocument.src;
-                    link.target = '_blank';
-                    link.download = 'document';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                  }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={18} /></button>
+                    if (isDownloadingDoc) return;
+                    setIsDownloadingDoc(true);
+                    try {
+                      await downloadGlobeDocument(selectedDocument.src, selectedDocument.label, getApplicantPan(app));
+                    } catch (err) {
+                      console.error("[Download] Failed:", err);
+                      showToast(err.message || "Download failed", "error");
+                    } finally {
+                      setTimeout(() => setIsDownloadingDoc(false), 1500);
+                    }
+                  }} style={{ background: "transparent", border: "none", cursor: isDownloadingDoc ? "wait" : "pointer", color: "var(--text-muted)", opacity: isDownloadingDoc ? 0.4 : 1 }} title={isDownloadingDoc ? "Preparing download…" : "Download"}><Download size={18} /></button>
                   <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
                   <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{Math.round(previewZoom * 100)}%</span>
                </div>

@@ -25,8 +25,10 @@ const getAssignedApplications = async (req, res, next) => {
         where.globeStatus = "approved";
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "verify") {
+        // eSign done and not yet pushed to back office — stays here even after STK/Globe are verified.
+        // Rejected / on-hold applications have their own filters.
         where.currentStep = { gte: 14 };
-        where.status = { in: ["pending", "under_review"] };
+        where.status = { notIn: ["rejected", "on_hold"] };
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "in_progress" || normalizedStatus === "pending") {
         where.currentStep = { lt: 14 };

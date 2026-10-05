@@ -21,11 +21,14 @@ export async function GET(request) {
     }
     
     const arrayBuffer = await response.arrayBuffer();
-    
+
+    // Optional ?name= lets the browser's built-in PDF viewer save with a meaningful file name
+    const safeName = String(searchParams.get('name') || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+
     return new NextResponse(arrayBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'inline',
+        'Content-Disposition': safeName ? `inline; filename="${safeName}.pdf"` : 'inline',
         'Cache-Control': 'public, max-age=3600',
       },
     });
