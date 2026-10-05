@@ -1262,7 +1262,10 @@ export function KYCProvider({ children }) {
       );
 
       // MODIFICATION MODE: Skip approved steps (but never skip step 12+ i.e. eSign)
+      // Only when the user came in via a rejection link — in the normal flow (e.g. admin
+      // "Change Status" moved the user back) every step must be visited in order.
       const hasStepStatuses =
+        !!base.rejectionMode &&
         base.stepStatuses && Object.keys(base.stepStatuses).length > 0;
       const hasAnyRejected =
         hasStepStatuses &&
@@ -1340,6 +1343,7 @@ export function KYCProvider({ children }) {
         );
 
         const hasStepStatuses =
+          !!freshBase.rejectionMode &&
           freshBase.stepStatuses &&
           Object.keys(freshBase.stepStatuses).length > 0;
         const hasAnyRejected =
@@ -1433,6 +1437,7 @@ export function KYCProvider({ children }) {
     // In rejection/resubmission mode, skip backward over approved steps
     // so the user only navigates between rejected steps + mandatory steps
     const hasStepStatuses =
+      !!currentPrev.rejectionMode &&
       currentPrev.stepStatuses && Object.keys(currentPrev.stepStatuses).length > 0;
     const hasAnyRejected =
       hasStepStatuses &&
@@ -1458,7 +1463,9 @@ export function KYCProvider({ children }) {
       let freshPrevStepIndex = Math.max(prev.currentStep - 1, 0);
 
       // Mirror the same skip logic using fresh state
-      const freshHasStatuses = prev.stepStatuses && Object.keys(prev.stepStatuses).length > 0;
+      const freshHasStatuses =
+        !!prev.rejectionMode &&
+        prev.stepStatuses && Object.keys(prev.stepStatuses).length > 0;
       const freshHasRejected = freshHasStatuses &&
         Object.values(prev.stepStatuses).some(s => s?.status === "rejected");
       const freshIsResubmission =

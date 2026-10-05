@@ -402,6 +402,7 @@ const REVIEW_STEPS = [
       })(), "bankDetails.accountType"],
       ["Account number", app.bankDetails?.accountNumber || "N/A", "bankDetails.accountNumber"],
       ["IFSC", app.bankDetails?.ifsc || "N/A", "bankDetails.ifsc"],
+      ["MICR", app.bankDetails?.micr || "N/A", "bankDetails.micr"],
       ["Penny drop status", (() => {
         const bd = app.bankDetails;
         if (!bd) return "No";
@@ -915,18 +916,78 @@ function getSafePreviewUrl(src) {
     return `${API_BASE_URL}/api/kyc/proxy-pdf?url=${encodeURIComponent(src)}&token=${encodeURIComponent(token)}`;
   }
   
-  // Attach token for local secure routes to bypass 401 Unauthorized in <img> and <embed> tags
+  // Attach token for local secure routes to bypass 401 Unauthorized in <img> and <embed> tags.
+  // Always use the staff token here — resolveAssetUrl may already have attached an applicant's
+  // kycToken (if one is in this browser's storage), which the server rejects for staff documents.
   if (typeof src === 'string' && src.includes('/api/kyc/document/')) {
     try {
       const token = localStorage.getItem("adminToken");
-      if (token && !src.includes("token=")) {
-        const separator = src.includes("?") ? "&" : "?";
-        return `${src}${separator}token=${token}`;
+      if (token) {
+        const [base, query = ""] = src.split("?");
+        const params = new URLSearchParams(query);
+        params.set("token", token);
+        return `${base}?${params.toString()}`;
       }
     } catch(e) {}
   }
-  
+
   return src;
+}
+
+function getApplicantPan(app) {
+  return String(
+    app?.identityDetails?.pan || app?.personalDetails?.pan || app?.identityDetails?.digilockerPan || app?.ocrData?.pan?.panNumber || ""
+  ).toUpperCase().trim();
+}
+
+// eSigned PDF → KYC_Application_<PAN>, everything else → <Document_Name>_<PAN>
+function buildDownloadFileName(label, pan) {
+  const isEsignedPdf = String(label || "").toLowerCase().startsWith("esigned pdf");
+  const name = isEsignedPdf
+    ? `KYC_Application_${pan || "Unknown"}`
+    : `${label || "Document"}${pan ? `_${pan}` : ""}`;
+  return name.replace(/[^a-zA-Z0-9-_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+}
+
+// Adds ?name= to server-served files so the browser's own PDF viewer download uses the proper name
+function withDownloadName(url, label, pan) {
+  if (typeof url !== "string" || !(url.includes("/api/kyc/proxy-pdf") || url.includes("/api/kyc/document/"))) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}name=${encodeURIComponent(buildDownloadFileName(label, pan))}`;
+}
+
+const MIME_EXTENSIONS = {
+  "application/pdf": ".pdf",
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "video/webm": ".webm",
+  "video/mp4": ".mp4",
+};
+
+async function downloadAdminDocument(src, label, pan) {
+  let url = getSafePreviewUrl(src);
+  if (typeof url === "string" && url.startsWith("JVBER")) url = `data:application/pdf;base64,${url}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const blob = await res.blob();
+  if (blob.type.includes("json")) throw new Error("Server returned an error instead of the document");
+
+  const mime = blob.type.split(";")[0].toLowerCase();
+  const urlPath = String(url).split("?")[0].toLowerCase();
+  const ext = MIME_EXTENSIONS[mime] || (urlPath.endsWith(".pdf") ? ".pdf" : ".jpg");
+
+  const blobUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = `${buildDownloadFileName(label, pan)}${ext}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
 }
 
 function isPdf(src) {
@@ -1379,7 +1440,7 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   );
 }
 
-function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, y: 0 }, label }) {
+function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, y: 0 }, label, pan }) {
   const [zoom, setZoom] = useState(defaultZoom);
   const [offset, setOffset] = useState(defaultOffset);
   const [rotation, setRotation] = useState(0);
@@ -1402,8 +1463,8 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) ? (
-        <object data={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src)} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
-          <embed src={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : getSafePreviewUrl(src)} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+        <object data={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : withDownloadName(getSafePreviewUrl(src), label, pan)} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+          <embed src={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : withDownloadName(getSafePreviewUrl(src), label, pan)} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
         <div 
@@ -1453,15 +1514,14 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
           <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
           <button onClick={() => setRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={14} /></button>
           <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
-          <button onClick={(e) => {
+          <button onClick={async (e) => {
             e.stopPropagation();
-            const link = document.createElement('a');
-            link.href = getSafePreviewUrl(src);
-            link.target = '_blank';
-            link.download = 'document';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            try {
+              await downloadAdminDocument(src, label, pan);
+            } catch (err) {
+              console.error("[Download] Failed:", err);
+              window.alert(err.message || "Download failed");
+            }
           }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={14} /></button>
         </div>
       )}
@@ -2686,71 +2746,76 @@ export default function AgentReview() {
                     <div style={{ padding: "8px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)", fontSize: "0.75rem", fontWeight: 700, textAlign: "center", color: "var(--text-primary)" }}>
                       {doc.label || "Document"}
                     </div>
-                    <IndependentImageViewer src={doc.src} defaultZoom={doc.defaultZoom} defaultOffset={doc.defaultOffset} label={doc.label} />
+                    <IndependentImageViewer src={doc.src} defaultZoom={doc.defaultZoom} defaultOffset={doc.defaultOffset} label={doc.label} pan={getApplicantPan(app)} />
                   </div>
                 ))}
               </div>
             ) : (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflow: "hidden" }}>
-                {isPdf(selectedDocument.src) ? (
-                  <object 
-                    data={getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : getSafePreviewUrl(selectedDocument.src)} 
-                    type="application/pdf"
-                    style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
-                  >
-                    <embed src={getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : getSafePreviewUrl(selectedDocument.src)} type="application/pdf" style={{ width: "100%", height: "100%" }} />
-                  </object>
-                ) : (
-                  <div style={{ 
-                    transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom}) rotate(${previewRotation}deg)`, 
-                    transition: isDragging ? "none" : "transform 0.2s ease",
-                    maxHeight: "100%",
-                    maxWidth: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    pointerEvents: "none"
-                  }}>
-                    {isPdf(selectedDocument.src) ? (
-                      <PdfThumbnail src={getSafePreviewUrl(selectedDocument.src)} />
-                    ) : isVideo(selectedDocument.src) ? (
-                      <video 
-                        src={getSafePreviewUrl(selectedDocument.src)} 
-                        controls autoPlay loop 
-                        style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", pointerEvents: "auto" }} 
-                      />
-                    ) : (
-                      <img 
-                        src={getSafePreviewUrl(selectedDocument.src)} 
-                        alt="Preview" 
-                        draggable={false}
-                        style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", userSelect: "none" }} 
-                      />
-                    )}
-                  </div>
-                )}
+                <div style={{ 
+                  transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom}) rotate(${previewRotation}deg)`, 
+                  transition: isDragging ? "none" : "transform 0.2s ease",
+                  maxHeight: "100%",
+                  maxWidth: "100%",
+                  width: isPdf(selectedDocument.src) ? "100%" : "auto",
+                  height: isPdf(selectedDocument.src) ? "100%" : "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: isPdf(selectedDocument.src) ? "auto" : "none"
+                }}>
+                  {isPdf(selectedDocument.src) ? (
+                    <object 
+                      data={getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : withDownloadName(getSafePreviewUrl(selectedDocument.src), selectedDocument.label, getApplicantPan(app))} 
+                      type="application/pdf"
+                      style={{ width: "100%", height: "100%", border: "none", borderRadius: 4 }} 
+                    >
+                      <embed src={getSafePreviewUrl(selectedDocument.src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(selectedDocument.src)}` : withDownloadName(getSafePreviewUrl(selectedDocument.src), selectedDocument.label, getApplicantPan(app))} type="application/pdf" style={{ width: "100%", height: "100%" }} />
+                    </object>
+                  ) : isVideo(selectedDocument.src) ? (
+                    <video 
+                      src={getSafePreviewUrl(selectedDocument.src)} 
+                      controls autoPlay loop 
+                      style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", pointerEvents: "auto" }} 
+                    />
+                  ) : (
+                    <img 
+                      src={getSafePreviewUrl(selectedDocument.src)} 
+                      alt="Preview" 
+                      draggable={false}
+                      style={{ maxHeight: "70vh", maxWidth: "100%", objectFit: "contain", borderRadius: 4, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", userSelect: "none" }} 
+                    />
+                  )}
+                </div>
               </div>
             )}
 
             {selectedDocument && (
                <div style={{ position: "absolute", bottom: 24, right: 24, display: "flex", gap: 8, background: "var(--bg-primary)", padding: "8px 12px", borderRadius: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)" }}>
-                  <button onClick={() => handleZoomChange(Math.max(0.5, previewZoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={18} /></button>
-                  <button onClick={() => handleZoomChange(Math.min(3, previewZoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={18} /></button>
-                  <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
-                  <button onClick={() => setPreviewRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={18} /></button>
-                  <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
-                  <button onClick={(e) => {
+                  {!(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
+                    <>
+                      <button onClick={() => handleZoomChange(Math.max(0.5, previewZoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={18} /></button>
+                      <button onClick={() => handleZoomChange(Math.min(3, previewZoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={18} /></button>
+                      <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                      <button onClick={() => setPreviewRotation(r => r + 90)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Rotate"><RotateCw size={18} /></button>
+                      <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                    </>
+                  )}
+                  <button onClick={async (e) => {
                     e.stopPropagation();
-                    const link = document.createElement('a');
-                    link.href = selectedDocument.src;
-                    link.target = '_blank';
-                    link.download = 'document';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
+                    try {
+                      await downloadAdminDocument(selectedDocument.src, selectedDocument.label, getApplicantPan(app));
+                    } catch (err) {
+                      console.error("[Download] Failed:", err);
+                      showToast(err.message || "Download failed", "error");
+                    }
                   }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Download"><Download size={18} /></button>
-                  <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
-                  <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{Math.round(previewZoom * 100)}%</span>
+                  {!(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
+                    <>
+                      <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
+                      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{Math.round(previewZoom * 100)}%</span>
+                    </>
+                  )}
                </div>
             )}
           </div>

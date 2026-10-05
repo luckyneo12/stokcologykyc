@@ -84,7 +84,7 @@ const sendRejectionEmail = async (email, name, rejectedSteps, modifyLink) => {
       from: `"Stockology Securities" <${process.env.SMTP_USER}>`,
       to: email,
       subject: "Action Required — KYC Application Needs Modifications",
-      text: `Dear ${name || "User"},\n\nPlease note that the following observations have been raised in your account opening/KYC application.\nKindly re-upload the required documents and update the details accordingly.\n\n${stepsText}\n\nLink - ${modifyLink}\n\nKindly re-login using the provided account opening link and complete the above corrections at the earliest.\n\nFor any assistance, please contact the KYC support team.\nEmail: kyc@stockologysecurities.com\nCall Us: 0731-4258021\n\nRegards,\nCustomer Support Team\nStockology Securities Private Limited`,
+      text: `Dear ${name || "User"},\n\nPlease note that the following observations have been raised in your account opening/KYC application.\nKindly re-upload the required documents and update the details accordingly.\n\n${stepsText}\n\nLink - ${modifyLink}\n\nKindly re-login using the provided account opening link and complete the above corrections at the earliest.\n\nFor any assistance, please contact the KYC support team.\nEmail: kyc@stockologysecurities.com\nCall Us: 0731-4258021\n\nRegards,\nKYC Team\nStockology Securities Private Limited`,
       html: `
         <div style="font-family: 'Times New Roman', Times, serif; color: #000; max-width: 800px; margin: 0 auto; padding: 20px;">
           <div style="margin-bottom: 20px;">
@@ -121,7 +121,7 @@ const sendRejectionEmail = async (email, name, rejectedSteps, modifyLink) => {
           <p style="font-size: 16px; margin-bottom: 40px;">Call Us: 0731-4258021</p>
           
           <p style="font-size: 16px; margin-bottom: 8px;">Regards,</p>
-          <p style="font-size: 16px; margin-bottom: 8px;">Customer Support Team</p>
+          <p style="font-size: 16px; margin-bottom: 8px;">KYC Team</p>
           <p style="font-size: 16px; margin-bottom: 0;">Stockology Securities Private Limited</p>
         </div>
       `,

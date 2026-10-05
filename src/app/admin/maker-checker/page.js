@@ -95,7 +95,7 @@ export default function MakerCheckerDashboard() {
     "Name": 180,
     "Client Code": 120
   };
-  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "MICR", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "E-Stamp", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
   const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "STK Status", "Rejections", "E-Stamp", "Start Date", "eSign Date", "Date"]);
   const [orderedColumns, setOrderedColumns] = useState(ALL_COLUMNS);
   const [draggedColumn, setDraggedColumn] = useState(null);
@@ -538,6 +538,7 @@ export default function MakerCheckerDashboard() {
     if (col === "Bank Name") return k.bankName;
     if (col === "Account No") return k.accountNo;
     if (col === "IFSC") return k.ifsc;
+    if (col === "MICR") return k.micr;
     if (col === "Nominees") return k.nominees;
     if (col === "Address") return k.address;
     if (col === "City") return k.city;
@@ -641,6 +642,7 @@ export default function MakerCheckerDashboard() {
       if (col === "Bank Name") return `"${k.bankName || ""}"`;
       if (col === "Account No") return `"${k.accountNo || ""}"`;
       if (col === "IFSC") return k.ifsc;
+      if (col === "MICR") return k.micr;
       if (col === "Nominees") return k.nominees;
       if (col === "Address") return `"${k.address || ""}"`;
       if (col === "City") return `"${k.city || ""}"`;
@@ -1151,6 +1153,18 @@ export default function MakerCheckerDashboard() {
                                 {k.ifsc && k.ifsc !== "N/A" && (
                                   <button onClick={(e) => handleCopy(e, k.ifsc, `ifsc-${k.id}`)} title="Copy IFSC" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `ifsc-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
                                     {copiedKey === `ifsc-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.includes("MICR") && (
+                            <td style={{ fontSize: "0.82rem", fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.micr}</span>
+                                {k.micr && k.micr !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.micr, `micr-${k.id}`)} title="Copy MICR" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `micr-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `micr-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
                                   </button>
                                 )}
                               </div>

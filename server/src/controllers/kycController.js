@@ -662,7 +662,9 @@ const getSecureDocument = (req, res) => {
   const userId = req.user?.id;
 
   // Authorization check to prevent IDOR
-  if (userRole !== "admin") {
+  // Staff (same roles as adminAuth) can open any applicant document, e.g. eSigned PDFs saved
+  // locally as digio_*.pdf, which are not prefixed with user_<id>_.
+  if (!["admin", "kyc_team"].includes(userRole)) {
     // If the user is not an admin, they must own the file.
     // Our local files are prefixed with `user_${userId}_`
     const isOwner = filename.startsWith(`user_${userId}_`);
@@ -678,6 +680,12 @@ const getSecureDocument = (req, res) => {
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ success: false, error: "Document not found." });
+  }
+
+  // Optional ?name= lets the browser's built-in viewer save with a meaningful file name
+  const safeName = String(req.query.name || "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
+  if (safeName) {
+    res.setHeader("Content-Disposition", `inline; filename="${safeName}${path.extname(filename)}"`);
   }
 
   res.sendFile(filePath);

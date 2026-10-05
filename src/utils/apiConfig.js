@@ -38,12 +38,21 @@ export function resolveAssetUrl(path) {
   
   let finalUrl = `${API_BASE_URL}${normalizedPath}`;
   
-  // Attach token for secure local routes to bypass 401 Unauthorized in standard <img> tags
+  // Attach token for secure local routes to bypass 401 Unauthorized in standard <img> tags.
+  // This helper is used by the staff portals (admin / agent / globe), so the staff token must win.
+  // "Continue Journey" stores an applicant's kycToken in the same browser — using that here makes
+  // the server answer "Access denied" for files that aren't the applicant's own (e.g. eSigned PDFs).
   if (finalUrl.includes("/api/kyc/document/")) {
     try {
-      const token = typeof window !== "undefined"
-        ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
-        : null;
+      let token = null;
+      if (typeof window !== "undefined") {
+        const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
+        const globeToken = localStorage.getItem("globeToken");
+        const staffToken = window.location.pathname.startsWith("/globe")
+          ? (globeToken || adminToken)
+          : (adminToken || globeToken);
+        token = staffToken || sessionStorage.getItem("kycToken") || sessionStorage.getItem("token");
+      }
       if (token && !finalUrl.includes("token=")) {
         const separator = finalUrl.includes("?") ? "&" : "?";
         finalUrl = `${finalUrl}${separator}token=${token}`;

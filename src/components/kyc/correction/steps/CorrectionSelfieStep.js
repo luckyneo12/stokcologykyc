@@ -20,6 +20,13 @@ async function waitForDigioSDK(maxWait = 3000) {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+/** Real selfie URL from a selfieDetails object (ignores the "__DIGIO_SUCCESS__" placeholder) */
+function getSelfiePreview(details) {
+  if (details?.preview && details.preview !== "__DIGIO_SUCCESS__") return details.preview;
+  if (details?.path && details.path !== "__DIGIO_SUCCESS__") return details.path;
+  return null;
+}
+
 /** Detect if the current device is a mobile/tablet */
 function isMobileDevice() {
   if (typeof navigator === "undefined") return false;
@@ -62,15 +69,33 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
   const socketRef = useRef(null);
   const hasProcessedRedirect = useRef(false);
 
+  // QR points to the dedicated /mobile-selfie page (same as the normal flow) with a short-lived
+  // mobile token, so the phone opens only the selfie capture — not the whole correction portal.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const token = contextToken || sessionStorage.getItem("correctionToken") || sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
-      if (token && applicationId) {
-        const rejectionParam = isRejection ? "&rejectionMode=true" : "";
-        setResumeUrl(`${window.location.origin}/resume?token=${token}&appId=${applicationId}${rejectionParam}`);
+    if (!showQR || typeof window === "undefined") return;
+    const token = contextToken || sessionStorage.getItem("correctionToken") || sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("token");
+    if (!token || !applicationId) return;
+
+    let cancelled = false;
+    setResumeUrl("");
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/kyc/mobile-session?applicationId=${applicationId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json();
+        if (cancelled) return;
+        if (data.success && data.token) {
+          setResumeUrl(`${window.location.origin}/mobile-selfie?token=${data.token}&appId=${applicationId}`);
+        } else {
+          addToast(data.error || "Could not generate QR code. Please try again.", "error");
+        }
+      } catch (e) {
+        if (!cancelled) addToast("Could not generate QR code. Please try again.", "error");
       }
-    }
-  }, [applicationId, isRejection, contextToken]);
+    })();
+    return () => { cancelled = true; };
+  }, [showQR, applicationId, contextToken, addToast]);
 
   // ─── Handle successful Digio selfie completion ───────────────────────
   const handleDigioSuccess = useCallback(async (requestId, opts = {}) => {
@@ -101,6 +126,11 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
   // ─── Socket.IO + Polling: watch for cross-device selfie completion ──
   // Activated when QR code is shown on desktop
   const ignoredPreviewRef = useRef(null);
+  // The mobile page (/mobile-selfie) saves the new selfie into the application's selfieDetails,
+  // so remember the selfie that was there when the QR was shown (the rejected one) and only
+  // react when it changes.
+  const ignoredMainPreviewRef = useRef(null);
+  const mainBaselineLoadedRef = useRef(false);
 
   const startCrossDevicePolling = useCallback(async () => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
@@ -108,6 +138,7 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
     if (!activeAppId || !token) return;
 
     // Fetch baseline selfie so we don't instantly auto-advance on an already-existing preview
+    mainBaselineLoadedRef.current = false;
     try {
       const resp = await fetch(`${API_BASE_URL}/api/kyc/status/${activeAppId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -116,16 +147,16 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
         const d = await resp.json();
         if (d.success && d.application) {
           let sDetails = typeof d.application.selfieDetails === "string" ? JSON.parse(d.application.selfieDetails) : d.application.selfieDetails;
+          ignoredMainPreviewRef.current = getSelfiePreview(sDetails);
+          mainBaselineLoadedRef.current = true;
           if (isSelfieRejected) {
             let draftObj = {};
             if (d.application.correctionDraft) {
               try { draftObj = typeof d.application.correctionDraft === "string" ? JSON.parse(d.application.correctionDraft) : d.application.correctionDraft; } catch (e) {}
             }
-            sDetails = draftObj?.selfieDetails || null;
+            sDetails = draftObj?.drafts?.[stepId]?.selfieDetails || draftObj?.selfieDetails || null;
           }
-          ignoredPreviewRef.current = (sDetails?.preview && sDetails.preview !== "__DIGIO_SUCCESS__")
-            ? sDetails.preview
-            : (sDetails?.path && sDetails.path !== "__DIGIO_SUCCESS__" ? sDetails.path : null);
+          ignoredPreviewRef.current = getSelfiePreview(sDetails);
         }
       }
     } catch (e) {}
@@ -152,7 +183,7 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
     }, 5000);
 
     console.log("[SelfieStep] Cross-device polling started (Socket.IO + 5s fallback)");
-  }, [applicationId, isSelfieRejected, contextToken]);
+  }, [applicationId, isSelfieRejected, contextToken, stepId]);
 
   const checkSelfieStatus = async (appId, token) => {
     try {
@@ -165,10 +196,11 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
       if (!data.success || !data.application) return;
 
       const app = data.application;
-      let selfieDetails =
+      const mainSelfieDetails =
         typeof app.selfieDetails === "string"
           ? JSON.parse(app.selfieDetails)
           : app.selfieDetails;
+      let selfieDetails = mainSelfieDetails;
 
       let draftObj = {};
       if (app.correctionDraft) {
@@ -176,18 +208,26 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
       }
 
       if (isSelfieRejected) {
-        if (draftObj?.selfieDetails) {
-          selfieDetails = draftObj.selfieDetails;
+        const draftSelfie = draftObj?.drafts?.[stepId]?.selfieDetails || draftObj?.selfieDetails;
+        if (draftSelfie) {
+          selfieDetails = draftSelfie;
         } else {
           selfieDetails = null; // Do not use the old rejected selfie
         }
       }
 
       // If selfie has been captured (preview path exists and is a real URL), auto-advance
-      const selfiePreview = (selfieDetails?.preview && selfieDetails.preview !== "__DIGIO_SUCCESS__")
-        ? selfieDetails.preview
-        : (selfieDetails?.path && selfieDetails.path !== "__DIGIO_SUCCESS__" ? selfieDetails.path : null);
-        
+      let selfiePreview = getSelfiePreview(selfieDetails);
+      if (!selfiePreview || selfiePreview === ignoredPreviewRef.current) {
+        // Selfie captured on the phone via /mobile-selfie: it lands in the application's
+        // selfieDetails. Accept it only if it differs from the rejected one seen at QR time.
+        const mainPreview = getSelfiePreview(mainSelfieDetails);
+        if (mainBaselineLoadedRef.current && mainPreview && mainPreview !== ignoredMainPreviewRef.current) {
+          selfiePreview = mainPreview;
+          selfieDetails = mainSelfieDetails;
+        }
+      }
+
       if (selfiePreview && selfiePreview !== ignoredPreviewRef.current) {
         console.log("[SelfieStep] Selfie detected from another device! Auto-advancing...");
         setMatchScore(selfieDetails.matchScore || null);
