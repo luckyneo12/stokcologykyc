@@ -3,6 +3,7 @@ const prisma = new PrismaClient();
 const backofficeService = require("../services/backofficeService");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
+const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
 
 class GlobeController {
   async getDashboardKPIs(req, res) {
@@ -331,28 +332,27 @@ class GlobeController {
         return res.status(400).json({ success: false, message: "Remarks are required for rejection" });
       }
 
-      let application;
-      if (!isNaN(parseInt(id)) && parseInt(id).toString() === id.toString()) {
-        application = await prisma.kycApplication.update({
-          where: { id: parseInt(id) },
-          data: {
-            globeStatus: "rejected",
-            globeRemarks: remarks,
-            globeReviewedAt: new Date(),
-            globeReviewedBy: userId,
-          },
-        });
-      } else {
-        application = await prisma.kycApplication.update({
-          where: { applicationId: id },
-          data: {
-            globeStatus: "rejected",
-            globeRemarks: remarks,
-            globeReviewedAt: new Date(),
-            globeReviewedBy: userId,
-          },
-        });
+      const queryId = !isNaN(parseInt(id)) && parseInt(id).toString() === id.toString()
+        ? { id: parseInt(id) }
+        : { applicationId: id };
+
+      const existing = await prisma.kycApplication.findUnique({ where: queryId, select: { currentStep: true } });
+      if (!existing) {
+        return res.status(404).json({ success: false, message: "Application not found" });
       }
+      if (!isRejectable(existing)) {
+        return res.status(400).json({ success: false, message: NOT_REJECTABLE_ERROR });
+      }
+
+      const application = await prisma.kycApplication.update({
+        where: queryId,
+        data: {
+          globeStatus: "rejected",
+          globeRemarks: remarks,
+          globeReviewedAt: new Date(),
+          globeReviewedBy: userId,
+        },
+      });
 
       const globeUserEmail = req.user.email || `Globe User ${userId}`;
       await prisma.auditLog.create({
@@ -457,6 +457,16 @@ class GlobeController {
         queryId = { id: parseInt(id) };
       } else {
         queryId = { applicationId: id };
+      }
+
+      if (globeStatus === "rejected") {
+        const existing = await prisma.kycApplication.findUnique({ where: queryId, select: { currentStep: true } });
+        if (!existing) {
+          return res.status(404).json({ success: false, message: "Application not found" });
+        }
+        if (!isRejectable(existing)) {
+          return res.status(400).json({ success: false, message: NOT_REJECTABLE_ERROR });
+        }
       }
 
       const application = await prisma.kycApplication.update({

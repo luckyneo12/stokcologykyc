@@ -109,8 +109,8 @@ export default function MakerCheckerDashboard() {
     "Client Code": 120,
     "PAN": 130
   };
-  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "BOID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "MICR", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "STK Approved At", "STK Rejected At", "Globe Approved At", "Globe Rejected At", "E-Stamp", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
-  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "STK Status", "Rejections", "E-Stamp", "Start Date", "eSign Date", "Date"]);
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "BOID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "MICR", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "STK Approved At", "STK Rejected At", "Globe Approved At", "Globe Rejected At", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
+  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "STK Status", "Rejections", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date"]);
   const [orderedColumns, setOrderedColumns] = useState(ALL_COLUMNS);
   const [draggedColumn, setDraggedColumn] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
@@ -174,7 +174,7 @@ export default function MakerCheckerDashboard() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          setVisibleColumns(parsed.map(c => c === "Status" ? "STK Status" : c));
+          setVisibleColumns(parsed.flatMap(c => c === "Status" ? ["STK Status"] : c === "E-Stamp" ? ["E-Stamp Certificate No", "E-Stamp Serial No"] : [c]));
         } catch (e) {
           console.error("Failed to parse visible columns", e);
         }
@@ -183,7 +183,7 @@ export default function MakerCheckerDashboard() {
       if (savedOrder) {
         try {
           const parsedOrder = JSON.parse(savedOrder);
-          const mappedOrder = parsedOrder.map(c => c === "Status" ? "STK Status" : c);
+          const mappedOrder = parsedOrder.flatMap(c => c === "Status" ? ["STK Status"] : c === "E-Stamp" ? ["E-Stamp Certificate No", "E-Stamp Serial No"] : [c]);
           // Columns added later (e.g. BOID) are placed right after their neighbour in ALL_COLUMNS,
           // so they don't end up at the far right of an older saved layout
           ALL_COLUMNS.forEach((c, i) => {
@@ -514,7 +514,8 @@ export default function MakerCheckerDashboard() {
               email: app.user?.email || parsedPersonal.email || "N/A",
               name: parsedPersonal.fullName || parsedPersonal.name || parsedIdentity.name || "N/A",
               pan: parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || parsedPersonal.panNumber || "N/A",
-              eStamp: app.user?.eStampAssigned?.serialNo || app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A",
+              eStampCertNo: app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A",
+              eStampSerialNo: app.user?.eStampAssigned?.serialNo || "N/A",
               stepNum: app.currentStep || 0,
               stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
               type: "Full KYC",
@@ -617,7 +618,8 @@ export default function MakerCheckerDashboard() {
     if (col === "STK Rejected At") return k.stkRejectedAt;
     if (col === "Globe Approved At") return k.globeApprovedAt;
     if (col === "Globe Rejected At") return k.globeRejectedAt;
-    if (col === "E-Stamp") return k.eStamp;
+    if (col === "E-Stamp Certificate No") return k.eStampCertNo;
+    if (col === "E-Stamp Serial No") return k.eStampSerialNo;
     if (col === "Aadhaar") return k.aadhaar;
     if (col === "DOB") return k.dob;
     if (col === "Gender") return k.gender;
@@ -739,7 +741,8 @@ export default function MakerCheckerDashboard() {
       if (col === "STK Rejected At") return k.stkRejectedAt;
       if (col === "Globe Approved At") return k.globeApprovedAt;
       if (col === "Globe Rejected At") return k.globeRejectedAt;
-      if (col === "E-Stamp") return k.eStamp;
+      if (col === "E-Stamp Certificate No") return k.eStampCertNo;
+      if (col === "E-Stamp Serial No") return k.eStampSerialNo;
       if (col === "Aadhaar") return k.aadhaar;
       if (col === "DOB") return `"${k.dob || ""}"`;
       if (col === "Gender") return k.gender;
@@ -1511,13 +1514,25 @@ export default function MakerCheckerDashboard() {
                               "STK Rejected At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.stkRejectedAt}</td>),
                               "Globe Approved At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.globeApprovedAt}</td>),
                               "Globe Rejected At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.globeRejectedAt}</td>),
-                              "E-Stamp": () => ((
+                              "E-Stamp Certificate No": () => ((
                             <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                <span>{k.eStamp}</span>
-                                {k.eStamp && k.eStamp !== "N/A" && (
-                                  <button onClick={(e) => handleCopy(e, k.eStamp, `estamp-${k.id}`)} title="Copy E-Stamp" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estamp-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
-                                    {copiedKey === `estamp-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                <span>{k.eStampCertNo}</span>
+                                {k.eStampCertNo && k.eStampCertNo !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.eStampCertNo, `estampcert-${k.id}`)} title="Copy Certificate No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estampcert-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `estampcert-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )),
+                              "E-Stamp Serial No": () => ((
+                            <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{k.eStampSerialNo}</span>
+                                {k.eStampSerialNo && k.eStampSerialNo !== "N/A" && (
+                                  <button onClick={(e) => handleCopy(e, k.eStampSerialNo, `estampserial-${k.id}`)} title="Copy Serial No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estampserial-${k.id}` ? "#16a34a" : "var(--text-muted)" }}>
+                                    {copiedKey === `estampserial-${k.id}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
                                   </button>
                                 )}
                               </div>

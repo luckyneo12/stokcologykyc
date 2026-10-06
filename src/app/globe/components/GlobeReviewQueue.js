@@ -47,7 +47,7 @@ const PERMANENT_WIDTHS = {
   "Name": 180,
   "Client Code": 120
 };
-const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Step", "Stage", "Status", "Globe Status", "Time Pending", "E-Stamp", "Start Date", "eSign Date", "Date"];
+const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Step", "Stage", "Status", "Globe Status", "Time Pending", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date"];
 
 export default function GlobeReviewQueue({ applications, handleAction, activeSection }) {
   const isPending = activeSection === "pending";
@@ -71,7 +71,7 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
       const saved = localStorage.getItem("globeVisibleColumns");
       if (saved) {
         try {
-          setVisibleColumns(JSON.parse(saved));
+          setVisibleColumns(JSON.parse(saved).flatMap(c => c === "E-Stamp" ? ["E-Stamp Certificate No", "E-Stamp Serial No"] : [c]));
         } catch (e) {
           console.error("Failed to parse visible columns", e);
         }
@@ -141,7 +141,8 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
       const number = app.user?.phone || "N/A";
       const email = app.user?.email || parsedPersonal.email || "N/A";
       const pan = parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || "N/A";
-      const eStamp = app.user?.eStampAssigned?.serialNo || app.user?.eStamp || "N/A";
+      const eStampCertNo = app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A";
+      const eStampSerialNo = app.user?.eStampAssigned?.serialNo || "N/A";
       const stepNum = app.currentStep || 0;
       const stepLabel = STEP_LABELS[app.currentStep] || "Onboarding";
       const startDate = app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A";
@@ -160,7 +161,8 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
         if (col === "Status") return app.status;
         if (col === "Globe Status") return app.globeStatus;
         if (col === "Time Pending") return isPending ? formatTimePending(app.createdAt) : "-";
-        if (col === "E-Stamp") return eStamp;
+        if (col === "E-Stamp Certificate No") return eStampCertNo;
+        if (col === "E-Stamp Serial No") return eStampSerialNo;
         if (col === "Start Date") return `"${startDate}"`;
         if (col === "eSign Date") return `"${esignDate}"`;
         if (col === "Date") return `"${submittedAt}"`;
@@ -277,7 +279,8 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                 const number = app.user?.phone || "N/A";
                 const email = app.user?.email || parsedPersonal.email || "N/A";
                 const pan = parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || "N/A";
-                const eStamp = app.user?.eStampAssigned?.serialNo || app.user?.eStamp || "N/A";
+                const eStampCertNo = app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A";
+                const eStampSerialNo = app.user?.eStampAssigned?.serialNo || "N/A";
                 const stepNum = app.currentStep || 0;
                 const stepLabel = STEP_LABELS[app.currentStep] || "Onboarding";
                 const startDate = app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A";
@@ -397,13 +400,25 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                     {visibleColumns.includes("Time Pending") && <td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 600 }}>
                       {isPending ? formatTimePending(app.updatedAt || app.createdAt) : "-"}
                     </td>}
-                    {visibleColumns.includes("E-Stamp") && (
+                    {visibleColumns.includes("E-Stamp Certificate No") && (
                       <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          <span>{eStamp}</span>
-                          {eStamp && eStamp !== "N/A" && (
-                            <button onClick={(e) => handleCopy(e, eStamp, `estamp-${routeId}`)} title="Copy E-Stamp" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estamp-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
-                              {copiedKey === `estamp-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                          <span>{eStampCertNo}</span>
+                          {eStampCertNo && eStampCertNo !== "N/A" && (
+                            <button onClick={(e) => handleCopy(e, eStampCertNo, `estampcert-${routeId}`)} title="Copy Certificate No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estampcert-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                              {copiedKey === `estampcert-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.includes("E-Stamp Serial No") && (
+                      <td style={{ fontWeight: 600, color: "var(--text-muted)", fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span>{eStampSerialNo}</span>
+                          {eStampSerialNo && eStampSerialNo !== "N/A" && (
+                            <button onClick={(e) => handleCopy(e, eStampSerialNo, `estampserial-${routeId}`)} title="Copy Serial No" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px", color: copiedKey === `estampserial-${routeId}` ? "#16a34a" : "var(--text-muted)" }}>
+                              {copiedKey === `estampserial-${routeId}` ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
                             </button>
                           )}
                         </div>

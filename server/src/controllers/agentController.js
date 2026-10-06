@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const { z } = require("zod");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
+const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
 
 // Document rejections a reviewer has marked but not yet mailed ({ [documentSrc]: reason }).
 // Kept on the application (reserved key inside stepStatuses, like welcomeEmailSent) so every
@@ -278,6 +279,10 @@ const reviewStep = async (req, res, next) => {
       return res.status(403).json({ success: false, error: "You are not assigned to review this application" });
     }
 
+    if (status === "rejected" && !isRejectable(app)) {
+      return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
+    }
+
     const configuredStep = REVIEW_STEP_ORDER.find((step) => step.id === stepName);
     if (!configuredStep) {
       return res.status(400).json({ success: false, error: "Unknown review step" });
@@ -515,6 +520,10 @@ const requestModifications = async (req, res, next) => {
 
     if (!app) {
       return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    if (!isRejectable(app)) {
+      return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
     }
 
     // Parse stepStatuses to find rejected steps
@@ -890,8 +899,11 @@ const savePendingDocumentRejections = async (req, res, next) => {
       }
     }
 
-    const app = await prisma.kycApplication.findUnique({ where: { applicationId: id }, select: { stepStatuses: true } });
+    const app = await prisma.kycApplication.findUnique({ where: { applicationId: id }, select: { stepStatuses: true, currentStep: true } });
     if (!app) return res.status(404).json({ success: false, error: "Application not found" });
+    if (Object.keys(clean).length > 0 && !isRejectable(app)) {
+      return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
+    }
 
     let stepStatuses = {};
     if (app.stepStatuses) {

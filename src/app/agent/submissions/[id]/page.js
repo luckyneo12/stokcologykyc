@@ -1172,6 +1172,11 @@ export default function AgentReview() {
   };
 
   const reviewStep = async (step, status, reason = "") => {
+    // Only applications in Verify (every step done, eSign completed) can be rejected
+    if (status === "rejected" && Number(app?.currentStep || 0) < 14) {
+      showToast("This application can't be rejected as it is still in progress. The applicant has not completed all the steps yet.", "error");
+      return;
+    }
     if (status === "rejected" && !reason.trim()) {
       showToast("Please add a rejection reason", "error");
       return;
@@ -1200,6 +1205,10 @@ export default function AgentReview() {
 
   const requestModifications = async () => {
     if (!app?.applicationId) return;
+    if (Number(app.currentStep || 0) < 14) {
+      showToast("This application can't be rejected as it is still in progress. The applicant has not completed all the steps yet.", "error");
+      return;
+    }
     try {
       setSendingEmail(true);
       const token = localStorage.getItem("agent_token");

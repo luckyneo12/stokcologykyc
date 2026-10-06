@@ -1606,6 +1606,7 @@ export default function AgentReview() {
   const [documentRejections, setDocumentRejections] = useState({});
   const [rejectDocumentModal, setRejectDocumentModal] = useState(null);
   const [documentRejectReason, setDocumentRejectReason] = useState("");
+  const [undoConfirm, setUndoConfirm] = useState(null); // { label, onConfirm } — "Are you sure?" before undoing a rejection
   const [successModalData, setSuccessModalData] = useState(null);
   const [accumulatedEdits, setAccumulatedEdits] = useState({});
   const [copiedKey, setCopiedKey] = useState(null);
@@ -1980,7 +1981,7 @@ export default function AgentReview() {
     }
   };
 
-  const handleUnrejectStep = async (stepId, stepTitle) => {
+  const performUnrejectStep = async (stepId, stepTitle) => {
     setSubmitting(true);
     try {
       const token = localStorage.getItem("globeToken");
@@ -2009,13 +2010,17 @@ export default function AgentReview() {
     }
   };
 
+  // Undoing a rejection always asks "Are you sure?" first
+  const confirmUndoRejection = (label, onConfirm) => setUndoConfirm({ label, onConfirm });
+  const handleUnrejectStep = (stepId, stepTitle) => confirmUndoRejection(stepTitle, () => performUnrejectStep(stepId, stepTitle));
+
   // Right-click on a rejected field: remove just that field from the module's rejection.
   // If it was the last rejected field (and the whole module isn't rejected), the module rejection is undone.
-  const handleUnrejectField = async (step, fieldLabel) => {
+  const performUnrejectField = async (step, fieldLabel) => {
     const st = getStepStatuses(app)[step.id] || {};
     const remaining = (Array.isArray(st.rejectedFields) ? st.rejectedFields : []).filter(f => f !== fieldLabel);
     if (remaining.length === 0 && !st.rejectEntireModule) {
-      return handleUnrejectStep(step.id, step.title);
+      return performUnrejectStep(step.id, step.title);
     }
     setSubmitting(true);
     try {
@@ -2039,6 +2044,7 @@ export default function AgentReview() {
       setSubmitting(false);
     }
   };
+  const handleUnrejectField = (step, fieldLabel) => confirmUndoRejection(fieldLabel, () => performUnrejectField(step, fieldLabel));
 
   const handleUploadFile = async (e) => {
     const file = e.target.files?.[0];
@@ -2147,6 +2153,19 @@ export default function AgentReview() {
     return docs;
   }, [app]);
   allDocumentsRef.current = allDocuments;
+  // Rejection is only allowed once the applicant has completed every step (eSign done = "Verify" filter).
+  // In-progress applications can't be rejected, so any reject dialog opened on one is closed straight away.
+  const canReject = Number(app?.currentStep || 0) >= 14;
+  const rejectDialogOpen = !!rejectStepModal || !!rejectDocumentModal || showRejectionConfirmModal || showGlobalReject;
+  useEffect(() => {
+    if (!app || canReject || !rejectDialogOpen) return;
+    setRejectStepModal(null);
+    setRejectDocumentModal(null);
+    setShowRejectionConfirmModal(false);
+    setShowGlobalReject(false);
+    showToast("This application can't be rejected as it is still in progress. The applicant has not completed all the steps yet.", "error");
+  }, [app, canReject, rejectDialogOpen, showToast]);
+
   if (loading) return <div className="admin-loading" style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", fontSize: "1.2rem", fontWeight: 800 }}>Loading Review Dashboard...</div>;
   if (!app) return <div className="admin-error" style={{ padding: 40, textAlign: "center" }}>Application not found for ID: {id}</div>;
 
@@ -2310,7 +2329,7 @@ export default function AgentReview() {
             <CheckCircle2 size={16} /> Approve KYC
           </button>
 
-          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
+          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting || !canReject} title={canReject ? undefined : "This application can't be rejected as it is still in progress"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
             <Mail size={16} /> Send Rejection Mail
           </button>
 
@@ -2810,12 +2829,14 @@ export default function AgentReview() {
                           e.stopPropagation();
                           if (pendingKey) {
                             // Same as "Remove" in the rejection summary
-                            setDocumentRejections(prev => {
-                              const next = { ...prev };
-                              delete next[pendingKey];
-                              return next;
+                            confirmUndoRejection(doc.label || "Document", () => {
+                              setDocumentRejections(prev => {
+                                const next = { ...prev };
+                                delete next[pendingKey];
+                                return next;
+                              });
+                              showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
                             });
-                            showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
                           } else if (sentRejection) {
                             handleUnrejectStep(sentRejection.stepId, doc.label || "Document");
                           }
@@ -3033,6 +3054,29 @@ export default function AgentReview() {
       </div>
 
       {/* Document Rejection Modal */}
+      {undoConfirm && (
+        <div onClick={() => setUndoConfirm(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 10050, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 400, maxWidth: "90%", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+            <h3 style={{ margin: "0 0 8px 0", color: "var(--text-primary)" }}>Are you sure?</h3>
+            <p style={{ margin: "0 0 20px 0", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+              This will undo the rejection of <strong style={{ color: "var(--text-primary)" }}>{undoConfirm.label}</strong>.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button autoFocus onClick={() => setUndoConfirm(null)} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)" }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => { const { onConfirm } = undoConfirm; setUndoConfirm(null); onConfirm(); }}
+                disabled={submitting}
+                style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: "#ffffff", fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer", boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)" }}
+              >
+                Yes, Undo Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {rejectDocumentModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 10005, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 400, maxWidth: "90%", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
@@ -3335,13 +3379,13 @@ export default function AgentReview() {
                         Edit
                       </button>
                       <button 
-                        onClick={() => {
+                        onClick={() => confirmUndoRejection(doc?.label || "Document", () => {
                           setDocumentRejections(prev => {
                             const next = { ...prev };
                             delete next[src];
                             return next;
                           });
-                        }}
+                        })}
                         disabled={submitting}
                         style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "#ef4444", transition: "all 0.2s" }}
                       >

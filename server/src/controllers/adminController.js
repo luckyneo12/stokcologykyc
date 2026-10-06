@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
+const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
 const { z } = require("zod");
 const digioClient = require("../services/digioClient");
 const crmService = require("../services/crmService");
@@ -262,6 +263,10 @@ const reviewApplication = async (req, res, next) => {
     });
     if (!app) {
       return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    if (status === "rejected" && !isRejectable(app)) {
+      return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
     }
 
     if (status === "verified") {
