@@ -4,6 +4,14 @@ const backofficeService = require("../services/backofficeService");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
 const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
+const { parseStepStatuses, getPendingDocRejections, getRejectionMailState, clearPendingDocStatusFlip } = require("../utils/rejectionMail");
+
+// Document rejections marked but not yet mailed — the application can't be approved while they exist
+const hasPendingDocRejections = async (where) => {
+  const app = await prisma.kycApplication.findUnique({ where, select: { stepStatuses: true } });
+  return Object.keys(getPendingDocRejections(parseStepStatuses(app?.stepStatuses))).length > 0;
+};
+const PENDING_DOC_APPROVE_ERROR = "Cannot approve: some documents are marked as rejected. Remove those rejections or send the rejection mail first.";
 
 class GlobeController {
   async getDashboardKPIs(req, res) {
@@ -258,7 +266,8 @@ class GlobeController {
 
       res.status(200).json({
         success: true,
-        data: await attachDecisionTimestamps(await annotateRejectedBy(applications)),
+        // rejectionMail.mailPending → "Mail not sent" tag on rejected applications
+        data: await attachDecisionTimestamps(await annotateRejectedBy(applications.map((app) => ({ ...app, rejectionMail: getRejectionMailState(app) })))),
         pagination: {
           total,
           pages: Math.ceil(total / limit),
@@ -276,6 +285,12 @@ class GlobeController {
     try {
       const { id } = req.params;
       const userId = req.user.id;
+
+      const approveWhere = !isNaN(parseInt(id)) && parseInt(id).toString() === id.toString() ? { id: parseInt(id) } : { applicationId: id };
+      if (await hasPendingDocRejections(approveWhere)) {
+        return res.status(400).json({ success: false, message: PENDING_DOC_APPROVE_ERROR });
+      }
+      await clearPendingDocStatusFlip(prisma, approveWhere, "Globe");
 
       let application;
       if (!isNaN(parseInt(id)) && parseInt(id).toString() === id.toString()) {
@@ -343,6 +358,7 @@ class GlobeController {
       if (!isRejectable(existing)) {
         return res.status(400).json({ success: false, message: NOT_REJECTABLE_ERROR });
       }
+      await clearPendingDocStatusFlip(prisma, queryId, "Globe");
 
       const application = await prisma.kycApplication.update({
         where: queryId,
@@ -468,6 +484,10 @@ class GlobeController {
           return res.status(400).json({ success: false, message: NOT_REJECTABLE_ERROR });
         }
       }
+      if (globeStatus === "approved" && await hasPendingDocRejections(queryId)) {
+        return res.status(400).json({ success: false, message: PENDING_DOC_APPROVE_ERROR });
+      }
+      await clearPendingDocStatusFlip(prisma, queryId, "Globe");
 
       const application = await prisma.kycApplication.update({
         where: queryId,

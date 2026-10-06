@@ -548,6 +548,7 @@ export default function MakerCheckerDashboard() {
               occupation: parsedPersonal.occupation || "N/A",
               annualIncome: parsedPersonal.annualIncome || parsedPersonal.annual_income || "N/A",
               rejections: rejectionsText,
+              rejectionMailPending: !!app.rejectionMail?.mailPending, // rejected, but the applicant hasn't been mailed yet
               pennydropVerify: parsedBank.verified ? "Verified" : (parsedBank.pennyDropStatus || "Pending"),
               aadhaarSeeding: parsedOcr.pan_verification?.data?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.pan_verification?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.aadhaarSeedingStatus || parsedIdentity.seedingStatus || "N/A",
               liveImageTime: parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt ? new Date(parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt).toLocaleString("en-IN") : "N/A",
@@ -1384,6 +1385,12 @@ export default function MakerCheckerDashboard() {
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                                     {k.rejections.split(" | ").length} Rejection(s)
                                   </button>
+                                  {k.rejectionMailPending && (
+                                    <span title="Rejections are marked but the rejection mail has not been sent to the applicant yet" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4, padding: "2px 8px", borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a", color: "#b45309", fontSize: "0.7rem", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 5L2 7"></path></svg>
+                                      Mail not sent
+                                    </span>
+                                  )}
                                   {openRejectionsId === k.id && (
                                     <div style={{
                                       position: "absolute",

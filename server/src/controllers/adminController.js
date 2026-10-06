@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
 const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
+const { PENDING_DOC_STATUS_FLIP_KEY, parseStepStatuses, getPendingDocRejections, withRejectionMailState } = require("../utils/rejectionMail");
 const { z } = require("zod");
 const digioClient = require("../services/digioClient");
 const crmService = require("../services/crmService");
@@ -74,9 +75,11 @@ const getApplications = async (req, res, next) => {
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "verify") {
         // eSign done and not yet pushed to back office — stays here even after STK/Globe are verified.
-        // Rejected / on-hold applications have their own filters.
+        // Rejected / on-hold applications have their own filters. A Globe rejection leaves the STK
+        // status untouched, so Globe-rejected applications are excluded by globeStatus as well.
         where.currentStep = { gte: 14 };
         where.status = { notIn: ["rejected", "on_hold"] };
+        where.globeStatus = { not: "rejected" };
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "in_progress" || normalizedStatus === "pending") {
         where.currentStep = { lt: 14 };
@@ -242,7 +245,7 @@ const getApplicationById = async (req, res, next) => {
     });
 
     const [annotatedApp] = await annotateRejectedBy([app]); // who rejected (STK / Globe) for older rejections
-    res.json({ success: true, application: normalizeApplication(annotatedApp), logs });
+    res.json({ success: true, application: withRejectionMailState(normalizeApplication(annotatedApp)), logs });
   } catch (error) {
     next(error);
   }
@@ -269,15 +272,12 @@ const reviewApplication = async (req, res, next) => {
       return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
     }
 
+    const statuses = parseStepStatuses(app.stepStatuses);
     if (status === "verified") {
-      let statuses = {};
-      try {
-        statuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {});
-      } catch (e) {}
-      
-      const hasRejected = Object.values(statuses).some(s => s?.status === "rejected");
+      const hasRejected = Object.values(statuses).some(s => s?.status === "rejected")
+        || Object.keys(getPendingDocRejections(statuses)).length > 0;
       if (hasRejected) {
-        return res.status(400).json({ success: false, error: "Cannot approve application because one or more steps are marked as rejected." });
+        return res.status(400).json({ success: false, error: "Cannot approve application because one or more steps or documents are marked as rejected." });
       }
     }
 
@@ -287,6 +287,14 @@ const reviewApplication = async (req, res, next) => {
       rejectionReason: reason || null,
       reviewedAt: new Date(),
     };
+
+    // A decision on the whole application replaces any status saved to be put back when a
+    // not-yet-mailed document rejection is removed
+    if (statuses[PENDING_DOC_STATUS_FLIP_KEY]?.STK) {
+      delete statuses[PENDING_DOC_STATUS_FLIP_KEY].STK;
+      if (Object.keys(statuses[PENDING_DOC_STATUS_FLIP_KEY]).length === 0) delete statuses[PENDING_DOC_STATUS_FLIP_KEY];
+      updateData.stepStatuses = JSON.stringify(statuses);
+    }
 
     if (!isKycAgent) {
       updateData.reviewedBy = req.user.id;

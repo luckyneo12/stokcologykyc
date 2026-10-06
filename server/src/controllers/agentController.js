@@ -3,13 +3,20 @@ const { z } = require("zod");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
 const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
-
-// Document rejections a reviewer has marked but not yet mailed ({ [documentSrc]: reason }).
-// Kept on the application (reserved key inside stepStatuses, like welcomeEmailSent) so every
-// reviewer device sees them live. Code reading stepStatuses only looks at { status } entries.
-const PENDING_DOC_REJECTIONS_KEY = "_pendingDocumentRejections";
-const PENDING_DOC_LABELS_KEY = "_pendingDocumentRejectionLabels"; // { [documentSrc]: document name }
-const PENDING_DOC_BY_KEY = "_pendingDocumentRejectionBy"; // { [documentSrc]: "STK" | "Globe" }
+// Document rejections a reviewer has marked but not yet mailed are kept on the application (reserved
+// keys inside stepStatuses, like welcomeEmailSent) so every reviewer device sees them live. Code reading
+// stepStatuses only looks at { status } entries.
+const {
+  PENDING_DOC_REJECTIONS_KEY,
+  PENDING_DOC_LABELS_KEY,
+  PENDING_DOC_BY_KEY,
+  REJECTION_MAIL_SENT_KEY,
+  PENDING_DOC_STATUS_FLIP_KEY,
+  getPendingDocRejections,
+  hasRejectedSteps: hasRejectedStepEntries,
+  rejectionFingerprint,
+  getRejectionMailState,
+} = require("../utils/rejectionMail");
 
 // Which side made a rejection — shown as a tag in both portals
 const reviewerSide = (req) => (req.user?.role === "globe" ? "Globe" : "STK");
@@ -45,9 +52,11 @@ const getAssignedApplications = async (req, res, next) => {
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "verify") {
         // eSign done and not yet pushed to back office — stays here even after STK/Globe are verified.
-        // Rejected / on-hold applications have their own filters.
+        // Rejected / on-hold applications have their own filters. A Globe rejection leaves the STK
+        // status untouched, so Globe-rejected applications are excluded by globeStatus as well.
         where.currentStep = { gte: 14 };
         where.status = { notIn: ["rejected", "on_hold"] };
+        where.globeStatus = { not: "rejected" };
         where.pushedToBackoffice = false;
       } else if (normalizedStatus === "in_progress" || normalizedStatus === "pending") {
         where.currentStep = { lt: 14 };
@@ -139,15 +148,19 @@ const getAssignedApplications = async (req, res, next) => {
           riskScore: true,
           faceMatchScore: true,
           assignedCrmAgentId: true,
+          correctionDraft: true, // only to work out rejectionMail below — not sent to the list
           user: { select: { email: true, phone: true, eStamp: true, boid: true, boidAssigned: { select: { boidNumber: true } }, eStampAssigned: { select: { serialNo: true, certificateNo: true } } } }
         }
       }),
       prisma.kycApplication.count({ where })
     ]);
 
+    // rejectionMail.mailPending → "Mail not sent" tag on rejected applications
+    const listed = applications.map(({ correctionDraft, ...app }) => ({ ...app, rejectionMail: getRejectionMailState({ ...app, correctionDraft }) }));
+
     res.json({
       success: true,
-      applications: await attachDecisionTimestamps(await annotateRejectedBy(applications)),
+      applications: await attachDecisionTimestamps(await annotateRejectedBy(listed)),
       total,
       page: pageNum,
       totalPages: Math.ceil(total / take)
@@ -329,7 +342,8 @@ const reviewStep = async (req, res, next) => {
       rejectedBy: status === "rejected" ? reviewerSide(req) : null,
     };
 
-    let hasRejectedSteps = Object.values(stepStatuses).some(s => s.status === "rejected");
+    // Document rejections marked but not yet mailed keep the application rejected too
+    let hasRejectedSteps = hasRejectedStepEntries(stepStatuses) || Object.keys(getPendingDocRejections(stepStatuses)).length > 0;
 
     const updateData = {
       stepStatuses: JSON.stringify(stepStatuses),
@@ -511,7 +525,8 @@ const requestModifications = async (req, res, next) => {
     const { id } = req.params;
     const agentId = req.user.id;
     const agentName = req.user.email || `Agent ${agentId}`;
-    const { documentRejections } = req.body || {};
+    // resend: true → send again even though these exact rejections were already mailed
+    const { documentRejections, resend } = req.body || {};
 
     const app = await prisma.kycApplication.findUnique({
       where: { applicationId: id },
@@ -532,8 +547,32 @@ const requestModifications = async (req, res, next) => {
       try { stepStatuses = JSON.parse(app.stepStatuses); } catch (e) { stepStatuses = {}; }
     }
 
+    // Document rejections to mail: what the reviewer's screen sent, else the ones saved on the application
+    const docRejectionsToMail = documentRejections && typeof documentRejections === "object" && !Array.isArray(documentRejections)
+      ? documentRejections
+      : getPendingDocRejections(stepStatuses);
+
+    // The applicant was already mailed exactly these rejections — don't mail them twice by accident
+    const mailState = getRejectionMailState(app, { ...stepStatuses, [PENDING_DOC_REJECTIONS_KEY]: docRejectionsToMail });
+    if (mailState.alreadySent && resend !== true) {
+      return res.status(409).json({
+        success: false,
+        code: "REJECTION_MAIL_ALREADY_SENT",
+        error: "The rejection mail for these rejections has already been sent. Add, edit or remove a rejection to send a new one, or use Resend.",
+      });
+    }
+    // Resending the same rejections: keep the applicant's correction session (and anything they have
+    // already corrected in it) — only the mail and its link are sent again
+    let existingSession = null;
+    if (mailState.alreadySent && app.correctionDraft) {
+      try {
+        const parsed = typeof app.correctionDraft === "string" ? JSON.parse(app.correctionDraft) : app.correctionDraft;
+        if (parsed?.sessionId && Array.isArray(parsed.rejectedSteps)) existingSession = parsed;
+      } catch (e) { existingSession = null; }
+    }
+
     const rejectedEntries = Object.entries(stepStatuses)
-      .filter(([, info]) => info?.status === "rejected")
+      .filter(([stepId, info]) => !stepId.startsWith("_") && info?.status === "rejected")
       .map(([stepId, info]) => ({
         stepId,
         stepTitle: STEP_TITLE_MAP[stepId] || stepId,
@@ -561,7 +600,7 @@ const requestModifications = async (req, res, next) => {
       guardian3Proof: "Guardian 3 Proof",
     };
 
-    if (documentRejections && typeof documentRejections === "object") {
+    if (Object.keys(docRejectionsToMail).length > 0 || stepStatuses[PENDING_DOC_REJECTIONS_KEY]) {
       // Try to match document src URLs to their stepId by checking the app's documents
       let appDocuments = [];
       if (app.documents) {
@@ -593,7 +632,7 @@ const requestModifications = async (req, res, next) => {
         return normalize(fieldPath) === normalize(src) || fieldPath === src;
       };
 
-      for (const [docSrc, reason] of Object.entries(documentRejections)) {
+      for (const [docSrc, reason] of Object.entries(docRejectionsToMail)) {
         if (!reason) continue;
         // Try to find matching document in the documents array first
         const matchedDoc = appDocuments.find(d => d.url === docSrc || d.path === docSrc);
@@ -723,14 +762,16 @@ const requestModifications = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "No rejected steps found on this application" });
     }
 
-    // Build a structured correction session (replaces any previous session)
+    // Build a structured correction session (replaces any previous session — except on a resend)
     const crypto = require("crypto");
-    const correctionSessionId = `CORR-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    const correctionSessionId = existingSession
+      ? existingSession.sessionId
+      : `CORR-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 
     // Sort rejected entries by kycIndex to preserve normal flow order
     rejectedEntries.sort((a, b) => a.kycIndex - b.kycIndex);
 
-    const correctionSession = {
+    const correctionSession = existingSession || {
       sessionId: correctionSessionId,
       createdAt: new Date().toISOString(),
       rejectedSteps: rejectedEntries.map(e => ({
@@ -758,11 +799,16 @@ const requestModifications = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "No email found for this user. Cannot send rejection notification." });
     }
 
+    // These rejections are now real (mailed) — a status set before a not-yet-mailed document
+    // rejection must no longer be put back if one of them is removed
+    delete stepStatuses[PENDING_DOC_STATUS_FLIP_KEY];
+
     // Set status to "rejected" and store correction session.
     // IMPORTANT: currentStep is NOT moved — normal flow position is preserved.
     await prisma.kycApplication.update({
       where: { applicationId: id },
       data: {
+        stepStatuses: JSON.stringify(stepStatuses),
         correctionDraft: JSON.stringify(correctionSession),
         // Sent from the Globe portal → a Globe rejection only (the STK status is never changed by Globe);
         // sent by STK → the STK status becomes rejected (Globe status untouched)
@@ -790,6 +836,7 @@ const requestModifications = async (req, res, next) => {
 
     // Send the email
     const { sendRejectionEmail } = require("../services/emailService");
+    let emailError = null;
     try {
       await sendRejectionEmail(
         userEmail,
@@ -797,10 +844,29 @@ const requestModifications = async (req, res, next) => {
         rejectedEntries.map(e => ({ stepTitle: e.stepTitle, reason: e.reason })),
         modifyLink
       );
-    } catch (emailError) {
-      console.error("[RequestModifications] Email sending failed:", emailError.message);
-      // Don't fail the whole request if email fails — the app is already updated
+    } catch (error) {
+      emailError = error;
+      console.error("[RequestModifications] Email sending failed:", error.message);
+      // The application is already updated (rejected, correction session saved) — the reviewer can retry the mail
     }
+
+    // Only a delivered mail counts: from now on the button stays disabled until the rejections change.
+    // A failed first mail is recorded too (fingerprint null), so the correction session saved above is
+    // not taken for a mail sent before this tracking existed.
+    if (!emailError) {
+      stepStatuses[REJECTION_MAIL_SENT_KEY] = {
+        fingerprint: rejectionFingerprint(stepStatuses),
+        sentAt: new Date().toISOString(),
+        by: reviewerSide(req),
+        sentByEmail: agentName,
+      };
+    } else if (!stepStatuses[REJECTION_MAIL_SENT_KEY]) {
+      stepStatuses[REJECTION_MAIL_SENT_KEY] = { fingerprint: null, failedAt: new Date().toISOString() };
+    }
+    await prisma.kycApplication.update({
+      where: { applicationId: id },
+      data: { stepStatuses: JSON.stringify(stepStatuses) },
+    });
 
     // Audit log
     const stepTitles = rejectedEntries.map(e => e.stepTitle || e.stepId).join(", ");
@@ -809,13 +875,16 @@ const requestModifications = async (req, res, next) => {
         userId: null,
         crmAgentId: agentId,
         crmAgentName: agentName,
-        action: "MODIFICATION_REQUEST_SENT",
+        action: emailError ? "MODIFICATION_REQUEST_EMAIL_FAILED" : "MODIFICATION_REQUEST_SENT",
         details: JSON.stringify({
-          message: `Modification request email sent to ${userEmail} by ${agentName} for steps: ${stepTitles}`,
+          message: emailError
+            ? `Modification request email to ${userEmail} by ${agentName} could not be sent (${emailError.message}) for steps: ${stepTitles}`
+            : `Modification request email ${existingSession ? "re-sent" : "sent"} to ${userEmail} by ${agentName} for steps: ${stepTitles}`,
           applicationId: id,
           rejectedSteps: rejectedEntries.map(e => ({ stepId: e.stepId, title: e.stepTitle, reason: e.reason })),
           emailSentTo: userEmail,
           correctionSessionId,
+          resend: !!existingSession,
         }),
         targetId: String(id),
         targetType: "KycApplication",
@@ -830,9 +899,18 @@ const requestModifications = async (req, res, next) => {
       io.to("staff_room").emit("applications_updated");
     }
 
+    if (emailError) {
+      return res.status(502).json({
+        success: false,
+        code: "REJECTION_MAIL_FAILED",
+        error: "The rejections were saved, but the email could not be sent to the applicant. Please try sending the rejection mail again.",
+      });
+    }
+
     res.json({
       success: true,
-      message: `Modification request sent to ${userEmail}`,
+      resent: !!existingSession,
+      message: `Modification request ${existingSession ? "re-sent" : "sent"} to ${userEmail}`,
       rejectedSteps: rejectedEntries.map(e => e.stepTitle),
       correctionSessionId,
       correctionLink: modifyLink,
@@ -899,7 +977,7 @@ const savePendingDocumentRejections = async (req, res, next) => {
       }
     }
 
-    const app = await prisma.kycApplication.findUnique({ where: { applicationId: id }, select: { stepStatuses: true, currentStep: true } });
+    const app = await prisma.kycApplication.findUnique({ where: { applicationId: id }, select: { stepStatuses: true, currentStep: true, status: true, globeStatus: true } });
     if (!app) return res.status(404).json({ success: false, error: "Application not found" });
     if (Object.keys(clean).length > 0 && !isRejectable(app)) {
       return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
@@ -929,9 +1007,37 @@ const savePendingDocumentRejections = async (req, res, next) => {
       delete stepStatuses[PENDING_DOC_BY_KEY];
     }
 
+    // A marked document rejection rejects the application straight away (like a module rejection) —
+    // STK's on the STK status, Globe's on the Globe status — even before the mail is sent.
+    // When the last one of a side is removed and nothing else is rejected, that side gets back the
+    // status it had before (kept in PENDING_DOC_STATUS_FLIP_KEY).
+    const sidesAfter = new Set(Object.keys(getPendingDocRejections(stepStatuses)).map((src) => (stepStatuses[PENDING_DOC_BY_KEY] || {})[src] || "STK"));
+    const statusField = { STK: "status", Globe: "globeStatus" };
+    const flips = { ...(stepStatuses[PENDING_DOC_STATUS_FLIP_KEY] || {}) };
+    const statusUpdate = {};
+    for (const side of ["STK", "Globe"]) {
+      const field = statusField[side];
+      if (sidesAfter.has(side)) {
+        if (app[field] !== "rejected") {
+          flips[side] = { prev: app[field], setAt: new Date().toISOString() };
+          statusUpdate[field] = "rejected";
+        }
+      } else if (flips[side]) {
+        if (app[field] !== "rejected") {
+          delete flips[side]; // the status was changed since — nothing to put back
+        } else if (!hasRejectedStepEntries(stepStatuses) && sidesAfter.size === 0) {
+          statusUpdate[field] = flips[side].prev;
+          delete flips[side];
+        }
+        // otherwise something else is still rejected — put it back once that is gone too
+      }
+    }
+    if (Object.keys(flips).length > 0) stepStatuses[PENDING_DOC_STATUS_FLIP_KEY] = flips;
+    else delete stepStatuses[PENDING_DOC_STATUS_FLIP_KEY];
+
     await prisma.kycApplication.update({
       where: { applicationId: id },
-      data: { stepStatuses: JSON.stringify(stepStatuses) },
+      data: { stepStatuses: JSON.stringify(stepStatuses), ...statusUpdate },
     });
 
     const io = req.app.get("io");

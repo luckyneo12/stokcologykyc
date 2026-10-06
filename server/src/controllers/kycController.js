@@ -1683,6 +1683,11 @@ const completeCorrectionSession = async (req, res, next) => {
       }
     }
 
+    // A new review round: the next rejection mail is a new one even if a reason repeats
+    const { REJECTION_MAIL_SENT_KEY, PENDING_DOC_STATUS_FLIP_KEY } = require("../utils/rejectionMail");
+    delete stepStatuses[REJECTION_MAIL_SENT_KEY];
+    delete stepStatuses[PENDING_DOC_STATUS_FLIP_KEY];
+
     updateData.stepStatuses = JSON.stringify(stepStatuses);
     updateData.isResubmitted = true;
     updateData.correctionDraft = null;

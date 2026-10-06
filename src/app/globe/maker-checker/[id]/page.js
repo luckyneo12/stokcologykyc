@@ -1849,22 +1849,25 @@ export default function AgentReview() {
     }
   };
 
-  const handleSendRejectionMail = async () => {
+  // resend → mail the same (already mailed) rejections again
+  const handleSendRejectionMail = async (resend = false) => {
     setSubmitting(true);
     try {
       const token = localStorage.getItem("globeToken");
       const res = await fetchWithFallback(`/api/globe/application/${id}/request-modifications`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ documentRejections })
+        body: JSON.stringify({ documentRejections, resend })
       });
       const data = await res.json();
       if (data.success) {
-        showToast("Rejection email sent and application returned to user.");
+        showToast(data.resent ? "Rejection email sent again." : "Rejection email sent and application returned to user.");
         setDocumentRejections({});
         fetchDetail();
       } else {
+        // Already sent (409) or the mail failed (502): show why and reload — the button follows the server
         showToast(data.error || "Failed to send rejection email.", "error");
+        fetchDetail();
       }
     } catch (error) {
       console.error(error);
@@ -2183,6 +2186,13 @@ export default function AgentReview() {
     return st?.status === "rejected" && !st.docSrc ? { stepId, ...st } : null;
   };
   const pendingDocRejectionBy = statuses._pendingDocumentRejectionBy || {};
+  // The applicant was already mailed exactly these rejections (none added, edited or removed since) —
+  // only counts once this screen's document rejections match the ones saved on the server
+  const serverPendingDocRejections = statuses._pendingDocumentRejections || {};
+  const docRejectionsSynced = Object.keys(documentRejections).length === Object.keys(serverPendingDocRejections).length
+    && Object.entries(documentRejections).every(([src, reason]) => serverPendingDocRejections[src] === reason);
+  const rejectionMailSent = !!app.rejectionMail?.alreadySent && docRejectionsSynced;
+  const rejectionMailSentOn = app.rejectionMail?.sentAt ? new Date(app.rejectionMail.sentAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : null;
   const currentUserStep = Number(app.currentStep || 0);
   const isNomineeOptOut = app.nomineeDetails?.choice === "opt-out" || app.nomineeDetails?.nomineeChoice === "opt-out" || nomineeSummary(app) === "Opted out";
   const hasCompletedJourneyOnce = !!app.submittedAt || !!app.isResubmitted || !!app.rejectionReason || Object.keys(statuses).length > 0;
@@ -2329,9 +2339,21 @@ export default function AgentReview() {
             <CheckCircle2 size={16} /> Approve KYC
           </button>
 
-          <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting || !canReject} title={canReject ? undefined : "This application can't be rejected as it is still in progress"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
-            <Mail size={16} /> Send Rejection Mail
-          </button>
+          {rejectionMailSent ? (
+            <>
+              {/* Already mailed — enabled again once a rejection is added, edited or removed */}
+              <button disabled title={`The applicant was already mailed these rejections${rejectionMailSentOn ? ` on ${rejectionMailSentOn}` : ""}. Add, edit or remove a rejection to send a new mail.`} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-secondary, #f1f5f9)", color: "var(--text-muted)", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: "not-allowed", display: "flex", alignItems: "center", gap: 6 }}>
+                <Check size={16} /> Rejection Mail Sent
+              </button>
+              <button onClick={() => setShowRejectionConfirmModal("resend")} disabled={submitting} title="Send the same rejection mail to the applicant again" style={{ height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2", color: "#ef4444", fontWeight: 700, fontSize: "0.82rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+                <Mail size={14} /> Resend
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting || !canReject} title={canReject ? undefined : "This application can't be rejected as it is still in progress"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
+              <Mail size={16} /> Send Rejection Mail
+            </button>
+          )}
 
           <AdminThemeToggle />
 
@@ -3313,10 +3335,16 @@ export default function AgentReview() {
       {showRejectionConfirmModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ background: "var(--bg-card)", padding: 32, borderRadius: 16, width: 500, maxWidth: "90%", boxShadow: "var(--card-shadow)", border: "1px solid var(--border-color)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
-            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)", fontSize: "1.2rem", fontWeight: 800 }}>Confirm Rejection</h3>
-            <p style={{ margin: "0 0 16px 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
-              The following steps have been marked as rejected. Please review them before sending the rejection email.
-            </p>
+            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)", fontSize: "1.2rem", fontWeight: 800 }}>{showRejectionConfirmModal === "resend" ? "Resend Rejection Mail" : "Confirm Rejection"}</h3>
+            {showRejectionConfirmModal === "resend" ? (
+              <p style={{ margin: "0 0 16px 0", padding: "10px 12px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: "0.9rem" }}>
+                The applicant was already mailed these rejections{rejectionMailSentOn ? ` on ${rejectionMailSentOn}` : ""}. Resend only if they did not receive it — they will get the same mail again.
+              </p>
+            ) : (
+              <p style={{ margin: "0 0 16px 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
+                The following steps have been marked as rejected. Please review them before sending the rejection email.
+              </p>
+            )}
             <div className="premium-sidebar-list" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24, overflowY: "auto", paddingRight: 8 }}>
               {Object.entries(getStepStatuses(app))
                 .filter(([key, status]) => status?.status === "rejected")
@@ -3408,8 +3436,9 @@ export default function AgentReview() {
               </button>
               <button 
                 onClick={() => {
+                  const resend = showRejectionConfirmModal === "resend";
                   setShowRejectionConfirmModal(false);
-                  handleSendRejectionMail();
+                  handleSendRejectionMail(resend);
                 }} 
                 disabled={submitting || (Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0)} 
                 style={{ 
@@ -3424,7 +3453,7 @@ export default function AgentReview() {
                   boxShadow: (submitting || (Object.entries(getStepStatuses(app)).filter(([key, status]) => status?.status === "rejected").length === 0 && Object.keys(documentRejections).length === 0)) ? "none" : "0 4px 14px rgba(239, 68, 68, 0.4)" 
                 }}
               >
-                Confirm & Send Email
+                {showRejectionConfirmModal === "resend" ? "Resend Email" : "Confirm & Send Email"}
               </button>
             </div>
           </div>
