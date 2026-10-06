@@ -26,19 +26,27 @@ const getPendingDocRejections = (ss) => {
 const hasRejectedSteps = (ss) =>
   Object.entries(ss || {}).some(([key, info]) => !key.startsWith("_") && info && typeof info === "object" && info.status === "rejected");
 
-// Everything a rejection mail would tell the applicant, as a stable string ("" = no rejections)
-const rejectionFingerprint = (ss) => {
+// Every rejection a mail would tell the applicant: { key (stable text), side ("STK" | "Globe") }.
+// A rejection that doesn't say who made it counts as STK's.
+const rejectionItems = (ss) => {
   const items = [];
   for (const [stepId, info] of Object.entries(ss || {})) {
     if (stepId.startsWith("_") || !info || typeof info !== "object" || info.status !== "rejected") continue;
     const fields = Array.isArray(info.rejectedFields) ? info.rejectedFields.map(String).sort() : [];
-    items.push(JSON.stringify(["step", stepId, info.reason || "", fields, info.rejectEntireModule === true, info.docSrc || ""]));
+    items.push({
+      key: JSON.stringify(["step", stepId, info.reason || "", fields, info.rejectEntireModule === true, info.docSrc || ""]),
+      side: info.rejectedBy === "Globe" ? "Globe" : "STK",
+    });
   }
+  const by = ss?.[PENDING_DOC_BY_KEY] || {};
   for (const [src, reason] of Object.entries(getPendingDocRejections(ss))) {
-    if (reason) items.push(JSON.stringify(["doc", src, String(reason)]));
+    if (reason) items.push({ key: JSON.stringify(["doc", src, String(reason)]), side: by[src] === "Globe" ? "Globe" : "STK" });
   }
-  return items.sort().join("\n");
+  return items;
 };
+
+// Everything a rejection mail would tell the applicant, as a stable string ("" = no rejections)
+const rejectionFingerprint = (ss) => rejectionItems(ss).map((i) => i.key).sort().join("\n");
 
 // Applications mailed before this tracking existed: an active correction session that already covers
 // every rejected step (and no new document rejections) means the current rejections were mailed.
@@ -53,19 +61,32 @@ const legacyMailSent = (ss, correctionDraft) => {
 };
 
 /**
- * { hasRejections, alreadySent, mailPending, sentAt, sentBy } for an application.
- * mailPending = there are rejections the applicant has not been mailed yet.
+ * { hasRejections, alreadySent, mailPending, pendingSides, sentAt, sentBy } for an application.
+ * mailPending = the rejections changed since the last mail (or were never mailed).
+ * pendingSides = whose rejections ("STK" / "Globe") the applicant hasn't been mailed yet.
  */
 const getRejectionMailState = (app, ssOverride) => {
   const ss = ssOverride || parseStepStatuses(app?.stepStatuses);
-  const fingerprint = rejectionFingerprint(ss);
+  const items = rejectionItems(ss);
+  const fingerprint = items.map((i) => i.key).sort().join("\n");
   const hasRejections = fingerprint !== "";
   const sent = ss[REJECTION_MAIL_SENT_KEY];
   const alreadySent = hasRejections && (sent ? sent.fingerprint === fingerprint : legacyMailSent(ss, app?.correctionDraft));
+  const mailPending = hasRejections && !alreadySent;
+
+  let pendingSides = [];
+  if (mailPending) {
+    const mailed = new Set(sent?.fingerprint ? sent.fingerprint.split("\n") : []);
+    pendingSides = [...new Set(items.filter((i) => !mailed.has(i.key)).map((i) => i.side))];
+    // Only removals since the last mail: every side that still has rejections needs the new mail
+    if (pendingSides.length === 0) pendingSides = [...new Set(items.map((i) => i.side))];
+  }
+
   return {
     hasRejections,
     alreadySent,
-    mailPending: hasRejections && !alreadySent,
+    mailPending,
+    pendingSides,
     sentAt: sent?.sentAt || null,
     sentBy: sent?.by || null,
   };

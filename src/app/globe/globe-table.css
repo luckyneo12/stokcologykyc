@@ -100,6 +100,24 @@
   overflow: hidden;
   transition: border-color 0.3s ease;
 }
+/* Maker-checker lists: plain table with larger, darker text so it can be read from a distance */
+.mc-readable { --text-secondary: #1e293b; --text-muted: #475569; }
+[data-theme="dark"] .mc-readable { --text-secondary: #e2e8f0; --text-muted: #94a3b8; }
+.mc-readable .admin-table th { font-size: 0.72rem; }
+.mc-readable .admin-table td { font-size: 0.875rem !important; }
+/* Status badges / Verify button in the maker-checker lists: one size, so the columns line up */
+.mc-readable .mc-status-badge { min-width: 96px; height: 28px; padding: 0 12px !important; justify-content: center; box-sizing: border-box; }
+/* Maker-checker table's horizontal scrollbar: bigger and darker than the default thin one */
+.mc-scroll::-webkit-scrollbar { height: 12px; }
+.mc-scroll::-webkit-scrollbar-track { background: var(--bg-secondary); border-radius: 99px; }
+.mc-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 99px; border: 2px solid var(--bg-secondary); }
+.mc-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+[data-theme="dark"] .mc-scroll::-webkit-scrollbar-thumb { background: #475569; }
+[data-theme="dark"] .mc-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+@supports (-moz-appearance: none) { .mc-scroll { scrollbar-color: #94a3b8 transparent; } }
+/* Client code: violet, strong enough to see from a little distance */
+.admin-table tr td.mc-client-code, .admin-table tr:hover td.mc-client-code { color: #6d28d9; }
+[data-theme="dark"] .admin-table tr td.mc-client-code, [data-theme="dark"] .admin-table tr:hover td.mc-client-code { color: #c4b5fd; }
 .admin-table {
   width: 100%;
   border-collapse: separate;

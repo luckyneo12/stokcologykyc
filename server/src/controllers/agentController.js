@@ -148,6 +148,8 @@ const getAssignedApplications = async (req, res, next) => {
           riskScore: true,
           faceMatchScore: true,
           assignedCrmAgentId: true,
+          rejectionReason: true, // reason of a whole-application STK rejection (shown under STK Status)
+          globeRemarks: true, // reason of a whole-application Globe rejection (shown under Globe Status)
           correctionDraft: true, // only to work out rejectionMail below — not sent to the list
           user: { select: { email: true, phone: true, eStamp: true, boid: true, boidAssigned: { select: { boidNumber: true } }, eStampAssigned: { select: { serialNo: true, certificateNo: true } } } }
         }
@@ -155,12 +157,14 @@ const getAssignedApplications = async (req, res, next) => {
       prisma.kycApplication.count({ where })
     ]);
 
-    // rejectionMail.mailPending → "Mail not sent" tag on rejected applications
-    const listed = applications.map(({ correctionDraft, ...app }) => ({ ...app, rejectionMail: getRejectionMailState({ ...app, correctionDraft }) }));
+    // Who made each rejection (STK / Globe) is worked out first, so rejectionMail.pendingSides puts the
+    // "Mail not sent" tag under the right status column
+    const annotated = await annotateRejectedBy(applications);
+    const listed = annotated.map(({ correctionDraft, ...app }) => ({ ...app, rejectionMail: getRejectionMailState({ ...app, correctionDraft }) }));
 
     res.json({
       success: true,
-      applications: await attachDecisionTimestamps(await annotateRejectedBy(listed)),
+      applications: await attachDecisionTimestamps(listed),
       total,
       page: pageNum,
       totalPages: Math.ceil(total / take)

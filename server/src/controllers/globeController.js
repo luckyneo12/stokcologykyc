@@ -266,8 +266,9 @@ class GlobeController {
 
       res.status(200).json({
         success: true,
-        // rejectionMail.mailPending → "Mail not sent" tag on rejected applications
-        data: await attachDecisionTimestamps(await annotateRejectedBy(applications.map((app) => ({ ...app, rejectionMail: getRejectionMailState(app) })))),
+        // Who made each rejection (STK / Globe) is worked out first, so rejectionMail.pendingSides puts
+        // the "Mail not sent" tag under the right status column
+        data: await attachDecisionTimestamps((await annotateRejectedBy(applications)).map((app) => ({ ...app, rejectionMail: getRejectionMailState(app) }))),
         pagination: {
           total,
           pages: Math.ceil(total / limit),

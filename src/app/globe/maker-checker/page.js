@@ -102,15 +102,18 @@ export default function MakerCheckerDashboard() {
   };
 
   const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "PAN"];
+  const NO_FILTER_SORT_COLUMNS = ["S.No.", "Actions"]; // nothing useful to filter or sort by
   const PERMANENT_WIDTHS = {
-    "S.No.": 60,
-    "Actions": 80,
+    // S.No. and Actions are kept narrow (tighter padding, no filter/sort) so they don't take much space
+    "S.No.": 56,
+    "Actions": 76,
     "Name": 180,
-    "Client Code": 120,
+    "Client Code": 170, // room for the header's filter and sort icons
     "PAN": 130
   };
-  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "BOID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "MICR", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Rejections", "Step", "Stage", "STK Status", "Globe Status", "STK Approved At", "STK Rejected At", "Globe Approved At", "Globe Rejected At", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
-  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "STK Status", "Rejections", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date"]);
+  const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "BOID", "Number", "Email", "PAN", "Aadhaar", "DOB", "Gender", "Father Name", "Mother Name", "Bank Name", "Account No", "IFSC", "MICR", "Nominees", "Address", "City", "State", "Pincode", "Occupation", "Annual Income", "Step", "Stage", "STK Status", "Globe Status", "STK Approved At", "STK Rejected At", "Globe Approved At", "Globe Rejected At", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date", "Pennydrop Verify", "Aadhaar Seeding", "LiveImage Time", "Sign Upload Time", "Segments Selected", "Total Nominees", "Nominee Opt Date"];
+  // Rejections are shown inside the STK Status / Globe Status columns (by who made them)
+  const [visibleColumns, setVisibleColumns] = useState(["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Step", "Stage", "STK Status", "Globe Status", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date"]);
   const [orderedColumns, setOrderedColumns] = useState(ALL_COLUMNS);
   const [draggedColumn, setDraggedColumn] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
@@ -162,6 +165,7 @@ export default function MakerCheckerDashboard() {
       minWidth: PERMANENT_WIDTHS[colName],
       maxWidth: PERMANENT_WIDTHS[colName],
       width: PERMANENT_WIDTHS[colName],
+      ...(colName === "S.No." || colName === "Actions" ? { paddingLeft: 8, paddingRight: 8 } : {}),
       backgroundColor: isHeader ? "var(--bg-secondary)" : "var(--bg-primary)",
       boxShadow: "none",
     };
@@ -174,7 +178,10 @@ export default function MakerCheckerDashboard() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          setVisibleColumns(parsed.flatMap(c => c === "Status" ? ["STK Status"] : c === "E-Stamp" ? ["E-Stamp Certificate No", "E-Stamp Serial No"] : [c]));
+          // The old "Rejections" column became the rejections shown under STK Status / Globe Status —
+          // a layout that showed it now shows both status columns. Unknown columns are dropped.
+          const mapped = parsed.flatMap(c => c === "Status" ? ["STK Status"] : c === "E-Stamp" ? ["E-Stamp Certificate No", "E-Stamp Serial No"] : c === "Rejections" ? ["STK Status", "Globe Status"] : [c]);
+          setVisibleColumns([...new Set(mapped)].filter(c => ALL_COLUMNS.includes(c)));
         } catch (e) {
           console.error("Failed to parse visible columns", e);
         }
@@ -183,7 +190,8 @@ export default function MakerCheckerDashboard() {
       if (savedOrder) {
         try {
           const parsedOrder = JSON.parse(savedOrder);
-          const mappedOrder = parsedOrder.flatMap(c => c === "Status" ? ["STK Status"] : c === "E-Stamp" ? ["E-Stamp Certificate No", "E-Stamp Serial No"] : [c]);
+          const mappedOrder = [...new Set(parsedOrder.flatMap(c => c === "Status" ? ["STK Status"] : c === "E-Stamp" ? ["E-Stamp Certificate No", "E-Stamp Serial No"] : [c]))]
+            .filter(c => ALL_COLUMNS.includes(c)); // removed columns (e.g. "Rejections") are dropped
           // Columns added later (e.g. BOID) are placed right after their neighbour in ALL_COLUMNS,
           // so they don't end up at the far right of an older saved layout
           ALL_COLUMNS.forEach((c, i) => {
@@ -343,10 +351,13 @@ export default function MakerCheckerDashboard() {
         alert(`Globe Status updated successfully`);
         fetchApplications(true);
       } else {
-        alert(data.error || "Operation failed");
+        // e.g. approve refused while documents are marked as rejected — show why and undo the optimistic change
+        alert(data.error || data.message || "Operation failed");
+        fetchApplications(true);
       }
     } catch (err) {
       alert("Operation failed");
+      fetchApplications(true);
     }
   };
 
@@ -476,20 +487,31 @@ export default function MakerCheckerDashboard() {
             let parsedStepStatuses = {};
             try { parsedStepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {}); } catch(e) {}
             
-            const rejectedSteps = Object.entries(parsedStepStatuses)
-              .filter(([_, info]) => info?.status === "rejected")
-              .map(([step, info]) => `${info?.docLabel || FRONTEND_STEP_TITLE_MAP[step] || step}${info?.rejectedBy ? ` (rejected by ${info.rejectedBy})` : ""}: ${info?.reason || 'No reason'}`);
+            // Rejections split by who made them — shown under the STK Status / Globe Status columns.
+            // A rejection that doesn't say who made it is shown under STK, marked "source unknown".
+            const stkRejections = [];
+            const globeRejections = [];
+            const addRejection = (side, label, reason, unknownSource = false) =>
+              (side === "Globe" ? globeRejections : stkRejections).push({ label, reason: reason || "No reason provided", unknownSource });
+            Object.entries(parsedStepStatuses)
+              .filter(([step, info]) => !step.startsWith("_") && info?.status === "rejected")
+              .forEach(([step, info]) => addRejection(info.rejectedBy, info.docLabel || FRONTEND_STEP_TITLE_MAP[step] || step, info.reason, !info.rejectedBy));
             // Document rejections marked but not yet mailed count too
             const pendingDocLabels = parsedStepStatuses._pendingDocumentRejectionLabels || {};
             const pendingDocBy = parsedStepStatuses._pendingDocumentRejectionBy || {};
             Object.entries(parsedStepStatuses._pendingDocumentRejections || {}).forEach(([src, reason]) => {
-              rejectedSteps.push(`${pendingDocLabels[src] || "Document"}${pendingDocBy[src] ? ` (rejected by ${pendingDocBy[src]})` : ""}: ${reason || 'No reason'}`);
+              addRejection(pendingDocBy[src], pendingDocLabels[src] || "Document", reason, !pendingDocBy[src]);
             });
-            
-            // Module reasons first; otherwise the Globe rejection remark (Globe Reject), then the STK reason
-            const rejectionsText = rejectedSteps.length > 0
-              ? rejectedSteps.join(" | ")
-              : ((app.globeStatus === "rejected" && app.globeRemarks) || app.rejectionReason || "None");
+            // Whole-application rejections (Globe Reject button / STK reject) — their reason
+            if (stkRejections.length === 0 && app.status === "rejected" && app.rejectionReason) addRejection("STK", "Application", app.rejectionReason);
+            if (globeRejections.length === 0 && app.globeStatus === "rejected" && app.globeRemarks) addRejection("Globe", "Application", app.globeRemarks);
+
+            // Export text: every rejection with who made it
+            const rejectionsText = [
+              ...stkRejections.map(r => `STK: ${r.label}: ${r.reason}`),
+              ...globeRejections.map(r => `Globe: ${r.label}: ${r.reason}`),
+            ].join(" | ") || "None";
+            const mailPendingSides = app.rejectionMail?.pendingSides || [];
 
             const aadhaarRaw = parsedIdentity.aadhaarNumber || parsedIdentity.aadhaar || parsedIdentity.uid || parsedIdentity.maskedAadhaar || parsedPersonal.aadhaar || "";
             const aadhaarFormatted = aadhaarRaw ? (String(aadhaarRaw).length >= 4 ? `xxxxxxxx${String(aadhaarRaw).slice(-4)}` : String(aadhaarRaw)) : "N/A";
@@ -547,8 +569,12 @@ export default function MakerCheckerDashboard() {
               pincode: rawPincode,
               occupation: parsedPersonal.occupation || "N/A",
               annualIncome: parsedPersonal.annualIncome || parsedPersonal.annual_income || "N/A",
-              rejections: rejectionsText,
-              rejectionMailPending: !!app.rejectionMail?.mailPending, // rejected, but the applicant hasn't been mailed yet
+              rejections: rejectionsText, // export only
+              stkRejections,
+              globeRejections,
+              // that side's rejections haven't been mailed to the applicant yet
+              stkMailPending: mailPendingSides.includes("STK"),
+              globeMailPending: mailPendingSides.includes("Globe"),
               pennydropVerify: parsedBank.verified ? "Verified" : (parsedBank.pennyDropStatus || "Pending"),
               aadhaarSeeding: parsedOcr.pan_verification?.data?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.pan_verification?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.aadhaarSeedingStatus || parsedIdentity.seedingStatus || "N/A",
               liveImageTime: parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt ? new Date(parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt).toLocaleString("en-IN") : "N/A",
@@ -637,7 +663,6 @@ export default function MakerCheckerDashboard() {
     if (col === "Pincode") return k.pincode;
     if (col === "Occupation") return k.occupation;
     if (col === "Annual Income") return k.annualIncome;
-    if (col === "Rejections") return k.rejections;
     if (col === "Date") return k.submittedAt;
     if (col === "Start Date") return k.startDate;
     if (col === "eSign Date") return k.esignDate;
@@ -649,6 +674,51 @@ export default function MakerCheckerDashboard() {
     if (col === "Total Nominees") return k.totalNominees;
     if (col === "Nominee Opt Date") return k.nomineeOptDate;
     return "";
+  };
+
+  // One side's rejections (STK or Globe), shown next to its status badge as one compact pill:
+  // the count opens the list with each reason; an amber envelope in the pill = not mailed yet
+  const renderSideRejections = (k, side) => {
+    const items = side === "Globe" ? k.globeRejections : k.stkRejections;
+    if (!items || items.length === 0) return null;
+    const menuId = `${k.id}-${side}`;
+    const mailPending = side === "Globe" ? k.globeMailPending : k.stkMailPending;
+    return (
+      <div className="rejections-dropdown-container" style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => setOpenRejectionsId(openRejectionsId === menuId ? null : menuId)}
+          title={`${items.length} rejection(s) by ${side}${mailPending ? " — rejection mail not sent yet" : ""}. Click to see the reasons.`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid #fecaca", background: "#fef2f2", color: "#dc2626", fontSize: "0.75rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          {items.length}
+          {mailPending && (
+            <span style={{ display: "inline-flex", alignItems: "center", paddingLeft: 6, marginLeft: 1, borderLeft: "1px solid #fecaca", color: "#d97706" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 5L2 7"></path></svg>
+            </span>
+          )}
+        </button>
+        {openRejectionsId === menuId && (
+          <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 100, padding: "12px", width: "280px", maxHeight: "300px", overflowY: "auto", whiteSpace: "normal" }}>
+            <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", marginBottom: 8, borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>{side.toUpperCase()} REJECTIONS</div>
+            {mailPending && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "6px 8px", borderRadius: 6, background: "#fffbeb", border: "1px solid #fde68a", color: "#b45309", fontSize: "0.75rem", fontWeight: 700 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 5L2 7"></path></svg>
+                Rejection mail not sent yet
+              </div>
+            )}
+            {items.map((r, i) => (
+              <div key={i} style={{ marginBottom: i < items.length - 1 ? 12 : 0 }}>
+                <div style={{ fontWeight: 700, color: "#ef4444", fontSize: "0.82rem" }}>
+                  {r.label}
+                  {r.unknownSource && <span title="Saved before the portal recorded who made each rejection" style={{ marginLeft: 6, fontWeight: 600, fontSize: "0.7rem", color: "var(--text-muted)" }}>(source unknown)</span>}
+                </div>
+                <div style={{ color: "var(--text-primary)", marginTop: 2, lineHeight: 1.4, fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>{r.reason}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Value shown in a column's filter list (empty / N/A grouped as "(Blank)")
@@ -726,7 +796,8 @@ export default function MakerCheckerDashboard() {
   };
   const exportToCSV = () => {
     if (!kycs || kycs.length === 0) return;
-    const headers = ALL_COLUMNS.filter(c => c !== "Actions" && c !== "S.No.");
+    // "Rejections" is no longer a table column but stays in the export (each entry prefixed "STK:" / "Globe:")
+    const headers = ALL_COLUMNS.filter(c => c !== "Actions" && c !== "S.No.").flatMap(c => c === "Step" ? ["Rejections", c] : [c]);
     const rows = kycs.map(k => headers.map(col => {
       if (col === "KYC ID") return k.id;
       if (col === "BOID") return k.boid;
@@ -833,12 +904,13 @@ export default function MakerCheckerDashboard() {
             </div>
           </div>
 
-          <main style={{ padding: "24px", flex: 1, width: "100%", overflowY: "auto" }}>
+          {/* Same background as the table, so the list reads as a plain table (no card) */}
+          <main style={{ padding: "24px", flex: 1, width: "100%", overflowY: "auto", background: "var(--bg-primary)" }}>
             <div className="admin-animate">
-              {/* Controls */}
-              <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-                <input className="admin-input" placeholder="Search by name, ID, phone, PAN, bank, eStamp..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 320 }} />
-                <div className="filter-dropdown-container" style={{ position: "relative", width: "220px" }}>
+              {/* Controls — kept above the table so their dropdowns are never covered by its sticky header */}
+              <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "nowrap", alignItems: "center", position: "relative", zIndex: 30 }}>
+                <input className="admin-input" placeholder="Search by name, ID, phone, PAN, bank, eStamp..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: "1 1 320px", minWidth: 180, maxWidth: 320 }} />
+                <div className="filter-dropdown-container" style={{ position: "relative", flex: "0 1 220px", minWidth: 180 }}>
                   <button 
                     onClick={() => setFilterOpen(!filterOpen)}
                     style={{ 
@@ -878,7 +950,7 @@ export default function MakerCheckerDashboard() {
                   )}
                 </div>
 
-                <div className="date-filter-dropdown-container" style={{ position: "relative", width: "220px" }}>
+                <div className="date-filter-dropdown-container" style={{ position: "relative", flex: "0 1 220px", minWidth: 160 }}>
                   <button 
                     onClick={() => setDateFilterOpen(!dateFilterOpen)}
                     style={{ 
@@ -933,7 +1005,7 @@ export default function MakerCheckerDashboard() {
                   )}
                 </div>
 
-                <div className="stage-dropdown-container" style={{ position: "relative", width: "220px" }}>
+                <div className="stage-dropdown-container" style={{ position: "relative", flex: "0 1 220px", minWidth: 160 }}>
                   <button 
                     onClick={() => setStageFilterOpen(!stageFilterOpen)}
                     style={{ 
@@ -988,7 +1060,7 @@ export default function MakerCheckerDashboard() {
                   )}
                 </div>
                 
-                <div className="columns-dropdown-container" style={{ position: "relative", marginLeft: "auto" }}>
+                <div className="columns-dropdown-container" style={{ position: "relative", marginLeft: "auto", flexShrink: 0 }}>
                   <button 
                     onClick={() => { setColumnsOpen(!columnsOpen); setColumnSearch(""); }}
                     style={{ 
@@ -1046,6 +1118,8 @@ export default function MakerCheckerDashboard() {
                   onClick={exportToCSV}
                   disabled={kycs.length === 0}
                   style={{ 
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
                     padding: "10px 16px", 
                     borderRadius: 8, 
                     border: "none", 
@@ -1065,8 +1139,9 @@ export default function MakerCheckerDashboard() {
               </div>
 
               {/* Table */}
-              <div className="admin-table-container">
-                <div ref={scrollRef} style={{ overflowX: "auto", minHeight: kycs.length < 4 ? "300px" : "auto" }}>
+              {/* A plain table here — no card (rounded corners, shadow, glass) */}
+              <div className="admin-table-container mc-readable" style={{ isolation: "isolate", borderRadius: 0, boxShadow: "none", backdropFilter: "none", WebkitBackdropFilter: "none", background: "var(--bg-primary)", border: "none", borderTop: "1px solid var(--border-color)", borderBottom: "1px solid var(--border-color)" }}>
+                <div ref={scrollRef} className="mc-scroll" style={{ overflowX: "auto", minHeight: kycs.length < 4 ? "300px" : "auto" }}>
                   <table className="admin-table">
                     <thead><tr>
                       {displayColumns.map(h => (
@@ -1083,8 +1158,9 @@ export default function MakerCheckerDashboard() {
                           onDrop={(e) => handleDrop(e, h)}
                         >
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                            <span>{h}</span>
+                            <span style={NO_FILTER_SORT_COLUMNS.includes(h) ? { letterSpacing: "0.02em" } : undefined}>{h}</span>
                             <div style={{ display: "flex", gap: 4 }}>
+                              {!NO_FILTER_SORT_COLUMNS.includes(h) && (<>
                               <button 
                                 className="column-filter-container"
                                 onClick={(e) => {
@@ -1120,6 +1196,7 @@ export default function MakerCheckerDashboard() {
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
                                 )}
                               </button>
+                              </>)}
 
                               {!PERMANENT_COLUMNS.includes(h) && (
                                 <button 
@@ -1244,7 +1321,7 @@ export default function MakerCheckerDashboard() {
                           </td>)),
                               "Name": () => (<td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Name") }}>{k.name}</td>),
                               "Client Code": () => ((
-                            <td style={{ fontWeight: 700, fontFamily: "monospace", color: "var(--wise-green)", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Client Code") }}>
+                            <td className="mc-client-code" style={{ fontWeight: 800, fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Client Code") }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                 <span>{k.clientCode || "N/A"}</span>
                                 {k.clientCode && k.clientCode !== "N/A" && (
@@ -1362,71 +1439,6 @@ export default function MakerCheckerDashboard() {
                               "Pincode": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.pincode}</td>),
                               "Occupation": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.occupation}</td>),
                               "Annual Income": () => (<td style={{ fontSize: "0.82rem", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>{k.annualIncome}</td>),
-                              "Rejections": () => ((
-                            <td className="rejections-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
-                              {k.rejections !== "None" ? (
-                                <>
-                                  <button 
-                                    onClick={() => setOpenRejectionsId(openRejectionsId === k.id ? null : k.id)}
-                                    style={{ 
-                                      background: "#fee2e2", 
-                                      color: "#ef4444", 
-                                      border: "1px solid #fca5a5",
-                                      padding: "4px 8px",
-                                      borderRadius: "16px",
-                                      fontSize: "0.75rem",
-                                      fontWeight: 700,
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                      width: "max-content"
-                                    }}>
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                    {k.rejections.split(" | ").length} Rejection(s)
-                                  </button>
-                                  {k.rejectionMailPending && (
-                                    <span title="Rejections are marked but the rejection mail has not been sent to the applicant yet" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4, padding: "2px 8px", borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a", color: "#b45309", fontSize: "0.7rem", fontWeight: 700, whiteSpace: "nowrap" }}>
-                                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 5L2 7"></path></svg>
-                                      Mail not sent
-                                    </span>
-                                  )}
-                                  {openRejectionsId === k.id && (
-                                    <div style={{
-                                      position: "absolute",
-                                      top: "100%",
-                                      left: 0,
-                                      marginTop: 8,
-                                      background: "var(--bg-primary)",
-                                      border: "1px solid var(--border-color)",
-                                      borderRadius: 8,
-                                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                                      zIndex: 100,
-                                      padding: "12px",
-                                      width: "280px",
-                                      maxHeight: "300px",
-                                      overflowY: "auto",
-                                    }}>
-                                      <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", marginBottom: 8, borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>REJECTION HISTORY</div>
-                                      {k.rejections.split(" | ").map((r, i) => {
-                                        const parts = r.split(":");
-                                        const step = parts[0];
-                                        const reason = parts.slice(1).join(":").trim() || "No reason provided";
-                                        return (
-                                          <div key={i} style={{ marginBottom: i < k.rejections.split(" | ").length - 1 ? 12 : 0 }}>
-                                            <div style={{ fontWeight: 700, color: "#ef4444", fontSize: "0.82rem" }}>{step}</div>
-                                            <div style={{ color: "var(--text-primary)", marginTop: 2, lineHeight: 1.4, fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>{reason}</div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <span style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>None</span>
-                              )}
-                            </td>
-                          )),
                               "Step": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 700 }}>
                             Step {k.stepNum || 0}/14
                           </td>),
@@ -1437,13 +1449,14 @@ export default function MakerCheckerDashboard() {
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
                               {/* Read-only on Globe: the STK status is set by STK only */}
                               {k.status === 'verified' ? (
-                                <span className="badge badge-verified" style={{ padding: "6px 12px", border: "none" }}>VERIFIED</span>
+                                <span className="badge badge-verified mc-status-badge" style={{ border: "none" }}>VERIFIED</span>
                               ) : (
-                                <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"}`} style={{ padding: "6px 12px", border: "none" }}>{String(k.status || "pending").replace(/_/g, " ").toUpperCase()}</span>
+                                <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"} mc-status-badge`} style={{ border: "none" }}>{String(k.status || "pending").replace(/_/g, " ").toUpperCase()}</span>
                               )}
                               {k.isResubmitted && (
-                                <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
+                                <span title="The applicant changed this application after a review" style={{ display: "inline-flex", alignItems: "center", height: 22, fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "0 6px", borderRadius: 6, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
                               )}
+                              {renderSideRejections(k, "STK")}
                             </div>
                           </td>),
                               "Globe Status": () => (<td>
@@ -1457,7 +1470,7 @@ export default function MakerCheckerDashboard() {
                                       updateGlobeStatusAPI(k.id, "approved");
                                       setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: "approved" } : app));
                                     }}
-                                    style={{ background: "var(--wise-green)", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", fontWeight: 700, cursor: "pointer", fontSize: "0.75rem" }}
+                                    style={{ background: "var(--wise-green)", color: "white", border: "none", height: 28, padding: "0 12px", borderRadius: "12px", fontWeight: 800, cursor: "pointer", fontSize: "0.75rem" }}
                                   >
                                     Verify
                                   </button>
@@ -1468,7 +1481,7 @@ export default function MakerCheckerDashboard() {
                                       updateGlobeStatusAPI(k.id, "rejected");
                                       setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: "rejected" } : app));
                                     }}
-                                    style={{ background: "#ef4444", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", fontWeight: 700, cursor: "pointer", fontSize: "0.75rem" }}
+                                    style={{ background: "#ef4444", color: "white", border: "none", height: 28, padding: "0 12px", borderRadius: "12px", fontWeight: 800, cursor: "pointer", fontSize: "0.75rem" }}
                                   >
                                     Reject
                                   </button>
@@ -1477,7 +1490,7 @@ export default function MakerCheckerDashboard() {
                               <div className="status-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
                                 <div 
                                   onClick={() => setOpenStatusMenuId(openStatusMenuId === k.id ? null : k.id)}
-                                  className={`badge ${STATUS_MAP[k.globeStatus] || "badge-pending"}`}
+                                  className={`badge ${STATUS_MAP[k.globeStatus] || "badge-pending"} mc-status-badge`}
                                   style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, border: "none" }}
                                 >
                                   {(k.globeStatus || "PENDING").toUpperCase()}
@@ -1515,6 +1528,7 @@ export default function MakerCheckerDashboard() {
                                 )}
                               </div>
                               )}
+                              {renderSideRejections(k, "Globe")}
                             </div>
                           </td>),
                               "STK Approved At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.stkApprovedAt}</td>),
