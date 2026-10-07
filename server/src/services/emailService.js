@@ -225,8 +225,59 @@ const sendWelcomeEmail = async (email, name, panCard, pdfAttachment) => {
   }
 };
 
+/**
+ * Sends a password reset link to a Globe portal user.
+ *
+ * @param {string} email - Recipient email
+ * @param {string} resetLink - Link to the reset password page (contains the reset token)
+ */
+const sendPasswordResetEmail = async (email, resetLink) => {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT),
+    secure: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  try {
+    const mailOptions = {
+      from: `"Stockology Securities" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: "Reset your Globe Portal password",
+      text: `We received a request to reset your Globe Portal password.\n\nReset it here (valid for 30 minutes): ${resetLink}\n\nIf you did not request this, you can ignore this email.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="https://res.cloudinary.com/dogfk2nyq/image/upload/v1777096537/stklogo_ofmddh.png" alt="Stockology logo" style="max-width: 150px; height: auto;" />
+          </div>
+          <h2 style="color: #333; text-align: center; margin-top: 0;">Reset Your Password</h2>
+          <p style="font-size: 16px; color: #555;">Hello,</p>
+          <p style="font-size: 16px; color: #555;">We received a request to reset the password for your Globe Portal account. Click the button below to set a new password:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetLink}" style="background-color: #007bff; color: #fff; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px;">Reset Password</a>
+          </div>
+          <p style="font-size: 14px; color: #888;">This link is valid for 30 minutes and can be used only once. If you did not request a password reset, you can safely ignore this email.</p>
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="font-size: 12px; color: #aaa; text-align: center;">&copy; 2026 Stockology Securities. All rights reserved.</p>
+        </div>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log("[EmailService] Password reset email sent: %s", info.messageId);
+    return true;
+  } catch (error) {
+    console.error("CRITICAL ERROR sending password reset email:", error.message);
+    throw new Error(`Email Service Error: ${error.message}`);
+  }
+};
+
 module.exports = {
   sendOtpEmail,
   sendRejectionEmail,
   sendWelcomeEmail,
+  sendPasswordResetEmail,
 };

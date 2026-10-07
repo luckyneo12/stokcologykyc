@@ -219,6 +219,113 @@ const globeLogin = async (req, res, next) => {
   }
 };
 
+// Globe password reset tokens are signed with the user's current password hash, so a token
+// stops working as soon as the password changes (single-use) and expires after 30 minutes.
+const GLOBE_RESET_PURPOSE = "globe-password-reset";
+
+const globeForgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email"),
+});
+
+const globeResetPasswordSchema = z.object({
+  token: z.string().min(1, "Reset token is required"),
+  password: z.string()
+    .min(6, "Password must be at least 6 characters")
+    .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character"),
+});
+
+const globeForgotPassword = async (req, res, next) => {
+  try {
+    const { email } = globeForgotPasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findFirst({
+      where: { email, role: "globe" }
+    });
+
+    // Same response whether or not the email exists, so accounts can't be discovered here
+    const genericResponse = {
+      success: true,
+      message: "If this email is registered with the Globe portal, a password reset link has been sent to it."
+    };
+
+    if (!user || !user.password) {
+      return res.status(200).json(genericResponse);
+    }
+
+    const resetToken = jwt.sign(
+      { id: user.id, purpose: GLOBE_RESET_PURPOSE },
+      JWT_SECRET + user.password,
+      { expiresIn: "30m" }
+    );
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const resetLink = `${frontendUrl}/globe/reset-password?token=${resetToken}`;
+
+    await emailService.sendPasswordResetEmail(user.email, resetLink);
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "GLOBE_PASSWORD_RESET_REQUESTED",
+        details: JSON.stringify({ message: `Password reset link sent to Globe reviewer (${user.email})`, email: user.email }),
+        targetId: user.id.toString(),
+        targetType: "GlobeUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
+    res.status(200).json(genericResponse);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const globeResetPassword = async (req, res, next) => {
+  try {
+    const { token, password } = globeResetPasswordSchema.parse(req.body);
+    const invalidLink = { success: false, error: "This reset link is invalid or has expired. Please request a new one." };
+
+    const decoded = jwt.decode(token);
+    if (!decoded || decoded.purpose !== GLOBE_RESET_PURPOSE || !decoded.id) {
+      return res.status(400).json(invalidLink);
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { id: decoded.id, role: "globe" }
+    });
+    if (!user || !user.password) {
+      return res.status(400).json(invalidLink);
+    }
+
+    try {
+      jwt.verify(token, JWT_SECRET + user.password);
+    } catch (err) {
+      return res.status(400).json(invalidLink);
+    }
+
+    const bcrypt = require("bcryptjs");
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "GLOBE_PASSWORD_RESET",
+        details: JSON.stringify({ message: `Globe reviewer (${user.email}) reset their password`, email: user.email }),
+        targetId: user.id.toString(),
+        targetType: "GlobeUser",
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    }).catch(err => console.error("[AuditLog Error]", err.message));
+
+    res.status(200).json({ success: true, message: "Password has been reset. You can now sign in with your new password." });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const adminLogin = async (req, res, next) => {
   try {
     const { email, password } = adminLoginSchema.parse(req.body);
@@ -538,6 +645,8 @@ module.exports = {
   verifyOtp,
   adminLogin,
   globeLogin,
+  globeForgotPassword,
+  globeResetPassword,
   kycTeamLogin,
   kycTeamSignup,
   setupAdmin,

@@ -74,7 +74,6 @@ export default function MakerCheckerDashboard() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
-  const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
   const [openRejectionsId, setOpenRejectionsId] = useState(null);
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
@@ -228,9 +227,6 @@ export default function MakerCheckerDashboard() {
       }
       if (!e.target.closest('.stage-dropdown-container')) {
         setStageFilterOpen(false);
-      }
-      if (!e.target.closest('.status-dropdown-container')) {
-        setOpenStatusMenuId(null);
       }
       if (!e.target.closest('.rejections-dropdown-container')) {
         setOpenRejectionsId(null);
@@ -1462,71 +1458,21 @@ export default function MakerCheckerDashboard() {
                               "Globe Status": () => (<td>
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
                               {(!k.globeStatus || k.globeStatus === "pending") ? (
-                                // Pending: direct Verify / Reject buttons (same style as the admin STK Verify button)
-                                <>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      updateGlobeStatusAPI(k.id, "approved");
-                                      setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: "approved" } : app));
-                                    }}
-                                    style={{ background: "var(--wise-green)", color: "white", border: "none", height: 28, padding: "0 12px", borderRadius: "12px", fontWeight: 800, cursor: "pointer", fontSize: "0.75rem" }}
-                                  >
-                                    Verify
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (!window.confirm(`Reject Globe status for ${k.name && k.name !== "N/A" ? k.name : k.id}?`)) return;
-                                      updateGlobeStatusAPI(k.id, "rejected");
-                                      setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: "rejected" } : app));
-                                    }}
-                                    style={{ background: "#ef4444", color: "white", border: "none", height: 28, padding: "0 12px", borderRadius: "12px", fontWeight: 800, cursor: "pointer", fontSize: "0.75rem" }}
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              ) : (
-                              <div className="status-dropdown-container" style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
-                                <div 
-                                  onClick={() => setOpenStatusMenuId(openStatusMenuId === k.id ? null : k.id)}
-                                  className={`badge ${STATUS_MAP[k.globeStatus] || "badge-pending"} mc-status-badge`}
-                                  style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, border: "none" }}
+                                // Pending: Verify only — a rejection is made from inside the application
+                                <button
+                                  className="mc-status-badge"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateGlobeStatusAPI(k.id, "approved");
+                                    setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: "approved" } : app));
+                                  }}
+                                  style={{ background: "var(--wise-green)", color: "white", border: "none", borderRadius: "12px", fontWeight: 800, cursor: "pointer", fontSize: "0.75rem" }}
                                 >
-                                  {(k.globeStatus || "PENDING").toUpperCase()}
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: openStatusMenuId === k.id ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                </div>
-                                {openStatusMenuId === k.id && (
-                                  <div style={{ position: "absolute", top: (index >= kycs.length - 3 && kycs.length > 3) ? "auto" : "100%", bottom: (index >= kycs.length - 3 && kycs.length > 3) ? "100%" : "auto", left: 0, minWidth: "160px", background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 50, padding: "4px" }}>
-                                    {[
-                                      { value: "pending", label: "PENDING" },
-                                      { value: "approved", label: "APPROVED" },
-                                      { value: "rejected", label: "REJECTED" }
-                                    ].map(opt => (
-                                      <div 
-                                        key={opt.value}
-                                        onClick={() => {
-                                          if (k.globeStatus !== opt.value) {
-                                            updateGlobeStatusAPI(k.id, opt.value);
-                                            setKycs(prev => prev.map(app => app.id === k.id ? { ...app, globeStatus: opt.value } : app));
-                                          }
-                                          setOpenStatusMenuId(null);
-                                        }}
-                                        style={{ 
-                                          padding: "8px 12px", cursor: "pointer", fontSize: "0.75rem", fontWeight: 700, borderRadius: 6,
-                                          color: "var(--text-primary)", display: "flex", alignItems: "center", justifyContent: "space-between",
-                                          background: "transparent", transition: "background 0.2s"
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = "var(--bg-secondary)"}
-                                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                                      >
-                                        {opt.label}
-                                        {k.globeStatus === opt.value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                                  Verify
+                                </button>
+                              ) : (
+                                // Decided: the status only (changed from inside the application, not from the list)
+                                <span className={`badge ${STATUS_MAP[k.globeStatus] || "badge-pending"} mc-status-badge`} style={{ border: "none" }}>{String(k.globeStatus).toUpperCase()}</span>
                               )}
                               {renderSideRejections(k, "Globe")}
                             </div>
