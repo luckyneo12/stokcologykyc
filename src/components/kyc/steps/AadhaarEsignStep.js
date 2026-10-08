@@ -103,49 +103,7 @@ export default function AadhaarEsignStep() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Trigger location permission prompt on mount
-  useEffect(() => {
-    const triggerLocation = () => {
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          () => { console.log("Location access granted on mount"); }, 
-          (err) => { 
-            console.warn("Location permission issue on mount:", err);
-            if (err.code === 1) { // PERMISSION_DENIED
-              addToast("Location access is blocked. Please enable it in your browser's address bar settings.", "error");
-            }
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      }
-    };
-    triggerLocation();
-  }, [addToast]);
-
   const startESign = async () => {
-    // 1. Get location FIRST — mandatory for eSign
-    let coords = { lat: null, lng: null };
-    if ("geolocation" in navigator) {
-      try {
-        const pos = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 0,
-          });
-        });
-        coords.lat = pos.coords.latitude;
-        coords.lng = pos.coords.longitude;
-      } catch (err) {
-        console.warn("Location denied for eSign:", err.message);
-        addToast("Location permission is required for eSign. Please allow location access and try again.", "error");
-        return;
-      }
-    } else {
-      addToast("Location services are not available on this device. Please enable location and try again.", "error");
-      return;
-    }
-
     let rawIdentifier = personalDetails?.phone || personalDetails?.email || "user@example.com";
     const identifier = rawIdentifier.replace(/\D/g, '').length >= 10 
       ? rawIdentifier.replace(/\D/g, '').slice(-10) 
@@ -187,8 +145,6 @@ export default function AadhaarEsignStep() {
       const { requestId, customerIdentifier, accessToken, applicationId: requestApplicationId } = await createDigioRequest("ESIGN", {
         customerIdentifier: identifier,
         fullName: personalDetails?.fullName || "KYC Applicant",
-        lat: coords.lat,
-        lng: coords.lng,
       });
       if (requestApplicationId) setApplicationId(requestApplicationId);
       if (accessToken) {
