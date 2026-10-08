@@ -45,8 +45,8 @@ const CHALLENGE_MAX_AGE_MS = 150000; // server token lives 180s; redo the action
 const MAX_CAPTURE_SIDE = 1280;
 const SESSION_EXPIRED_MSG = "Your session has expired. Please refresh the page (or scan the QR code again) and retry.";
 const LOOP_STAGES = ["live", "challenge", "ready"];
-// Only these disable the "Click Selfie" button: one face, no goggles, no cap.
-const BLOCKING_ISSUES = ["noFace", "multipleFaces", "sunglasses", "headwear"];
+// Only these disable the "Click Selfie" button: one face, no goggles / glasses, no cap.
+const BLOCKING_ISSUES = ["noFace", "multipleFaces", "sunglasses", "glasses", "headwear"];
 // After the liveness actions the head must also face the camera (no left/right selfies).
 // "needBlink": a natural blink is required shortly before clicking (a printed photo can't blink).
 const READY_BLOCKING_ISSUES = [...BLOCKING_ISSUES, "turned", "needBlink"];

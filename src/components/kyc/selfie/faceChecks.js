@@ -49,9 +49,13 @@ export const THRESHOLDS = {
   sunglassScleraFrac: 0.03, // visible eye white → not a lens
   sunglassUnderRatio: 0.5, // strip below the eye vs cheek (dark circles are ~0.65–0.85)
   sunglassUnderSkin: 0.5, // fraction of that strip that still looks like skin
-  glassesBridgeEdge: 2.5,
-  glassesRimEdge: 2.0,
-  glassesSpecularFrac: 0.03,
+  // Clear glasses = continuous frame lines. Calibrated on real photos (relative to cheek texture):
+  //   with glasses  → bridge 4.6, under-eye 4.2, arm 5.5
+  //   without       → bridge 1.4, under-eye 1.9, arm 2.2
+  // Glasses are flagged when at least 2 of the 3 lines are clearly present.
+  glassesBridgeLine: 3.0,
+  glassesRimLine: 3.0,
+  glassesTempleLine: 3.8,
 
   // Headwear (lower forehead band compared to cheek skin)
   capSkinFrac: 0.4,
@@ -215,6 +219,49 @@ function horizontalEdgeEnergy(img, box) {
     }
   }
   return n ? sum / n : 0;
+}
+
+/**
+ * Strength of the most continuous horizontal line in a box: for each row, the mean |vertical
+ * gradient| across the WHOLE row width; the best row wins. A glasses frame / arm makes one row
+ * light up end-to-end, while skin texture, wrinkles or lashes only light up parts of rows.
+ */
+function horizontalLineStrength(img, box) {
+  const { x0, x1, y0, y1 } = clampBox(img, box);
+  const d = img.data;
+  const w = img.width;
+  let best = 0;
+  for (let y = Math.max(1, y0); y <= Math.min(img.height - 2, y1); y++) {
+    let sum = 0, n = 0;
+    for (let x = x0; x <= x1; x++) {
+      sum += Math.abs(lumaAt(d, ((y + 1) * w + x) * 4) - lumaAt(d, ((y - 1) * w + x) * 4));
+      n++;
+    }
+    if (n >= 3 && sum / n > best) best = sum / n;
+  }
+  return best;
+}
+
+/** Fraction of pixels with a strongly non-skin colour (lens coating reflections: green / blue / purple). */
+function coloredReflectionFraction(img, box, ref) {
+  const { x0, x1, y0, y1 } = clampBox(img, box);
+  const d = img.data;
+  const w = img.width;
+  let n = 0, hit = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * w + x) * 4;
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const Y = 0.299 * r + 0.587 * g + 0.114 * b;
+      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+      const chromaDist = Math.hypot(cb - ref.cb, cr - ref.cr);
+      // far from skin colour AND not a dark pupil / not a plain white eye
+      if (chromaDist > 22 && Y > 40 && (cr < 122 || cb > 140)) hit++;
+      n++;
+    }
+  }
+  return n ? hit / n : 0;
 }
 
 /** Frame-wide mean luma (sparse sample). */
@@ -449,8 +496,8 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
   metrics.eyeDarkL = round(lEye.ratio);
   if (rEye.dark && lEye.dark) flags.sunglasses = true;
 
-  // ── Clear glasses: strong horizontal edges on the nose bridge and under the eyes (frame rims),
-  //    and/or lens reflections. Needs two of the three signals. ──
+  // ── Clear glasses / spectacles: continuous frame lines across the nose bridge, under the eyes
+  //    (lower rims) and from the eyes towards the ears (arms). Needs two of the three lines. ──
   if (!flags.sunglasses) {
     const innerR = lms[LM.rightEyeInner];
     const innerL = lms[LM.leftEyeInner];
@@ -471,11 +518,36 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     metrics.bridgeEdge = round(bridgeEdge);
     metrics.rimEdge = round(rimEdge);
     metrics.specular = round(specular);
-    const signals =
-      (bridgeEdge > THRESHOLDS.glassesBridgeEdge ? 1 : 0) +
-      (rimEdge > THRESHOLDS.glassesRimEdge ? 1 : 0) +
-      (specular > THRESHOLDS.glassesSpecularFrac ? 1 : 0);
-    if (signals >= 2) flags.glasses = true;
+
+    // Continuous-line measurements (frame bridge, lower rims, arms to the ears) + lens reflections
+    const eyeW = (rEye.eyeBox.w + lEye.eyeBox.w) / 2;
+    const bridgeLine = horizontalLineStrength(img, bridgeBox) / cheekEdge;
+    const lowerRim = (b) => ({ x0: b.x0 + b.w * 0.1, x1: b.x1 - b.w * 0.1, y0: b.y1 + b.w * 0.1 * aspect, y1: b.y1 + b.w * 0.7 * aspect });
+    const rimLine = (horizontalLineStrength(img, lowerRim(rEye.eyeBox)) + horizontalLineStrength(img, lowerRim(lEye.eyeBox))) / 2 / cheekEdge;
+    // Temple: between the outer eye corner and the face edge, around eye height (arm of the glasses)
+    const outerR = lms[LM.rightEyeOuter];
+    const outerL = lms[LM.leftEyeOuter];
+    const templeR = { x0: rightEdge.x + face.w * 0.03, x1: outerR.x - eyeW * 0.15, y0: outerR.y - eyeW * 0.35 * aspect, y1: outerR.y + eyeW * 0.35 * aspect };
+    const templeL = { x0: outerL.x + eyeW * 0.15, x1: leftEdge.x - face.w * 0.03, y0: outerL.y - eyeW * 0.35 * aspect, y1: outerL.y + eyeW * 0.35 * aspect };
+    const templeLine = Math.max(
+      templeR.x1 > templeR.x0 ? horizontalLineStrength(img, templeR) : 0,
+      templeL.x1 > templeL.x0 ? horizontalLineStrength(img, templeL) : 0,
+    ) / cheekEdge;
+    const lensBox = (b) => ({ x0: b.x0 - b.w * 0.15, x1: b.x1 + b.w * 0.15, y0: b.y0 - b.w * 0.2 * aspect, y1: b.y1 + b.w * 0.25 * aspect });
+    const reflection = Math.max(
+      coloredReflectionFraction(img, lensBox(rEye.eyeBox), skinRef),
+      coloredReflectionFraction(img, lensBox(lEye.eyeBox), skinRef),
+    );
+    metrics.bridgeLine = round(bridgeLine);
+    metrics.rimLine = round(rimLine);
+    metrics.templeLine = round(templeLine);
+    metrics.reflection = round(reflection);
+    const frameLines =
+      (bridgeLine > THRESHOLDS.glassesBridgeLine ? 1 : 0) +
+      (rimLine > THRESHOLDS.glassesRimLine ? 1 : 0) +
+      (templeLine > THRESHOLDS.glassesTempleLine ? 1 : 0);
+    metrics.glassesLines = frameLines;
+    if (frameLines >= 2) flags.glasses = true;
   }
 
   // ── Cap / hat: the lower forehead band should look like the cheek skin ──
@@ -570,7 +642,7 @@ export const ISSUE_MESSAGES = {
   tooClose: "Move a little further away",
   notCentered: "Place your face inside the oval",
   sunglasses: "Goggles detected — please remove them",
-  glasses: "Please remove your glasses",
+  glasses: "Glasses detected — please remove them",
   headwear: "Cap / hat detected — please remove it",
   turned: "Look straight at the camera — not left or right",
   notStraight: "Look straight at the camera",
@@ -585,13 +657,14 @@ export const DETECTED_LABELS = {
   noFace: "No face detected",
   multipleFaces: "Multiple faces detected",
   sunglasses: "Goggles detected",
+  glasses: "Glasses detected",
   headwear: "Cap / hat detected",
   turned: "Head turned — look straight",
 };
 
 export const CHECKLIST = [
   { key: "single", label: "Only you in frame", issues: ["noFace", "multipleFaces"] },
-  { key: "eyewear", label: "No goggles", issues: ["sunglasses"] },
+  { key: "eyewear", label: "No glasses / goggles", issues: ["sunglasses", "glasses"] },
   { key: "headwear", label: "No cap / hat", issues: ["headwear"] },
   { key: "straight", label: "Looking straight", issues: ["turned"] },
 ];
