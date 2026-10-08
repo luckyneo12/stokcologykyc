@@ -297,6 +297,51 @@ function extractFaceScoreFromDigioResponse(digioResponse) {
   return Math.max(...scoreCandidates);
 }
 
+/** Last 4 digits of an Aadhaar value (full "123412341234" or masked "XXXXXXXX1234"), or null. */
+function aadhaarSuffixOf(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : null;
+}
+
+/**
+ * Aadhaar verified in this KYC (DigiLocker). A correction that redid DigiLocker keeps the new
+ * Aadhaar in its draft until approval — the eSigned PDF already uses it, so it wins.
+ */
+function expectedAadhaarSuffix(application) {
+  const draft = parseJsonField(application.correctionDraft, {});
+  const fromDraft = aadhaarSuffixOf(draft?.drafts?.digilocker?.identityDetails?.aadhaar);
+  if (fromDraft) return fromDraft;
+  const identity = parseJsonField(application.identityDetails, {});
+  return aadhaarSuffixOf(identity.aadhaar);
+}
+
+/**
+ * Compares the Aadhaar that actually signed with the KYC's Aadhaar. Digio returns the signer's
+ * details per signing party (verified on a live document):
+ *   signing_parties[].pki_signature_details = { aadhaar_suffix: "1234", name, gender, year_of_birth, postal_code }
+ * status:
+ *   "matched"     → same last 4 digits
+ *   "mismatch"    → a party signed with a different Aadhaar → the eSign must be redone
+ *   "unavailable" → nothing to compare (no signer details / no KYC Aadhaar) → allowed, audit-logged
+ */
+function checkEsignAadhaar(digioResponse, application) {
+  const expectedSuffix = expectedAadhaarSuffix(application);
+  const signed = (Array.isArray(digioResponse?.signing_parties) ? digioResponse.signing_parties : [])
+    .filter((p) => String(p?.status || "").toLowerCase() === "signed")
+    .map((p) => ({
+      suffix: aadhaarSuffixOf(p?.pki_signature_details?.aadhaar_suffix),
+      name: p?.pki_signature_details?.name || p?.name || null,
+    }))
+    .filter((p) => p.suffix);
+
+  if (!signed.length) return { status: "unavailable", reason: "no_signer_aadhaar", expectedSuffix };
+  if (!expectedSuffix) return { status: "unavailable", reason: "no_kyc_aadhaar", signedSuffix: signed[0].suffix, signerName: signed[0].name };
+
+  const wrong = signed.find((p) => p.suffix !== expectedSuffix);
+  if (wrong) return { status: "mismatch", expectedSuffix, signedSuffix: wrong.suffix, signerName: wrong.name };
+  return { status: "matched", expectedSuffix, signedSuffix: signed[0].suffix };
+}
+
 function cleanPdfText(value, fallback = "N/A") {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "object") {
@@ -1333,6 +1378,28 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
         success: false,
         error: "Application not found for this user",
       });
+    }
+
+    // eSign must be done with the Aadhaar verified in this KYC. Checked BEFORE anything is saved,
+    // so a mismatched signature never touches the application (no signed PDF, no status change).
+    if (payload.type === "ESIGN") {
+      const aadhaarCheck = checkEsignAadhaar(digioResponse, application);
+      if (aadhaarCheck.status !== "matched") {
+        await writeAuditLog({
+          userId: req.user.id,
+          action: aadhaarCheck.status === "mismatch" ? "esign_aadhaar_mismatch" : "esign_aadhaar_unverified",
+          details: { applicationId: application.applicationId, requestId, ...aadhaarCheck },
+          ipAddress: req.ip,
+        });
+      }
+      if (aadhaarCheck.status === "mismatch") {
+        console.warn(`[Digio Route] eSign Aadhaar mismatch on ${application.applicationId}: signed ••••${aadhaarCheck.signedSuffix}, expected ••••${aadhaarCheck.expectedSuffix}`);
+        return res.status(409).json({
+          success: false,
+          code: "ESIGN_AADHAAR_MISMATCH",
+          error: `The Aadhaar used for eSign (ending ${aadhaarCheck.signedSuffix}) doesn't match the Aadhaar verified in your KYC (ending ${aadhaarCheck.expectedSuffix}). Please eSign again using your own Aadhaar.`,
+        });
+      }
     }
 
     // Extract Selfie Image for Cross-Device Sync before sanitization
@@ -2372,24 +2439,12 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                if (sourceBuffer) {
                    const faceMatchResult = await digioClient.checkFaceMatch(sourceBuffer, selfieBuffer, uniqueFaceId);
                    console.log(`[Webhook] FaceMatch API raw response:`, JSON.stringify(faceMatchResult));
-                   // The API may return score at top level or nested
-                   const fmScore = faceMatchResult?.score 
-                     ?? faceMatchResult?.confidence
-                     ?? faceMatchResult?.similarity 
-                     ?? faceMatchResult?.face_match_score
-                     ?? faceMatchResult?.match_score
-                     ?? faceMatchResult?.match_confidence
-                     ?? faceMatchResult?.data?.score
-                     ?? faceMatchResult?.result?.score;
-                   if (fmScore !== undefined && fmScore !== null) {
-                      const num = Number(fmScore);
-                      if (!Number.isNaN(num)) {
-                        const genuineScore = Math.round(num * (num <= 1 ? 100 : 1));
-                        extractedFaceScore = genuineScore;
-                        nextSelfieDetails.matchScore = genuineScore;
-                        nextSelfieDetails.faceMatchScore = genuineScore;
-                        console.log(`[Webhook] Manual FaceMatch Score obtained: ${genuineScore}%`);
-                      }
+                   const genuineScore = readFaceMatch(faceMatchResult).score;
+                   if (genuineScore !== null) {
+                      extractedFaceScore = genuineScore;
+                      nextSelfieDetails.matchScore = genuineScore;
+                      nextSelfieDetails.faceMatchScore = genuineScore;
+                      console.log(`[Webhook] Manual FaceMatch Score obtained: ${genuineScore}%`);
                    } else {
                       console.warn(`[Webhook] FaceMatch API returned no recognizable score field`);
                    }
@@ -2836,10 +2891,9 @@ router.post("/face-match", auth, async (req, res) => {
         const uniqueFaceId = `${application.applicationId}_F_${Date.now()}`;
         const faceMatchResult = await digioClient.checkFaceMatch(sourceBuffer, selfieBuffer, uniqueFaceId);
         console.log(`[FaceMatch] API raw response:`, JSON.stringify(faceMatchResult));
-        const fmScore = faceMatchResult?.score ?? faceMatchResult?.confidence ?? faceMatchResult?.similarity ?? faceMatchResult?.match_score;
-        if (fmScore !== undefined && fmScore !== null) {
-           const num = Number(fmScore);
-           genuineFaceMatchScore = Math.round(num * (num <= 1 ? 100 : 1));
+        const fmScore = readFaceMatch(faceMatchResult).score;
+        if (fmScore !== null) {
+           genuineFaceMatchScore = fmScore;
            console.log(`[FaceMatch] Genuine Score obtained: ${genuineFaceMatchScore}%`);
         } else {
            console.log(`[FaceMatch] API returned no explicit score:`, JSON.stringify(faceMatchResult));
@@ -3218,6 +3272,22 @@ const SELFIE_MIN_FACE_MATCH = Number(process.env.SELFIE_MIN_FACE_MATCH || 60);
 const SELFIE_MIN_SESSION_MATCH = Number(process.env.SELFIE_MIN_SESSION_MATCH || 70);
 const SELFIE_KEYFRAME_MAX_BASE64 = 3 * 1024 * 1024;
 const SELFIE_VIDEO_MAX_BASE64 = 22 * 1024 * 1024; // ~16 MB video
+const SELFIE_VIDEO_TOKEN_TTL_SECONDS = 15 * 60;
+
+/**
+ * User-facing reason from a failed Digio liveness result, or null. Digio explains some failures,
+ * e.g. { result: "FAIL", errors: ["Ensure your clothing meets the guidelines, then retake the photo."] }
+ * (sleeveless vests / bare shoulders are rejected) — showing it beats a generic "liveness failed".
+ */
+function livenessFailureReason(result) {
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  const first = errors.map((e) => (typeof e === "string" ? e : e?.message)).find((m) => typeof m === "string" && m.trim());
+  if (!first) return null;
+  if (/cloth|attire|dress|garment/i.test(first)) {
+    return "Your clothing doesn't meet the KYC photo guidelines. Please wear a shirt / top that covers your shoulders (no sleeveless vests), then retake the selfie.";
+  }
+  return first.trim().slice(0, 200);
+}
 
 /** Resolves to { ok: true, value } or { ok: false, error } — lets checks run in parallel safely. */
 function settle(promise) {
@@ -3324,14 +3394,36 @@ function deleteCloudinaryVideo(url) {
   });
 }
 
-/** Face-match score (0–100) from Digio's response, or null when none is present. */
-function extractFaceMatchScore(result) {
+/**
+ * Reads Digio's face-match response (v3/client/kyc/facematch). Verified against the live API:
+ *   different people → { match_result: "not_matched", confidence: 1 }
+ *   same person      → { match_result: "matched",     confidence: 100 }
+ * `confidence` is already a 0–100 percentage and must NOT be scaled ×100 (that used to turn a
+ * 1% non-match into "100%"). Returns { score, matched } — matched is Digio's own verdict
+ * (true / false), or null when the response has none.
+ */
+function readFaceMatch(result) {
+  const verdict = String(result?.match_result ?? result?.result?.match_result ?? "").trim().toLowerCase();
+  const matched = verdict === "matched" ? true : verdict === "not_matched" ? false : null;
+
+  const isPercent = result?.confidence !== undefined || matched !== null;
   const raw =
-    result?.score ?? result?.confidence ?? result?.similarity ?? result?.match_score ??
+    result?.confidence ?? result?.score ?? result?.similarity ?? result?.match_score ??
     result?.face_match_score ?? result?.match_confidence ?? result?.data?.score ?? result?.result?.score;
-  if (raw === undefined || raw === null || raw === "" || !Number.isFinite(Number(raw))) return null;
-  const num = Number(raw);
-  return Math.round(num * (num <= 1 ? 100 : 1));
+  let score = null;
+  if (raw !== undefined && raw !== null && raw !== "" && Number.isFinite(Number(raw))) {
+    const num = Number(raw);
+    // Only legacy response shapes (no confidence / verdict) may carry a 0–1 fraction
+    score = Math.max(0, Math.min(100, Math.round(!isPercent && num <= 1 ? num * 100 : num)));
+  }
+  return { score, matched };
+}
+
+/** True only when Digio did not reject the pair AND the score reaches minScore. */
+function faceMatchPasses(fm, minScore) {
+  if (fm.matched === false) return false;
+  if (fm.score === null) return fm.matched === true;
+  return fm.score >= minScore;
 }
 
 // Used challenge ids (single-use). In-memory is enough because a challenge
@@ -3486,12 +3578,12 @@ router.post("/selfie-capture", auth, async (req, res) => {
       Promise.all([
         timed(timings, "selfieLiveness", () => settle(digioClient.checkPassiveLiveness(selfieBuffer, `${appRef}_IL_${Date.now()}`))),
         timed(timings, "frameLiveness", () => settle(digioClient.checkPassiveLiveness(challengeFrameBuffer, `${appRef}_ICL_${Date.now()}`))),
-        timed(timings, "sessionMatch", () => settle(digioClient.checkFaceMatch(challengeFrameBuffer, selfieBuffer, `${appRef}_ISM_${Date.now()}`))),
+        timed(timings, "sessionMatch", () => settle(digioClient.checkFaceMatch(challengeFrameBuffer, selfieBuffer, `${appRef}_ISM_${Date.now()}`, SELFIE_MIN_SESSION_MATCH))),
         timed(timings, "documentMatch", async () => {
           if (!sourcePhotoUrl) return { skipped: "no_source" };
           const source = await settle(getSelfieSourcePhotoBuffer(appRef, sourcePhotoUrl));
           if (!source.ok) return { skipped: "source_fetch_failed", error: source.error };
-          return settle(digioClient.checkFaceMatch(source.value, selfieBuffer, `${appRef}_IF_${Date.now()}`));
+          return settle(digioClient.checkFaceMatch(source.value, selfieBuffer, `${appRef}_IF_${Date.now()}`, SELFIE_MIN_FACE_MATCH));
         }),
         timed(timings, "selfieUpload", () => settle(uploadBufferToCloudinary(selfieBuffer, `kyc_selfie_${appRef}_${Date.now()}`, "jpg"))),
       ]),
@@ -3506,6 +3598,31 @@ router.post("/selfie-capture", auth, async (req, res) => {
         } catch (e) {}
       }
       console.log(`[InhouseSelfie][timing] ${appRef} rejected (${body.code || status}) in ${Date.now() - requestStarted}ms`, JSON.stringify(timings));
+      // Why it was rejected (Digio verdicts / scores only, never images) — for support and tuning
+      const brief = (r) => {
+        if (!r) return null;
+        if (r.skipped) return { skipped: r.skipped };
+        if (!r.ok) return { error: r.error?.response?.status || r.error?.message || "error", data: r.error?.response?.data ?? null };
+        return JSON.parse(JSON.stringify(r.value ?? null, (k, v) => (typeof v === "string" && v.length > 200 ? `<${v.length} chars>` : v)));
+      };
+      writeAuditLog({
+        userId: req.user.id,
+        action: "inhouse_selfie_rejected",
+        details: {
+          applicationId: appRef,
+          code: body.code || String(status),
+          liveness: brief(livenessRes),
+          actionFrameLiveness: brief(frameLivenessRes),
+          sessionMatch: brief(sessionMatchRes),
+          documentMatch: brief(docMatchRes),
+          clientChecks: clientChecks && typeof clientChecks === "object" ? {
+            skinLuma: clientChecks.skinLuma, frameLuma: clientChecks.frameLuma, faceToOval: clientChecks.faceToOval,
+            yaw: clientChecks.yaw, pitch: clientChecks.pitch, videoW: clientChecks.videoW, videoH: clientChecks.videoH,
+          } : null,
+          timings,
+        },
+        ipAddress: req.ip,
+      }).catch(() => {});
       return res.status(status).json(body);
     };
 
@@ -3548,7 +3665,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
         return reject(400, {
           success: false,
           code: "LIVENESS_FAILED",
-          error: "Liveness check failed. Please take a live selfie in good light (no photos or screens).",
+          error: livenessFailureReason(livenessResult) || "Liveness check failed. Please take a live selfie in good light (no photos or screens).",
         });
       }
       if (livenessResult?.score !== undefined && livenessResult?.score !== null) {
@@ -3588,7 +3705,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
         return reject(400, {
           success: false,
           code: "SESSION_LIVENESS_FAILED",
-          error: "We couldn't confirm a live person during the quick actions. Please repeat them (no photos or screens).",
+          error: livenessFailureReason(frameLiveness) || "We couldn't confirm a live person during the quick actions. Please repeat them (no photos or screens).",
         });
       }
       if (frameLiveness?.score !== undefined && frameLiveness?.score !== null && Number.isFinite(Number(frameLiveness.score))) {
@@ -3596,8 +3713,9 @@ router.post("/selfie-capture", auth, async (req, res) => {
         challengeFrameLivenessScore = Math.round(num * (num <= 1 ? 100 : 1));
       }
 
-      sessionMatchScore = extractFaceMatchScore(sessionMatch);
-      if (sessionMatchScore === null || sessionMatchScore < SELFIE_MIN_SESSION_MATCH) {
+      const sessionFm = readFaceMatch(sessionMatch);
+      sessionMatchScore = sessionFm.score;
+      if (!faceMatchPasses(sessionFm, SELFIE_MIN_SESSION_MATCH)) {
         return reject(400, {
           success: false,
           code: "SESSION_MISMATCH",
@@ -3634,15 +3752,17 @@ router.post("/selfie-capture", auth, async (req, res) => {
     } else {
       const faceMatchResult = docMatchRes.value;
       console.log(`[InhouseSelfie] Face match response:`, JSON.stringify(faceMatchResult));
-      genuineFaceMatchScore = extractFaceMatchScore(faceMatchResult);
-      if (genuineFaceMatchScore === null) {
+      const docFm = readFaceMatch(faceMatchResult);
+      genuineFaceMatchScore = docFm.score;
+      if (genuineFaceMatchScore === null && docFm.matched === null) {
         return reject(400, {
           success: false,
           code: "FACE_MATCH_FAILED",
           error: "Couldn't match your face with your document photo. Face the light, look straight and retake.",
         });
       }
-      if (genuineFaceMatchScore < SELFIE_MIN_FACE_MATCH) {
+      // Digio's "not_matched" verdict always rejects, whatever the score field says
+      if (!faceMatchPasses(docFm, SELFIE_MIN_FACE_MATCH)) {
         return reject(400, {
           success: false,
           code: "FACE_MATCH_LOW",
@@ -3771,47 +3891,98 @@ router.post("/selfie-capture", auth, async (req, res) => {
       faceMatchScore: genuineFaceMatchScore,
       livenessScore: genuineLivenessScore,
       selfieDetails: nextSelfieDetails,
+      // Lets the browser upload the session video separately, after this reply (see /selfie-video)
+      ...(videoMatch
+        ? {}
+        : {
+            videoToken: jwt.sign(
+              { purpose: "selfie_video", uid: String(req.user.id), appId: appRef, capturedAt },
+              SELFIE_CHALLENGE_SECRET,
+              { expiresIn: SELFIE_VIDEO_TOKEN_TTL_SECONDS },
+            ),
+          }),
     });
     console.log(`[InhouseSelfie][timing] ${appRef} saved in ${Date.now() - requestStarted}ms`, JSON.stringify(timings));
 
-    // ── 7. Session video → Cloudinary, AFTER the reply (speed only). Still only for this
-    //       confirmed selfie: it is attached only if this capture is still the current selfie.
+    // ── 7. Session video sent inline (older browsers) → Cloudinary, AFTER the reply
     if (videoMatch) {
-      const videoBuffer = Buffer.from(video.slice(video.indexOf(",") + 1), "base64");
-      const videoStarted = Date.now();
-      (async () => {
-        let videoUrl = null;
-        try {
-          // Stored as MP4: browser-recorded WebM has no duration in its header, so players show a
-          // stuck / jumping progress bar on first play (and Safari can't play WebM at all)
-          const videoResult = await uploadBufferToCloudinary(videoBuffer, `kyc_selfie_video_${appRef}_${Date.now()}`, "mp4");
-          videoUrl = videoResult.secure_url;
-          const fresh = await prisma.kycApplication.findUnique({ where: { id: application.id }, select: { selfieDetails: true } });
-          const current = parseJsonField(fresh?.selfieDetails, {});
-          if (current.capturedAt !== capturedAt) {
-            // A newer selfie replaced this one meanwhile — this video no longer belongs to it
-            deleteCloudinaryVideo(videoUrl);
-            console.log(`[InhouseSelfie] ${appRef}: discarded video of a replaced selfie`);
-            return;
-          }
-          current.videoPath = videoUrl;
-          await prisma.kycApplication.update({
-            where: { id: application.id },
-            data: { selfieDetails: JSON.stringify(current) },
-          });
-          if (req.app && req.app.get("io")) req.app.get("io").to(appRef).emit("kyc_updated");
-          console.log(`[InhouseSelfie][timing] ${appRef} video attached in ${Date.now() - videoStarted}ms`);
-        } catch (videoError) {
-          console.error("[InhouseSelfie] Selfie video upload failed (selfie still saved):", videoError.message);
-          if (videoUrl) deleteCloudinaryVideo(videoUrl);
-        }
-      })();
+      attachSelfieVideo(req, application.id, appRef, capturedAt, Buffer.from(video.slice(video.indexOf(",") + 1), "base64"));
     }
   } catch (error) {
     console.error("[InhouseSelfie] Route error:", error.message);
     if (!res.headersSent) {
       return res.status(500).json({ success: false, error: "Server error while verifying the selfie." });
     }
+  }
+});
+
+/**
+ * Uploads the session video to Cloudinary and attaches it to the selfie captured at capturedAt.
+ * Still only for that confirmed selfie: if a newer selfie replaced it meanwhile, the video is
+ * discarded. Never throws (the selfie itself is already saved).
+ */
+async function attachSelfieVideo(req, dbId, appRef, capturedAt, videoBuffer) {
+  const videoStarted = Date.now();
+  let videoUrl = null;
+  try {
+    // Stored as MP4: browser-recorded WebM has no duration in its header, so players show a
+    // stuck / jumping progress bar on first play (and Safari can't play WebM at all)
+    const videoResult = await uploadBufferToCloudinary(videoBuffer, `kyc_selfie_video_${appRef}_${Date.now()}`, "mp4");
+    videoUrl = videoResult.secure_url;
+    const fresh = await prisma.kycApplication.findUnique({ where: { id: dbId }, select: { selfieDetails: true } });
+    const current = parseJsonField(fresh?.selfieDetails, {});
+    if (current.capturedAt !== capturedAt) {
+      deleteCloudinaryVideo(videoUrl);
+      console.log(`[InhouseSelfie] ${appRef}: discarded video of a replaced selfie`);
+      return false;
+    }
+    current.videoPath = videoUrl;
+    await prisma.kycApplication.update({
+      where: { id: dbId },
+      data: { selfieDetails: JSON.stringify(current) },
+    });
+    if (req.app && req.app.get("io")) req.app.get("io").to(appRef).emit("kyc_updated");
+    console.log(`[InhouseSelfie][timing] ${appRef} video attached in ${Date.now() - videoStarted}ms`);
+    return true;
+  } catch (videoError) {
+    console.error("[InhouseSelfie] Selfie video upload failed (selfie still saved):", videoError.message);
+    if (videoUrl) deleteCloudinaryVideo(videoUrl);
+    return false;
+  }
+}
+
+// Session video of a confirmed selfie, uploaded by the browser right after /selfie-capture
+// succeeded (kept out of the selfie request so verification does not wait for the upload).
+router.post("/selfie-video", auth, async (req, res) => {
+  try {
+    const { videoToken, video } = req.body || {};
+    let payload;
+    try {
+      payload = jwt.verify(String(videoToken || ""), SELFIE_CHALLENGE_SECRET);
+    } catch (e) {
+      return res.status(400).json({ success: false, error: "Video token invalid or expired." });
+    }
+    if (payload.purpose !== "selfie_video" || payload.uid !== String(req.user.id)) {
+      return res.status(400).json({ success: false, error: "Video token invalid." });
+    }
+    const videoMatch =
+      typeof video === "string" && video.length <= SELFIE_VIDEO_MAX_BASE64
+        ? /^data:(video\/(?:webm|mp4|quicktime))(?:;[^,]*)?;base64,/.exec(video)
+        : null;
+    if (!videoMatch) {
+      return res.status(400).json({ success: false, error: "Video is missing, invalid or too large." });
+    }
+    const application = await prisma.kycApplication.findFirst({
+      where: { applicationId: payload.appId },
+      select: { id: true },
+    });
+    if (!application) return res.status(404).json({ success: false, error: "Application not found" });
+
+    const attached = await attachSelfieVideo(req, application.id, payload.appId, payload.capturedAt, Buffer.from(video.slice(video.indexOf(",") + 1), "base64"));
+    return res.json({ success: true, attached });
+  } catch (error) {
+    console.error("[InhouseSelfie] Video route error:", error.message);
+    return res.status(500).json({ success: false, error: "Could not save the selfie video." });
   }
 });
 

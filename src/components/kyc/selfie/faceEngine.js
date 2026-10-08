@@ -39,8 +39,10 @@ async function createEngine() {
     // Up to 3 so we can detect (and block) extra people in the frame
     numFaces: 3,
     minFaceDetectionConfidence: 0.5,
-    minFacePresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    // Slightly stricter than the defaults so a person who left the frame is dropped quickly
+    // instead of lingering as a "ghost" second face
+    minFacePresenceConfidence: 0.6,
+    minTrackingConfidence: 0.6,
     outputFaceBlendshapes: true,
     outputFacialTransformationMatrixes: false,
   };

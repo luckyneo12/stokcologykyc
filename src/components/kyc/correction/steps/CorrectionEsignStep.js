@@ -11,6 +11,7 @@ export default function CorrectionEsignStep() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [phase, setPhase] = useState("preview"); // preview, digio, processing, success, error
+  const [aadhaarMismatch, setAadhaarMismatch] = useState(null); // message when eSign used another Aadhaar
   const [downloadingEsign, setDownloadingEsign] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -156,8 +157,15 @@ export default function CorrectionEsignStep() {
     setPhase("processing");
     try {
       const result = await fetchDigioRequestResponse(requestId, "ESIGN", applicationData?.applicationId);
+      // Signed with a different Aadhaar: nothing was saved — back to the eSign button with the reason
+      if (result?.code === "ESIGN_AADHAAR_MISMATCH") {
+        setAadhaarMismatch(result.error);
+        addToast("Aadhaar did not match — please eSign again with your own Aadhaar.", "error");
+        setPhase("error");
+        return;
+      }
       if (!result) throw new Error("Could not verify eSign response. Please try again.");
-      
+
       // Hit submit to finalize
       const submitRes = await fetch(`${API_URL}/api/kyc/correction/complete`, {
         method: "POST",
@@ -181,6 +189,7 @@ export default function CorrectionEsignStep() {
   };
 
   const startDigioEsign = async () => {
+    setAadhaarMismatch(null);
     setPhase("digio");
 
     try {
@@ -339,7 +348,14 @@ export default function CorrectionEsignStep() {
                 <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: 8 }}>Please do not close this window.</p>
               </div>
             ) : (
-              <button 
+              <>
+              {aadhaarMismatch && (
+                <div role="alert" style={{ width: "100%", maxWidth: "600px", padding: "14px 18px", borderRadius: 12, background: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.3)", textAlign: "center" }}>
+                  <p style={{ color: "#ef4444", fontWeight: 800, margin: 0 }}>Aadhaar did not match</p>
+                  <p style={{ color: "var(--text-secondary)", fontWeight: 600, fontSize: "0.9rem", margin: "6px 0 0", lineHeight: 1.5 }}>{aadhaarMismatch}</p>
+                </div>
+              )}
+              <button
                 onClick={startDigioEsign}
                 className="btn-primary"
                 style={{
@@ -349,8 +365,9 @@ export default function CorrectionEsignStep() {
                   boxShadow: "0 8px 24px rgba(159,232,112,0.25)"
                 }}
               >
-                Proceed to Aadhaar e-Sign
+                {aadhaarMismatch ? "e-Sign Again with Your Aadhaar" : "Proceed to Aadhaar e-Sign"}
               </button>
+              </>
             )}
           </>
         )}

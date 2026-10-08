@@ -376,8 +376,13 @@ export default function FinancialProofStep() {
             </p>
             
             <div style={{ marginBottom: "24px", textAlign: "left" }}>
-              <input 
-                type="password" 
+              <input
+                type="password"
+                // Never offer / autofill the site's saved login passwords here
+                autoComplete="new-password"
+                name="pdf_document_password"
+                data-lpignore="true"
+                data-1p-ignore="true"
                 value={pdfPassword}
                 onChange={(e) => {
                   setPdfPassword(e.target.value);

@@ -81,6 +81,20 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
 
+// Bank account number fields must never be autofilled by the browser / password managers
+const NO_AUTOFILL = {
+  autoComplete: "off",
+  autoCorrect: "off",
+  autoCapitalize: "characters",
+  spellCheck: false,
+  "data-lpignore": "true",
+  "data-1p-ignore": "true",
+  "data-form-type": "other",
+};
+/** Account numbers are letters / digits only (drops spaces, symbols, pasted e-mails' @ and dots). */
+const cleanAccountNumber = (value) => String(value || "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+
+
 export default function CorrectionBankStep({ stepId, rejectedStep }) {
     const {
     applicationData,
@@ -455,7 +469,9 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
               <input 
                 placeholder="Enter Account Number" 
                 value={form.accountNumber} 
-                onChange={e => update("accountNumber", e.target.value)} 
+                onChange={e => update("accountNumber", cleanAccountNumber(e.target.value))} 
+                {...NO_AUTOFILL}
+                name="bank_account_number"
                 className="input-field" 
                 style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }}
               />
@@ -467,11 +483,15 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
               </label>
               <div style={{ position: "relative" }}>
                 <input 
-                  type={showAccountNumber ? "text" : "password"}
+                  // Plain text masked by CSS — a type="password" box next to a text box makes the
+                  // browser treat this as a login form and autofill saved site logins into it
+                  type="text"
                   placeholder="Confirm Account Number" 
                   value={form.confirmAccountNumber} 
+                  {...NO_AUTOFILL}
+                  name="bank_account_number_confirm"
                   onChange={e => {
-                    update("confirmAccountNumber", e.target.value);
+                    update("confirmAccountNumber", cleanAccountNumber(e.target.value));
                     if (showAccountNumber) setShowAccountNumber(false);
                   }}
                   className="input-field" 
@@ -481,7 +501,8 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
                     border: `1.5px solid ${form.confirmAccountNumber && form.accountNumber !== form.confirmAccountNumber ? "var(--wise-danger)" : "var(--border-color)"}`, 
                     height: "56px", 
                     borderRadius: "16px", 
-                    paddingRight: "50px" 
+                    paddingRight: "50px",
+                    WebkitTextSecurity: showAccountNumber ? "none" : "disc"
                   }}
                 />
                 <button

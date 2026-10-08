@@ -387,6 +387,16 @@ const KNOWN_LABELS = [
   { patterns: ['nominee proof type', 'nominee id proof'], variable: 'nomineeDetails.nominees[0].proofType', name: 'Nominee Proof Type', type: 'text' },
   { patterns: ['nominee proof number', 'nominee id number'], variable: 'nomineeDetails.nominees[0].proofNumber', name: 'Nominee Proof Number', type: 'text' },
 
+  // Declarations
+  { patterns: ['mobile relation self', 'mobile self'], variable: 'isMobileRelationSelf', name: 'Mobile Relation Self', type: 'boolean' },
+  { patterns: ['mobile relation spouse', 'mobile spouse'], variable: 'isMobileRelationSpouse', name: 'Mobile Relation Spouse', type: 'boolean' },
+  { patterns: ['mobile relation child', 'mobile child', 'mobile dependent children'], variable: 'isMobileRelationChildren', name: 'Mobile Relation Children', type: 'boolean' },
+  { patterns: ['mobile relation parent', 'mobile parent', 'mobile dependent parents'], variable: 'isMobileRelationParents', name: 'Mobile Relation Parents', type: 'boolean' },
+  { patterns: ['email relation self', 'email self'], variable: 'isEmailRelationSelf', name: 'Email Relation Self', type: 'boolean' },
+  { patterns: ['email relation spouse', 'email spouse'], variable: 'isEmailRelationSpouse', name: 'Email Relation Spouse', type: 'boolean' },
+  { patterns: ['email relation child', 'email child', 'email dependent children'], variable: 'isEmailRelationChildren', name: 'Email Relation Children', type: 'boolean' },
+  { patterns: ['email relation parent', 'email parent', 'email dependent parents'], variable: 'isEmailRelationParents', name: 'Email Relation Parents', type: 'boolean' },
+
   // Documents, Biometrics, Audit Trail
   { patterns: ['latitude', 'geo latitude'], variable: 'geo.latitude', name: 'Latitude', type: 'text' },
   { patterns: ['longitude', 'geo longitude'], variable: 'geo.longitude', name: 'Longitude', type: 'text' },

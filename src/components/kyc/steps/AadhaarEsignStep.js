@@ -30,13 +30,22 @@ export default function AadhaarEsignStep() {
   } = useKYC();
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState("intro"); // intro, processing, done, failed
+  const [aadhaarMismatch, setAadhaarMismatch] = useState(null); // message when eSign used another Aadhaar
 
-  
+
   const handleDigioSuccess = async (requestId) => {
     setLoading(true);
     setPhase("verifying");
     try {
       const result = await fetchDigioRequestResponse(requestId, "ESIGN");
+      // Signed with a different Aadhaar: nothing was saved — back to the sign step with the reason
+      if (result?.code === "ESIGN_AADHAAR_MISMATCH") {
+        setAadhaarMismatch(result.error);
+        setPhase("failed");
+        setLoading(false);
+        addToast("Aadhaar did not match — please eSign again with your own Aadhaar.", "error");
+        return;
+      }
       if (!result) {
         throw new Error("Could not verify eSign response. Please try again.");
       }
@@ -104,6 +113,7 @@ export default function AadhaarEsignStep() {
   }, []);
 
   const startESign = async () => {
+    setAadhaarMismatch(null);
     let rawIdentifier = personalDetails?.phone || personalDetails?.email || "user@example.com";
     const identifier = rawIdentifier.replace(/\D/g, '').length >= 10 
       ? rawIdentifier.replace(/\D/g, '').slice(-10) 
@@ -169,11 +179,13 @@ export default function AadhaarEsignStep() {
         <div className="card animate-slide-up" style={{ padding: "48px", textAlign: "center", borderRadius: "32px", border: phase === "failed" ? "2px solid var(--wise-danger)" : "1.5px solid var(--border-color)", background: "var(--bg-card)" }}>
 
           <h2 className="text-section" style={{ marginBottom: 16, fontSize: "1.8rem" }}>
-            {phase === "failed" ? "Sign Attempt Interrupted" : "Sign Application Form"}
+            {aadhaarMismatch ? "Aadhaar Did Not Match" : phase === "failed" ? "Sign Attempt Interrupted" : "Sign Application Form"}
           </h2>
-          <p className="text-body" style={{ marginBottom: 40, fontWeight: 600, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-            {phase === "failed" 
-              ? "It seems the signing process was cancelled or failed. Please try again to complete your application." 
+          <p className="text-body" role={aadhaarMismatch ? "alert" : undefined} style={{ marginBottom: 40, fontWeight: 600, color: aadhaarMismatch ? "var(--wise-danger)" : "var(--text-secondary)", lineHeight: 1.6 }}>
+            {aadhaarMismatch
+              ? aadhaarMismatch
+              : phase === "failed"
+              ? "It seems the signing process was cancelled or failed. Please try again to complete your application."
               : "We've prepared your final KYC application. Digitally sign it using your Aadhaar OTP to complete your onboarding securely."}
           </p>
           
@@ -184,7 +196,7 @@ export default function AadhaarEsignStep() {
               style={{ height: "64px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800, width: "100%" }} 
               disabled={loading}
             >
-              {loading ? "Preparing Portal..." : (phase === "failed" ? "Try Signing Again ➔" : "Sign with Aadhaar OTP ➔")}
+              {loading ? "Preparing Portal..." : aadhaarMismatch ? "eSign Again with Your Aadhaar ➔" : (phase === "failed" ? "Try Signing Again ➔" : "Sign with Aadhaar OTP ➔")}
             </button>
             
             <p style={{ marginTop: 20, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>

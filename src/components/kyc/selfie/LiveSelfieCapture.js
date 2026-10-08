@@ -15,6 +15,7 @@ import {
   isFacingStraight,
   updateChallengeStep,
   getOvalGeometry,
+  THRESHOLDS,
 } from "./faceChecks";
 
 /**
@@ -36,8 +37,9 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const VIRTUAL_CAMERA_PATTERN = /obs|virtual|manycam|xsplit|snap camera|camtwist|vcam|droidcam|epoccam|ndi|splitcam|youcam/i;
+// The eyewear / cap thresholds in faceChecks.js are calibrated at this width — keep them in sync
 const ANALYSIS_WIDTH = 240;
-const STABLE_MS = 900; // blocking checks must pass continuously this long before the liveness actions start
+const STABLE_MS = 600; // blocking checks must pass continuously this long before the liveness actions start
 const STEP_TIMEOUT_MS = 12000;
 const LOST_ABORT_MS = 1500;
 const RESTART_COOLDOWN_MS = 2500; // pause before auto-restarting the liveness actions after a failure
@@ -56,19 +58,35 @@ const TIP_ISSUES = ["tooDark", "backlit", "tooFar", "tooClose", "notCentered", "
 // While turning/blinking only presence is enforced (a turned face skews appearance checks);
 // the "ready" stage re-enforces every blocking check before the button enables.
 const CRITICAL_DURING_CHALLENGE = ["noFace", "multipleFaces"];
-// Re-checked on the exact photo after the button is pressed
+// Re-checked on the exact photo after the button is pressed. The photo is taken from the first
+// live frame that passes these (within CAPTURE_WAIT_MS), so a blink or a passing glance just
+// delays the shot by a few frames instead of failing it.
 const FINAL_PHOTO_CHECKS = ["noFace", "multipleFaces", "turned", "eyesClosed"];
+const CAPTURE_WAIT_MS = 2000;
+// Glasses / goggles / cap at the moment of the click. The on-screen warning waits ~1–1.5 s before
+// it appears (so noise never flashes it), which would let glasses put on just before clicking slip
+// through. So the photo also needs: this exact frame clean, and the item seen in under
+// RECENT_APPEARANCE_MAX of the frames of the last RECENT_APPEARANCE_MS.
+const APPEARANCE_PHOTO_CHECKS = ["sunglasses", "glasses", "headwear"];
+const RECENT_APPEARANCE_MS = 1200;
+const RECENT_APPEARANCE_MAX = 0.3;
+// Messages under the camera disappear on their own; server verdicts stay a little longer
+const BANNER_MS = 6000;
+const SERVER_BANNER_MS = 12000;
+// The liveness challenge is fetched in the background while the user settles in the oval, so
+// the actions start instantly. A prefetched challenge older than this is fetched again.
+const CHALLENGE_PREFETCH_MAX_AGE_MS = 60000;
 // Server rejections where the user only needs to click the selfie again (liveness stays valid)
 const RETAKE_CODES = ["FACE_MATCH_FAILED", "FACE_MATCH_LOW", "FACE_MATCH_UNAVAILABLE", "LIVENESS_FAILED", "LIVENESS_UNAVAILABLE", "NO_FACE", "MULTIPLE_FACES"];
 
 // ── Anti-swap (someone doing the actions live, then holding up a photo) ──
 const CLICK_WINDOW_MS = 30000; // the selfie must be clicked within this time after the actions
-const BLINK_RECENT_MS = 6000; // …and a natural blink must have happened this recently
+const BLINK_RECENT_MS = 10000; // …and a natural blink must have happened this recently
 const CONTINUITY_LOST_MS = 700; // face may vanish only this long between the actions and the click
 const CONTINUITY_MAX_JUMP = 0.35; // max face-centre move per analysis, as a fraction of face width
 const CONTINUITY_MAX_SCALE = 1.35; // max face-size change per analysis
 // The loop keeps watching the face during review / upload so a swap before a retake is caught
-const RUN_STAGES = [...LOOP_STAGES, "review", "submitting"];
+const RUN_STAGES = [...LOOP_STAGES, "verifying", "review", "submitting"];
 const KEYFRAME_SIDE = 480; // frame grabbed at the end of the actions (compared with the photo on the server)
 const MAX_VIDEO_BYTES = 15 * 1024 * 1024;
 
@@ -156,7 +174,9 @@ export default function LiveSelfieCapture({
   const location = useLocationGate();
   const platform = getPlatform();
 
-  const [stage, setStage] = useState("location"); // location | starting | live | challengeLoading | challenge | ready | verifying | review | submitting | done | error
+  // The camera starts right away, in parallel with the location request (location is still required
+  // before the liveness actions and the click — until then it is shown over the camera).
+  const [stage, setStage] = useState("starting"); // location | starting | live | challengeLoading | challenge | ready | verifying | review | submitting | done | error
   const [fatal, setFatal] = useState(null); // { kind, title, message, help }
   const [engineState, setEngineState] = useState("loading"); // loading | ready | failed
   const [view, setView] = useState({ issues: ["noFace"], ready: false });
@@ -167,10 +187,11 @@ export default function LiveSelfieCapture({
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const cameraGenRef = useRef(0); // bumped by every stop/start; stale camera requests are discarded
   const engineRef = useRef(null);
   const analysisCanvasRef = useRef(null);
   const rafRef = useRef(null);
-  const stageRef = useRef("location");
+  const stageRef = useRef("starting");
   const mountedRef = useRef(true);
   const smootherRef = useRef(createFlagSmoother());
   const prevNoseRef = useRef(null);
@@ -191,6 +212,10 @@ export default function LiveSelfieCapture({
   const finishRef = useRef(null);
   const lastMetricsRef = useRef({});
   const runAnalysisRef = useRef(null);
+  const captureReqRef = useRef(null); // { startedAt, lastIssue } while waiting for a clean frame
+  const appearanceHistoryRef = useRef([]); // [{ t, sunglasses, glasses, headwear }] of judged frames
+  const frameCanvasRef = useRef(null);
+  const prefetchRef = useRef(null); // { promise, at } — challenge fetched ahead of time
   const locationRef = useRef(location);
   locationRef.current = location;
 
@@ -201,6 +226,8 @@ export default function LiveSelfieCapture({
 
   // ─── Camera ───────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
+    // Any camera request still in flight is now outdated — its stream is stopped on arrival
+    cameraGenRef.current += 1;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => {
         t.onended = null;
@@ -230,6 +257,7 @@ export default function LiveSelfieCapture({
 
   const startCamera = useCallback(async () => {
     stopCamera();
+    const gen = cameraGenRef.current;
     setFatal(null);
     goto("starting");
     try {
@@ -243,7 +271,9 @@ export default function LiveSelfieCapture({
         if (err?.name !== "OverconstrainedError") throw err;
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
-      if (!mountedRef.current) {
+      // Closed meanwhile, or a newer start replaced this one (e.g. React dev double-mount, double
+      // Retry): stop this stream, otherwise it stays open and the camera light never goes off
+      if (!mountedRef.current || gen !== cameraGenRef.current) {
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
@@ -277,7 +307,7 @@ export default function LiveSelfieCapture({
         video.addEventListener("loadeddata", done);
         setTimeout(done, 8000);
       });
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || gen !== cameraGenRef.current) return;
       if (!video.videoWidth) throw Object.assign(new Error("no frames"), { name: "AbortError" });
 
       setVideoDims({ w: video.videoWidth, h: video.videoHeight });
@@ -286,7 +316,7 @@ export default function LiveSelfieCapture({
       prevNoseRef.current = null;
       goto("live");
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || gen !== cameraGenRef.current) return;
       console.warn("[LiveSelfie] Camera error:", err?.name, err?.message);
       failCamera(err);
     }
@@ -315,7 +345,7 @@ export default function LiveSelfieCapture({
           if (!mountedRef.current) return;
           if (p.state === "denied" && !["done", "submitting"].includes(stageRef.current)) {
             failCamera({ name: "NotAllowedError" });
-          } else if (p.state === "granted" && stageRef.current === "error" && locationRef.current.granted) {
+          } else if (p.state === "granted" && stageRef.current === "error") {
             startCamera();
           }
         };
@@ -354,7 +384,9 @@ export default function LiveSelfieCapture({
       );
       goto("error");
     } else {
-      loadEngine(); // downloads in the background while the user handles the location prompt
+      // Face detection, camera and location all start at once (each takes a few seconds)
+      loadEngine();
+      startCamera();
     }
 
     let prevOverflow;
@@ -376,15 +408,11 @@ export default function LiveSelfieCapture({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Location granted → start camera (also covers "already granted" after a refresh)
-  useEffect(() => {
-    if (stage === "location" && location.granted) startCamera();
-  }, [stage, location.granted, startCamera]);
-
   // Location revoked mid-capture → abort anything in progress; button stays disabled
   useEffect(() => {
     if (location.granted) return;
-    if (["challengeLoading", "challenge", "ready", "review"].includes(stageRef.current)) {
+    if (["challengeLoading", "challenge", "ready", "verifying", "review"].includes(stageRef.current)) {
+      captureReqRef.current = null;
       challengeRef.current = null;
       setChallengeView(null);
       setCaptured(null);
@@ -392,6 +420,13 @@ export default function LiveSelfieCapture({
       goto("live");
     }
   }, [location.granted, goto]);
+
+  // Messages clear themselves, so a fixed problem never keeps showing an old warning
+  useEffect(() => {
+    if (!banner) return;
+    const t = setTimeout(() => setBanner((cur) => (cur === banner ? null : cur)), banner.ttl || BANNER_MS);
+    return () => clearTimeout(t);
+  }, [banner]);
 
   // After a successful save, show the confirmation briefly, then continue automatically
   useEffect(() => {
@@ -468,6 +503,8 @@ export default function LiveSelfieCapture({
   const snapshotVideo = async () => {
     const rec = recorderRef.current;
     if (!rec) return null;
+    // Keep this session's chunk list even if recording is stopped / reset meanwhile
+    const chunks = videoChunksRef.current;
     if (rec.state === "recording") {
       await new Promise((resolve) => {
         const timer = setTimeout(resolve, 800);
@@ -475,8 +512,8 @@ export default function LiveSelfieCapture({
         try { rec.requestData(); } catch (e) { clearTimeout(timer); resolve(); }
       });
     }
-    if (!videoChunksRef.current.length) return null;
-    const blob = new Blob(videoChunksRef.current, { type: videoMimeRef.current.split(";")[0] });
+    if (!chunks.length) return null;
+    const blob = new Blob(chunks, { type: videoMimeRef.current.split(";")[0] });
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
@@ -501,64 +538,59 @@ export default function LiveSelfieCapture({
     return canvas.toDataURL("image/jpeg", 0.85);
   };
 
-  const abortToLive = useCallback((message) => {
+  const abortToLive = useCallback((message, ttl = BANNER_MS) => {
     stopRecording();
+    captureReqRef.current = null;
     challengeRef.current = null;
     stableSinceRef.current = null;
     cooldownUntilRef.current = performance.now() + RESTART_COOLDOWN_MS;
     setChallengeView(null);
-    if (message) setBanner({ type: "error", text: message });
+    if (message) setBanner({ type: "error", text: message, ttl });
     goto("live");
   }, [goto, stopRecording]);
 
-  const captureFrame = () => {
-    const video = videoRef.current;
+  /**
+   * Full-size copy of the current camera frame. While capturing, the face engine analyses this
+   * copy (same size as the video, so its face tracking stays consistent) and the photo is cut
+   * from the very same pixels — the checked frame and the saved photo are identical.
+   */
+  const grabFullFrame = (video) => {
+    let canvas = frameCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      frameCanvasRef.current = canvas;
+    }
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  };
+
+  /** Saves the checked frame as the selfie: the 3:4 preview window, mirrored like the preview. */
+  const finalizeCapture = (frame, analysis) => {
     const engine = engineRef.current;
-    if (!video || !engine) return;
-    goto("verifying");
-
-    // Save exactly what the user sees: the 3:4 preview window, centre-cropped from the frame
-    const { crop } = getOvalGeometry(video.videoWidth, video.videoHeight);
+    const { crop } = getOvalGeometry(frame.width, frame.height);
     const scale = Math.min(1, MAX_CAPTURE_SIDE / Math.max(crop.sw, crop.sh));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(crop.sw * scale);
-    canvas.height = Math.round(crop.sh * scale);
-    canvas.getContext("2d").drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
-
-    // Re-check the exact photo that will be uploaded
-    let analysis;
-    try {
-      const result = engine.landmarker.detectForVideo(canvas, nextTimestamp());
-      analysis = analyzeFrame(result, grabPixels(canvas, canvas.width, canvas.height), canvas.width, canvas.height, null);
-    } catch (e) {
-      analysis = null;
-    }
-    const failed = analysis ? FINAL_PHOTO_CHECKS.find((k) => analysis.flags[k]) : "noFace";
-    if (failed) {
-      // Liveness stays valid — let the user simply click again
-      setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[failed]}. Please click again.` });
-      viewKeyRef.current = "";
-      goto("ready");
-      return;
-    }
+    const out = document.createElement("canvas");
+    out.width = Math.round(crop.sw * scale);
+    out.height = Math.round(crop.sh * scale);
+    const octx = out.getContext("2d");
+    // The live preview is mirrored (like a mirror); save the photo the same way so it looks
+    // exactly as the user saw it. Checks ran on the un-mirrored frame.
+    octx.translate(out.width, 0);
+    octx.scale(-1, 1);
+    octx.drawImage(frame, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, out.width, out.height);
 
     lastMetricsRef.current = {
       ...analysis.metrics,
-      delegate: engine.delegate,
+      delegate: engine?.delegate,
       analysisMs: Math.round(emaRef.current),
-      videoW: video.videoWidth,
-      videoH: video.videoHeight,
+      videoW: frame.width,
+      videoH: frame.height,
     };
-    // The live preview is mirrored (like a mirror); save the photo the same way so it looks
-    // exactly as the user saw it. Checks above ran on the un-mirrored frame.
-    const out = document.createElement("canvas");
-    out.width = canvas.width;
-    out.height = canvas.height;
-    const octx = out.getContext("2d");
-    octx.translate(out.width, 0);
-    octx.scale(-1, 1);
-    octx.drawImage(canvas, 0, 0);
-
+    captureReqRef.current = null;
     setBanner(null);
     setCaptured(out.toDataURL("image/jpeg", 0.9));
     goto("review");
@@ -570,26 +602,35 @@ export default function LiveSelfieCapture({
     if (!video || !engine || video.readyState < 2 || !video.videoWidth) return;
 
     const t0 = performance.now();
+    const st = stageRef.current;
+    // While capturing, analyse a still copy of the frame so the photo is exactly the checked frame
+    const source = st === "verifying" ? grabFullFrame(video) : video;
     let result;
     try {
-      result = engine.landmarker.detectForVideo(video, nextTimestamp());
+      result = engine.landmarker.detectForVideo(source, nextTimestamp());
     } catch (e) {
       return; // transient frame error
     }
-    const analysis = analyzeFrame(result, grabPixels(video, video.videoWidth, video.videoHeight), video.videoWidth, video.videoHeight, prevNoseRef.current);
+    const analysis = analyzeFrame(result, grabPixels(source, video.videoWidth, video.videoHeight), video.videoWidth, video.videoHeight, prevNoseRef.current);
     prevNoseRef.current = analysis.nose;
-    const st = stageRef.current;
 
     // Natural blink tracking (eyes closed → open again)
     if (analysis.faceCount === 1) {
       const b = blinkRef.current;
       const l = analysis.blend.eyeBlinkLeft ?? 0;
       const r = analysis.blend.eyeBlinkRight ?? 0;
-      if (l > 0.5 && r > 0.5) b.closed = true;
-      else if (b.closed && l < 0.3 && r < 0.3) {
+      if (l > THRESHOLDS.blinkClosed && r > THRESHOLDS.blinkClosed) b.closed = true;
+      else if (b.closed && l < THRESHOLDS.blinkOpen && r < THRESHOLDS.blinkOpen) {
         b.closed = false;
         b.lastBlinkAt = now;
       }
+    }
+
+    // Raw eyewear / cap verdicts of recent judged frames (used at the click, see recentAppearanceIssue)
+    if (analysis.faceCount === 1 && analysis.appearanceChecked) {
+      const hist = appearanceHistoryRef.current;
+      hist.push({ t: now, sunglasses: !!analysis.flags.sunglasses, glasses: !!analysis.flags.glasses, headwear: !!analysis.flags.headwear });
+      while (hist.length && hist[0].t < now - RECENT_APPEARANCE_MS) hist.shift();
     }
 
     // While reviewing / uploading only keep watching the face: a swap marks the actions as broken
@@ -599,7 +640,38 @@ export default function LiveSelfieCapture({
       return;
     }
 
-    const flags = smootherRef.current.push(analysis.flags);
+    // "Click Selfie" pressed: take the first frame that passes the photo checks
+    if (st === "verifying") {
+      const c = challengeRef.current;
+      const req = captureReqRef.current;
+      if (!c || !req) return;
+      if (!trackContinuity(c, analysis, now)) {
+        captureReqRef.current = null;
+        abortToLive("We lost track of your face. Keep your face in the oval and repeat the quick actions.");
+        return;
+      }
+      const failed =
+        FINAL_PHOTO_CHECKS.find((k) => analysis.flags[k]) ||
+        // The photo's own frame must be judged (frontal, lit) and free of eyewear / cap…
+        (!analysis.appearanceChecked ? "notStraight" : APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k])) ||
+        // …and so must the last moments before it (catches glasses put on just before the click)
+        recentAppearanceIssue(now);
+      if (!failed) {
+        finalizeCapture(source, analysis);
+        return;
+      }
+      req.lastIssue = failed;
+      if (now - req.startedAt > CAPTURE_WAIT_MS) {
+        // Liveness stays valid — let the user simply click again
+        captureReqRef.current = null;
+        setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[failed]}. Please click again.` });
+        viewKeyRef.current = "";
+        goto("ready");
+      }
+      return;
+    }
+
+    const flags = smootherRef.current.push(analysis.flags, now, analysis.appearanceChecked !== false);
     const allIssues = orderedIssues(flags);
     const blockingSet = st === "ready" ? READY_BLOCKING_ISSUES : BLOCKING_ISSUES;
     const issues = allIssues.filter((k) => blockingSet.includes(k));
@@ -611,11 +683,14 @@ export default function LiveSelfieCapture({
     intervalRef.current = Math.min(320, Math.max(90, emaRef.current * 3));
 
     if (st === "live") {
-      if (issues.length === 0) {
+      // Exactly one face in THIS frame too (the smoothed flags lag a few hundred ms)
+      if (issues.length === 0 && analysis.faceCount === 1) {
         if (stableSinceRef.current === null) stableSinceRef.current = now;
       } else {
         stableSinceRef.current = null;
       }
+      // Fetch the liveness challenge in the background so the actions start without a wait
+      if (analysis.faceCount >= 1 && locationRef.current.granted) prefetchChallenge();
       publishView(issues, false, tips);
       // Blocking checks steady → start the quick liveness actions automatically
       const steady = stableSinceRef.current !== null && now - stableSinceRef.current >= STABLE_MS;
@@ -699,6 +774,13 @@ export default function LiveSelfieCapture({
     }
   };
 
+  /** Eyewear / cap seen in too many of the last RECENT_APPEARANCE_MS of judged frames, or null. */
+  function recentAppearanceIssue(now) {
+    const recent = appearanceHistoryRef.current.filter((h) => h.t >= now - RECENT_APPEARANCE_MS);
+    if (!recent.length) return null;
+    return APPEARANCE_PHOTO_CHECKS.find((k) => recent.filter((h) => h[k]).length / recent.length >= RECENT_APPEARANCE_MAX) || null;
+  }
+
   /** Actions completed: grab the action frame, start the click window, enable the button stage. */
   function finishChallenge(c, now) {
     c.keyframe = grabKeyframe();
@@ -740,18 +822,40 @@ export default function LiveSelfieCapture({
 
   const canClickSelfie = stage === "ready" && engineState === "ready" && location.granted && view.ready;
 
+  const fetchChallenge = async () => {
+    const appId = resolveAppId(applicationId) || "";
+    const res = await fetch(`${API_BASE_URL}/api/digio/selfie-challenge?applicationId=${encodeURIComponent(appId)}`, {
+      headers: authHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error(SESSION_EXPIRED_MSG);
+    if (!res.ok || !data.success || !Array.isArray(data.steps)) throw new Error(data.error || "Could not start the liveness check. Please try again.");
+    return data;
+  };
+
+  /** Starts fetching a challenge in the background unless a fresh one is already on its way. */
+  function prefetchChallenge() {
+    const p = prefetchRef.current;
+    if (p && performance.now() - p.at < CHALLENGE_PREFETCH_MAX_AGE_MS) return;
+    const entry = { at: performance.now(), promise: fetchChallenge() };
+    entry.promise.catch(() => {
+      if (prefetchRef.current === entry) prefetchRef.current = null;
+    });
+    prefetchRef.current = entry;
+  }
+
   const startChallenge = async () => {
     if (stageRef.current !== "live") return;
     setBanner(null);
     goto("challengeLoading");
     try {
-      const appId = resolveAppId(applicationId) || "";
-      const res = await fetch(`${API_BASE_URL}/api/digio/selfie-challenge?applicationId=${encodeURIComponent(appId)}`, {
-        headers: authHeaders(),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 401) throw new Error(SESSION_EXPIRED_MSG);
-      if (!res.ok || !data.success || !Array.isArray(data.steps)) throw new Error(data.error || "Could not start the liveness check. Please try again.");
+      // Use the prefetched challenge when it is fresh (each challenge is used only once)
+      let entry = prefetchRef.current;
+      prefetchRef.current = null;
+      if (!entry || performance.now() - entry.at >= CHALLENGE_PREFETCH_MAX_AGE_MS) {
+        entry = { at: performance.now(), promise: fetchChallenge() };
+      }
+      const data = await entry.promise;
       if (!mountedRef.current || stageRef.current !== "challengeLoading") return;
 
       challengeRef.current = {
@@ -759,7 +863,8 @@ export default function LiveSelfieCapture({
         steps: data.steps,
         index: 0,
         stepState: {},
-        issuedAt: performance.now(),
+        // Counted from when the server issued it, so the token never expires mid-capture
+        issuedAt: entry.at,
         stepStartedAt: performance.now(),
         completed: [],
         completedAt: [],
@@ -777,8 +882,26 @@ export default function LiveSelfieCapture({
   };
 
   const clickSelfie = () => {
-    if (!canClickSelfie) return;
-    captureFrame();
+    if (!canClickSelfie || !engineRef.current) return;
+    captureReqRef.current = { startedAt: performance.now(), lastIssue: null };
+    setBanner(null);
+    goto("verifying");
+  };
+
+  /** Sends the session video of a saved selfie in the background (never blocks the user). */
+  const uploadSessionVideo = (videoToken, videoPromise) => {
+    if (!videoToken) return;
+    const headers = authHeaders();
+    videoPromise
+      .then((video) => {
+        if (!video) return null;
+        return fetch(`${API_BASE_URL}/api/digio/selfie-video`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ videoToken, video }),
+        });
+      })
+      .catch((e) => console.warn("[LiveSelfie] Session video upload failed:", e?.message));
   };
 
   /** The completed actions can be reused only if the same face stayed in view and time is left. */
@@ -820,8 +943,9 @@ export default function LiveSelfieCapture({
       return;
     }
 
-    const sessionVideo = await snapshotVideo().catch(() => null);
-    if (!mountedRef.current) return;
+    // The session video is NOT sent with the selfie (a large upload would delay verification);
+    // it is snapshotted now and uploaded in the background once the selfie is saved.
+    const videoSnapshot = snapshotVideo().catch(() => null);
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/digio/selfie-capture`, {
@@ -834,7 +958,6 @@ export default function LiveSelfieCapture({
           challengeToken: c.token,
           challenge: { completed: c.completed, completedAt: c.completedAt },
           challengeFrame: c.keyframe,
-          video: sessionVideo,
           clientChecks: lastMetricsRef.current,
         }),
       });
@@ -846,6 +969,7 @@ export default function LiveSelfieCapture({
       if (!mountedRef.current) return;
 
       savedResultRef.current = data;
+      uploadSessionVideo(data.videoToken, videoSnapshot);
       cancelAnimationFrame(rafRef.current);
       stopRecording();
       stopCamera();
@@ -857,12 +981,12 @@ export default function LiveSelfieCapture({
       // Photo-quality failures: keep the completed liveness actions and let the user click again
       const live = challengeRef.current;
       if (RETAKE_CODES.includes(err?.code) && actionsStillValid(live)) {
-        setBanner({ type: "error", text: msg });
+        setBanner({ type: "error", text: msg, ttl: SERVER_BANNER_MS });
         viewKeyRef.current = "";
         goto("ready");
         return;
       }
-      abortToLive(msg);
+      abortToLive(msg, SERVER_BANNER_MS);
     }
   };
 
@@ -883,18 +1007,16 @@ export default function LiveSelfieCapture({
 
   const retryFatal = () => {
     if (fatal?.kind === "unsupported") return;
-    if (!location.granted) {
-      setFatal(null);
-      goto("location");
-      return;
-    }
     startCamera();
   };
 
   // ─── Render helpers ───────────────────────────────────────────────────
   const issues = view.issues;
   const primaryIssue = issues[0];
-  const locationBlocked = !location.granted && stage !== "location";
+  // Still fetching the first location fix: the camera stays visible (with a short note); only a
+  // real problem (blocked / off / failed / needs a tap) covers it with the location panel.
+  const locationPending = !location.granted && ["checking", "requesting"].includes(location.status);
+  const locationBlocked = !location.granted && !locationPending && stage !== "location";
   const cameraStages = ["starting", "live", "challengeLoading", "challenge", "ready", "verifying"];
   const firstTip = view.tips?.[0];
   const showCamera = cameraStages.includes(stage);
@@ -907,6 +1029,7 @@ export default function LiveSelfieCapture({
     statusText = "Face detection unavailable";
     statusTone = "warn";
   }
+  else if (locationPending && (stage === "live" || stage === "ready")) statusText = "Getting your location…";
   else if (stage === "challengeLoading") statusText = "Get ready for a quick check…";
   else if (stage === "challenge" && challengeView) {
     if (primaryIssue) {
@@ -945,7 +1068,8 @@ export default function LiveSelfieCapture({
   const cameraBoxStyle = { width: `min(100%, ${variant === "page" ? 320 : 280}px)`, aspectRatio: "3 / 4" };
 
   let buttonLabel = "📸 Click Selfie";
-  if (!location.granted) buttonLabel = "Location required";
+  if (locationPending) buttonLabel = "Getting your location…";
+  else if (!location.granted) buttonLabel = "Location required";
   else if (engineState === "loading" || stage === "starting") buttonLabel = "Getting ready…";
   else if (engineState === "failed") buttonLabel = "Face detection unavailable";
   else if (stage === "live" || stage === "challengeLoading" || stage === "challenge") buttonLabel = "Complete the quick check first";
@@ -1097,8 +1221,8 @@ export default function LiveSelfieCapture({
         {/* ── Checklist ── */}
         {showCamera && (
           <ul className="lsc-checklist">
-            <li className={`lsc-check ${location.granted ? "ok" : "bad"}`}>
-              <span className="lsc-check-icon">{location.granted ? "✓" : "✕"}</span>Location on
+            <li className={`lsc-check ${location.granted ? "ok" : locationPending ? "" : "bad"}`}>
+              <span className="lsc-check-icon">{location.granted ? "✓" : locationPending ? "…" : "✕"}</span>Location on
             </li>
             {CHECKLIST.map((item) => {
               const st = checklistState(item);

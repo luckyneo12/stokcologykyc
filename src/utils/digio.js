@@ -131,6 +131,11 @@ export const fetchDigioRequestResponse = async (requestId, type, explicitApplica
     });
 
     const result = await response.json();
+    // eSign done with a different Aadhaar than the KYC's: returned (not swallowed) so the eSign
+    // step can show the reason and let the user sign again. Only ESIGN requests get this code.
+    if (result?.code === "ESIGN_AADHAAR_MISMATCH") {
+      return { success: false, code: result.code, error: result.error };
+    }
     if (!response.ok || !result.success) {
       throw new Error(result.error || "Failed to fetch Digio response");
     }

@@ -17,7 +17,15 @@ export const THRESHOLDS = {
   backlightDelta: 80, // frame much brighter than the face skin
   backlightFaceMax: 90,
   unevenCheekRatio: 0.5, // darker cheek / brighter cheek
-  minLumaForAppearance: 25, // below this (near pitch black) goggles / cap checks are skipped
+  minLumaForAppearance: 45, // below this (very dim) goggles / cap checks are skipped — ratios are noise
+
+  // Goggles / glasses / cap are judged only on a roughly frontal face: on a turned or tilted head
+  // the pixel boxes land on hair, ear or background and produce false "detected" alerts
+  appearanceYawMin: 0.36,
+  appearanceYawMax: 0.64,
+  appearancePitchMin: 0.33,
+  appearancePitchMax: 0.7,
+  appearanceMaxRoll: 16,
 
   // Position relative to the on-screen oval
   minFaceToOval: 0.55, // face height / oval height
@@ -40,33 +48,44 @@ export const THRESHOLDS = {
   // Face counting: overlapping boxes are the same face; tiny boxes are spurious
   duplicateIoU: 0.3,
   duplicateCover: 0.5, // fraction of the smaller box covered by a kept face
-  minExtraFaceWidth: 0.2, // second face must be at least 20% of the main face width
+  minExtraFaceWidth: 0.25, // second face must be at least 25% of the main face width
 
   // Eyewear
-  // Goggles / sunglasses. Dark eyes, deep-set eyes or dark circles alone must NOT trigger this:
-  // a real lens also covers the skin just BELOW the eye, so that strip must be dark and non-skin too.
-  sunglassDarkRatio: 0.6, // eye area vs same-side cheek
+  // Goggles / sunglasses. Dark eyes, deep-set eyes, shadows or dark circles alone must NOT trigger
+  // this: a real lens is dark AND flat (no eye-white / iris contrast) AND also covers the skin just
+  // BELOW the eye, so every one of these must hold on both eyes.
+  sunglassDarkRatio: 0.5, // eye area vs same-side cheek
   sunglassScleraFrac: 0.03, // visible eye white → not a lens
-  sunglassUnderRatio: 0.5, // strip below the eye vs cheek (dark circles are ~0.65–0.85)
-  sunglassUnderSkin: 0.5, // fraction of that strip that still looks like skin
-  // Clear glasses = continuous frame lines. Calibrated on real photos (relative to cheek texture):
-  //   with glasses  → bridge 4.6, under-eye 4.2, arm 5.5
-  //   without       → bridge 1.4, under-eye 1.9, arm 2.2
-  // Glasses are flagged when at least 2 of the 3 lines are clearly present.
-  glassesBridgeLine: 3.0,
-  glassesRimLine: 3.0,
-  glassesTempleLine: 3.8,
+  sunglassMaxTexture: 0.16, // eye-area luma std / cheek luma — a natural eye has strong contrast
+  sunglassUnderRatio: 0.45, // strip below the eye vs cheek (dark circles are ~0.65–0.85)
+  sunglassUnderSkin: 0.45, // fraction of that strip that still looks like skin
+  // Clear glasses = frame across the nose bridge (relative to cheek texture, at ANALYSIS_WIDTH 240).
+  // Real webcam captures of the same person (beard, heavy brows):
+  //                     bridge line   bridge edge   under-eye line   arm line
+  //   with glasses         4.77          2.85            4.28           3.13
+  //   without glasses      2.69          1.56            3.91           3.19
+  // (studio photos: with 4.6 / – / 4.2 / 5.5, without 1.4 / – / 1.9 / 2.2)
+  // The under-eye line can't tell eye bags from a lower rim, and clear / thin arms are often
+  // invisible on a webcam, so neither decides. The bridge decides: its strongest single row
+  // (line) AND its overall edge energy must both be high — a brow edge alone lights up one row
+  // but not the whole box. An arm line clearly present also confirms a strong bridge line.
+  glassesBridgeLine: 3.7,
+  glassesBridgeEdge: 2.2,
+  glassesRimLine: 3.0, // reported in metrics only
+  glassesTempleLine: 4.4,
 
-  // Headwear (lower forehead band compared to cheek skin)
-  capSkinFrac: 0.4,
-  capDarkRatio: 0.5,
+  // Headwear (lower forehead band compared to cheek skin). Kept loose enough that a hair fringe
+  // or a forehead shadow is not reported as a cap.
+  capSkinFrac: 0.28,
+  capDarkRatio: 0.42,
   capBrightRatio: 1.7,
   skinChromaDistance: 14,
 
   // Liveness challenge
   turnLeftYaw: 0.68,
   turnRightYaw: 0.32,
-  blinkClosed: 0.55,
+  // A quick natural blink rarely scores above ~0.5 at camera frame rates
+  blinkClosed: 0.45,
   blinkOpen: 0.3,
   // A normal smile passes: either a moderate smile score, or a clear rise from the user's own
   // neutral face during this step (people smile differently; no teeth needed)
@@ -451,10 +470,16 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     if (ratio < THRESHOLDS.unevenCheekRatio) flags.uneven = true;
   }
 
-  // Darkness does not block the selfie, so the goggles / cap checks still run in dim light.
-  // They are skipped only when the face is close to pitch black (pixel ratios become pure noise).
+  // Goggles / glasses / cap are judged only on a well-enough-lit, roughly frontal face. Otherwise
+  // the result says appearanceChecked: false and the smoother keeps the previous verdict.
   const exposureOk = rCheek && lCheek && (rCheek.mean + lCheek.mean) / 2 >= THRESHOLDS.minLumaForAppearance;
-  if (!exposureOk) return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box };
+  const frontal =
+    yaw >= THRESHOLDS.appearanceYawMin && yaw <= THRESHOLDS.appearanceYawMax &&
+    pitch >= THRESHOLDS.appearancePitchMin && pitch <= THRESHOLDS.appearancePitchMax &&
+    Math.abs(roll) <= THRESHOLDS.appearanceMaxRoll;
+  if (!exposureOk || !frontal) {
+    return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box, appearanceChecked: false };
+  }
 
   const skinRef = {
     mean: (rCheek.mean + lCheek.mean) / 2,
@@ -477,16 +502,18 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     const under = { x0: b.x0, x1: b.x1, y0: b.y1 + b.w * 0.15 * aspect, y1: b.y1 + b.w * 0.5 * aspect };
     const s = regionStats(img, box, { aboveLevel: cheek.mean * 1.05 });
     const u = regionStats(img, under);
-    if (!s || !u) return { dark: false, ratio: 1, sclera: 1, specular: 0, underRatio: 1, underSkin: 1, eyeBox: b };
+    if (!s || !u) return { dark: false, ratio: 1, sclera: 1, specular: 0, underRatio: 1, underSkin: 1, texture: 1, eyeBox: b };
     const ratio = s.mean / Math.max(1, cheek.mean);
     const underRatio = u.mean / Math.max(1, cheek.mean);
     const underSkin = skinFraction(img, under, skinRef);
+    const texture = s.std / Math.max(1, cheek.mean);
     const dark =
       ratio < THRESHOLDS.sunglassDarkRatio &&
       s.aboveFrac < THRESHOLDS.sunglassScleraFrac &&
+      texture < THRESHOLDS.sunglassMaxTexture &&
       underRatio < THRESHOLDS.sunglassUnderRatio &&
       underSkin < THRESHOLDS.sunglassUnderSkin;
-    return { dark, ratio, sclera: s.aboveFrac, specular: s.brightFrac, underRatio, underSkin, eyeBox: b };
+    return { dark, ratio, sclera: s.aboveFrac, specular: s.brightFrac, underRatio, underSkin, texture, eyeBox: b };
   };
   const rEye = eyeCheck(RIGHT_EYE, rCheek);
   const lEye = eyeCheck(LEFT_EYE, lCheek);
@@ -494,6 +521,8 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
   metrics.underEyeR = round(rEye.underRatio);
   metrics.underSkinR = round(rEye.underSkin);
   metrics.eyeDarkL = round(lEye.ratio);
+  metrics.eyeTextureR = round(rEye.texture);
+  metrics.eyeTextureL = round(lEye.texture);
   if (rEye.dark && lEye.dark) flags.sunglasses = true;
 
   // ── Clear glasses / spectacles: continuous frame lines across the nose bridge, under the eyes
@@ -547,7 +576,12 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
       (rimLine > THRESHOLDS.glassesRimLine ? 1 : 0) +
       (templeLine > THRESHOLDS.glassesTempleLine ? 1 : 0);
     metrics.glassesLines = frameLines;
-    if (frameLines >= 2) flags.glasses = true;
+    if (
+      bridgeLine > THRESHOLDS.glassesBridgeLine &&
+      (bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine)
+    ) {
+      flags.glasses = true;
+    }
   }
 
   // ── Cap / hat: the lower forehead band should look like the cheek skin ──
@@ -574,7 +608,7 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     }
   }
 
-  return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box };
+  return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box, appearanceChecked: true };
 }
 
 function round(v) {
@@ -583,28 +617,91 @@ function round(v) {
 
 // ─── Temporal smoothing ─────────────────────────────────────────────────────
 /**
- * Appearance checks (eyewear, headwear, uneven light) are voted over recent frames so a single
- * noisy frame cannot flip them. Geometric checks use the current frame only.
+ * Time-window voting per flag (independent of the device's analysis rate):
+ *   on  → shown once the flag was present in ≥ 75% of the frames of the last `on` ms
+ *         (and in the current frame) — random single-frame noise never reaches that
+ *   off → once shown, cleared when it was present in ≤ 25% of the frames of the last `off` ms
+ *         (off = 0 → cleared on the first frame without it)
+ * Appearance flags (eyewear / headwear) only count frames where they were actually judged
+ * (frontal, lit face); on other frames they keep their last verdict.
+ * Geometric checks not listed here use the current frame only.
  */
-const VOTED = { multipleFaces: 3, sunglasses: 5, glasses: 6, headwear: 5, uneven: 5 };
-const WINDOW = 8;
+//
+// Eyewear / headwear are "latched": the detector does not catch them on every frame (clear frames
+// especially), so a few missed frames must never clear the warning — that let users with glasses
+// get a green button for a moment. Once shown, they clear only after `off` ms of continuous judged
+// frames without them; seeing the item on LATCH_RESET_HITS frames in that time restarts the wait.
+const HYSTERESIS = {
+  noFace: { on: 300, off: 0 },
+  multipleFaces: { on: 350, off: 450 },
+  sunglasses: { on: 900, off: 1500, appearance: true, latch: true },
+  glasses: { on: 1500, off: 1500, appearance: true, latch: true },
+  headwear: { on: 1100, off: 1500, appearance: true, latch: true },
+  uneven: { on: 1000, off: 500 },
+};
+const SHOW_FRACTION = 0.75;
+const CLEAR_FRACTION = 0.25;
+const LATCH_RESET_HITS = 2; // detections during the clearing wait that restart it
+const LATCH_MIN_FRAMES = 4; // judged frames needed before a latched warning can clear
+
+/** Share of frames with the flag since `from` — at least the last 2 frames on slow devices. */
+function fractionSince(samples, from) {
+  let start = samples.findIndex((s) => s.t >= from);
+  if (start === -1) start = samples.length;
+  start = Math.max(0, Math.min(start, samples.length - 2));
+  let hit = 0;
+  for (let i = start; i < samples.length; i++) if (samples[i].v) hit++;
+  const n = samples.length - start;
+  return n ? hit / n : 0;
+}
 
 export function createFlagSmoother() {
-  let history = [];
+  let state = {};
   return {
-    push(flags) {
-      history.push(flags);
-      if (history.length > WINDOW) history.shift();
+    /** flags: this frame's raw flags; appearanceChecked: false → eyewear / headwear not judged. */
+    push(flags, now = performance.now(), appearanceChecked = true) {
       const out = { ...flags };
-      for (const key of Object.keys(VOTED)) {
-        const count = history.reduce((acc, f) => acc + (f[key] ? 1 : 0), 0);
-        if (count >= VOTED[key]) out[key] = true;
+      for (const [key, cfg] of Object.entries(HYSTERESIS)) {
+        const s = state[key] || (state[key] = { shown: false, samples: [], clearSince: null, clearFrames: 0, clearHits: 0 });
+        if (!(cfg.appearance && !appearanceChecked)) {
+          const v = Boolean(flags[key]);
+          s.samples.push({ t: now, v });
+          // A little extra history so the "covered" test also works at low frame rates
+          const keepFrom = now - Math.max(cfg.on, cfg.off) - 1000;
+          while (s.samples.length > 2 && s.samples[0].t < keepFrom) s.samples.shift();
+
+          if (!s.shown) {
+            // Enough history to cover the window (the oldest kept frame is old enough)
+            const covered = s.samples[0].t <= now - cfg.on * 0.9;
+            if (v && covered && fractionSince(s.samples, now - cfg.on) >= SHOW_FRACTION) {
+              s.shown = true;
+              s.clearSince = null;
+            }
+          } else if (cfg.latch) {
+            // Clearing wait: starts on the first frame without the item…
+            if (s.clearSince === null) {
+              if (!v) {
+                s.clearSince = now;
+                s.clearFrames = 1;
+                s.clearHits = 0;
+              }
+            } else {
+              s.clearFrames += 1;
+              // …and restarts if the item keeps showing up meanwhile
+              if (v && ++s.clearHits >= LATCH_RESET_HITS) s.clearSince = null;
+              else if (!v && now - s.clearSince >= cfg.off && s.clearFrames >= LATCH_MIN_FRAMES) s.shown = false;
+            }
+          } else if (!v && (cfg.off === 0 || fractionSince(s.samples, now - cfg.off) <= CLEAR_FRACTION)) {
+            s.shown = false;
+          }
+        }
+        if (s.shown) out[key] = true;
         else delete out[key];
       }
       return out;
     },
     reset() {
-      history = [];
+      state = {};
     },
   };
 }

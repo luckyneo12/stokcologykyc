@@ -6,6 +6,7 @@ import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
 import LiveSelfieCapture from "../../selfie/LiveSelfieCapture";
+import { preloadFaceEngine } from "../../selfie/faceEngine";
 import { USE_INHOUSE_SELFIE } from "@/config/selfieConfig";
 
 /** Wait for Digio SDK to be available (up to maxWait ms) */
@@ -357,6 +358,12 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
   };
 
   // ─── IN-HOUSE SELFIE (active when USE_INHOUSE_SELFIE, see src/config/selfieConfig.js) ───
+  // Face detection (~15 MB) starts loading as soon as this step opens, so the camera screen is
+  // ready almost instantly when the user taps the selfie button.
+  useEffect(() => {
+    if (USE_INHOUSE_SELFIE) preloadFaceEngine();
+  }, []);
+
   // Saves the same draft shape as the Digio success path above.
   const handleInhouseSelfieSuccess = (data) => {
     setShowInhouseCapture(false);

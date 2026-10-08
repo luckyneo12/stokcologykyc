@@ -11,6 +11,7 @@ import { io } from "socket.io-client";
 import { Eye } from "lucide-react";
 import DocumentPreviewModal from "../DocumentPreviewModal";
 import LiveSelfieCapture from "../selfie/LiveSelfieCapture";
+import { preloadFaceEngine } from "../selfie/faceEngine";
 import { USE_INHOUSE_SELFIE } from "@/config/selfieConfig";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -548,6 +549,12 @@ export default function DocumentUploadStep() {
   };
 
   // ─── IN-HOUSE SELFIE (active when USE_INHOUSE_SELFIE, see src/config/selfieConfig.js) ───
+  // Face detection (~15 MB) starts loading as soon as this step opens, so the camera screen is
+  // ready almost instantly when the user taps the selfie button.
+  useEffect(() => {
+    if (USE_INHOUSE_SELFIE) preloadFaceEngine();
+  }, []);
+
   // Same state updates as the Digio success path below, so the rest of the step is unaffected.
   const handleInhouseSelfieSuccess = (data) => {
     setShowSelfieCapture(false);
