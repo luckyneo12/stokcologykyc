@@ -24,6 +24,9 @@ const FRESH_FIX_OPTIONS = { enableHighAccuracy: true, timeout: 8000, maximumAge:
 const MAX_COORDS_AGE_MS = 10 * 60 * 1000;
 // The most accurate reading of the last 2 minutes is kept and used if it beats the fresh one
 const BEST_FIX_MAX_AGE_MS = 2 * 60 * 1000;
+// Location is tracked the whole time the camera is open; a reading this recent is reused at
+// upload instead of waiting for a brand-new one (speed only — still live and required)
+const REUSE_FIX_MAX_AGE_MS = 30 * 1000;
 
 function isRecent(fix, maxAge) {
   return Boolean(fix && Date.now() - fix.timestamp < maxAge);
@@ -197,6 +200,19 @@ export default function useLocationGate() {
     return new Promise((resolve, reject) => {
       if (typeof navigator === "undefined" || !navigator.geolocation) {
         reject({ status: "unsupported" });
+        return;
+      }
+      // Permission revoked → never reuse an old reading
+      if (permStatusRef.current?.state === "denied") {
+        reject({ status: "denied" });
+        return;
+      }
+      // Most accurate reading of the last 30 s → use it straight away
+      const recentFix = [bestRef.current, coordsRef.current]
+        .filter((fix) => isRecent(fix, REUSE_FIX_MAX_AGE_MS))
+        .reduce((acc, fix) => moreAccurate(acc, fix), null);
+      if (recentFix) {
+        resolve(recentFix);
         return;
       }
       navigator.geolocation.getCurrentPosition(
