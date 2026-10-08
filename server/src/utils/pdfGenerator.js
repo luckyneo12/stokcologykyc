@@ -77,7 +77,10 @@ function getVariableValue(variableName, appData) {
     case 'clientCode': return appData.clientCode || '';
     case 'openingDate': return appData.submittedAt ? new Date(appData.submittedAt).toLocaleDateString('en-GB') : (appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-GB') : '');
     case 'ipvDate': {
-      const selfieDate = ocrData?.digio?.SELFIE?.createdAt || ocrData?.digio?.LIVENESS?.createdAt;
+      // In-house selfie capture stores its own timestamp (no Digio request exists for it)
+      const selfieInfo = safeJsonParse(appData.selfieDetails) || {};
+      const inhouseSelfieDate = selfieInfo.source === 'INHOUSE_LIVE_CAPTURE' ? selfieInfo.capturedAt : null;
+      const selfieDate = inhouseSelfieDate || ocrData?.digio?.SELFIE?.createdAt || ocrData?.digio?.LIVENESS?.createdAt;
       if (selfieDate) {
         return new Date(selfieDate).toLocaleDateString('en-GB');
       }

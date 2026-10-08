@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import LiveSelfieCapture from "@/components/kyc/selfie/LiveSelfieCapture";
+import { USE_INHOUSE_SELFIE } from "@/config/selfieConfig";
 
 function MobileSelfieContent() {
   const searchParams = useSearchParams();
@@ -9,6 +11,7 @@ function MobileSelfieContent() {
   const [status, setStatus] = useState("loading"); // loading, ready, processing, success, error, expired
   const [errorMessage, setErrorMessage] = useState("");
   const [locationDenied, setLocationDenied] = useState(false);
+  const [session, setSession] = useState({ token: null, appId: null });
   const hasProcessedRedirect = useRef(false);
 
   useEffect(() => {
@@ -31,6 +34,7 @@ function MobileSelfieContent() {
 
     if (urlToken) sessionStorage.setItem("kycToken", urlToken);
     if (urlAppId) sessionStorage.setItem("kycApplicationId", urlAppId);
+    setSession((prev) => (prev.token === token && prev.appId === appId ? prev : { token, appId }));
 
     if (documentId && digioMessage && !hasProcessedRedirect.current) {
       hasProcessedRedirect.current = true;
@@ -220,6 +224,32 @@ function MobileSelfieContent() {
     );
   }
 
+  // ─── IN-HOUSE SELFIE (active when USE_INHOUSE_SELFIE, see src/config/selfieConfig.js) ───
+  // The QR token/appId are passed straight to the capture; the desktop picks the result up
+  // through its existing socket + polling watcher.
+  if (USE_INHOUSE_SELFIE) {
+    if (status === "error") {
+      return (
+        <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ maxWidth: 400, width: '100%', padding: 16, background: "rgba(247, 85, 85, 0.1)", border: "1px solid var(--wise-danger)", borderRadius: 12, textAlign: "center" }}>
+            <p style={{ color: "var(--wise-danger)", margin: 0, fontWeight: 600 }}>{errorMessage || "Something went wrong. Please scan the QR code again."}</p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '16px 0' }}>
+        <LiveSelfieCapture
+          variant="page"
+          applicationId={session.appId}
+          authToken={session.token}
+          onSuccess={() => setStatus("success")}
+        />
+      </div>
+    );
+  }
+
+  // ─── LEGACY DIGIO SELFIE FLOW (used only when NEXT_PUBLIC_SELFIE_PROVIDER=digio) ───
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: 24, display: 'flex', flexDirection: 'column' }}>
        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', maxWidth: 400, margin: '0 auto', width: '100%' }}>

@@ -3188,6 +3188,516 @@ router.post("/mask-aadhaar", auth, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// IN-HOUSE SELFIE CAPTURE (replaces the Digio selfie SDK on the frontend)
+// Used only when the frontend runs with NEXT_PUBLIC_SELFIE_PROVIDER !== "digio"
+// (see src/config/selfieConfig.js). The legacy Digio selfie routes above are
+// untouched, so switching the flag back restores the old flow completely.
+//
+// Server-side layers:
+//   1. Single-use, short-lived signed liveness challenge (random actions).
+//   2. Mandatory geolocation in the upload.
+//   3. Digio passive-liveness API on the captured frame (spoof + face count).
+//   4. Anti-swap: a frame grabbed during the liveness actions must pass liveness too and must
+//      face-match the final photo (same person did the actions and took the selfie).
+//   5. Face match against the document photo, with a minimum score.
+//   6. The session video is uploaded to Cloudinary only after every check has passed.
+// selfieDetails is written in the same shape the admin pages and PDF read.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const jwt = require("jsonwebtoken");
+const SELFIE_CHALLENGE_SECRET = process.env.JWT_SECRET || "kyc-secret-key-change-in-production";
+const SELFIE_CHALLENGE_TTL_SECONDS = 180;
+const SELFIE_MAX_BASE64_LENGTH = 8 * 1024 * 1024;
+const SELFIE_TURN_ACTIONS = ["turn_left", "turn_right"];
+const SELFIE_FACE_ACTIONS = ["blink", "smile"];
+// Minimum face-match vs the document photo (below → retake). Override with SELFIE_MIN_FACE_MATCH.
+const SELFIE_MIN_FACE_MATCH = Number(process.env.SELFIE_MIN_FACE_MATCH || 60);
+// Minimum match between the liveness-action frame and the final photo (same session, same person).
+const SELFIE_MIN_SESSION_MATCH = Number(process.env.SELFIE_MIN_SESSION_MATCH || 70);
+const SELFIE_KEYFRAME_MAX_BASE64 = 3 * 1024 * 1024;
+const SELFIE_VIDEO_MAX_BASE64 = 22 * 1024 * 1024; // ~16 MB video
+
+/** Face-match score (0–100) from Digio's response, or null when none is present. */
+function extractFaceMatchScore(result) {
+  const raw =
+    result?.score ?? result?.confidence ?? result?.similarity ?? result?.match_score ??
+    result?.face_match_score ?? result?.match_confidence ?? result?.data?.score ?? result?.result?.score;
+  if (raw === undefined || raw === null || raw === "" || !Number.isFinite(Number(raw))) return null;
+  const num = Number(raw);
+  return Math.round(num * (num <= 1 ? 100 : 1));
+}
+
+// Used challenge ids (single-use). In-memory is enough because a challenge
+// lives for only a few minutes; entries are swept once they expire.
+const usedSelfieChallenges = new Map();
+function sweepUsedSelfieChallenges() {
+  const now = Date.now();
+  for (const [jti, exp] of usedSelfieChallenges) {
+    if (exp < now) usedSelfieChallenges.delete(jti);
+  }
+}
+
+function pickRandom(list) {
+  return list[crypto.randomInt(list.length)];
+}
+
+router.get("/selfie-challenge", auth, async (req, res) => {
+  try {
+    const application = await getOrCreateDraftApplication({
+      userId: req.user.id,
+      applicationId: req.query.applicationId,
+    });
+    if (!application) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    // One head-turn + one facial action, in random order
+    const steps = [pickRandom(SELFIE_TURN_ACTIONS), pickRandom(SELFIE_FACE_ACTIONS)];
+    if (crypto.randomInt(2) === 1) steps.reverse();
+
+    const jti = crypto.randomUUID();
+    const challengeToken = jwt.sign(
+      {
+        purpose: "selfie_challenge",
+        uid: String(req.user.id),
+        appId: application.applicationId,
+        steps,
+      },
+      SELFIE_CHALLENGE_SECRET,
+      { expiresIn: SELFIE_CHALLENGE_TTL_SECONDS, jwtid: jti },
+    );
+
+    return res.json({
+      success: true,
+      challengeToken,
+      steps,
+      expiresAt: new Date(Date.now() + SELFIE_CHALLENGE_TTL_SECONDS * 1000).toISOString(),
+    });
+  } catch (error) {
+    console.error("[InhouseSelfie] Challenge error:", error.message);
+    return res.status(500).json({ success: false, error: "Could not start the liveness check" });
+  }
+});
+
+router.post("/selfie-capture", auth, async (req, res) => {
+  try {
+    const { applicationId, selfie, location, challengeToken, challenge, clientChecks, challengeFrame, video } = req.body || {};
+
+    // ── 1. Basic payload validation ──────────────────────────────────────
+    if (typeof selfie !== "string" || !/^data:image\/(jpeg|png);base64,/.test(selfie)) {
+      return res.status(400).json({ success: false, error: "Selfie image is missing or invalid." });
+    }
+    if (selfie.length > SELFIE_MAX_BASE64_LENGTH) {
+      return res.status(400).json({ success: false, error: "Selfie image is too large." });
+    }
+    // Frame grabbed during the liveness actions (required for the anti-swap check)
+    if (
+      typeof challengeFrame !== "string" ||
+      !/^data:image\/(jpeg|png);base64,/.test(challengeFrame) ||
+      challengeFrame.length > SELFIE_KEYFRAME_MAX_BASE64
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "CHALLENGE_INVALID",
+        error: "The liveness check could not be verified. Please repeat the quick actions.",
+      });
+    }
+    // Session video is optional (older browsers cannot record); ignored if malformed / too large
+    const videoMatch =
+      typeof video === "string" && video.length <= SELFIE_VIDEO_MAX_BASE64
+        ? /^data:(video\/(?:webm|mp4|quicktime))(?:;[^,]*)?;base64,/.exec(video)
+        : null;
+
+    const lat = Number(location?.lat);
+    const lng = Number(location?.lng);
+    if (
+      location?.lat == null || location?.lng == null ||
+      !Number.isFinite(lat) || !Number.isFinite(lng) ||
+      Math.abs(lat) > 90 || Math.abs(lng) > 180
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "LOCATION_REQUIRED",
+        error: "Location is required for selfie verification. Please allow location access and try again.",
+      });
+    }
+    const accuracy = Number.isFinite(Number(location?.accuracy)) ? Math.round(Number(location.accuracy)) : null;
+
+    const application = await getOrCreateDraftApplication({
+      userId: req.user.id,
+      applicationId,
+    });
+    if (!application) {
+      return res.status(404).json({ success: false, error: "Application not found" });
+    }
+
+    // ── 2. Liveness challenge verification (signed, single-use) ──────────
+    let challengePayload;
+    try {
+      challengePayload = jwt.verify(String(challengeToken || ""), SELFIE_CHALLENGE_SECRET);
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        code: "CHALLENGE_INVALID",
+        error: "The liveness check expired. Please take the selfie again.",
+      });
+    }
+    sweepUsedSelfieChallenges();
+    const completedSteps = Array.isArray(challenge?.completed) ? challenge.completed.map(String) : [];
+    if (
+      challengePayload.purpose !== "selfie_challenge" ||
+      challengePayload.uid !== String(req.user.id) ||
+      challengePayload.appId !== application.applicationId ||
+      usedSelfieChallenges.has(challengePayload.jti) ||
+      JSON.stringify(completedSteps) !== JSON.stringify(challengePayload.steps)
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "CHALLENGE_INVALID",
+        error: "The liveness check could not be verified. Please take the selfie again.",
+      });
+    }
+    // The challenge is marked as used only once the selfie is actually saved (step 6), so a
+    // retake after a failed liveness / face match can reuse the actions just completed.
+
+    // ── 3. Passive liveness (spoof + face count) on the captured frame ───
+    const cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
+    const selfieBuffer = Buffer.from(cleanSelfie, "base64");
+
+    let genuineLivenessScore = null;
+    try {
+      const livenessResult = await digioClient.checkPassiveLiveness(
+        selfieBuffer,
+        `${application.applicationId}_IL_${Date.now()}`,
+      );
+      console.log(`[InhouseSelfie] Liveness response:`, JSON.stringify(livenessResult));
+
+      // The face count field is not guaranteed in Digio's response (name/type can differ, or it
+      // can be absent). Block only on a definite number; the browser already enforced one face.
+      const rawCount =
+        livenessResult?.count ?? livenessResult?.face_count ?? livenessResult?.faces_count ??
+        livenessResult?.number_of_faces ?? livenessResult?.data?.count ?? null;
+      const faceCount = rawCount === null || rawCount === "" ? NaN : Number(rawCount);
+      if (Number.isFinite(faceCount) && faceCount === 0) {
+        return res.status(400).json({
+          success: false,
+          code: "NO_FACE",
+          error: "No face detected in the selfie. Please try again.",
+        });
+      }
+      if (Number.isFinite(faceCount) && faceCount > 1) {
+        return res.status(400).json({
+          success: false,
+          code: "MULTIPLE_FACES",
+          error: "Multiple faces detected. Please ensure only you are in the frame.",
+        });
+      }
+      const livenessVerdict = String(livenessResult?.result ?? "").toUpperCase();
+      if (livenessVerdict === "FAIL" || livenessVerdict === "UNKNOWN") {
+        return res.status(400).json({
+          success: false,
+          code: "LIVENESS_FAILED",
+          error: "Liveness check failed. Please take a live selfie in good light (no photos or screens).",
+        });
+      }
+      if (livenessResult.score !== undefined && livenessResult.score !== null) {
+        const num = Number(livenessResult.score);
+        if (Number.isFinite(num)) genuineLivenessScore = Math.round(num * (num <= 1 ? 100 : 1));
+      }
+    } catch (livenessError) {
+      console.error("[InhouseSelfie] Liveness API failed:", livenessError.message);
+      return res.status(502).json({
+        success: false,
+        code: "LIVENESS_UNAVAILABLE",
+        error: "Liveness verification is temporarily unavailable. Please try again in a moment.",
+      });
+    }
+
+    // ── 3b. Anti-swap: action frame must be live AND the same person as the final photo ──
+    const challengeFrameBuffer = Buffer.from(challengeFrame.replace(/^data:image\/[a-z]+;base64,/, ""), "base64");
+    let sessionMatchScore = null;
+    let challengeFrameLivenessScore = null;
+    try {
+      const [frameLiveness, sessionMatch] = await Promise.all([
+        digioClient.checkPassiveLiveness(challengeFrameBuffer, `${application.applicationId}_ICL_${Date.now()}`),
+        digioClient.checkFaceMatch(challengeFrameBuffer, selfieBuffer, `${application.applicationId}_ISM_${Date.now()}`),
+      ]);
+      console.log(`[InhouseSelfie] Action-frame liveness:`, JSON.stringify(frameLiveness));
+      console.log(`[InhouseSelfie] Action-frame vs selfie match:`, JSON.stringify(sessionMatch));
+
+      const frameVerdict = String(frameLiveness?.result ?? "").toUpperCase();
+      if (frameVerdict === "FAIL" || frameVerdict === "UNKNOWN") {
+        return res.status(400).json({
+          success: false,
+          code: "SESSION_LIVENESS_FAILED",
+          error: "We couldn't confirm a live person during the quick actions. Please repeat them (no photos or screens).",
+        });
+      }
+      if (frameLiveness?.score !== undefined && frameLiveness?.score !== null && Number.isFinite(Number(frameLiveness.score))) {
+        const num = Number(frameLiveness.score);
+        challengeFrameLivenessScore = Math.round(num * (num <= 1 ? 100 : 1));
+      }
+
+      sessionMatchScore = extractFaceMatchScore(sessionMatch);
+      if (sessionMatchScore === null || sessionMatchScore < SELFIE_MIN_SESSION_MATCH) {
+        return res.status(400).json({
+          success: false,
+          code: "SESSION_MISMATCH",
+          error: "The photo doesn't match the person who did the quick actions. Please repeat the actions and take the selfie yourself.",
+        });
+      }
+    } catch (sessionError) {
+      const status = sessionError.response?.status;
+      console.error(`[InhouseSelfie] Anti-swap check error (status ${status || "none"}):`, JSON.stringify(sessionError.response?.data || sessionError.message));
+      if (status && status >= 400 && status < 500) {
+        return res.status(400).json({
+          success: false,
+          code: "SESSION_MISMATCH",
+          error: "The photo doesn't match the person who did the quick actions. Please repeat the actions and take the selfie yourself.",
+        });
+      }
+      return res.status(502).json({
+        success: false,
+        code: "LIVENESS_UNAVAILABLE",
+        error: "Liveness verification is temporarily unavailable. Please try again in a moment.",
+      });
+    }
+
+    // ── 4. Face match against the document photo (same source logic as /face-match) ──
+    // Required: if the document photo exists but no match score comes back (dark / unclear
+    // selfie), the user is asked to retake instead of saving a selfie without a score.
+    let genuineFaceMatchScore = null;
+    let sourcePhotoUrl = null;
+    let sourceBuffer = null;
+    try {
+      try {
+        const docs = JSON.parse(application.documents || "[]");
+        sourcePhotoUrl = docs.find((doc) => {
+          const docType = String(doc.type || "").toUpperCase();
+          const docPath = String(doc.path || "").toLowerCase();
+          if (docType === "PHOTO" || docType.includes("PHOTO")) return true;
+          if (/\.(png|jpe?g|webp)$/i.test(docPath)) return true;
+          if (docPath.includes("cloudinary") && docPath.includes("/image/upload/")) return true;
+          return false;
+        })?.path || null;
+      } catch (e) {}
+
+      if (!sourcePhotoUrl && application.panUpload) {
+        try {
+          const parsedPan = JSON.parse(application.panUpload);
+          sourcePhotoUrl = parsedPan.filePreview || parsedPan.url || application.panUpload;
+        } catch (e) {
+          sourcePhotoUrl = application.panUpload;
+        }
+      }
+    } catch (e) {}
+
+    if (sourcePhotoUrl) {
+      // Fetching OUR document photo failing is not the user's fault — a retake would not help,
+      // so in that case the selfie is still saved (without a score) and the error is logged.
+      try {
+        const axios = require("axios");
+        const sourceRes = await axios.get(sourcePhotoUrl, { responseType: "arraybuffer", timeout: 15000 });
+        sourceBuffer = Buffer.from(sourceRes.data, "binary");
+      } catch (srcError) {
+        console.error(`[InhouseSelfie] Could not fetch document photo for face match (${application.applicationId}):`, srcError.message);
+      }
+    } else {
+      console.warn(`[InhouseSelfie] No source photo found for face match on ${application.applicationId}`);
+    }
+
+    if (sourceBuffer) {
+      let faceMatchResult;
+      try {
+        faceMatchResult = await digioClient.checkFaceMatch(
+          sourceBuffer,
+          selfieBuffer,
+          `${application.applicationId}_IF_${Date.now()}`,
+        );
+      } catch (fmError) {
+        const status = fmError.response?.status;
+        console.error(`[InhouseSelfie] Face match API error (status ${status || "none"}):`, JSON.stringify(fmError.response?.data || fmError.message));
+        // 4xx = Digio could not use this selfie (e.g. face not found / unclear) → retake
+        if (status && status >= 400 && status < 500) {
+          return res.status(400).json({
+            success: false,
+            code: "FACE_MATCH_FAILED",
+            error: "Couldn't match your face with your document photo. Face the light, look straight and retake.",
+          });
+        }
+        return res.status(502).json({
+          success: false,
+          code: "FACE_MATCH_UNAVAILABLE",
+          error: "Face match is temporarily unavailable. Please try again in a moment.",
+        });
+      }
+      console.log(`[InhouseSelfie] Face match response:`, JSON.stringify(faceMatchResult));
+      genuineFaceMatchScore = extractFaceMatchScore(faceMatchResult);
+      if (genuineFaceMatchScore === null) {
+        return res.status(400).json({
+          success: false,
+          code: "FACE_MATCH_FAILED",
+          error: "Couldn't match your face with your document photo. Face the light, look straight and retake.",
+        });
+      }
+      if (genuineFaceMatchScore < SELFIE_MIN_FACE_MATCH) {
+        return res.status(400).json({
+          success: false,
+          code: "FACE_MATCH_LOW",
+          error: "Your face doesn't match the photo on your document clearly enough. Face the light, look straight and retake.",
+        });
+      }
+    }
+
+    // ── 5. Store the selfie ──────────────────────────────────────────────
+    let savedSelfiePath;
+    try {
+      const cloudinaryResult = await uploadBufferToCloudinary(
+        selfieBuffer,
+        `kyc_selfie_${application.applicationId}_${Date.now()}`,
+        "jpg",
+      );
+      savedSelfiePath = cloudinaryResult.secure_url;
+    } catch (uploadError) {
+      console.error("[InhouseSelfie] Cloudinary upload failed:", uploadError.message);
+      return res.status(500).json({ success: false, error: "Could not save the selfie. Please try again." });
+    }
+
+    // Session video — uploaded only now that the selfie has passed every check. Non-fatal.
+    let savedVideoPath = null;
+    if (videoMatch) {
+      try {
+        const videoBuffer = Buffer.from(video.slice(video.indexOf(",") + 1), "base64");
+        const videoResult = await uploadBufferToCloudinary(
+          videoBuffer,
+          `kyc_selfie_video_${application.applicationId}_${Date.now()}`,
+        );
+        savedVideoPath = videoResult.secure_url;
+      } catch (videoError) {
+        console.error("[InhouseSelfie] Selfie video upload failed (selfie still saved):", videoError.message);
+      }
+    }
+
+    // Every check passed and the photo is stored — the liveness challenge is now used up
+    if (usedSelfieChallenges.has(challengePayload.jti)) {
+      return res.status(400).json({
+        success: false,
+        code: "CHALLENGE_INVALID",
+        error: "The liveness check could not be verified. Please take the selfie again.",
+      });
+    }
+    usedSelfieChallenges.set(challengePayload.jti, challengePayload.exp * 1000);
+
+    // ── 6. Persist in the same shape the admin pages / PDF already read ──
+    const capturedAt = new Date().toISOString();
+    const previousSelfieDetails = parseJsonField(application.selfieDetails, {});
+    // Keep only small primitive values from the browser's own check summary (audit info only)
+    let safeClientChecks = null;
+    if (clientChecks && typeof clientChecks === "object" && !Array.isArray(clientChecks)) {
+      safeClientChecks = {};
+      Object.keys(clientChecks).slice(0, 30).forEach((key) => {
+        const val = clientChecks[key];
+        if (typeof val === "number" && Number.isFinite(val)) safeClientChecks[key.slice(0, 40)] = val;
+        else if (typeof val === "boolean") safeClientChecks[key.slice(0, 40)] = val;
+        else if (typeof val === "string") safeClientChecks[key.slice(0, 40)] = val.slice(0, 80);
+      });
+    }
+
+    const nextSelfieDetails = {
+      ...previousSelfieDetails,
+      // Leftovers from an earlier Digio selfie must not describe this new photo. They are set to
+      // null (not deleted) so the browser's cached copy syncs to null and cannot write them back.
+      requestId: null,
+      image: null,
+      livenessPass: null,
+      // Video of this confirmed selfie session (null when the browser could not record)
+      videoPath: savedVideoPath,
+      videoPreview: null,
+      selfieDetails: null,
+      selfie: null,
+      // Admin "Capture Date" reads extractedAt first — it must be this capture's time
+      extractedAt: capturedAt,
+      preview: savedSelfiePath,
+      path: savedSelfiePath,
+      // Always overwrite scores so a retake never keeps the previous selfie's score
+      matchScore: genuineFaceMatchScore,
+      faceMatchScore: genuineFaceMatchScore,
+      livenessScore: genuineLivenessScore,
+      lat,
+      lng,
+      latitude: lat,
+      longitude: lng,
+      geo: {
+        ...(previousSelfieDetails.geo || {}),
+        latitude: lat,
+        longitude: lng,
+        accuracy,
+        // Address belonged to the previous coordinates; admin reverse-geocodes lat/lng
+        address: null,
+        provider: "browser",
+      },
+      ip: req.ip || req.headers["x-forwarded-for"] || null,
+      source: "INHOUSE_LIVE_CAPTURE",
+      capturedAt,
+      updatedAt: capturedAt,
+      livenessChallenge: {
+        steps: challengePayload.steps,
+        completedAt: Array.isArray(challenge?.completedAt) ? challenge.completedAt.slice(0, 5) : [],
+        sessionMatchScore,
+        actionFrameLivenessScore: challengeFrameLivenessScore,
+      },
+      ...(safeClientChecks ? { clientChecks: safeClientChecks } : {}),
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 300),
+    };
+
+    await prisma.kycApplication.update({
+      where: { id: application.id },
+      data: serializeJsonFields(
+        {
+          selfie: savedSelfiePath,
+          faceMatchScore: genuineFaceMatchScore,
+          selfieDetails: nextSelfieDetails,
+        },
+        ["selfieDetails"],
+      ),
+    });
+
+    if (req.app && req.app.get("io")) {
+      req.app.get("io").to(application.applicationId).emit("kyc_updated");
+    }
+
+    await writeAuditLog({
+      userId: req.user.id,
+      action: "inhouse_selfie_captured",
+      details: {
+        applicationId: application.applicationId,
+        faceMatchScore: genuineFaceMatchScore,
+        livenessScore: genuineLivenessScore,
+        challengeSteps: challengePayload.steps,
+        sessionMatchScore,
+        video: !!savedVideoPath,
+        lat,
+        lng,
+        accuracy,
+      },
+      ipAddress: req.ip,
+    });
+
+    return res.json({
+      success: true,
+      selfiePath: savedSelfiePath,
+      score: genuineFaceMatchScore,
+      faceMatchScore: genuineFaceMatchScore,
+      livenessScore: genuineLivenessScore,
+      selfieDetails: nextSelfieDetails,
+    });
+  } catch (error) {
+    console.error("[InhouseSelfie] Route error:", error.message);
+    return res.status(500).json({ success: false, error: "Server error while verifying the selfie." });
+  }
+});
+
 module.exports = router;
 module.exports.ensureDigilockerVerificationDocuments =
   ensureDigilockerVerificationDocuments;

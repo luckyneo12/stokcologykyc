@@ -1299,19 +1299,21 @@ const generateMobileSession = async (req, res, next) => {
     const jwt = require("jsonwebtoken");
     const secret = process.env.JWT_SECRET || "your-secret-key";
     
-    // Create a 5-minute token
+    // The QR is shown for 5 minutes (expiresAt drives the desktop countdown), but the token itself
+    // lives 15 minutes so a user who scans near the end still has time to finish the in-house
+    // selfie on the phone (location, model download, liveness actions, upload).
     const token = jwt.sign(
-      { 
-        id: req.user.id, 
-        applicationId, 
+      {
+        id: req.user.id,
+        applicationId,
         purpose: "mobile_selfie",
-        role: "user" 
+        role: "user"
       },
       secret,
-      { expiresIn: "5m" }
+      { expiresIn: "15m" }
     );
 
-    // Calculate absolute expiration for the frontend
+    // Calculate absolute expiration for the frontend (QR scan window)
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     
     res.json({

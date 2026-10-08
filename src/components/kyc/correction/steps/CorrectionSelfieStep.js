@@ -5,6 +5,8 @@ import { ArrowRightIcon } from "../../Icons";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
+import LiveSelfieCapture from "../../selfie/LiveSelfieCapture";
+import { USE_INHOUSE_SELFIE } from "@/config/selfieConfig";
 
 /** Wait for Digio SDK to be available (up to maxWait ms) */
 async function waitForDigioSDK(maxWait = 3000) {
@@ -65,6 +67,7 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
   const [locationDenied, setLocationDenied] = useState(false);
+  const [showInhouseCapture, setShowInhouseCapture] = useState(false);
   const pollRef = useRef(null);
   const socketRef = useRef(null);
   const hasProcessedRedirect = useRef(false);
@@ -353,8 +356,30 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
     }
   };
 
+  // ─── IN-HOUSE SELFIE (active when USE_INHOUSE_SELFIE, see src/config/selfieConfig.js) ───
+  // Saves the same draft shape as the Digio success path above.
+  const handleInhouseSelfieSuccess = (data) => {
+    setShowInhouseCapture(false);
+    const preview = data?.selfiePath || data?.selfieDetails?.preview;
+    if (!preview) {
+      addToast("Error fetching verification results", "error");
+      return;
+    }
+    const score = data?.score ?? data?.selfieDetails?.matchScore ?? null;
+    setMatchScore(score);
+    saveDraft(stepId, { selfieDetails: { preview, matchScore: score }, selfie: { preview } });
+    addToast("Selfie verification completed", "success");
+    setPhase("done");
+  };
+
   // ─── Start selfie verification ───────────────────────────────────────
   const startVerification = async () => {
+    if (USE_INHOUSE_SELFIE) {
+      setShowInhouseCapture(true);
+      return;
+    }
+
+    // ─── LEGACY DIGIO SELFIE FLOW (used only when NEXT_PUBLIC_SELFIE_PROVIDER=digio) ───
     setPhase("processing");
     setLocationDenied(false);
 
@@ -434,6 +459,15 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
   // ─── Render ──────────────────────────────────────────────────────────
   const content = (
     <>
+      {USE_INHOUSE_SELFIE && showInhouseCapture && (
+        <LiveSelfieCapture
+          applicationId={applicationId}
+          authToken={contextToken || undefined}
+          onSuccess={handleInhouseSelfieSuccess}
+          onCancel={() => setShowInhouseCapture(false)}
+          noCameraHint="Close this window and use “No Camera? Continue on Mobile” to take the selfie on your phone."
+        />
+      )}
       {!inline && (
         <div className="text-center" style={{ marginBottom: 28 }}>
           <h1 className="text-section" style={{ fontSize: "2rem", marginBottom: 8 }}>Selfie Verification</h1>

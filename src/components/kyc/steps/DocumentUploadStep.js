@@ -10,6 +10,8 @@ import { uploadDocument } from "@/utils/kycApi";
 import { io } from "socket.io-client";
 import { Eye } from "lucide-react";
 import DocumentPreviewModal from "../DocumentPreviewModal";
+import LiveSelfieCapture from "../selfie/LiveSelfieCapture";
+import { USE_INHOUSE_SELFIE } from "@/config/selfieConfig";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -258,6 +260,9 @@ export default function DocumentUploadStep() {
   // --- Cross-device selfie polling via Socket.IO + fallback ---
   const checkSelfieStatusRef = useRef(null);
   const ignoredPreviewRef = useRef(null);
+  // Main-record selfie seen when the QR was shown (used in rejection mode, see checkSelfieStatus)
+  const ignoredMainPreviewRef = useRef(null);
+  const mainBaselineLoadedRef = useRef(false);
 
   const checkSelfieStatus = useCallback(async () => {
     const activeAppId = applicationId || sessionStorage.getItem("kycApplicationId");
@@ -277,6 +282,7 @@ export default function DocumentUploadStep() {
         typeof app.selfieDetails === "string"
           ? JSON.parse(app.selfieDetails)
           : app.selfieDetails;
+      const mainSelfieDetails = appSelfieDetails;
           
       let draftObj = {};
       if (app.correctionDraft) {
@@ -288,6 +294,18 @@ export default function DocumentUploadStep() {
           appSelfieDetails = draftObj.selfieDetails;
         } else {
           appSelfieDetails = null; // Do not use old rejected selfie
+        }
+        // A selfie taken on the phone through the QR code is saved into the main record, not the
+        // draft. Accept it when it differs from the (rejected) selfie present when the QR was shown.
+        const draftPreview = appSelfieDetails?.preview;
+        const mainPreview = mainSelfieDetails?.preview;
+        if (
+          (!draftPreview || draftPreview === ignoredPreviewRef.current) &&
+          mainBaselineLoadedRef.current &&
+          mainPreview && mainPreview !== "__CLEARED__" &&
+          mainPreview !== ignoredMainPreviewRef.current
+        ) {
+          appSelfieDetails = mainSelfieDetails;
         }
       }
 
@@ -338,6 +356,8 @@ export default function DocumentUploadStep() {
         const data = await response.json();
         if (data.success && data.application) {
           let appSelfieDetails = typeof data.application.selfieDetails === "string" ? JSON.parse(data.application.selfieDetails) : data.application.selfieDetails;
+          ignoredMainPreviewRef.current = appSelfieDetails?.preview || null;
+          mainBaselineLoadedRef.current = true;
           if (isRejection && isDocRejected("ipv")) {
             let draftObj = {};
             if (data.application.correctionDraft) {
@@ -527,7 +547,41 @@ export default function DocumentUploadStep() {
     }
   };
 
+  // ─── IN-HOUSE SELFIE (active when USE_INHOUSE_SELFIE, see src/config/selfieConfig.js) ───
+  // Same state updates as the Digio success path below, so the rest of the step is unaffected.
+  const handleInhouseSelfieSuccess = (data) => {
+    setShowSelfieCapture(false);
+    const sd = data?.selfieDetails || {};
+    const preview = data?.selfiePath || sd.preview;
+    if (!preview) {
+      addToast("Failed to sync selfie results", "error");
+      return;
+    }
+    const matchScoreValue = data?.score ?? sd.matchScore ?? null;
+    setSelfiePreviewUrl(getFullUrl(preview));
+    setMatchScore(matchScoreValue);
+    setSelfieError(false);
+    setSelfiePhase("done");
+    addToast("Selfie verification completed", "success");
+    const payloadData = { ...sd, preview, matchScore: matchScoreValue };
+
+    if (isRejection && isDocRejected("ipv")) {
+      updateNested("correctionDraft", { selfieDetails: payloadData, selfie: { preview } });
+    } else {
+      updateState({
+        selfie: { preview, matchScore: matchScoreValue },
+        selfieDetails: payloadData,
+      });
+    }
+  };
+
   const startDesktopSelfie = async () => {
+    if (USE_INHOUSE_SELFIE) {
+      setShowSelfieCapture(true);
+      return;
+    }
+
+    // ─── LEGACY DIGIO SELFIE FLOW (used only when NEXT_PUBLIC_SELFIE_PROVIDER=digio) ───
     try {
       addToast("Initializing secure camera...", "info");
       let coords = { lat: null, lng: null };
@@ -978,8 +1032,21 @@ export default function DocumentUploadStep() {
                   </span>
                 )}
               </h3>
-              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>Complete a live face verification securely via Digio.</p>
+              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: 0, paddingLeft: "40px", lineHeight: 1.5 }}>
+                {USE_INHOUSE_SELFIE
+                  ? "Complete a live face verification with real-time checks. Location access is required."
+                  : "Complete a live face verification securely via Digio."}
+              </p>
             </div>
+
+            {USE_INHOUSE_SELFIE && showSelfieCapture && (
+              <LiveSelfieCapture
+                applicationId={applicationId || (typeof window !== "undefined" ? sessionStorage.getItem("kycApplicationId") : null)}
+                onSuccess={handleInhouseSelfieSuccess}
+                onCancel={() => setShowSelfieCapture(false)}
+                noCameraHint="Close this window and use “Or scan QR on mobile” to take the selfie on your phone."
+              />
+            )}
             
             <div style={{ flex: "0 0 auto", width: "100%", maxWidth: "320px" }}>
               {selfiePhase === "intro" && !showSelfieCapture && (

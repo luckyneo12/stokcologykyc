@@ -71,7 +71,40 @@ const ReverseGeocode = ({ lat, lng, fallback }) => {
       .catch(() => setAddress(fallback || "N/A"));
   }, [lat, lng, fallback]);
 
-  return <span style={{ fontSize: "0.95rem" }}>{address}</span>;
+  const hasCoords = lat && lng && lat !== "N/A" && lng !== "N/A";
+  return (
+    <span style={{ fontSize: "0.95rem" }}>
+      {address}
+      {hasCoords && (
+        <a
+          href={`https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            // Block-level so the button sits on its own line below the address
+            display: "flex",
+            width: "fit-content",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 8,
+            padding: "6px 12px",
+            borderRadius: 8,
+            border: "none",
+            background: "#7c3aed",
+            color: "#ffffff",
+            fontSize: "0.78rem",
+            fontWeight: 700,
+            textDecoration: "none",
+            cursor: "pointer",
+          }}
+          title="Open the exact location pin on Google Maps"
+          aria-label="View exact location pin on Google Maps"
+        >
+          View
+        </a>
+      )}
+    </span>
+  );
 };
 
 const DROPDOWN_OPTIONS = {
