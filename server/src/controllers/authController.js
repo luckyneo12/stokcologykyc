@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../config/db");
+const { NOT_TRASHED } = require("../utils/trashStatus");
 const { z } = require("zod");
 const emailService = require("../services/emailService");
 const smsService = require("../services/smsService");
@@ -32,7 +33,7 @@ const sendOtp = async (req, res, next) => {
     if (phone) {
       const user = await prisma.user.findUnique({
         where: { phone },
-        include: { kycApplications: { orderBy: { createdAt: 'desc' }, take: 1 } }
+        include: { kycApplications: { where: NOT_TRASHED, orderBy: { createdAt: 'desc' }, take: 1 } }
       });
 
       const existingApp = user?.kycApplications?.[0];

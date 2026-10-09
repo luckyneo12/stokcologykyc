@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { NOT_TRASHED } = require("../utils/trashStatus");
 const { z } = require("zod");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
@@ -121,7 +122,7 @@ const getAssignedApplications = async (req, res, next) => {
     const [applications, total] = await Promise.all([
       prisma.kycApplication.findMany({
         where,
-        orderBy: [{ isResubmitted: "desc" }, { updatedAt: "desc" }],
+        orderBy: { updatedAt: "desc" }, // latest first — modified applications are not pinned to the top
         take,
         skip,
         select: {
@@ -199,6 +200,7 @@ const getApReferrals = async (req, res, next) => {
           email: true,
           createdAt: true,
           kycApplications: {
+            where: NOT_TRASHED,
             orderBy: { updatedAt: 'desc' },
             take: 1,
             select: {

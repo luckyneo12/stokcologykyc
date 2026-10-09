@@ -162,7 +162,8 @@ export default function MakerCheckerDashboard() {
       maxWidth: PERMANENT_WIDTHS[colName],
       width: PERMANENT_WIDTHS[colName],
       ...(colName === "S.No." || colName === "Actions" ? { paddingLeft: 8, paddingRight: 8 } : {}),
-      backgroundColor: "var(--bg-sticky)",
+      // Same colour as the other headers / cells, so the frozen columns don't stand out
+      backgroundColor: isHeader ? "var(--bg-secondary)" : "var(--bg-sticky)",
       boxShadow: "none",
     };
   };
@@ -267,7 +268,7 @@ export default function MakerCheckerDashboard() {
   };
 
   const deleteUser = async (applicationId) => {
-    if (!confirm("Are you sure you want to delete this application?")) return;
+    if (!confirm("Move this application to the Trash? You can restore it or delete it permanently from the Trash.")) return;
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/api/admin/application/${applicationId}`, {
@@ -276,7 +277,7 @@ export default function MakerCheckerDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        alert("Application deleted successfully");
+        alert("Application moved to Trash");
         fetchApplications(true);
       } else {
         alert(data.error || "Failed to delete");

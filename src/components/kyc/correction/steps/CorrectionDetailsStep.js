@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useCorrection } from '@/context/CorrectionContext';
 import { Upload, Check, Loader2, Eye } from "lucide-react";
-import { uploadDocument, resolveAssetUrl } from "@/utils/kycApi";
+import { resolveAssetUrl } from "@/utils/kycApi";
+import { uploadCorrectionDocument as uploadDocument } from "@/utils/correctionUpload";
 
 import DocumentPreviewModal from "../../DocumentPreviewModal";
 

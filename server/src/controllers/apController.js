@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { NOT_TRASHED } = require("../utils/trashStatus");
 const bcrypt = require("bcryptjs");
 const { z } = require("zod");
 
@@ -27,6 +28,7 @@ const getApDashboard = async (req, res, next) => {
       select: {
         id: true,
         kycApplications: {
+          where: NOT_TRASHED,
           orderBy: { updatedAt: "desc" },
           take: 1,
           select: {
@@ -147,6 +149,7 @@ const getApUsers = async (req, res, next) => {
           email: true,
           createdAt: true,
           kycApplications: {
+            where: NOT_TRASHED,
             orderBy: { updatedAt: "desc" },
             take: 1,
             select: {

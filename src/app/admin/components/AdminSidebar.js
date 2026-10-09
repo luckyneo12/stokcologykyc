@@ -12,7 +12,8 @@ import {
   Plug,
   Hash,
   UserPlus,
-  LogOut
+  LogOut,
+  Trash2
 } from "lucide-react";
 import { logoutUser } from "@/utils/auth";
 
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { id: "pdf-builder", label: "PDF Builder", icon: FileCog },
   { id: "api-integration", label: "API Integration", icon: Plug },
   { id: "ap-management", label: "AP Management", icon: UserPlus },
+  { id: "trash", label: "Trash", icon: Trash2 },
 ];
 
 export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }) {

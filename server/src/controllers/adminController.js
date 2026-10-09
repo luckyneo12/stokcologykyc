@@ -1,4 +1,6 @@
 const prisma = require("../config/db");
+const prismaBase = require("../config/prismaBase");
+const { NOT_TRASHED, TRASH_STATUS } = require("../utils/trashStatus");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
 const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
 const { PENDING_DOC_STATUS_FLIP_KEY, parseStepStatuses, getPendingDocRejections, withRejectionMailState } = require("../utils/rejectionMail");
@@ -129,7 +131,7 @@ const getApplications = async (req, res, next) => {
     const [applications, total] = await Promise.all([
       prisma.kycApplication.findMany({
         where,
-        orderBy: [{ isResubmitted: "desc" }, { updatedAt: "desc" }],
+        orderBy: { updatedAt: "desc" }, // latest first — modified applications are not pinned to the top
         take,
         skip,
         select: {
@@ -184,8 +186,11 @@ const getApplicationById = async (req, res, next) => {
   try {
     const rawId = String(req.params.id || "").trim();
     const numericId = Number(rawId);
+    // Opened from the Trash (see trashController.getTrashedApplication): read it past the trash filter
+    const trashView = req.trashView === true;
+    const db = trashView ? prismaBase : prisma;
 
-    let app = await prisma.kycApplication.findFirst({
+    let app = await db.kycApplication.findFirst({
       where: {
         OR: [
           { applicationId: rawId },
@@ -200,7 +205,7 @@ const getApplicationById = async (req, res, next) => {
       },
     });
 
-    if (!app) {
+    if (!app && !trashView) {
       app = await prisma.kycApplication.findFirst({
         where: {
           applicationId: {
@@ -216,13 +221,14 @@ const getApplicationById = async (req, res, next) => {
       });
     }
 
-    if (!app) return res.status(404).json({ success: false, error: "Not found" });
+    if (!app || (trashView && app.status !== TRASH_STATUS)) return res.status(404).json({ success: false, error: "Not found" });
 
     if (req.user.role === "kyc_team" && Number(app.assignedCrmAgentId) !== Number(req.user.id)) {
       return res.status(403).json({ success: false, error: "You are not assigned to review this application" });
     }
 
-    ensureDigilockerVerificationDocuments(app).then((updatedApp) => {
+    // A trashed application is view-only — nothing is written to it
+    if (!trashView) ensureDigilockerVerificationDocuments(app).then((updatedApp) => {
       if (updatedApp && JSON.stringify(updatedApp.documents) !== JSON.stringify(app.documents)) {
         req.app.get("io")?.to(app.applicationId).emit("kyc_updated");
       }
@@ -777,6 +783,7 @@ const getAuditLogs = async (req, res, next) => {
               phone: true, 
               role: true,
               kycApplications: {
+                where: NOT_TRASHED,
                 select: {
                   applicationId: true,
                   clientCode: true,
@@ -898,78 +905,6 @@ const getAuditLogs = async (req, res, next) => {
   }
 };
 
-const deleteApplication = async (req, res, next) => {
-  const { deleteUser = false } = req.query;
-  const { id } = req.params;
-
-  try {
-    const app = await prisma.kycApplication.findUnique({
-      where: { applicationId: id },
-      include: { user: true }
-    });
-
-    if (!app) {
-      return res.status(404).json({ success: false, error: "Application not found" });
-    }
-
-    const userId = app.userId;
-
-    if (deleteUser) {
-      // Safety check: Don't let admin delete themselves
-      if (userId === req.user.id) {
-        return res.status(400).json({ success: false, error: "You cannot delete your own admin account" });
-      }
-
-      // Delete user (cascade will handle KycApplication and AuditLogs if configured, otherwise manual)
-      // Prisma cascade is defined in schema if set, but we'll do it safely
-      // Release BOID if assigned
-      const boid = await prisma.boid.findFirst({ where: { assignedTo: userId } });
-      if (boid) {
-        const coolingPeriodEnds = new Date();
-        coolingPeriodEnds.setDate(coolingPeriodEnds.getDate() + 7);
-        await prisma.boid.update({
-          where: { id: boid.id },
-          data: {
-            status: "cooling_period",
-            assignedTo: null,
-            coolingPeriodEnds
-          }
-        });
-      }
-
-      await prisma.$transaction([
-        prisma.auditLog.deleteMany({ where: { userId } }),
-        prisma.kycApplication.deleteMany({ where: { userId } }),
-        prisma.user.delete({ where: { id: userId } })
-      ]);
-      
-      const io = req.app.get("io");
-      if (io) io.to("staff_room").emit("applications_updated");
-
-      res.json({ success: true, message: "User and all related data deleted permanently" });
-    } else {
-      // Just delete the application
-      await prisma.kycApplication.delete({
-        where: { applicationId: id }
-      });
-
-      await writeAuditLog({
-        userId: req.user.id,
-        action: "kyc_deleted",
-        details: { applicationId: id, userId },
-        ipAddress: req.ip,
-      });
-
-      const io = req.app.get("io");
-      if (io) io.to("staff_room").emit("applications_updated");
-
-      res.json({ success: true, message: "KYC application deleted permanently" });
-    }
-  } catch (error) {
-    next(error);
-  }
-};
-
 async function writeAuditLog({ userId, action, details, ipAddress }) {
   try {
     await prisma.auditLog.create({
@@ -1009,6 +944,7 @@ const getUsers = async (req, res, next) => {
         skip,
         include: {
           kycApplications: {
+            where: NOT_TRASHED,
             select: {
               applicationId: true,
               status: true,
@@ -1044,6 +980,7 @@ const getUserKycDetails = async (req, res, next) => {
       where: { id: userId },
       include: {
         kycApplications: {
+          where: NOT_TRASHED,
           orderBy: { updatedAt: "desc" }
         },
         auditLogs: {
@@ -1752,7 +1689,7 @@ const getApList = async (req, res, next) => {
         
         const referredUsers = await prisma.user.findMany({
           where: { apCode, ...dateFilter },
-          include: { kycApplications: { select: { status: true } } }
+          include: { kycApplications: { where: NOT_TRASHED, select: { status: true } } }
         });
 
         const referralCount = referredUsers.length;
@@ -1832,6 +1769,7 @@ const getApUsers = async (req, res, next) => {
       where: { apCode, ...dateFilter },
       include: {
         kycApplications: {
+          where: NOT_TRASHED,
           select: {
             id: true, status: true, globeStatus: true, currentStep: true,
             isResubmitted: true, submittedAt: true, applicationId: true
@@ -2060,7 +1998,6 @@ module.exports = {
   getApplications,
   getApplicationById,
   reviewApplication,
-  deleteApplication,
   getStats,
   getAuditLogs,
   getUsers,

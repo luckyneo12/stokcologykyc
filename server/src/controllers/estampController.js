@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { NOT_TRASHED } = require("../utils/trashStatus");
 const cloudinary = require('cloudinary').v2;
 const fs = require('fs');
 
@@ -78,6 +79,7 @@ exports.getEStamps = async (req, res) => {
               phone: true,
               email: true,
               kycApplications: {
+                where: NOT_TRASHED,
                 orderBy: { createdAt: 'desc' },
                 take: 1,
                 select: { applicationId: true, personalDetails: true }

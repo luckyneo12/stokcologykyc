@@ -17,6 +17,7 @@ import {
   getOvalGeometry,
   THRESHOLDS,
 } from "./faceChecks";
+import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, useGuidePrefs, useGuideVoice } from "./SelfieGuide";
 
 /**
  * In-house live selfie capture (replaces the Digio selfie SDK; see src/config/selfieConfig.js).
@@ -63,6 +64,8 @@ const CRITICAL_DURING_CHALLENGE = ["noFace", "multipleFaces"];
 // delays the shot by a few frames instead of failing it.
 const FINAL_PHOTO_CHECKS = ["noFace", "multipleFaces", "turned", "eyesClosed"];
 const CAPTURE_WAIT_MS = 2000;
+// Ready + every check passing this long → the selfie is taken automatically
+const AUTO_CAPTURE_MS = 1000;
 // Glasses / goggles / cap at the moment of the click. The on-screen warning waits ~1–1.5 s before
 // it appears (so noise never flashes it), which would let glasses put on just before clicking slip
 // through. So the photo also needs: this exact frame clean, and the item seen in under
@@ -184,6 +187,10 @@ export default function LiveSelfieCapture({
   const [banner, setBanner] = useState(null);
   const [captured, setCaptured] = useState(null);
   const [videoDims, setVideoDims] = useState(null);
+  // Guide only: which way the face sits off the oval (null when centred) — never used by any check
+  const [nudge, setNudge] = useState(null);
+  const nudgeRef = useRef(null);
+  const [guidePrefs, setGuidePrefs] = useGuidePrefs();
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -460,6 +467,23 @@ export default function LiveSelfieCapture({
     setView({ issues, ready, tips, secondsLeft });
   };
 
+  /** Guide arrows: direction to move when the face is outside the oval (display only). */
+  const publishNudge = (analysis, video) => {
+    let dir = null;
+    if (analysis?.box && video?.videoWidth) {
+      const oval = getOvalGeometry(video.videoWidth, video.videoHeight);
+      const dx = (analysis.box.cx - oval.cx) / oval.w;
+      const dy = (analysis.box.cy - oval.cy) / oval.h;
+      // The preview is mirrored: a face right of centre in the frame shows on the left of the screen
+      if (Math.abs(dx) >= Math.abs(dy)) dir = dx > 0 ? "right" : "left";
+      else dir = dy > 0 ? "up" : "down";
+    }
+    if (dir !== nudgeRef.current) {
+      nudgeRef.current = dir;
+      setNudge(dir);
+    }
+  };
+
   // ─── Session video (from the start of the actions until the selfie is submitted) ───
   // Recorded locally; it is sent with the selfie and the server stores it on Cloudinary only
   // when the selfie passes every check. Abandoned attempts are simply discarded.
@@ -692,6 +716,7 @@ export default function LiveSelfieCapture({
       // Fetch the liveness challenge in the background so the actions start without a wait
       if (analysis.faceCount >= 1 && locationRef.current.granted) prefetchChallenge();
       publishView(issues, false, tips);
+      publishNudge(tips.includes("notCentered") ? analysis : null, video);
       // Blocking checks steady → start the quick liveness actions automatically
       const steady = stableSinceRef.current !== null && now - stableSinceRef.current >= STABLE_MS;
       if (steady && now >= cooldownUntilRef.current && locationRef.current.granted) startChallenge();
@@ -771,6 +796,7 @@ export default function LiveSelfieCapture({
       const readyIssues = now - blinkRef.current.lastBlinkAt > BLINK_RECENT_MS ? [...issues, "needBlink"] : issues;
       // "Click Selfie" is enabled only while every blocking check passes
       publishView(readyIssues, readyIssues.length === 0, tips, Math.ceil(msLeft / 1000));
+      publishNudge(tips.includes("notCentered") ? analysis : null, video);
     }
   };
 
@@ -887,6 +913,17 @@ export default function LiveSelfieCapture({
     setBanner(null);
     goto("verifying");
   };
+
+  // Auto-capture: once the liveness actions are done and every check keeps passing for
+  // AUTO_CAPTURE_MS, the photo is taken by itself (same path as pressing "Click Selfie").
+  // Any check failing in between (canClickSelfie → false) restarts the wait.
+  const clickSelfieRef = useRef(null);
+  clickSelfieRef.current = clickSelfie;
+  useEffect(() => {
+    if (!canClickSelfie) return;
+    const timer = setTimeout(() => clickSelfieRef.current?.(), AUTO_CAPTURE_MS);
+    return () => clearTimeout(timer);
+  }, [canClickSelfie]);
 
   /** Sends the session video of a saved selfie in the background (never blocks the user). */
   const uploadSessionVideo = (videoToken, videoPromise) => {
@@ -1075,6 +1112,7 @@ export default function LiveSelfieCapture({
   else if (stage === "live" || stage === "challengeLoading" || stage === "challenge") buttonLabel = "Complete the quick check first";
   else if (stage === "verifying") buttonLabel = "Checking photo…";
   else if (!view.ready) buttonLabel = issues.length === 1 && issues[0] === "needBlink" ? "Blink once to enable" : "Fix the highlighted items";
+  else if (canClickSelfie) buttonLabel = "📸 Hold still — capturing…";
 
   const checklistState = (item) => {
     if (engineState !== "ready" || !LOOP_STAGES.includes(stage)) return "pending";
@@ -1083,20 +1121,57 @@ export default function LiveSelfieCapture({
   };
   const livenessState = stage === "ready" || stage === "verifying" ? "ok" : stage === "challenge" ? "active" : "pending";
 
+  // Visual + voice guide (display only — follows the checks above, never changes them)
+  const guideCue = !showCamera || locationBlocked ? null
+    : locationPending ? "location"
+    : getGuideCue({
+        stage,
+        engineState,
+        locationGranted: location.granted,
+        challengeView,
+        issues,
+        tips: view.tips,
+        nudge,
+        ready: view.ready,
+      });
+  const guideVoice = useGuideVoice(guideCue, guidePrefs.lang, guidePrefs.muted);
+  // Wide layout (camera | guide) while the camera or the captured photo is shown
+  const twoColumn = showCamera || stage === "review" || stage === "submitting";
+
   const content = (
-    <div className={`lsc-root lsc-${variant}`} role="dialog" aria-modal={variant === "modal"} aria-label="Selfie capture">
-      <style>{STYLES}</style>
-      <div className="lsc-panel">
+    <div
+      className={`lsc-root lsc-${variant}`}
+      role="dialog"
+      aria-modal={variant === "modal"}
+      aria-label="Selfie capture"
+      onPointerDownCapture={guideVoice.prime}
+    >
+      <style>{STYLES + GUIDE_STYLES}</style>
+      <div className={`lsc-panel ${twoColumn ? "lsc-panel-wide" : ""}`}>
         <div className="lsc-header">
-          <div>
-            <h2 className="lsc-title">Live Selfie</h2>
-            <p className="lsc-sub">Real-time checks keep your KYC photo clear and valid.</p>
+          <div className="lsc-header-main">
+            <span className="lsc-header-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
+                <circle cx="12" cy="11" r="3" />
+                <path d="M7.5 17.5c1-2 2.6-3 4.5-3s3.5 1 4.5 3" />
+              </svg>
+            </span>
+            <div>
+              <h2 className="lsc-title">
+                Live Selfie
+                {showCamera && <span className="lsc-live"><span className="lsc-live-dot" />Live</span>}
+              </h2>
+              <p className="lsc-sub">Real-time checks keep your KYC photo clear and valid.</p>
+            </div>
           </div>
           {onCancel && stage !== "submitting" && stage !== "done" && (
             <button type="button" className="lsc-close" onClick={cancel} aria-label="Close selfie capture">×</button>
           )}
         </div>
 
+        <div className={`lsc-body ${twoColumn ? "lsc-two" : ""}`}>
+        <div className="lsc-main">
         {/* ── Location gate ── */}
         {stage === "location" && (
           <LocationPanel location={location} platform={platform} />
@@ -1121,7 +1196,8 @@ export default function LiveSelfieCapture({
 
         {/* ── Camera (kept mounted so the video element always exists) ── */}
         <div className="lsc-camera-wrap" style={{ display: showCamera ? "flex" : "none" }}>
-          <div className="lsc-camera" style={cameraBoxStyle}>
+          <div className="lsc-stage" style={{ width: cameraBoxStyle.width }}>
+          <div className={`lsc-camera lsc-cam-${stage}`} style={{ ...cameraBoxStyle, width: "100%" }}>
             <video ref={videoRef} className="lsc-video" playsInline muted autoPlay />
             {oval && (
               <svg className="lsc-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -1132,34 +1208,43 @@ export default function LiveSelfieCapture({
                   </mask>
                 </defs>
                 <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.45)" mask="url(#lsc-oval-mask)" />
+                {/* Soft glow under the oval line */}
                 <ellipse
+                  className="lsc-oval-glow"
                   cx={oval.overlay.cx}
                   cy={oval.overlay.cy}
                   rx={oval.overlay.rx}
                   ry={oval.overlay.ry}
                   fill="none"
                   stroke={ovalColor}
-                  strokeWidth="4"
+                  strokeWidth="10"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <ellipse
+                  className="lsc-oval-line"
+                  cx={oval.overlay.cx}
+                  cy={oval.overlay.cy}
+                  rx={oval.overlay.rx}
+                  ry={oval.overlay.ry}
+                  fill="none"
+                  stroke={ovalColor}
+                  strokeWidth="3"
                   vectorEffect="non-scaling-stroke"
                   style={{ transition: "stroke 0.25s" }}
                 />
               </svg>
             )}
 
-            {statusText && (
-              <div className={`lsc-status lsc-status-${statusTone}`} aria-live="polite">{statusText}</div>
-            )}
-
-            {challengeView && (stage === "challenge" || stage === "ready") && (
-              <div className="lsc-steps">
-                {challengeView.steps.map((s, i) => (
-                  <span key={s} className={`lsc-dot ${i < challengeView.index ? "done" : i === challengeView.index ? "active" : ""}`} />
-                ))}
-                <span className="lsc-steps-label">
-                  {challengeView.done ? `Liveness confirmed${view.secondsLeft ? ` · click within ${view.secondsLeft}s` : ""}` : challengeView.centering ? "Look straight" : `Step ${challengeView.index + 1} of ${challengeView.steps.length}`}
-                </span>
+            {/* Auto-capture countdown + shutter flash (visual only) */}
+            {canClickSelfie && (
+              <div className="lsc-auto" aria-hidden="true">
+                <span className="lsc-auto-label">Hold still…</span>
+                <span className="lsc-auto-bar"><span style={{ animationDuration: `${AUTO_CAPTURE_MS}ms` }} /></span>
               </div>
             )}
+            {stage === "verifying" && <span className="lsc-flash" aria-hidden="true" />}
+
+            <GuideArrows cue={guideCue} />
 
             {(stage === "starting" || engineState === "loading") && (
               <div className="lsc-veil"><div className="lsc-spinner" /></div>
@@ -1170,6 +1255,7 @@ export default function LiveSelfieCapture({
                 <LocationPanel location={location} platform={platform} compact />
               </div>
             )}
+          </div>
           </div>
         </div>
 
@@ -1198,6 +1284,38 @@ export default function LiveSelfieCapture({
                 </div>
               )}
             </div>
+          </div>
+        )}
+        </div>
+
+        <div className="lsc-side">
+        {/* ── Guide: head on its own + instruction, voice controls and progress ── */}
+        {showCamera && (
+          <div className="lsc-guide-card">
+            <GuideHeadCoin cue={guideCue} />
+            <GuideCaption
+              cue={guideCue}
+              fallbackText={statusText}
+              fallbackTone={statusTone}
+              prefs={guidePrefs}
+              setPrefs={setGuidePrefs}
+              voice={guideVoice}
+              progress={challengeView && (stage === "challenge" || stage === "ready")
+                ? { steps: challengeView.steps, index: challengeView.index, done: challengeView.done, centering: challengeView.centering, secondsLeft: view.secondsLeft }
+                : null}
+            />
+          </div>
+        )}
+        {stage === "review" && (
+          <div className="lsc-review-note">
+            <h3 className="lsc-h3">Looks good?</h3>
+            <p className="lsc-text">Check that your face is clear, well-lit and fully visible. Submit it, or retake if you are not happy with it.</p>
+          </div>
+        )}
+        {stage === "submitting" && (
+          <div className="lsc-review-note">
+            <h3 className="lsc-h3">Submitting…</h3>
+            <p className="lsc-text">Verifying liveness and face match. This takes a few seconds.</p>
           </div>
         )}
 
@@ -1261,8 +1379,10 @@ export default function LiveSelfieCapture({
           </div>
         )}
         {stage === "live" && (
-          <p className="lsc-footnote">First do two quick actions shown on the camera (like turning your head or blinking). Then tap Click Selfie.</p>
+          <p className="lsc-footnote">First do two quick actions shown on the camera (like turning your head or blinking). Your photo is then taken automatically.</p>
         )}
+        </div>
+        </div>
       </div>
     </div>
   );
@@ -1340,70 +1460,120 @@ function LocationPanel({ location, platform, compact = false }) {
 
 // ─── Styles (scoped by the lsc- prefix) ─────────────────────────────────
 const STYLES = `
-.lsc-root { font-family: inherit; color: var(--text-primary, #111); }
-.lsc-modal { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
-.lsc-modal .lsc-panel { width: 100%; max-width: 360px; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--bg-primary, #fff); border-radius: 18px; padding: 14px 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.35); }
-.lsc-page .lsc-panel { width: 100%; max-width: 560px; margin: 0 auto; padding: 16px; }
+.lsc-root { font-family: inherit; color: var(--text-primary, #0e0f0c);
+  --lsc-surface: var(--bg-primary, #ffffff); --lsc-soft: var(--bg-secondary, #f4f6f3); --lsc-line: var(--border-color, #e5e7eb);
+  --lsc-text: var(--text-primary, #0e0f0c); --lsc-muted: var(--text-muted, #6b7280); --lsc-green: var(--wise-green, #9fe870); --lsc-forest: var(--wise-dark-green, #163300); }
+.lsc-modal { position: fixed; inset: 0; z-index: 10000; background: rgba(14,15,12,0.55); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px; overflow-y: auto; }
+.lsc-panel { position: relative; background: var(--lsc-surface); color: var(--lsc-text); }
+.lsc-modal .lsc-panel { width: 100%; max-width: 400px; max-height: calc(100vh - 40px); overflow-y: auto; border-radius: 28px; padding: 20px; box-shadow: 0 30px 80px rgba(14,15,12,0.28); animation: lsc-in 0.35s cubic-bezier(.2,.9,.3,1); transition: max-width 0.3s ease; }
+.lsc-modal .lsc-panel.lsc-panel-wide { max-width: 780px; }
+.lsc-page .lsc-panel { width: 100%; max-width: 780px; margin: 0 auto; padding: 20px 16px; border-radius: 24px; }
+@media (max-width: 760px) {
+  .lsc-modal .lsc-panel.lsc-panel-wide { max-width: 420px; }
+}
 @media (max-width: 600px) {
   .lsc-modal { padding: 0; align-items: stretch; }
-  .lsc-modal .lsc-panel { max-width: none; max-height: none; min-height: 100%; border-radius: 0; padding: 16px; }
+  .lsc-modal .lsc-panel, .lsc-modal .lsc-panel.lsc-panel-wide { max-width: none; max-height: none; min-height: 100%; border-radius: 0; padding: 16px; animation: none; }
 }
-.lsc-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.lsc-title { font-size: 1.05rem; font-weight: 800; margin: 0; color: var(--text-primary, #111); }
-.lsc-sub { margin: 2px 0 0; font-size: 0.75rem; color: var(--text-muted, #666); }
-.lsc-close { background: var(--bg-secondary, #f1f1f1); border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--text-primary, #111); flex-shrink: 0; }
-.lsc-card { background: var(--bg-secondary, #f6f6f6); border-radius: 16px; padding: 24px 20px; }
+
+/* Header */
+.lsc-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.lsc-header-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lsc-header-icon { width: 42px; height: 42px; border-radius: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--lsc-green); color: var(--lsc-forest); }
+.lsc-title { display: flex; align-items: center; gap: 8px; font-size: 1.15rem; font-weight: 800; letter-spacing: -0.2px; margin: 0; color: var(--lsc-text); }
+.lsc-live { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 8px; border-radius: 999px; font-size: 0.66rem; font-weight: 800; color: #dc2626; background: rgba(239,68,68,0.1); }
+.lsc-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #ef4444; animation: lsc-live 1.4s ease-in-out infinite; }
+.lsc-sub { margin: 3px 0 0; font-size: 0.78rem; color: var(--lsc-muted); }
+.lsc-close { background: var(--lsc-soft); border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 1.35rem; line-height: 1; cursor: pointer; color: var(--lsc-text); flex-shrink: 0; transition: background 0.2s, transform 0.15s; }
+.lsc-close:hover { background: var(--lsc-line); }
+.lsc-close:active { transform: scale(0.92); }
+
+/* Layout: camera | guide */
+.lsc-body { display: flex; flex-direction: column; }
+.lsc-two { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 22px; align-items: start; }
+.lsc-main, .lsc-side { min-width: 0; }
+@media (max-width: 760px) { .lsc-two { display: flex; flex-direction: column; align-items: stretch; gap: 0; } }
+.lsc-guide-card { padding: 18px 16px 16px; border-radius: 22px; background: linear-gradient(180deg, rgba(159,232,112,0.16) 0%, rgba(159,232,112,0) 55%), var(--lsc-surface); border: 1px solid var(--lsc-line); }
+@media (max-width: 760px) { .lsc-guide-card { margin-top: 14px; } }
+.lsc-review-note { padding: 18px; border-radius: 20px; background: var(--lsc-soft); }
+@media (max-width: 760px) { .lsc-review-note { margin-top: 14px; } }
+
+/* Cards: location / errors / saved */
+.lsc-card { background: var(--lsc-soft); border-radius: 22px; padding: 26px 20px; }
 .lsc-card.lsc-compact { background: transparent; padding: 12px; color: #fff; }
 .lsc-card.lsc-compact .lsc-text, .lsc-card.lsc-compact .lsc-h3 { color: #fff; }
-.lsc-card.lsc-compact .lsc-help { color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.08); }
+.lsc-card.lsc-compact .lsc-help { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.1); }
 .lsc-center { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.lsc-h3 { margin: 4px 0 0; font-size: 1.05rem; font-weight: 800; color: var(--text-primary, #111); }
-.lsc-text { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary, #444); max-width: 420px; }
-.lsc-help { margin: 4px 0 0; font-size: 0.8rem; line-height: 1.5; color: var(--text-muted, #666); background: var(--bg-primary, #fff); border-radius: 10px; padding: 10px 12px; text-align: left; max-width: 440px; }
-.lsc-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.3rem; }
-.lsc-icon-ok { background: #9fe870; color: #1a1a1a; }
-.lsc-done-img { width: 120px; height: 160px; object-fit: cover; border-radius: 12px; border: 2px solid #9fe870; margin-top: 4px; }
-.lsc-icon-bad { background: rgba(239,68,68,0.12); color: #ef4444; }
+.lsc-h3 { margin: 4px 0 0; font-size: 1.08rem; font-weight: 800; color: var(--lsc-text); }
+.lsc-text { margin: 6px 0 0; font-size: 0.88rem; line-height: 1.55; color: var(--lsc-muted); max-width: 440px; }
+.lsc-help { margin: 4px 0 0; font-size: 0.8rem; line-height: 1.55; color: var(--lsc-muted); background: var(--lsc-surface); border-radius: 14px; padding: 10px 12px; text-align: left; max-width: 440px; }
+.lsc-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.4rem; }
+.lsc-icon-ok { background: var(--lsc-green); color: var(--lsc-forest); box-shadow: 0 0 0 8px rgba(159,232,112,0.22); animation: lsc-pop 0.5s cubic-bezier(.2,1.5,.4,1); }
+.lsc-icon-bad { background: rgba(239,68,68,0.12); color: #dc2626; }
 .lsc-icon-info { background: rgba(77,163,255,0.14); color: #2f7fd8; }
+.lsc-done-img { width: 128px; height: 170px; object-fit: cover; border-radius: 18px; border: 3px solid var(--lsc-green); margin-top: 6px; }
+
+/* Camera */
 .lsc-camera-wrap { justify-content: center; }
-.lsc-camera { position: relative; background: #000; border-radius: 18px; overflow: hidden; margin: 0 auto; }
+.lsc-stage { margin: 0 auto; }
+.lsc-camera { position: relative; background: #0e0f0c; border-radius: 26px; overflow: hidden; margin: 0 auto; box-shadow: 0 16px 40px rgba(14,15,12,0.22); }
 .lsc-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 .lsc-review-img { transform: none; }
 .lsc-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.lsc-status { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); max-width: calc(100% - 20px); padding: 6px 12px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; text-align: center; background: rgba(0,0,0,0.65); color: #fff; backdrop-filter: blur(4px); }
-.lsc-status-warn { background: rgba(245,166,35,0.95); color: #1a1a1a; }
-.lsc-status-ok { background: rgba(159,232,112,0.95); color: #1a1a1a; }
-.lsc-status-action { background: rgba(47,127,216,0.95); color: #fff; font-size: 1rem; }
-.lsc-steps { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 999px; }
-.lsc-dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.35); }
-.lsc-dot.active { background: #4da3ff; }
-.lsc-dot.done { background: #9fe870; }
-.lsc-steps-label { color: #fff; font-size: 0.75rem; font-weight: 700; margin-left: 4px; }
-.lsc-veil { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.35); }
-.lsc-veil-solid { background: rgba(0,0,0,0.82); overflow-y: auto; }
-.lsc-veil-text { color: #fff; font-weight: 700; margin: 0; }
-.lsc-spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: lsc-spin 0.8s linear infinite; }
-.lsc-spinner-dark { border-color: var(--border-color, #ddd); border-top-color: var(--wise-green, #9fe870); }
-@keyframes lsc-spin { to { transform: rotate(360deg); } }
-.lsc-banner { margin-top: 12px; padding: 10px 14px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; line-height: 1.45; }
+.lsc-oval-glow { opacity: 0.2; transition: stroke 0.25s; }
+.lsc-cam-challenge .lsc-oval-glow, .lsc-cam-ready .lsc-oval-glow { animation: lsc-glow 1.6s ease-in-out infinite; }
+.lsc-auto { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,0.95); box-shadow: 0 6px 18px rgba(0,0,0,0.25); animation: lsc-rise 0.25s ease-out; }
+.lsc-auto-label { font-size: 0.74rem; font-weight: 800; color: var(--lsc-forest); white-space: nowrap; }
+.lsc-auto-bar { width: 96px; height: 5px; border-radius: 999px; background: rgba(22,51,0,0.15); overflow: hidden; }
+.lsc-auto-bar span { display: block; height: 100%; width: 100%; border-radius: inherit; background: #30a46c; transform-origin: left; animation-name: lsc-fill; animation-timing-function: linear; animation-fill-mode: both; }
+.lsc-flash { position: absolute; inset: 0; z-index: 5; pointer-events: none; background: #fff; animation: lsc-flash 0.55s ease-out forwards; }
+.lsc-veil { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(14,15,12,0.4); }
+.lsc-veil-solid { background: rgba(14,15,12,0.85); overflow-y: auto; }
+.lsc-veil-text { color: #fff; font-weight: 700; margin: 0; font-size: 0.9rem; }
+.lsc-spinner { width: 38px; height: 38px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.3); border-top-color: var(--lsc-green); animation: lsc-spin 0.8s linear infinite; }
+.lsc-spinner-dark { border-color: var(--lsc-line); border-top-color: #30a46c; }
+
+/* Messages */
+.lsc-banner { margin-top: 12px; padding: 11px 14px; border-radius: 14px; font-size: 0.85rem; font-weight: 600; line-height: 1.45; animation: lsc-rise 0.3s ease-out; }
+.lsc-banner-error { background: rgba(239,68,68,0.08); color: #dc2626; border: 1px solid rgba(239,68,68,0.25); }
+.lsc-banner-info { background: rgba(77,163,255,0.08); color: #2f7fd8; border: 1px solid rgba(77,163,255,0.25); }
+.lsc-banner-success { background: rgba(48,164,108,0.1); color: #1f7a4f; border: 1px solid rgba(48,164,108,0.3); }
 .lsc-alerts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.lsc-alert-chip { background: #dc2626; color: #fff; font-weight: 800; font-size: 0.85rem; padding: 7px 12px; border-radius: 999px; }
-.lsc-banner-error { background: rgba(239,68,68,0.1); color: #dc2626; border: 1px solid rgba(239,68,68,0.3); }
+.lsc-alert-chip { background: #dc2626; color: #fff; font-weight: 800; font-size: 0.8rem; padding: 7px 12px; border-radius: 999px; animation: lsc-rise 0.3s ease-out; }
 .lsc-link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
-.lsc-checklist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-.lsc-check { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted, #777); }
-.lsc-check-icon { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 800; background: var(--bg-secondary, #eee); flex-shrink: 0; }
-.lsc-check.ok { color: var(--text-primary, #111); }
-.lsc-check.ok .lsc-check-icon { background: #9fe870; color: #1a1a1a; }
-.lsc-check.bad { color: #dc2626; }
+
+/* Checklist */
+.lsc-checklist { list-style: none; padding: 0; margin: 14px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lsc-check { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; font-size: 0.76rem; font-weight: 600; color: var(--lsc-muted); background: var(--lsc-soft); transition: background 0.3s, color 0.3s; }
+.lsc-check-icon { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.66rem; font-weight: 900; background: var(--lsc-line); color: var(--lsc-muted); flex-shrink: 0; transition: background 0.3s, transform 0.3s; }
+.lsc-check.ok { color: var(--lsc-text); }
+.lsc-check.ok .lsc-check-icon { background: var(--lsc-green); color: var(--lsc-forest); animation: lsc-pop 0.35s ease-out; }
+.lsc-check.bad { color: #dc2626; background: rgba(239,68,68,0.07); }
 .lsc-check.bad .lsc-check-icon { background: rgba(239,68,68,0.15); color: #dc2626; }
-.lsc-actions { display: flex; gap: 10px; justify-content: center; margin-top: 12px; width: 100%; flex-wrap: wrap; }
-.lsc-btn { height: 46px; padding: 0 20px; border-radius: 12px; font-weight: 800; font-size: 0.92rem; cursor: pointer; border: none; transition: opacity 0.2s, transform 0.1s; }
-.lsc-btn:active:not(:disabled) { transform: scale(0.98); }
-.lsc-btn-primary { background: var(--wise-green, #9fe870); color: #000; }
-.lsc-btn-primary:disabled { background: var(--bg-secondary, #e5e5e5); color: var(--text-muted, #888); cursor: not-allowed; }
-.lsc-btn-ghost { background: var(--bg-secondary, #eee); color: var(--text-primary, #111); }
+
+/* Buttons */
+.lsc-actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; width: 100%; flex-wrap: wrap; }
+.lsc-btn { height: 52px; padding: 0 22px; border-radius: 999px; font-weight: 800; font-size: 0.95rem; cursor: pointer; border: none; transition: opacity 0.2s, transform 0.12s, background 0.25s, box-shadow 0.25s; }
+.lsc-btn:active:not(:disabled) { transform: scale(0.97); }
+.lsc-btn-primary { background: var(--lsc-green); color: var(--lsc-forest); box-shadow: 0 8px 20px rgba(159,232,112,0.45); }
+.lsc-btn-primary:hover:not(:disabled) { box-shadow: 0 10px 26px rgba(159,232,112,0.6); }
+.lsc-btn-primary:disabled { background: var(--lsc-soft); color: var(--lsc-muted); box-shadow: none; cursor: not-allowed; }
+.lsc-btn-ghost { background: var(--lsc-soft); color: var(--lsc-text); }
+.lsc-btn-ghost:hover { background: var(--lsc-line); }
 .lsc-btn-wide { width: 100%; }
 .lsc-actions .lsc-btn:not(.lsc-btn-wide) { flex: 1 1 140px; }
-.lsc-footnote { margin: 8px 0 0; font-size: 0.7rem; color: var(--text-muted, #777); text-align: center; line-height: 1.45; }
+.lsc-footnote { margin: 12px 0 0; font-size: 0.74rem; color: var(--lsc-muted); text-align: center; line-height: 1.5; }
+
+@keyframes lsc-spin { to { transform: rotate(360deg); } }
+@keyframes lsc-in { 0% { opacity: 0; transform: translateY(12px) scale(0.98); } 100% { opacity: 1; transform: none; } }
+@keyframes lsc-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes lsc-flash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+@keyframes lsc-glow { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.45; } }
+@keyframes lsc-fill { 0% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
+@keyframes lsc-pop { 0% { transform: scale(0.6); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes lsc-rise { 0% { transform: translateY(6px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+.lsc-auto { transform: translateX(-50%); }
+@media (prefers-reduced-motion: reduce) {
+  .lsc-live-dot, .lsc-oval-glow, .lsc-panel { animation: none !important; }
+}
 `;

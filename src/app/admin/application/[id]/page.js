@@ -1708,10 +1708,8 @@ export default function ApplicationDetail() {
             <div style={{ marginTop: 24, padding: 24, border: "1px dashed var(--border-color)", borderRadius: 16 }}>
               <button 
                 onClick={() => {
-                  if (confirm("DANGER: This will PERMANENTLY remove this KYC application from the database. This action cannot be undone. Proceed?")) {
-                    const deleteUser = confirm("Do you also want to DELETE the USER ACCOUNT associated with this application? (Select Cancel to keep the user but delete the KYC data)");
-                    
-                    fetchWithFallback(`/api/admin/application/${id}${deleteUser ? "?deleteUser=true" : ""}`, {
+                  if (confirm("Move this KYC application to the Trash? You can restore it or delete it permanently (optionally with the user account) from the Trash.")) {
+                    fetchWithFallback(`/api/admin/application/${id}`, {
                       method: "DELETE",
                       headers: { "Authorization": `Bearer ${localStorage.getItem("adminToken")}` }
                     }).then(r => r.json()).then(data => {
@@ -1729,7 +1727,7 @@ export default function ApplicationDetail() {
                 Delete KYC Request
               </button>
               <p style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginTop: 12, textAlign: "center", lineHeight: 1.4 }}>
-                Caution: Deleting will remove all uploaded documents, biometric data, and progress history for this request.
+                The application moves to the Trash. Deleting it permanently from the Trash removes all uploaded documents, biometric data, and progress history.
               </p>
             </div>
           </div>

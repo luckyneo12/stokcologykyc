@@ -6,6 +6,7 @@ const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const { z } = require("zod");
 
 const prisma = require("../config/db");
+const { TRASH_STATUS } = require("../utils/trashStatus");
 const { auth } = require("../middlewares/auth");
 const panService = require("../services/panService");
 const digilockerService = require("../services/digilockerService");
@@ -1173,7 +1174,8 @@ router.post("/verify-pan", auth, async (req, res) => {
     try {
       const existingApps = await prisma.$queryRaw`
         SELECT id FROM KycApplication 
-        WHERE userId != ${req.user.id} 
+        WHERE userId != ${req.user.id}
+        AND status != ${TRASH_STATUS}
         AND JSON_EXTRACT(identityDetails, '$.pan') = ${pan.toUpperCase()}
         LIMIT 1
       `;
@@ -2624,8 +2626,18 @@ router.post("/verify-bank", auth, async (req, res) => {
         .json({ success: false, error: "Application not found" });
     }
 
-    const personalDetails = parseJsonField(application.personalDetails, {});
     const bankDetails = parseJsonField(application.bankDetails, {});
+    let personalDetails = parseJsonField(application.personalDetails, {});
+
+    // Correction-portal link (its JWT carries correctionMode). A name corrected in the same session
+    // is still only in the draft, so the penny-drop name check uses it.
+    const isCorrection = req.user.correctionMode === true && !!application.correctionDraft &&
+      (application.status === "rejected" || application.globeStatus === "rejected");
+    if (isCorrection) {
+      const drafts = parseJsonField(application.correctionDraft, {})?.drafts || {};
+      const draftName = drafts.personalDetails?.fullName || drafts.digilocker?.personalDetails?.fullName;
+      if (draftName) personalDetails = { ...personalDetails, fullName: draftName };
+    }
 
     const result = await bankService.verifyAccount(
       accountNumber,
@@ -2671,7 +2683,7 @@ router.post("/verify-bank", auth, async (req, res) => {
       const isNameMatched = finalScore >= 90;
 
       // Update application state
-      const nextBankDetails = mergeJson(application.bankDetails, {
+      const bankPatch = {
         accountNumber,
         ifsc,
         bankName:
@@ -2701,7 +2713,26 @@ router.post("/verify-bank", auth, async (req, res) => {
           branchDetails.pincode ||
           branchDetails.pin_code ||
           bankDetails.pincode,
-      });
+      };
+      const nextBankDetails = mergeJson(application.bankDetails, bankPatch);
+
+      // Correction portal: only report the result. The client keeps it in the correction draft and it
+      // reaches the live application on /correction/complete after the eSign — nothing is saved here.
+      if (isCorrection) {
+        await writeAuditLog({
+          userId: req.user.id,
+          action: "bank_verified_correction",
+          details: { applicationId: application.applicationId, nameMatched: isNameMatched },
+          ipAddress: req.ip,
+        });
+        return res.json({
+          success: true,
+          verified: isNameMatched,
+          nameMismatch: !isNameMatched,
+          data: result,
+          bankDetails: bankPatch,
+        });
+      }
 
       await prisma.kycApplication.update({
         where: { id: application.id },

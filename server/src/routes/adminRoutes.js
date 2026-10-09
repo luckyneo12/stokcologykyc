@@ -3,7 +3,6 @@ const {
   getApplications,
   getApplicationById,
   reviewApplication,
-  deleteApplication,
   getStats,
   getAuditLogs,
   getUsers,
@@ -21,8 +20,12 @@ const {
 } = require("../controllers/adminController");
 const { adminAuth } = require("../middlewares/auth");
 const estampRoutes = require("./estampRoutes");
+const trash = require("../controllers/trashController");
 
 const router = express.Router();
+
+// A trashed application can't be changed through any /:id route until it is restored
+router.param("id", trash.rejectIfTrashed);
 
 const boidRoutes = require("./boidRoutes");
 router.use("/boids", boidRoutes);
@@ -32,7 +35,12 @@ router.use("/estamp", estampRoutes);
 router.get("/applications", adminAuth, getApplications);
 router.get("/application/:id", adminAuth, getApplicationById);
 router.put("/review/:id", adminAuth, reviewApplication);
-router.delete("/application/:id", adminAuth, deleteApplication);
+// "Delete" moves the application to the Trash; it is removed only from there
+router.delete("/application/:id", adminAuth, trash.moveToTrash);
+router.get("/trash", adminAuth, trash.listTrash);
+router.get("/trash/:appId", adminAuth, trash.getTrashedApplication);
+router.post("/trash/:appId/restore", adminAuth, trash.restoreFromTrash);
+router.delete("/trash/:appId", adminAuth, trash.deletePermanently);
 router.get("/dashboard-data", adminAuth, getStats);
 router.get("/audit-logs", adminAuth, getAuditLogs);
 router.get("/users", adminAuth, getUsers);

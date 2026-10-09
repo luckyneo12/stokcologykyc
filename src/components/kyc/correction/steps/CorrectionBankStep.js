@@ -80,6 +80,7 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
 };
 
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse, verifyBank, verifyIfsc } from "@/utils/digio";
+import { uploadCorrectionDocument } from "@/utils/correctionUpload";
 
 // Bank account number fields must never be autofilled by the browser / password managers
 const NO_AUTOFILL = {
@@ -163,6 +164,10 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showMismatchModal, setShowMismatchModal] = useState(null);
   const [isFetchingIfsc, setIsFetchingIfsc] = useState(false);
+  // Name mismatch accepted → the user must upload a bank proof for this new account before saving
+  const [pendingMismatch, setPendingMismatch] = useState(null); // { accountHolder, pennyDrop }
+  const [bankProof, setBankProof] = useState({ type: "", path: "", uploading: false });
+  const bankProofInputRef = useRef(null);
 
   const isAlreadyProcessed = false;
   
@@ -282,6 +287,68 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
+  // Bank details edited after a name mismatch → that penny drop no longer applies, verify again
+  const editField = (field, value) => {
+    update(field, value);
+    if (pendingMismatch) {
+      setPendingMismatch(null);
+      setBankProof({ type: "", path: "", uploading: false });
+    }
+  };
+
+  // Draft for this step: penny-drop result from the server, overlaid with the filled form values.
+  // Nothing reaches the live application until /correction/complete after the eSign.
+  const buildBankDraft = (pennyDrop, extra) => {
+    const out = { ...(pennyDrop || {}) };
+    for (const [key, value] of Object.entries(form)) {
+      if (value !== "" && value !== null && value !== undefined) out[key] = value;
+    }
+    return { ...out, ...extra };
+  };
+
+  const handleBankProofUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.match("image.*") && file.type !== "application/pdf") {
+      addToast("Please upload an image or PDF for Bank Proof", "error");
+      return;
+    }
+    setBankProof(prev => ({ ...prev, uploading: true }));
+    try {
+      const result = await uploadCorrectionDocument(file);
+      setBankProof(prev => ({ ...prev, path: result.path, uploading: false }));
+      addToast("Bank proof uploaded", "success");
+    } catch (error) {
+      setBankProof(prev => ({ ...prev, uploading: false }));
+      addToast(error.message || "Failed to upload bank proof", "error");
+    }
+  };
+
+  const handleSaveWithBankProof = async () => {
+    if (!pendingMismatch) return;
+    if (!bankProof.type) {
+      addToast("Please select the bank proof type", "error");
+      return;
+    }
+    if (!bankProof.path) {
+      addToast("Please upload the bank proof for this account", "error");
+      return;
+    }
+    // The new proof replaces whatever was uploaded for the old account
+    const payloadData = buildBankDraft(pendingMismatch.pennyDrop, {
+      method: "Manual Data Entry",
+      accountHolderName: pendingMismatch.accountHolder,
+      verified: false,
+      proofPreview: bankProof.path,
+      proofType: bankProof.type,
+      proofPath: null,
+      proof: null,
+    });
+    const success = await saveDraft(stepId, payloadData);
+    if (success) nextCorrectionStep();
+  };
+
   const validateBankDetails = () => {
     if (!form.accountNumber || !form.ifsc || !form.accountType) {
       addToast("Please fill all bank details", "error");
@@ -320,7 +387,9 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
         const accountHolder = result.data.beneficiary_name_with_bank || form.accountHolderName;
 
         if (result.nameMismatch) {
-          const kycName = personalDetails?.fullName || ocrData?.name || "Unknown";
+          // A name corrected in this session is still only in the drafts (the server compares with it too)
+          const kycName = drafts.personalDetails?.fullName || drafts.digilocker?.personalDetails?.fullName
+            || personalDetails?.fullName || ocrData?.name || "Unknown";
           
           const hashName = (name) => {
             if (!name) return "";
@@ -333,7 +402,8 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
           setShowMismatchModal({
              kycName,
              bankName: hashName(accountHolder),
-             accountHolder
+             accountHolder,
+             pennyDrop: result.bankDetails
           });
         } else {
           addToast("Name matched. Penny drop verified.", "success");
@@ -341,7 +411,12 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
           // Record verification fingerprint so this step auto-skips on re-navigation
 
           clearFormDraft();
-          const payloadData = { ...form, method: "Penny Drop Verified", accountHolderName: accountHolder, verified: true };
+          // Verified account → the bank statement uploaded for the earlier unverified account is dropped
+          // (nulls override it in the eSign preview PDF; the server deletes it on merge)
+          const payloadData = buildBankDraft(result.bankDetails, {
+            method: "Penny Drop Verified", accountHolderName: accountHolder, verified: true,
+            proofPreview: null, proofPath: null, proof: null, proofType: null,
+          });
           const success = await saveDraft(stepId, payloadData);
           if (success) nextCorrectionStep();
         }
@@ -421,7 +496,7 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
                 <input 
                   placeholder="IFSC" 
                   value={form.ifsc} 
-                  onChange={e => update("ifsc", e.target.value.toUpperCase())} 
+                  onChange={e => editField("ifsc", e.target.value.toUpperCase())} 
                   className="input-field"
                   style={{ textTransform: "uppercase", background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }} 
                 />
@@ -456,7 +531,7 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
                   (form.accountType === "Savings" ? "Saving Account" : 
                    form.accountType === "Current" ? "Current Account" : form.accountType)
                 }
-                onChange={val => update("accountType", val)}
+                onChange={val => editField("accountType", val)}
                 options={["Saving Account", "Current Account"]}
                 placeholder="--Select--"
               />
@@ -469,7 +544,7 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
               <input 
                 placeholder="Enter Account Number" 
                 value={form.accountNumber} 
-                onChange={e => update("accountNumber", cleanAccountNumber(e.target.value))} 
+                onChange={e => editField("accountNumber", cleanAccountNumber(e.target.value))} 
                 {...NO_AUTOFILL}
                 name="bank_account_number"
                 className="input-field" 
@@ -491,7 +566,7 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
                   {...NO_AUTOFILL}
                   name="bank_account_number_confirm"
                   onChange={e => {
-                    update("confirmAccountNumber", cleanAccountNumber(e.target.value));
+                    editField("confirmAccountNumber", cleanAccountNumber(e.target.value));
                     if (showAccountNumber) setShowAccountNumber(false);
                   }}
                   className="input-field" 
@@ -531,13 +606,46 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
               )}
             </div>
 
+            {pendingMismatch && (
+              <div style={{
+                marginBottom: "24px", padding: "20px", borderRadius: "16px",
+                background: "rgba(247, 85, 85, 0.04)", border: "1.5px solid rgba(239, 68, 68, 0.3)"
+              }}>
+                <p style={{ margin: 0, fontWeight: 800, color: "var(--text-primary)", fontSize: "0.95rem" }}>
+                  Bank Proof <span style={{ color: "var(--wise-danger)" }}>*</span>
+                </p>
+                <p style={{ margin: "6px 0 16px", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+                  Since your bank could not be electronically verified, please upload a cancelled cheque, bank statement, or passbook of this account.
+                </p>
+                <div style={{ marginBottom: "12px" }}>
+                  <CustomSelect
+                    value={bankProof.type}
+                    onChange={val => setBankProof(prev => ({ ...prev, type: val }))}
+                    options={["Bank Statement", "Cancelled Cheque", "Passbook"]}
+                    placeholder="--Select proof type--"
+                  />
+                </div>
+                <input type="file" ref={bankProofInputRef} onChange={handleBankProofUpload} style={{ display: "none" }} accept="image/*,application/pdf" />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={bankProof.uploading}
+                  onClick={() => bankProofInputRef.current?.click()}
+                  style={{ width: "100%", height: "52px", borderRadius: "14px", fontWeight: 700, fontSize: "0.95rem", cursor: bankProof.uploading ? "wait" : "pointer" }}
+                >
+                  {bankProof.uploading ? "Uploading..." : bankProof.path ? "✓ Uploaded — Replace file" : "Upload Bank Proof"}
+                </button>
+              </div>
+            )}
+
             <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-              <button 
-                className="btn-primary" 
-                onClick={handleSubmit} 
+              <button
+                className="btn-primary"
+                onClick={pendingMismatch ? handleSaveWithBankProof : handleSubmit}
+                disabled={bankProof.uploading}
                 style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
               >
-               {verificationState === "verifying" ? "Verifying..." : isAlreadyProcessed ? (bankDetails?.verified ? "Verified - Continue" : "Mismatched - Continue") : "Submit"}
+               {verificationState === "verifying" ? "Verifying..." : pendingMismatch ? "Save & Continue" : isAlreadyProcessed ? (bankDetails?.verified ? "Verified - Continue" : "Mismatched - Continue") : "Submit"}
               </button>
 
               <button 
@@ -627,13 +735,12 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
             
             <button 
               onClick={() => {
-                const accountHolder = showMismatchModal.accountHolder;
+                const { accountHolder, pennyDrop } = showMismatchModal;
                 setShowMismatchModal(null);
-                addToast("Name not matched penny drop not verified. Proceeding to upload bank proof.", "warning");
+                addToast("Name not matched penny drop not verified. Please upload a bank proof for this account.", "warning");
                 update("accountHolderName", accountHolder);
-                markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
-                clearFormDraft();
-                nextStep({ bankDetails: { ...form, method: "Manual Data Entry", accountHolderName: accountHolder, verified: false } });
+                setBankProof({ type: "", path: "", uploading: false });
+                setPendingMismatch({ accountHolder, pennyDrop });
               }}
               className="btn-primary"
               style={{ 

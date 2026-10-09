@@ -105,8 +105,9 @@ function reducer(state, action) {
       return { ...state, currentStepIndex: action.payload };
 
     case "SAVE_DRAFT": {
-      const { stepId, data, rejectedSteps } = action.payload;
-      const newDrafts = { ...state.drafts, [stepId]: data };
+      const { stepId, data, rejectedSteps, drafts: serverDrafts } = action.payload;
+      // The server may also reset a dependent draft (e.g. the nominee allocation after a count change)
+      const newDrafts = serverDrafts ? { ...serverDrafts, [stepId]: data } : { ...state.drafts, [stepId]: data };
       
       let newRejectedSteps;
       if (rejectedSteps) {
@@ -258,7 +259,7 @@ export function CorrectionProvider({ children }) {
         return false;
       }
 
-      dispatch({ type: "SAVE_DRAFT", payload: { stepId, data, rejectedSteps: result.rejectedSteps } });
+      dispatch({ type: "SAVE_DRAFT", payload: { stepId, data, rejectedSteps: result.rejectedSteps, drafts: result.drafts } });
       addToast(`${STEP_TITLE_MAP[stepId] || stepId} correction saved`);
       return true;
     } catch (error) {

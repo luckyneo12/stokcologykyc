@@ -4,6 +4,9 @@ const { auth } = require("../middlewares/auth");
 
 const router = express.Router();
 
+// A trashed application can't be changed through any /:id route until it is restored
+router.param("id", require("../controllers/trashController").rejectIfTrashed);
+
 // Ensure only kyc_team agents can access these routes
 const agentAuth = (req, res, next) => {
   auth(req, res, () => {

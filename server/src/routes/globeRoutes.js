@@ -15,6 +15,9 @@ const globeAuth = (req, res, next) => {
 
 router.use(globeAuth);
 
+// An application in the admin Trash can't be changed from the Globe portal either
+router.param("id", require("../controllers/trashController").rejectIfTrashed);
+
 router.get("/kpis", globeController.getDashboardKPIs);
 router.get("/kycs", globeController.getPendingKYCs);
 

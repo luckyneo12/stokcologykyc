@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
-import { uploadDocument } from "@/utils/kycApi";
+import { uploadCorrectionDocument as uploadDocument } from "@/utils/correctionUpload";
 import CorrectionSelfieStep from "./CorrectionSelfieStep";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";

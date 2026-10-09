@@ -171,6 +171,9 @@ html, body {
 [data-theme="dark"] .mc-readable { --text-secondary: #e2e8f0; --text-muted: #94a3b8; }
 .mc-readable .admin-table th { font-size: 0.72rem; }
 .mc-readable .admin-table td { font-size: 0.875rem !important; }
+/* Hover highlights the whole row, frozen columns included (they carry an inline background) */
+.mc-readable .admin-table tbody tr:hover td { background-color: #f0fad5 !important; }
+[data-theme="dark"] .mc-readable .admin-table tbody tr:hover td { background-color: #172810 !important; }
 /* Status badges / Verify button in the maker-checker lists: one size, so the columns line up */
 .mc-readable .mc-status-badge { min-width: 96px; height: 28px; padding: 0 12px !important; justify-content: center; box-sizing: border-box; }
 /* Maker-checker table's horizontal scrollbar: bigger and darker than the default thin one */

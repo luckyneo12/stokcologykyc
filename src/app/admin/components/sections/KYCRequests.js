@@ -103,7 +103,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
   };
 
   const deleteUser = async (applicationId) => {
-    if (!confirm("Are you sure you want to delete this application?")) return;
+    if (!confirm("Move this application to the Trash? You can restore it or delete it permanently from the Trash.")) return;
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/api/admin/application/${applicationId}`, {
@@ -112,7 +112,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
       });
       const data = await res.json();
       if (data.success) {
-        showToast("Application deleted successfully", "success");
+        showToast("Application moved to Trash", "success");
         fetchApplications(true);
       } else {
         showToast(data.error || "Failed to delete", "error");

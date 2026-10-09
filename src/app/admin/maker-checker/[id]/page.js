@@ -18,7 +18,8 @@ import {
   X,
   Mail,
   User, Phone,
-  ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download, Copy, Check
+  ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download, Copy, Check,
+  RotateCcw, Trash2
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -1699,9 +1700,11 @@ export default function AgentReview() {
   const fetchDetail = useCallback(async () => {
     if (!id || typeof window === "undefined") return;
     let redirecting = false;
+    // Opened from the Trash: load it read-only through the trash endpoint (it is hidden everywhere else)
+    const fromTrash = new URLSearchParams(window.location.search).get("trash") === "1";
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetchWithFallback(`/api/admin/application/${id}`, {
+      const response = await fetchWithFallback(fromTrash ? `/api/admin/trash/${id}` : `/api/admin/application/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -1717,10 +1720,14 @@ export default function AgentReview() {
         const canonicalId = data.application?.applicationId;
         if (canonicalId && String(canonicalId) !== String(id)) {
           redirecting = true; // keep the loading screen while the address switches
-          router.replace(`/admin/maker-checker/${canonicalId}`);
+          router.replace(`/admin/maker-checker/${canonicalId}${fromTrash ? "?trash=1" : ""}`);
           return;
         }
         setApp(normalizeApp(data.application));
+      } else if (fromTrash && response.status === 404) {
+        // Restored or deleted permanently meanwhile — nothing to show here any more
+        localStorage.setItem("adminActiveSection", "trash");
+        router.replace("/admin");
       } else {
         showToast(data.error || "Unable to load application", "error");
       }
@@ -2323,6 +2330,46 @@ export default function AgentReview() {
     } catch(e) { return "Pending"; }
   })() : "Pending";
 
+  // ─── Trash (opened from the Trash: view only, with Restore / Delete permanently) ───
+  const inTrash = app.status === "trashed";
+  const goToTrash = () => {
+    localStorage.setItem("adminActiveSection", "trash");
+    router.push("/admin");
+  };
+  const restoreFromTrash = async () => {
+    if (!confirm("Restore this KYC application? It will go back to Maker / Checker with its earlier status.")) return;
+    setSubmitting(true);
+    try {
+      const res = await fetchWithFallback(`/api/admin/trash/${app.applicationId}/restore`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || "Restore failed");
+      window.location.href = `/admin/maker-checker/${app.applicationId}`;
+    } catch (err) {
+      showToast(err.message || "Restore failed", "error");
+      setSubmitting(false);
+    }
+  };
+  const deleteFromTrash = async () => {
+    if (!confirm("PERMANENTLY delete this KYC application?\n\nAll its documents, biometric data and progress will be removed. This cannot be undone.")) return;
+    const deleteUser = confirm("Do you also want to DELETE the USER ACCOUNT of this applicant?\n\nOK = delete the user account too\nCancel = keep the user account, delete only this application");
+    setSubmitting(true);
+    try {
+      const res = await fetchWithFallback(`/api/admin/trash/${app.applicationId}${deleteUser ? "?deleteUser=true" : ""}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("adminToken")}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || "Delete failed");
+      goToTrash();
+    } catch (err) {
+      showToast(err.message || "Delete failed", "error");
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", width: "100vw", height: "100vh", overflow: "hidden", background: "var(--bg-secondary)" }}>
       <div style={{ 
@@ -2349,7 +2396,11 @@ export default function AgentReview() {
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <h1 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.25, maxWidth: 360, overflowWrap: "anywhere" }}>{getApplicantName(app)}</h1>
-              <span style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "2px 8px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.3px" }}>Pending Review</span>
+              {inTrash ? (
+                <span style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "2px 8px", background: "#fee2e2", color: "#b91c1c", borderRadius: 4, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.3px" }}>In Trash</span>
+              ) : (
+                <span style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "2px 8px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.3px" }}>Pending Review</span>
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 10, rowGap: 4, whiteSpace: "nowrap" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -2385,6 +2436,20 @@ export default function AgentReview() {
         </div>
 
         {/* Actions */}
+        {inTrash ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
+          <button onClick={restoreFromTrash} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#30a46c", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+            <RotateCcw size={16} /> Restore
+          </button>
+          <button onClick={deleteFromTrash} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+            <Trash2 size={16} /> Delete permanently
+          </button>
+          <AdminThemeToggle />
+          <button onClick={goToTrash} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 600, fontSize: "0.82rem", whiteSpace: "nowrap", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+            <ArrowLeft size={14} /> Back to Trash
+          </button>
+        </div>
+        ) : (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
           <button onClick={handleGlobalApprove} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.35)", transition: "all 0.2s" }}>
             <CheckCircle2 size={16} /> Approve KYC
@@ -2418,7 +2483,15 @@ export default function AgentReview() {
             <ArrowLeft size={14} /> Back
           </button>
         </div>
+        )}
       </div>
+
+      {inTrash && (
+        <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 24px", background: "rgba(239, 68, 68, 0.08)", borderBottom: "1px solid rgba(239, 68, 68, 0.25)", color: "#b91c1c", fontSize: "0.85rem", fontWeight: 600 }}>
+          <Trash2 size={16} />
+          <span>This application is in the Trash — view only. It is hidden from Maker / Checker and all lists. Restore it to make any changes.</span>
+        </div>
+      )}
 
       {/* Main 3-Column Layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>

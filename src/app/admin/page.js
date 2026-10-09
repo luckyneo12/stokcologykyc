@@ -14,6 +14,7 @@ import PdfBuilder from "./components/sections/PdfBuilder";
 import ApiIntegration from "./components/sections/ApiIntegration";
 import BoidManagement from "./components/sections/BoidManagement";
 import APManagement from "./components/sections/APManagement";
+import TrashSection from "@/components/trash/TrashSection";
 
 
 export default function AdminPage() {
@@ -81,6 +82,7 @@ export default function AdminPage() {
       case "pdf-builder": return <PdfBuilder />;
       case "api-integration": return <ApiIntegration />;
       case "ap-management": return <APManagement />;
+      case "trash": return <TrashSection apiBase="/api/admin" tokenKey="adminToken" detailPath="/admin/maker-checker" />;
       default: return <DashboardOverview onNavigate={handleNavigate} />;
     }
   };

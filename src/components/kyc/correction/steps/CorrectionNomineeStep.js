@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useCorrection } from '@/context/CorrectionContext';
 
-import { getPincodeData, uploadDocument, resolveAssetUrl } from "@/utils/kycApi";
+import { getPincodeData, resolveAssetUrl } from "@/utils/kycApi";
+import { uploadCorrectionDocument as uploadDocument } from "@/utils/correctionUpload";
 import { maskAadhaarImage } from "@/utils/digio";
 import DateInput from "../../DateInput";
 import ImageCropper from "@/components/ui/ImageCropper";
@@ -127,6 +128,16 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
   const isProofRejected = stepId.includes('Proof') || stepId.includes('Photo');
   const rejectionReasonText = rejectedStep?.reason || '';
 
+  // Only one nominee / guardian document was rejected (e.g. "nominee2Proof"): just that upload can be
+  // changed here, and only its file is saved — the server merges it into that nominee's proof.
+  const proofSlot = (() => {
+    if (isNomineeDetailsRejected) return null;
+    const m = /^(nominee|guardian)([1-3])Proof$/.exec(stepId);
+    return m ? { kind: m[1], idx: Number(m[2]) - 1 } : null;
+  })();
+  const proofSlotKey = proofSlot ? (proofSlot.kind === "nominee" ? "proofPath" : "guardianProofPath") : null;
+  const isProofSlotUpload = (idx, kind) => !!proofSlot && proofSlot.idx === idx && proofSlot.kind === kind;
+
   const initialData = isNomineeDetailsRejected && Array.isArray(drafts[stepId]?.nominees) && drafts[stepId].nominees.length > 0
     ? drafts[stepId].nominees
     : (isNomineeDetailsRejected && Array.isArray(drafts[stepId]?.nomineeDetails?.nominees) && drafts[stepId].nomineeDetails.nominees.length > 0
@@ -148,6 +159,16 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
     if (isRejection && !rejectionCleared.current && rejectedStep) {
       rejectionCleared.current = true;
       if (drafts[stepId]?.nominees || drafts[stepId]?.nomineeDetails?.nominees) return;
+
+      // Coming back to an already corrected document → show the file saved for it
+      if (proofSlot && drafts[stepId]?.path) {
+        const withSaved = JSON.parse(JSON.stringify(nominees));
+        if (withSaved[proofSlot.idx]) {
+          withSaved[proofSlot.idx][proofSlotKey] = drafts[stepId].path;
+          setNominees(withSaved);
+        }
+        return;
+      }
 
       const isModuleRejected = rejectedStep?.stepId === "nomineeDetails" || rejectedStep?.stepId === "nomineeChoice";
 
@@ -673,6 +694,17 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
   };
 
   const handleNext = async () => {
+    if (proofSlot) {
+      const path = nominees[proofSlot.idx]?.[proofSlotKey];
+      if (!path) {
+        addToast(`Please upload the new ${proofSlot.kind === "nominee" ? "nominee" : "guardian"} document`, "error");
+        return;
+      }
+      const success = await saveDraft(stepId, { path, filePreview: path, preview: path });
+      if (success) nextCorrectionStep();
+      return;
+    }
+
     if (isOptedOut) {
       const payloadData = { ...nomineeDetails, opted: "No", numberOfNominees: "0", nominees: [] };
       const success = await saveDraft(stepId, payloadData);
@@ -696,8 +728,27 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
         <p style={{ color: "var(--text-secondary)", marginTop: "8px", fontWeight: 600 }}>Specify who should receive the assets in your account</p>
       </div>
 
+      {proofSlot && (
+        <div className="animate-slide-up" style={{
+          background: "rgba(239, 68, 68, 0.08)", border: "1.5px solid rgba(239, 68, 68, 0.3)",
+          borderRadius: "16px", padding: "16px 20px", marginBottom: "24px",
+          display: "flex", alignItems: "center", gap: "14px"
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 800, color: "var(--wise-danger)", fontSize: "0.95rem" }}>
+              {proofSlot.kind === "nominee" ? `Nominee ${proofSlot.idx + 1}` : `Guardian ${proofSlot.idx + 1}`} Document Rejected
+            </p>
+            <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: 1.4 }}>
+              {rejectionReasonText ? `Reason: ${rejectionReasonText}. ` : ""}Please upload this document again. Other nominee details cannot be changed here.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!proofSlot && (
       <div className="animate-slide-up" style={{ marginBottom: "32px", display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap" }}>
-        <div 
+        <div
           onClick={() => setIsOptedOut(false)}
           style={{ 
             flex: "1 1 240px", maxWidth: "300px", padding: "16px", borderRadius: "16px", cursor: "pointer",
@@ -722,6 +773,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
           <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "0.95rem" }}>I do not wish to nominate</span>
         </div>
       </div>
+      )}
 
       <div className="animate-slide-up">
         {isNomineeDetailsRejected && (
@@ -750,10 +802,12 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
         {!isOptedOut ? (
           <>
             {nominees.map((nom, idx) => (
-          <div key={idx} style={{ 
+          <div key={idx} style={{
             marginBottom: idx === nominees.length - 1 ? 40 : 80,
             paddingBottom: idx === nominees.length - 1 ? 0 : 40,
-            borderBottom: idx === nominees.length - 1 ? "none" : "1.5px dashed var(--border-color)"
+            borderBottom: idx === nominees.length - 1 ? "none" : "1.5px dashed var(--border-color)",
+            // Document-only correction: everything is locked except the rejected upload (re-enabled below)
+            ...(proofSlot ? { pointerEvents: "none" } : {})
           }}>
             <div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1.5px solid var(--border-color)", paddingBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "12px", color: "var(--text-primary)" }}>
@@ -765,8 +819,8 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
                   <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 600 }}>Enter the legal information for your nominee</p>
                 </div>
               </div>
-              {idx > 0 && (
-                <button 
+              {idx > 0 && !proofSlot && (
+                <button
                   onClick={() => removeNominee(idx)}
                   style={{ 
                     padding: "8px 16px", borderRadius: "100px", fontSize: "0.85rem", fontWeight: 700,
@@ -1013,7 +1067,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
                   )}
                 </div>
 
-                <div style={{ marginBottom: "32px" }}>
+                <div style={{ marginBottom: "32px", ...(isProofSlotUpload(idx, "nominee") ? { pointerEvents: "auto" } : {}) }}>
                   {cropModalData && cropModalData.idx === idx && !cropModalData.isGuardian ? (
                     <ImageCropper 
                       filePreview={cropModalData.imageSrc}
@@ -1278,7 +1332,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
                   </div>
 
                   <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ marginBottom: "32px" }}>
+                  <div style={{ marginBottom: "32px", ...(isProofSlotUpload(idx, "guardian") ? { pointerEvents: "auto" } : {}) }}>
                     {cropModalData && cropModalData.idx === idx && cropModalData.isGuardian ? (
                       <ImageCropper 
                         filePreview={cropModalData.imageSrc}
@@ -1320,7 +1374,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
           </div>
         ))}
 
-        {nominees.length < 3 && (
+        {nominees.length < 3 && !proofSlot && (
           <div style={{ display: "flex", flexDirection: "column", maxWidth: "480px", marginLeft: "auto", marginRight: "auto", width: "100%", marginTop: "32px" }}>
             <button 
               onClick={addNominee}

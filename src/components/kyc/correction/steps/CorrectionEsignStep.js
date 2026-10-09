@@ -78,6 +78,9 @@ export default function CorrectionEsignStep() {
             if (stepId === 'nomineeAllocation') {
                mergedApp.nomineeAllocation = draftData;
             } else if (stepId.endsWith('Proof')) {
+               // Same rule as the server merge: a corrected nominee list wins over a single-document draft
+               if (drafts.nomineeDetails || drafts.nomineeChoice) return;
+               if (!(draftData.path || draftData.filePreview || draftData.preview)) return;
                if (!mergedApp.nomineeDetails) mergedApp.nomineeDetails = {};
                if (!mergedApp.nomineeDetails.nominees) mergedApp.nomineeDetails.nominees = [];
                

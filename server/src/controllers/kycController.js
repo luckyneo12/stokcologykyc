@@ -1494,6 +1494,26 @@ const saveCorrectionStep = async (req, res, next) => {
       }
     }
 
+    // Keep the allocation step in line with the nominee list just saved (the user may come back to the
+    // nominee page after allocating): a changed count needs new percentages, and opting out leaves
+    // nothing to allocate (otherwise the step could never reach 100% and would block the submit).
+    if (stepId === 'nomineeChoice' || stepId === 'nomineeDetails') {
+      const allocationStep = correctionDraft.rejectedSteps.find(s => s.stepId === 'nomineeAllocation');
+      if (allocationStep) {
+        if (data.opted === 'No') {
+          correctionDraft.drafts.nomineeAllocation = { percentages: [] };
+          allocationStep.completed = true;
+        } else if (data.opted === 'Yes') {
+          const nomineeCount = Array.isArray(data.nominees) ? data.nominees.length : 0;
+          const allocated = correctionDraft.drafts.nomineeAllocation?.percentages;
+          if (!Array.isArray(allocated) || allocated.length !== nomineeCount) {
+            delete correctionDraft.drafts.nomineeAllocation;
+            allocationStep.completed = false;
+          }
+        }
+      }
+    }
+
     await prisma.kycApplication.update({
       where: { applicationId: app.applicationId },
       data: {
@@ -1508,6 +1528,7 @@ const saveCorrectionStep = async (req, res, next) => {
     res.json({
       success: true,
       rejectedSteps: correctionDraft.rejectedSteps,
+      drafts: correctionDraft.drafts,
       message: `Correction for '${stepId}' saved`,
       stepCompleted: true,
       allStepsComplete: allComplete,
@@ -1637,6 +1658,11 @@ const completeCorrectionSession = async (req, res, next) => {
         if (stepId === "pepProof") {
           processedDraftData = { pepProof: draftData.path || draftData.preview };
         } else if (stepId.endsWith("Proof") && (stepId.startsWith("nominee") || stepId.startsWith("guardian"))) {
+          // The whole nominee section was corrected too → its new list (which already requires fresh
+          // documents) wins; a single-document draft must not overwrite it or point at a removed nominee
+          if (drafts.nomineeDetails || drafts.nomineeChoice) continue;
+          const proofPathFromDraft = draftData.path || draftData.filePreview || draftData.preview;
+          if (!proofPathFromDraft) continue;
           if (!existing.nominees) existing.nominees = [];
           let idx = 0;
           if (stepId.startsWith("nominee")) {
@@ -1660,6 +1686,13 @@ const completeCorrectionSession = async (req, res, next) => {
           }
         }
         
+        // Corrected bank account: the bank statement / cheque uploaded for the old account never carries
+        // over. Penny drop matched → no proof at all; name mismatch → only the newly uploaded proof.
+        // (Removed from `existing` first because mergeJson cannot clear a value with null.)
+        if (stepId === "bankVerification" && (draftData.verified === true || draftData.proofPreview)) {
+          for (const key of ["proofPreview", "proofPath", "proof", "proofType"]) delete existing[key];
+          processedDraftData = Object.fromEntries(Object.entries(draftData).filter(([, v]) => v !== null));
+        }
         updateData[fieldName] = serializeJsonField(mergeJson(existing, processedDraftData));
       }
     }
