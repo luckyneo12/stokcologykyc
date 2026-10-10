@@ -64,6 +64,50 @@ async function createEngine() {
   }
 }
 
+/**
+ * Second landmarker in IMAGE mode, used only to look for extra people in zoomed-in parts of the
+ * frame. The live (VIDEO) landmarker's detector misses small faces further back in the room; a
+ * fresh detection on a cropped tile makes those faces big enough to be found. A separate instance
+ * keeps the live landmarker's face tracking untouched.
+ */
+let scannerPromise = null;
+
+async function createScanner() {
+  installMediapipeLogFilter();
+  const { FilesetResolver, FaceLandmarker } = await import("@mediapipe/tasks-vision");
+  const fileset = await FilesetResolver.forVisionTasks(WASM_BASE_PATH);
+  const options = {
+    runningMode: "IMAGE",
+    numFaces: 4,
+    minFaceDetectionConfidence: 0.5,
+    minFacePresenceConfidence: 0.5,
+    outputFaceBlendshapes: false,
+    outputFacialTransformationMatrixes: false,
+  };
+  try {
+    return await FaceLandmarker.createFromOptions(fileset, {
+      ...options,
+      baseOptions: { modelAssetPath: MODEL_PATH, delegate: "GPU" },
+    });
+  } catch (gpuError) {
+    return FaceLandmarker.createFromOptions(fileset, {
+      ...options,
+      baseOptions: { modelAssetPath: MODEL_PATH, delegate: "CPU" },
+    });
+  }
+}
+
+/** Returns the shared extra-face scanner, loading it on first call. A failed load can be retried. */
+export function loadFaceScanner() {
+  if (!scannerPromise) {
+    scannerPromise = createScanner().catch((err) => {
+      scannerPromise = null;
+      throw err;
+    });
+  }
+  return scannerPromise;
+}
+
 /** Returns the shared engine, loading it on first call. A failed load can be retried. */
 export function loadFaceEngine() {
   if (!enginePromise) {

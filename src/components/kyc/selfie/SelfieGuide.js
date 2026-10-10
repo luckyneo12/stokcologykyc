@@ -32,7 +32,6 @@ export const GUIDE_TEXT = {
   no_face: { hi: "अपना चेहरा कैमरे के सामने लाइए", en: "Bring your face in front of the camera" },
   multiple: { hi: "फ्रेम में सिर्फ आप ही रहिए", en: "Only you should be in the frame" },
   glasses: { hi: "कृपया चश्मा उतार दीजिए", en: "Please remove your glasses" },
-  headwear: { hi: "कृपया टोपी उतार दीजिए", en: "Please remove your cap or hat" },
   light: { hi: "रोशनी की तरफ मुँह कीजिए", en: "Face towards the light" },
   eyes_open: { hi: "आँखें खुली रखिए", en: "Keep your eyes open" },
   hold: { hi: "स्थिर रहिए", en: "Hold still" },
@@ -51,7 +50,6 @@ const BLOCKING_CUES = {
   multipleFaces: "multiple",
   sunglasses: "glasses",
   glasses: "glasses",
-  headwear: "headwear",
   turned: "straight",
   needBlink: "blink",
 };
@@ -197,7 +195,7 @@ export function useGuideVoice(cue, lang, muted) {
 // ─── Guide tone (colour of the head ring / caption) ────────────────────────
 const ACTION_CUES = new Set(["turn_left", "turn_right", "straight", "blink", "smile", "get_ready"]);
 const WARN_CUES = new Set([
-  "no_face", "multiple", "glasses", "headwear", "light", "eyes_open", "closer", "farther",
+  "no_face", "multiple", "glasses", "light", "eyes_open", "closer", "farther",
   "center", "move_left", "move_right", "move_up", "move_down",
 ]);
 export function cueTone(cue) {
@@ -292,10 +290,6 @@ function GuideHead({ cue }) {
         <linearGradient id="lsgLip" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#b9675c" />
           <stop offset="1" stopColor="#cf8274" />
-        </linearGradient>
-        <linearGradient id="lsgCap" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#2f4fa8" />
-          <stop offset="1" stopColor="#1b2f6b" />
         </linearGradient>
         <filter id="lsgSoft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.4" /></filter>
         <filter id="lsgSofter" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.6" /></filter>
@@ -397,13 +391,6 @@ function GuideHead({ cue }) {
           <path className="lsg-hair" d="M36.4 47 C35.2 30.5 45 18.4 60 18 C75.5 17.6 86 28.5 84.2 46 C82.8 38 78.6 31.6 71.8 28.8 C65.6 31.8 56.6 33.2 49 31.6 C44.6 33.8 40.4 38.6 36.4 47 Z" fill="url(#lsgHair)" />
           <path className="lsg-hair" d="M49 31.6 C54 26.5 62 23.2 70 22.6 M52 30.6 C57.5 27 64.5 25.2 72 25.6 M44 36 C47 30 52 25.5 58 22.5" fill="none" stroke="#5c4232" strokeWidth="0.9" strokeLinecap="round" opacity="0.65" />
           <path className="lsg-hair" d="M58 20.6 C64 19.6 71 20.6 76 23.6" fill="none" stroke="#7a5a45" strokeWidth="1.4" strokeLinecap="round" opacity="0.5" filter="url(#lsgSoft)" />
-          {cue === "headwear" && (
-            <g>
-              <path d="M35 44 C35 25 46 14 60 14 C74 14 85 25 85 44 Z" fill="url(#lsgCap)" />
-              <path d="M33 44 Q60 51 94 41.5 L95.5 45.5 Q60 56 31.5 48 Z" fill="#14234f" />
-              <path d="M60 14.5 L60 44" stroke="#3b5bbf" strokeWidth="0.8" opacity="0.6" />
-            </g>
-          )}
         </g>
       </g>
     </svg>
@@ -414,7 +401,7 @@ function GuideHead({ cue }) {
 export function GuideHeadCoin({ cue }) {
   if (!cue) return null;
   const tone = cueTone(cue);
-  const badge = cue === "click" ? "ok" : (cue === "glasses" || cue === "headwear" || cue === "multiple") ? "bad" : cue === "light" ? "sun" : null;
+  const badge = cue === "click" ? "ok" : (cue === "glasses" || cue === "multiple") ? "bad" : cue === "light" ? "sun" : null;
   return (
     <div className={`lsg-coin lsg-coin-${tone}`} aria-hidden="true">
       <div className="lsg-coin-ring" />

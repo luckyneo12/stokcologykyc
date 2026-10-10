@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import useLocationGate from "./useLocationGate";
-import { loadFaceEngine, getBrowserSupport } from "./faceEngine";
+import { loadFaceEngine, loadFaceScanner, getBrowserSupport } from "./faceEngine";
 import {
   analyzeFrame,
   createFlagSmoother,
@@ -16,6 +16,8 @@ import {
   updateChallengeStep,
   getOvalGeometry,
   THRESHOLDS,
+  scanTileForExtraFace,
+  scanFrameForExtraFace,
 } from "./faceChecks";
 import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, useGuidePrefs, useGuideVoice } from "./SelfieGuide";
 
@@ -38,7 +40,7 @@ import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, us
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const VIRTUAL_CAMERA_PATTERN = /obs|virtual|manycam|xsplit|snap camera|camtwist|vcam|droidcam|epoccam|ndi|splitcam|youcam/i;
-// The eyewear / cap thresholds in faceChecks.js are calibrated at this width — keep them in sync
+// The eyewear thresholds in faceChecks.js are calibrated at this width — keep them in sync
 const ANALYSIS_WIDTH = 240;
 const STABLE_MS = 600; // blocking checks must pass continuously this long before the liveness actions start
 const STEP_TIMEOUT_MS = 12000;
@@ -48,8 +50,8 @@ const CHALLENGE_MAX_AGE_MS = 150000; // server token lives 180s; redo the action
 const MAX_CAPTURE_SIDE = 1280;
 const SESSION_EXPIRED_MSG = "Your session has expired. Please refresh the page (or scan the QR code again) and retry.";
 const LOOP_STAGES = ["live", "challenge", "ready"];
-// Only these disable the "Click Selfie" button: one face, no goggles / glasses, no cap.
-const BLOCKING_ISSUES = ["noFace", "multipleFaces", "sunglasses", "glasses", "headwear"];
+// Only these disable the "Click Selfie" button: one face, no goggles / glasses.
+const BLOCKING_ISSUES = ["noFace", "multipleFaces", "sunglasses", "glasses"];
 // After the liveness actions the head must also face the camera (no left/right selfies).
 // "needBlink": a natural blink is required shortly before clicking (a printed photo can't blink).
 const READY_BLOCKING_ISSUES = [...BLOCKING_ISSUES, "turned", "needBlink"];
@@ -66,11 +68,11 @@ const FINAL_PHOTO_CHECKS = ["noFace", "multipleFaces", "turned", "eyesClosed"];
 const CAPTURE_WAIT_MS = 2000;
 // Ready + every check passing this long → the selfie is taken automatically
 const AUTO_CAPTURE_MS = 1000;
-// Glasses / goggles / cap at the moment of the click. The on-screen warning waits ~1–1.5 s before
+// Glasses / goggles at the moment of the click. The on-screen warning waits ~1–1.5 s before
 // it appears (so noise never flashes it), which would let glasses put on just before clicking slip
 // through. So the photo also needs: this exact frame clean, and the item seen in under
 // RECENT_APPEARANCE_MAX of the frames of the last RECENT_APPEARANCE_MS.
-const APPEARANCE_PHOTO_CHECKS = ["sunglasses", "glasses", "headwear"];
+const APPEARANCE_PHOTO_CHECKS = ["sunglasses", "glasses"];
 const RECENT_APPEARANCE_MS = 1200;
 const RECENT_APPEARANCE_MAX = 0.3;
 // Messages under the camera disappear on their own; server verdicts stay a little longer
@@ -92,6 +94,9 @@ const CONTINUITY_MAX_SCALE = 1.35; // max face-size change per analysis
 const RUN_STAGES = [...LOOP_STAGES, "verifying", "review", "submitting"];
 const KEYFRAME_SIDE = 480; // frame grabbed at the end of the actions (compared with the photo on the server)
 const MAX_VIDEO_BYTES = 15 * 1024 * 1024;
+// A person further back seen by the tile scan keeps "multiple faces" on this long (one tile is
+// scanned per analysis, so a full sweep of the frame takes ~1–3 s)
+const EXTRA_FACE_HOLD_MS = 3500;
 
 /**
  * Same-face continuity from the liveness actions until the click. Returns false when the face
@@ -220,8 +225,12 @@ export default function LiveSelfieCapture({
   const lastMetricsRef = useRef({});
   const runAnalysisRef = useRef(null);
   const captureReqRef = useRef(null); // { startedAt, lastIssue } while waiting for a clean frame
-  const appearanceHistoryRef = useRef([]); // [{ t, sunglasses, glasses, headwear }] of judged frames
+  const appearanceHistoryRef = useRef([]); // [{ t, sunglasses, glasses }] of judged frames
   const frameCanvasRef = useRef(null);
+  const scannerRef = useRef(null); // IMAGE-mode landmarker for small background faces
+  const scanTileRef = useRef(0);
+  const extraFaceAtRef = useRef(-Infinity); // last time the tile scan saw another person
+  const bannerRef = useRef(null);
   const prefetchRef = useRef(null); // { promise, at } — challenge fetched ahead of time
   const locationRef = useRef(location);
   locationRef.current = location;
@@ -372,6 +381,9 @@ export default function LiveSelfieCapture({
         if (!mountedRef.current) return;
         engineRef.current = engine;
         setEngineState("ready");
+        loadFaceScanner()
+          .then((scanner) => { scannerRef.current = scanner; })
+          .catch((err) => console.warn("[LiveSelfie] Extra-face scanner failed to load:", err?.message));
       })
       .catch((err) => {
         console.error("[LiveSelfie] Face engine failed to load:", err);
@@ -433,6 +445,12 @@ export default function LiveSelfieCapture({
     if (!banner) return;
     const t = setTimeout(() => setBanner((cur) => (cur === banner ? null : cur)), banner.ttl || BANNER_MS);
     return () => clearTimeout(t);
+  }, [banner]);
+
+  // Bring a new message into view (on phones the page may be scrolled down to the button)
+  useEffect(() => {
+    if (!banner) return;
+    bannerRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }, [banner]);
 
   // After a successful save, show the confirmation briefly, then continue automatically
@@ -638,6 +656,14 @@ export default function LiveSelfieCapture({
     const analysis = analyzeFrame(result, grabPixels(source, video.videoWidth, video.videoHeight), video.videoWidth, video.videoHeight, prevNoseRef.current);
     prevNoseRef.current = analysis.nose;
 
+    // People further back are too small for the live detector: scan one zoomed-in tile per
+    // analysis and keep "multiple faces" on for a while after another person was seen
+    if (analysis.faceCount === 1 && scannerRef.current && LOOP_STAGES.includes(st)) {
+      const tile = scanTileRef.current++;
+      if (scanTileForExtraFace(scannerRef.current, source, tile, analysis.box)) extraFaceAtRef.current = now;
+    }
+    if (analysis.faceCount >= 1 && now - extraFaceAtRef.current < EXTRA_FACE_HOLD_MS) analysis.flags.multipleFaces = true;
+
     // Natural blink tracking (eyes closed → open again)
     if (analysis.faceCount === 1) {
       const b = blinkRef.current;
@@ -650,10 +676,10 @@ export default function LiveSelfieCapture({
       }
     }
 
-    // Raw eyewear / cap verdicts of recent judged frames (used at the click, see recentAppearanceIssue)
+    // Raw eyewear verdicts of recent judged frames (used at the click, see recentAppearanceIssue)
     if (analysis.faceCount === 1 && analysis.appearanceChecked) {
       const hist = appearanceHistoryRef.current;
-      hist.push({ t: now, sunglasses: !!analysis.flags.sunglasses, glasses: !!analysis.flags.glasses, headwear: !!analysis.flags.headwear });
+      hist.push({ t: now, sunglasses: !!analysis.flags.sunglasses, glasses: !!analysis.flags.glasses });
       while (hist.length && hist[0].t < now - RECENT_APPEARANCE_MS) hist.shift();
     }
 
@@ -676,19 +702,33 @@ export default function LiveSelfieCapture({
       }
       const failed =
         FINAL_PHOTO_CHECKS.find((k) => analysis.flags[k]) ||
-        // The photo's own frame must be judged (frontal, lit) and free of eyewear / cap…
+        // The photo's own frame must be judged (frontal, lit) and free of eyewear…
         (!analysis.appearanceChecked ? "notStraight" : APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k])) ||
         // …and so must the last moments before it (catches glasses put on just before the click)
         recentAppearanceIssue(now);
       if (!failed) {
-        finalizeCapture(source, analysis);
-        return;
+        // Hard gate on the exact photo: nobody else anywhere in it, however small
+        if (!scannerRef.current) {
+          // Scanner still loading — wait for it (within CAPTURE_WAIT_MS) rather than skip the check
+          req.lastIssue = "multipleFaces";
+        } else if (scanFrameForExtraFace(scannerRef.current, source, analysis.box)) {
+          extraFaceAtRef.current = now;
+          captureReqRef.current = null;
+          setBanner({ type: "error", text: `${ISSUE_MESSAGES.multipleFaces}. Ask others to move out of the camera view.` });
+          viewKeyRef.current = "";
+          goto("ready");
+          return;
+        } else {
+          finalizeCapture(source, analysis);
+          return;
+        }
+      } else {
+        req.lastIssue = failed;
       }
-      req.lastIssue = failed;
       if (now - req.startedAt > CAPTURE_WAIT_MS) {
         // Liveness stays valid — let the user simply click again
         captureReqRef.current = null;
-        setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[failed]}. Please click again.` });
+        setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}. Please click again.` });
         viewKeyRef.current = "";
         goto("ready");
       }
@@ -708,7 +748,7 @@ export default function LiveSelfieCapture({
 
     if (st === "live") {
       // Exactly one face in THIS frame too (the smoothed flags lag a few hundred ms)
-      if (issues.length === 0 && analysis.faceCount === 1) {
+      if (issues.length === 0 && analysis.faceCount === 1 && !analysis.flags.multipleFaces) {
         if (stableSinceRef.current === null) stableSinceRef.current = now;
       } else {
         stableSinceRef.current = null;
@@ -800,7 +840,7 @@ export default function LiveSelfieCapture({
     }
   };
 
-  /** Eyewear / cap seen in too many of the last RECENT_APPEARANCE_MS of judged frames, or null. */
+  /** Eyewear seen in too many of the last RECENT_APPEARANCE_MS of judged frames, or null. */
   function recentAppearanceIssue(now) {
     const recent = appearanceHistoryRef.current.filter((h) => h.t >= now - RECENT_APPEARANCE_MS);
     if (!recent.length) return null;
@@ -1170,6 +1210,11 @@ export default function LiveSelfieCapture({
           )}
         </div>
 
+        {/* Messages sit at the top so they are seen on phones too (the side column is below the camera) */}
+        {banner && (
+          <div ref={bannerRef} className={`lsc-banner lsc-banner-top lsc-banner-${banner.type}`} role="alert">{banner.text}</div>
+        )}
+
         <div className={`lsc-body ${twoColumn ? "lsc-two" : ""}`}>
         <div className="lsc-main">
         {/* ── Location gate ── */}
@@ -1326,8 +1371,6 @@ export default function LiveSelfieCapture({
             ))}
           </div>
         )}
-
-        {banner && <div className={`lsc-banner lsc-banner-${banner.type}`} role="alert">{banner.text}</div>}
 
         {engineState === "failed" && showCamera && (
           <div className="lsc-banner lsc-banner-error" role="alert">
@@ -1535,6 +1578,7 @@ const STYLES = `
 
 /* Messages */
 .lsc-banner { margin-top: 12px; padding: 11px 14px; border-radius: 14px; font-size: 0.85rem; font-weight: 600; line-height: 1.45; animation: lsc-rise 0.3s ease-out; }
+.lsc-banner-top { margin: 0 0 14px; }
 .lsc-banner-error { background: rgba(239,68,68,0.08); color: #dc2626; border: 1px solid rgba(239,68,68,0.25); }
 .lsc-banner-info { background: rgba(77,163,255,0.08); color: #2f7fd8; border: 1px solid rgba(77,163,255,0.25); }
 .lsc-banner-success { background: rgba(48,164,108,0.1); color: #1f7a4f; border: 1px solid rgba(48,164,108,0.3); }

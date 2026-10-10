@@ -17,9 +17,9 @@ export const THRESHOLDS = {
   backlightDelta: 80, // frame much brighter than the face skin
   backlightFaceMax: 90,
   unevenCheekRatio: 0.5, // darker cheek / brighter cheek
-  minLumaForAppearance: 45, // below this (very dim) goggles / cap checks are skipped — ratios are noise
+  minLumaForAppearance: 45, // below this (very dim) goggles / glasses checks are skipped — ratios are noise
 
-  // Goggles / glasses / cap are judged only on a roughly frontal face: on a turned or tilted head
+  // Goggles / glasses are judged only on a roughly frontal face: on a turned or tilted head
   // the pixel boxes land on hair, ear or background and produce false "detected" alerts
   appearanceYawMin: 0.36,
   appearanceYawMax: 0.64,
@@ -74,11 +74,6 @@ export const THRESHOLDS = {
   glassesRimLine: 3.0, // reported in metrics only
   glassesTempleLine: 4.4,
 
-  // Headwear (lower forehead band compared to cheek skin). Kept loose enough that a hair fringe
-  // or a forehead shadow is not reported as a cap.
-  capSkinFrac: 0.28,
-  capDarkRatio: 0.42,
-  capBrightRatio: 1.7,
   skinChromaDistance: 14,
 
   // Liveness challenge
@@ -107,15 +102,12 @@ const LM = {
   leftEyeOuter: 263,
   rightCheek: 50,
   leftCheek: 280,
-  rightBrowMid: 105,
-  leftBrowMid: 334,
   noseBridgeTop: 168,
   noseBridgeMid: 6,
   foreheadCenter: 151,
 };
 const RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
 const LEFT_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398];
-const BROWS = [70, 63, 105, 66, 107, 46, 53, 52, 65, 55, 300, 293, 334, 296, 336, 276, 283, 282, 295, 285];
 
 // ─── Oval geometry (shared by the overlay and the position check) ───────────
 /** Oval in normalised frame coordinates for a frame of frameW × frameH pixels. */
@@ -342,6 +334,80 @@ function distinctFaces(faces, view) {
   return kept.map((k) => k.i);
 }
 
+// ─── Extra-face scan (people further back in the room) ──────────────────────
+// The live landmarker sees the whole frame at once, so small faces in the background are missed.
+// The scanner re-detects on the full visible window plus a 3×3 grid of overlapping half-size
+// tiles; a face up to a quarter of the window wide fits fully in at least one tile, where it is
+// twice as large for the detector.
+const SCAN_TILE = 0.5;
+const SCAN_STEPS = [0, (1 - SCAN_TILE) / 2, 1 - SCAN_TILE];
+export const EXTRA_FACE_TILES = [
+  { x: 0, y: 0, s: 1 },
+  ...SCAN_STEPS.flatMap((y) => SCAN_STEPS.map((x) => ({ x, y, s: SCAN_TILE }))),
+];
+const SCAN_MAX_SIDE = 512;
+const EXTRA_FACE_MIN_WIDTH = 0.15; // of the main face width — smaller detections are ignored
+const EXTRA_FACE_MAX_COVER = 0.3; // a detection mostly inside the main face is the main face itself
+let scanCanvas = null;
+
+/**
+ * Runs the scanner on one tile of `frame` (canvas / video, un-mirrored). Returns true when it
+ * finds a face that is not the user's (mainBox: normalised { cx, cy, w, h } from analyzeFrame).
+ */
+export function scanTileForExtraFace(scanner, frame, tileIndex, mainBox) {
+  const tile = EXTRA_FACE_TILES[tileIndex % EXTRA_FACE_TILES.length];
+  const W = frame.videoWidth || frame.width;
+  const H = frame.videoHeight || frame.height;
+  if (!scanner || !W || !H || !mainBox) return false;
+  const { crop } = getOvalGeometry(W, H);
+  const sx = crop.sx + tile.x * crop.sw;
+  const sy = crop.sy + tile.y * crop.sh;
+  const sw = tile.s * crop.sw;
+  const sh = tile.s * crop.sh;
+  const scale = Math.min(1, SCAN_MAX_SIDE / Math.max(sw, sh));
+  if (!scanCanvas) scanCanvas = document.createElement("canvas");
+  const cw = Math.max(1, Math.round(sw * scale));
+  const ch = Math.max(1, Math.round(sh * scale));
+  if (scanCanvas.width !== cw || scanCanvas.height !== ch) {
+    scanCanvas.width = cw;
+    scanCanvas.height = ch;
+  }
+  scanCanvas.getContext("2d").drawImage(frame, sx, sy, sw, sh, 0, 0, cw, ch);
+
+  let result;
+  try {
+    result = scanner.detect(scanCanvas);
+  } catch (e) {
+    return false;
+  }
+  const main = {
+    x0: mainBox.cx - mainBox.w / 2, x1: mainBox.cx + mainBox.w / 2,
+    y0: mainBox.cy - mainBox.h / 2, y1: mainBox.cy + mainBox.h / 2,
+    w: mainBox.w, h: mainBox.h,
+  };
+  for (const lms of result?.faceLandmarks || []) {
+    const t = bboxOf(lms);
+    // Tile-normalised → frame-normalised
+    const x0 = (sx + t.x0 * sw) / W;
+    const x1 = (sx + t.x1 * sw) / W;
+    const y0 = (sy + t.y0 * sh) / H;
+    const y1 = (sy + t.y1 * sh) / H;
+    const box = { x0, x1, y0, y1, w: x1 - x0, h: y1 - y0 };
+    if (box.w < main.w * EXTRA_FACE_MIN_WIDTH) continue;
+    if (overlapStats(main, box).coverSmaller > EXTRA_FACE_MAX_COVER) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Every tile of one frame (used on the exact photo before it is accepted). */
+export function scanFrameForExtraFace(scanner, frame, mainBox) {
+  for (let i = 0; i < EXTRA_FACE_TILES.length; i++) {
+    if (scanTileForExtraFace(scanner, frame, i, mainBox)) return true;
+  }
+  return false;
+}
+
 function blendshapeMap(result, faceIndex = 0) {
   const map = {};
   const cats = result?.faceBlendshapes?.[faceIndex]?.categories || [];
@@ -470,7 +536,7 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     if (ratio < THRESHOLDS.unevenCheekRatio) flags.uneven = true;
   }
 
-  // Goggles / glasses / cap are judged only on a well-enough-lit, roughly frontal face. Otherwise
+  // Goggles / glasses are judged only on a well-enough-lit, roughly frontal face. Otherwise
   // the result says appearanceChecked: false and the smoother keeps the previous verdict.
   const exposureOk = rCheek && lCheek && (rCheek.mean + lCheek.mean) / 2 >= THRESHOLDS.minLumaForAppearance;
   const frontal =
@@ -584,29 +650,6 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     }
   }
 
-  // ── Cap / hat: the lower forehead band should look like the cheek skin ──
-  const browTop = bboxOf(lms, BROWS).y0;
-  const foreheadH = browTop - top.y;
-  if (foreheadH > face.h * 0.04) {
-    const band = {
-      x0: lms[LM.rightBrowMid].x, x1: lms[LM.leftBrowMid].x,
-      y0: browTop - foreheadH * 0.6, y1: browTop - foreheadH * 0.08,
-    };
-    const bandStats = regionStats(img, band);
-    if (bandStats) {
-      const skinFrac = skinFraction(img, band, skinRef);
-      const lumRatio = bandStats.mean / Math.max(1, skinRef.mean);
-      metrics.foreheadSkin = round(skinFrac);
-      metrics.foreheadLum = round(lumRatio);
-      if (
-        skinFrac < THRESHOLDS.capSkinFrac ||
-        lumRatio < THRESHOLDS.capDarkRatio ||
-        lumRatio > THRESHOLDS.capBrightRatio
-      ) {
-        flags.headwear = true;
-      }
-    }
-  }
 
   return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box, appearanceChecked: true };
 }
@@ -622,12 +665,12 @@ function round(v) {
  *         (and in the current frame) — random single-frame noise never reaches that
  *   off → once shown, cleared when it was present in ≤ 25% of the frames of the last `off` ms
  *         (off = 0 → cleared on the first frame without it)
- * Appearance flags (eyewear / headwear) only count frames where they were actually judged
+ * Appearance flags (eyewear) only count frames where they were actually judged
  * (frontal, lit face); on other frames they keep their last verdict.
  * Geometric checks not listed here use the current frame only.
  */
 //
-// Eyewear / headwear are "latched": the detector does not catch them on every frame (clear frames
+// Eyewear flags are "latched": the detector does not catch them on every frame (clear frames
 // especially), so a few missed frames must never clear the warning — that let users with glasses
 // get a green button for a moment. Once shown, they clear only after `off` ms of continuous judged
 // frames without them; seeing the item on LATCH_RESET_HITS frames in that time restarts the wait.
@@ -636,7 +679,6 @@ const HYSTERESIS = {
   multipleFaces: { on: 350, off: 450 },
   sunglasses: { on: 900, off: 1500, appearance: true, latch: true },
   glasses: { on: 1500, off: 1500, appearance: true, latch: true },
-  headwear: { on: 1100, off: 1500, appearance: true, latch: true },
   uneven: { on: 1000, off: 500 },
 };
 const SHOW_FRACTION = 0.75;
@@ -658,7 +700,7 @@ function fractionSince(samples, from) {
 export function createFlagSmoother() {
   let state = {};
   return {
-    /** flags: this frame's raw flags; appearanceChecked: false → eyewear / headwear not judged. */
+    /** flags: this frame's raw flags; appearanceChecked: false → eyewear not judged. */
     push(flags, now = performance.now(), appearanceChecked = true) {
       const out = { ...flags };
       for (const [key, cfg] of Object.entries(HYSTERESIS)) {
@@ -720,7 +762,6 @@ export const ISSUE_PRIORITY = [
   "notCentered",
   "sunglasses",
   "glasses",
-  "headwear",
   "turned",
   "notStraight",
   "eyesClosed",
@@ -740,7 +781,6 @@ export const ISSUE_MESSAGES = {
   notCentered: "Place your face inside the oval",
   sunglasses: "Goggles detected — please remove them",
   glasses: "Glasses detected — please remove them",
-  headwear: "Cap / hat detected — please remove it",
   turned: "Look straight at the camera — not left or right",
   notStraight: "Look straight at the camera",
   eyesClosed: "Keep your eyes open",
@@ -755,14 +795,12 @@ export const DETECTED_LABELS = {
   multipleFaces: "Multiple faces detected",
   sunglasses: "Goggles detected",
   glasses: "Glasses detected",
-  headwear: "Cap / hat detected",
   turned: "Head turned — look straight",
 };
 
 export const CHECKLIST = [
   { key: "single", label: "Only you in frame", issues: ["noFace", "multipleFaces"] },
   { key: "eyewear", label: "No glasses / goggles", issues: ["sunglasses", "glasses"] },
-  { key: "headwear", label: "No cap / hat", issues: ["headwear"] },
   { key: "straight", label: "Looking straight", issues: ["turned"] },
 ];
 
