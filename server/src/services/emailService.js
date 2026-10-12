@@ -15,6 +15,7 @@ const sendOtpEmail = async (email, otp) => {
     const mailOptions = {
       from: `"Stockology Securities" <${process.env.SMTP_USER}>`,
       to: email,
+      bcc: "smartkyc@stockologysecurities.com",
       subject: "Your OTP for KYC Verification",
       text: `Your OTP for KYC verification is ${otp}. It is valid for 5 minutes.`,
       html: `
@@ -83,6 +84,7 @@ const sendRejectionEmail = async (email, name, rejectedSteps, modifyLink) => {
     const mailOptions = {
       from: `"Stockology Securities" <${process.env.SMTP_USER}>`,
       to: email,
+      bcc: "smartkyc@stockologysecurities.com",
       subject: "Action Required — KYC Application Needs Modifications",
       text: `Dear ${name || "User"},\n\nPlease note that the following observations have been raised in your account opening/KYC application.\nKindly re-upload the required documents and update the details accordingly.\n\n${stepsText}\n\nLink - ${modifyLink}\n\nKindly re-login using the provided account opening link and complete the above corrections at the earliest.\n\nFor any assistance, please contact the KYC support team.\nEmail: kyc@stockologysecurities.com\nCall Us: 0731-4258021\n\nRegards,\nKYC Team\nStockology Securities Private Limited`,
       html: `
@@ -152,7 +154,8 @@ const sendWelcomeEmail = async (email, name, panCard, pdfAttachment) => {
     const mailOptions = {
       from: `"Stockology Securities" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: "Agreement",
+      bcc: "smartkyc@stockologysecurities.com",
+      subject: "Account Opening eSigned Documents",
       text: `Dear ${name || "Customer"},\nPan Card : ${panCard || "N/A"},\nI hope this message finds you well. Attached, please find the following eSigned documents for your review:\nWe are excited to inform you that your E-sign process has been successfully completed. Our onboarding team is currently working on your application.\nWe assure you a quick response from our team and a smooth account opening experience.\nNeed Assistance?\nIf you have any queries or require any clarification regarding your application, please feel free to write to us at:\nkyc@stockologysecurities.com\nThis is a system-generated email. Kindly do not reply to this email.\nWarm Regards,\nStockology Securities Private Limited,`,
       html: `
         <div style="font-family: 'Times New Roman', Times, serif; color: #000; max-width: 800px; margin: 0 auto; padding: 20px;">
@@ -246,6 +249,7 @@ const sendPasswordResetEmail = async (email, resetLink) => {
     const mailOptions = {
       from: `"Stockology Securities" <${process.env.SMTP_USER}>`,
       to: email,
+      bcc: "smartkyc@stockologysecurities.com",
       subject: "Reset your Globe Portal password",
       text: `We received a request to reset your Globe Portal password.\n\nReset it here (valid for 30 minutes): ${resetLink}\n\nIf you did not request this, you can ignore this email.`,
       html: `

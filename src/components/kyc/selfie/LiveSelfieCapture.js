@@ -1337,7 +1337,7 @@ export default function LiveSelfieCapture({
         {/* ── Guide: head on its own + instruction, voice controls and progress ── */}
         {showCamera && (
           <div className="lsc-guide-card">
-            <GuideHeadCoin cue={guideCue} />
+            <GuideHeadCoin cue={guideCue} speaking={guideVoice.speaking} />
             <GuideCaption
               cue={guideCue}
               fallbackText={statusText}

@@ -504,7 +504,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                           <button onClick={() => { setOpenMenuId(null); handleContinueJourney(k); }} className="premium-action-item">Continue Journey</button>
                           <button onClick={() => { setOpenMenuId(null); deleteUser(k.id); }} className="premium-action-item danger">Delete</button>
                           <button onClick={() => { setOpenMenuId(null); setChangeStatusAppId(k.id); }} className="premium-action-item">Change Status</button>
-                          {k.status === "verified" && (
+                          {k.status === "verified" && k.globeStatus === "approved" && (
                             <button onClick={() => { setOpenMenuId(null); sendToBackoffice(k.id); }} className="premium-action-item success">Send to Backoffice</button>
                           )}
                         </div>

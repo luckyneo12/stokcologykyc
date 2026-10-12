@@ -116,6 +116,7 @@ export function useGuidePrefs() {
 export function useGuideVoice(cue, lang, muted) {
   const supported = typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
   const [voices, setVoices] = useState([]);
+  const [speaking, setSpeaking] = useState(false); // drives the voice waveform under the head
   const primedRef = useRef(false);
 
   useEffect(() => {
@@ -159,6 +160,7 @@ export function useGuideVoice(cue, lang, muted) {
     const text = cue && GUIDE_TEXT[cue]?.[voiceLang];
     if (muted || !text || SILENT_CUES.has(cue)) {
       synth.cancel();
+      setSpeaking(false);
       return;
     }
     const speak = () => {
@@ -168,6 +170,9 @@ export function useGuideVoice(cue, lang, muted) {
         u.lang = voiceLang === "hi" ? "hi-IN" : "en-IN";
         if (voiceRef.current) u.voice = voiceRef.current;
         u.rate = 0.95;
+        u.onstart = () => setSpeaking(true);
+        u.onend = () => setSpeaking(false);
+        u.onerror = () => setSpeaking(false);
         synth.speak(u);
       } catch {
         // speech blocked — the guide stays visual only
@@ -189,7 +194,7 @@ export function useGuideVoice(cue, lang, muted) {
     if (supported) window.speechSynthesis.cancel();
   }, [supported]);
 
-  return { supported, hindiAvailable, voiceLang, prime };
+  return { supported, hindiAvailable, voiceLang, prime, speaking };
 }
 
 // ─── Guide tone (colour of the head ring / caption) ────────────────────────
@@ -206,207 +211,71 @@ export function cueTone(cue) {
   return "info";
 }
 
-// ─── Animated head (shaded portrait) ───────────────────────────────────────
-const HEAD_CLASS = {
-  turn_left: "lsg-h-turnL",
-  turn_right: "lsg-h-turnR",
-  straight: "lsg-h-front",
-  blink: "lsg-h-blink",
-  smile: "lsg-h-smile",
-  click: "lsg-h-happy",
-  closer: "lsg-h-closer",
-  farther: "lsg-h-farther",
-  move_left: "lsg-h-moveL",
-  move_right: "lsg-h-moveR",
-  move_up: "lsg-h-moveU",
-  move_down: "lsg-h-moveD",
-  center: "lsg-h-search",
-  no_face: "lsg-h-search",
-  multiple: "lsg-h-multi",
-  eyes_open: "lsg-h-eyes",
+// ─── Guide head (short clips of a real person) ──────────────────────────────
+// Clips are cut from one source video (public/selfie-guide). They face the way the user sees
+// themselves in the mirrored preview: "turn-left" looks to the left of the screen.
+const HEAD_CLIP_BASE = "/selfie-guide";
+const HEAD_CLIP = {
+  turn_left: "turn-left",
+  turn_right: "turn-right",
+  blink: "blink",
+  smile: "smile",
+  click: "smile",
+};
+// Cues without their own clip use the front clip with a gentle slide / zoom
+const HEAD_MOTION = {
+  closer: "lsg-m-grow",
+  farther: "lsg-m-shrink",
+  move_left: "lsg-m-nudgeL",
+  move_right: "lsg-m-nudgeR",
+  move_up: "lsg-m-nudgeU",
+  move_down: "lsg-m-nudgeD",
+  center: "lsg-m-search",
+  no_face: "lsg-m-search",
 };
 
-// Almond-shaped eye. side: "l" | "r" (screen side) — the outer corner sits slightly higher.
-function Eye({ cx, side }) {
-  const o = side === "l" ? -1 : 1; // direction of the outer corner
-  const outer = cx + 5.2 * o;
-  const inner = cx - 5 * o;
-  const almond = `M${inner} 53.4 Q${cx - 0.6 * o} 50 ${outer} 52.6 Q${cx + 0.4 * o} 55.8 ${inner} 53.4 Z`;
-  const clipId = `lsgEye${side}`;
-  return (
-    <g className={`lsg-eye lsg-eye-${side}`}>
-      <clipPath id={clipId}><path d={almond} /></clipPath>
-      <path d={almond} fill="#f3ede7" />
-      <g clipPath={`url(#${clipId})`}>
-        <circle cx={cx} cy="53.2" r="2.3" fill="url(#lsgIris)" />
-        <circle cx={cx} cy="53.2" r="1" fill="#120a06" />
-        <circle cx={cx + 0.75} cy="52.5" r="0.55" fill="#ffffff" opacity="0.95" />
-        <path d={`M${inner} 52.2 Q${cx} 50 ${outer} 51.6 L${outer} 50 L${inner} 50 Z`} fill="#000" opacity="0.18" />
-      </g>
-      {/* Lash line, crease, lower lid */}
-      <path d={`M${inner} 53.4 Q${cx - 0.6 * o} 50 ${outer} 52.6`} fill="none" stroke="#24150e" strokeWidth="1.25" strokeLinecap="round" />
-      <path d={`M${inner + 0.4 * o} 51.4 Q${cx - 0.4 * o} 48.6 ${outer - 0.2 * o} 50.8`} fill="none" stroke="#a96d4c" strokeWidth="0.75" strokeLinecap="round" opacity="0.7" />
-      <path d={`M${inner + 0.8 * o} 54 Q${cx + 0.4 * o} 55.9 ${outer - 0.6 * o} 53.4`} fill="none" stroke="#9c6345" strokeWidth="0.6" strokeLinecap="round" opacity="0.45" />
-      {/* Eyelid — closes on a blink */}
-      <g className="lsg-lid">
-        <path d={`M${inner - 0.6 * o} 53.6 Q${cx - 0.6 * o} 49.2 ${outer + 0.6 * o} 52.4 Q${cx + 0.4 * o} 56.2 ${inner - 0.6 * o} 53.6 Z`} fill="url(#lsgLidSkin)" />
-        <path d={`M${inner} 53.9 Q${cx + 0.4 * o} 55.7 ${outer} 53.1`} fill="none" stroke="#24150e" strokeWidth="1.2" strokeLinecap="round" />
-      </g>
-    </g>
-  );
-}
-
 function GuideHead({ cue }) {
+  const clip = HEAD_CLIP[cue] || "front";
   return (
-    <svg className={`lsg-head ${HEAD_CLASS[cue] || "lsg-h-idle"}`} viewBox="9 9 102 104" aria-hidden="true">
-      <defs>
-        <radialGradient id="lsgSkin" cx="50%" cy="38%" r="68%">
-          <stop offset="0" stopColor="#f4cdae" />
-          <stop offset="0.5" stopColor="#e4ab86" />
-          <stop offset="1" stopColor="#bf805b" />
-        </radialGradient>
-        <linearGradient id="lsgLidSkin" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#d99f7b" />
-          <stop offset="1" stopColor="#e6b08d" />
-        </linearGradient>
-        <linearGradient id="lsgNeck" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#a8694a" />
-          <stop offset="0.45" stopColor="#d29a76" />
-          <stop offset="1" stopColor="#dca581" />
-        </linearGradient>
-        <linearGradient id="lsgHair" x1="0.2" y1="0" x2="0.8" y2="1">
-          <stop offset="0" stopColor="#3a2a20" />
-          <stop offset="0.6" stopColor="#1d140e" />
-          <stop offset="1" stopColor="#0f0a07" />
-        </linearGradient>
-        <linearGradient id="lsgShirt" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#40516d" />
-          <stop offset="1" stopColor="#0f172a" />
-        </linearGradient>
-        <radialGradient id="lsgIris" cx="40%" cy="35%" r="70%">
-          <stop offset="0" stopColor="#7c5236" />
-          <stop offset="1" stopColor="#2c1a10" />
-        </radialGradient>
-        <linearGradient id="lsgLip" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#b9675c" />
-          <stop offset="1" stopColor="#cf8274" />
-        </linearGradient>
-        <filter id="lsgSoft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.4" /></filter>
-        <filter id="lsgSofter" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.6" /></filter>
-        <clipPath id="lsgFaceClip">
-          <path d="M60 21 C73.5 21 82.5 31 83.5 45 C84.3 56 83 64 80 71 C76.5 79 69 86.5 60 87.5 C51 86.5 43.5 79 40 71 C37 64 35.7 56 36.5 45 C37.5 31 46.5 21 60 21 Z" />
-        </clipPath>
-      </defs>
-
-      {cue === "multiple" && (
-        <g className="lsg-ghost" opacity="0.45">
-          <ellipse cx="100" cy="50" rx="11" ry="13.5" fill="#94a3b8" />
-          <path d="M80 98 C82 80 90 73 100 73 C110 73 118 80 120 98 Z" fill="#64748b" />
-        </g>
-      )}
-
-      <g className="lsg-all">
-        {/* Shoulders, shirt, collar */}
-        <path d="M6 121 C8 101 26 92.5 47 90.5 Q60 98 73 90.5 C94 92.5 112 101 114 121 Z" fill="url(#lsgShirt)" />
-        <path d="M22 106 C28 99 38 95 47 93" fill="none" stroke="#5b6e8c" strokeWidth="1.2" opacity="0.5" filter="url(#lsgSoft)" />
-        <path d="M98 106 C92 99 82 95 73 93" fill="none" stroke="#5b6e8c" strokeWidth="1.2" opacity="0.5" filter="url(#lsgSoft)" />
-        {/* Neck */}
-        <path d="M51 76 L50.4 92.5 Q60 98.5 69.6 92.5 L69 76 Z" fill="url(#lsgNeck)" />
-        <path d="M47 90.6 Q50 96.5 56 103 L50.5 106 Q45.2 98.4 44 92.2 Z" fill="#e2e8f0" opacity="0.92" />
-        <path d="M73 90.6 Q70 96.5 64 103 L69.5 106 Q74.8 98.4 76 92.2 Z" fill="#e2e8f0" opacity="0.92" />
-
-        <g className="lsg-skull">
-          {/* Hair behind the head */}
-          <path d="M35 51 C32.5 31 44 16.5 61 16.5 C77.5 16.5 88 29 85.5 51 C84.5 44.5 83 39 80.5 35 L40 35 C37.5 39 35.8 44.5 35 51 Z" fill="url(#lsgHair)" />
-          {/* Ears */}
-          <g className="lsg-ear lsg-ear-l">
-            <path d="M38.2 49.5 C33.6 48.6 32 52.8 32.8 57.4 C33.6 62 36 64.6 39.2 63.8 Z" fill="#d89b76" />
-            <path d="M37.4 52.4 C35 52.4 34.6 55.8 35.4 58.6 C36 60.6 37.2 61.4 38.2 61" fill="none" stroke="#a7684a" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
-          </g>
-          <g className="lsg-ear lsg-ear-r">
-            <path d="M81.8 49.5 C86.4 48.6 88 52.8 87.2 57.4 C86.4 62 84 64.6 80.8 63.8 Z" fill="#d89b76" />
-            <path d="M82.6 52.4 C85 52.4 85.4 55.8 84.6 58.6 C84 60.6 82.8 61.4 81.8 61" fill="none" stroke="#a7684a" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
-          </g>
-
-          {/* Face */}
-          <path className="lsg-face" d="M60 21 C73.5 21 82.5 31 83.5 45 C84.3 56 83 64 80 71 C76.5 79 69 86.5 60 87.5 C51 86.5 43.5 79 40 71 C37 64 35.7 56 36.5 45 C37.5 31 46.5 21 60 21 Z" fill="url(#lsgSkin)" />
-
-          {/* Soft shading (painted look) */}
-          <g clipPath="url(#lsgFaceClip)">
-            <path d="M36 44 C36.5 60 39.5 71 46 80 C42.5 70 41 59 42 45 Z" fill="#9a5f40" opacity="0.38" filter="url(#lsgSofter)" />
-            <path d="M84 44 C83.5 60 80.5 71 74 80 C77.5 70 79 59 78 45 Z" fill="#9a5f40" opacity="0.38" filter="url(#lsgSofter)" />
-            <ellipse cx="60" cy="35" rx="13" ry="6" fill="#fff4ea" opacity="0.32" filter="url(#lsgSofter)" />
-            <ellipse cx="50.5" cy="51.5" rx="7" ry="3.8" fill="#a3684a" opacity="0.28" filter="url(#lsgSoft)" />
-            <ellipse cx="69.5" cy="51.5" rx="7" ry="3.8" fill="#a3684a" opacity="0.28" filter="url(#lsgSoft)" />
-            <ellipse cx="45.5" cy="66" rx="5.5" ry="3.2" fill="#b0704f" opacity="0.28" filter="url(#lsgSoft)" />
-            <ellipse cx="74.5" cy="66" rx="5.5" ry="3.2" fill="#b0704f" opacity="0.28" filter="url(#lsgSoft)" />
-            <ellipse cx="60" cy="82" rx="6" ry="2.6" fill="#fff4ea" opacity="0.2" filter="url(#lsgSoft)" />
-          </g>
-
-          <g className="lsg-feat">
-            <ellipse cx="47" cy="62" rx="5" ry="2.8" fill="#f08f7f" opacity="0.13" filter="url(#lsgSoft)" />
-            <ellipse cx="73" cy="62" rx="5" ry="2.8" fill="#f08f7f" opacity="0.13" filter="url(#lsgSoft)" />
-            {/* Brows */}
-            <path d="M43.6 47.4 C46.6 45 51 44.3 55.6 45.5 L55.4 46.8 C51 46.1 47 46.7 44 48.3 Z" fill="#24170f" />
-            <path d="M76.4 47.4 C73.4 45 69 44.3 64.4 45.5 L64.6 46.8 C69 46.1 73 46.7 76 48.3 Z" fill="#24170f" />
-            <g className="lsg-eyes">
-              <Eye cx={50.5} side="l" />
-              <Eye cx={69.5} side="r" />
-            </g>
-            {/* Nose */}
-            <g className="lsg-nose">
-              <path d="M58.2 50 Q57.1 57.5 55.8 63.2" fill="none" stroke="#a5664a" strokeWidth="2.2" strokeLinecap="round" opacity="0.4" filter="url(#lsgSoft)" />
-              <path d="M61.2 50.5 L61.6 60.5" stroke="#fff1e6" strokeWidth="1.3" strokeLinecap="round" opacity="0.45" filter="url(#lsgSoft)" />
-              <ellipse cx="60.6" cy="62.6" rx="2" ry="1.4" fill="#fff1e6" opacity="0.35" filter="url(#lsgSoft)" />
-              <path d="M56 63.8 Q55.2 66.4 57.6 66.9 Q60 67.9 62.4 66.9 Q64.8 66.4 64 63.8" fill="none" stroke="#9a5d42" strokeWidth="1.1" strokeLinecap="round" opacity="0.85" />
-              <ellipse cx="57.9" cy="66.4" rx="1.05" ry="0.55" fill="#7d4733" opacity="0.6" />
-              <ellipse cx="62.1" cy="66.4" rx="1.05" ry="0.55" fill="#7d4733" opacity="0.6" />
-              <ellipse cx="60" cy="68.4" rx="4" ry="1.1" fill="#8e553b" opacity="0.3" filter="url(#lsgSoft)" />
-            </g>
-            {/* Mouth */}
-            <g className="lsg-mouth-n">
-              <path d="M54 72.4 C55.8 71 57.8 70.6 60 71.4 C62.2 70.6 64.2 71 66 72.4 C63.5 73.2 56.5 73.2 54 72.4 Z" fill="#a4554b" />
-              <path d="M54.4 72.6 C56.5 75.9 63.5 75.9 65.6 72.6 C62.5 73.6 57.5 73.6 54.4 72.6 Z" fill="url(#lsgLip)" />
-              <path d="M54.2 72.5 C57 73.3 63 73.3 65.8 72.5" fill="none" stroke="#6e2f29" strokeWidth="0.7" strokeLinecap="round" opacity="0.7" />
-              <ellipse cx="60" cy="74.1" rx="2.6" ry="0.7" fill="#fff" opacity="0.22" filter="url(#lsgSoft)" />
-            </g>
-            <g className="lsg-mouth-s">
-              <path d="M52.8 71.4 C56 77.4 64 77.4 67.2 71.4 C63.5 72.8 56.5 72.8 52.8 71.4 Z" fill="#6f2a26" />
-              <path d="M54.4 72 C57 74.6 63 74.6 65.6 72 C62.6 72.8 57.4 72.8 54.4 72 Z" fill="#f8fafc" />
-              <path d="M52.8 71.4 C56 70.2 58 70 60 70.7 C62 70 64 70.2 67.2 71.4" fill="none" stroke="#a4554b" strokeWidth="1.2" strokeLinecap="round" />
-              <path d="M49.5 66 Q50.5 70.5 52.6 72" fill="none" stroke="#9a5d42" strokeWidth="0.8" strokeLinecap="round" opacity="0.5" />
-              <path d="M70.5 66 Q69.5 70.5 67.4 72" fill="none" stroke="#9a5d42" strokeWidth="0.8" strokeLinecap="round" opacity="0.5" />
-            </g>
-            <ellipse cx="60" cy="77.2" rx="4" ry="1.2" fill="#8e553b" opacity="0.28" filter="url(#lsgSoft)" />
-            {cue === "glasses" && (
-              <g fill="rgba(186,224,255,0.16)" stroke="#0f172a" strokeWidth="1.5">
-                <rect x="43.6" y="48.4" width="13.6" height="9.6" rx="3.6" />
-                <rect x="62.8" y="48.4" width="13.6" height="9.6" rx="3.6" />
-                <path d="M57.2 52.4 Q60 50.8 62.8 52.4 M43.6 51.6 L38.2 50.6 M76.4 51.6 L81.8 50.6" fill="none" />
-              </g>
-            )}
-          </g>
-
-          {/* Hair in front: side part, volume, sideburns */}
-          <path className="lsg-hair" d="M36.4 47 C35.2 30.5 45 18.4 60 18 C75.5 17.6 86 28.5 84.2 46 C82.8 38 78.6 31.6 71.8 28.8 C65.6 31.8 56.6 33.2 49 31.6 C44.6 33.8 40.4 38.6 36.4 47 Z" fill="url(#lsgHair)" />
-          <path className="lsg-hair" d="M49 31.6 C54 26.5 62 23.2 70 22.6 M52 30.6 C57.5 27 64.5 25.2 72 25.6 M44 36 C47 30 52 25.5 58 22.5" fill="none" stroke="#5c4232" strokeWidth="0.9" strokeLinecap="round" opacity="0.65" />
-          <path className="lsg-hair" d="M58 20.6 C64 19.6 71 20.6 76 23.6" fill="none" stroke="#7a5a45" strokeWidth="1.4" strokeLinecap="round" opacity="0.5" filter="url(#lsgSoft)" />
-        </g>
-      </g>
-    </svg>
+    <div className={`lsg-head ${HEAD_MOTION[cue] || ""}`}>
+      <video
+        className="lsg-head-video"
+        src={`${HEAD_CLIP_BASE}/${clip}.mp4`}
+        poster={`${HEAD_CLIP_BASE}/poster.jpg`}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+        aria-hidden="true"
+      />
+    </div>
   );
 }
 
-/** The head on its own, in a glowing ring above the camera. */
-export function GuideHeadCoin({ cue }) {
+// Bars of the voice waveform (heights in %, staggered so they move like speech)
+const VOICE_BARS = [30, 55, 80, 45, 95, 60, 85, 40, 70, 100, 50, 75, 35, 90, 55, 65, 40, 80, 30];
+
+/** The instructor on a holographic panel, with a voice waveform that moves while the guide speaks. */
+export function GuideHeadCoin({ cue, speaking = false }) {
   if (!cue) return null;
   const tone = cueTone(cue);
   const badge = cue === "click" ? "ok" : (cue === "glasses" || cue === "multiple") ? "bad" : cue === "light" ? "sun" : null;
   return (
-    <div className={`lsg-coin lsg-coin-${tone}`} aria-hidden="true">
-      <div className="lsg-coin-ring" />
+    <div className={`lsg-coin lsg-coin-${tone} ${speaking ? "lsg-speaking" : ""}`} aria-hidden="true">
       <div className="lsg-coin-face" key={cue}>
         <GuideHead cue={cue} />
+        <span className="lsg-scan" />
+      </div>
+      <span className="lsg-corner lsg-corner-tl" />
+      <span className="lsg-corner lsg-corner-tr" />
+      <span className="lsg-corner lsg-corner-bl" />
+      <span className="lsg-corner lsg-corner-br" />
+      <div className="lsg-voice">
+        {VOICE_BARS.map((h, i) => (
+          <span key={i} style={{ "--h": `${h}%`, animationDelay: `${(i * 97) % 600}ms` }} />
+        ))}
       </div>
       {badge === "ok" && <span className="lsg-badge lsg-badge-ok">✓</span>}
       {badge === "bad" && <span className="lsg-badge lsg-badge-bad">✕</span>}
@@ -555,57 +424,42 @@ export function GuideCaption({ cue, fallbackText, fallbackTone, prefs, setPrefs,
 
 // ─── Styles (scoped by the lsg- prefix; added next to the lsc- styles) ──────
 export const GUIDE_STYLES = `
-/* Head in its own soft circle */
-.lsg-coin { position: relative; width: 112px; height: 112px; margin: 0 auto; }
-.lsg-coin-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--lsg-ring, #cbd5e1); transition: border-color 0.3s; }
+/* Instructor on a holographic panel (no circle) */
+.lsg-coin { position: relative; width: min(100%, 220px); margin: 0 auto; padding: 8px; --lsg-ring: #67e8f9; }
 .lsg-coin-action { --lsg-ring: #4da3ff; }
 .lsg-coin-warn { --lsg-ring: #f5a623; }
 .lsg-coin-ok { --lsg-ring: var(--wise-green, #9fe870); }
-.lsg-coin-action .lsg-coin-ring, .lsg-coin-ok .lsg-coin-ring { animation: lsg-ringpulse 1.8s ease-out infinite; }
-.lsg-coin-face { position: absolute; inset: 6px; border-radius: 50%; overflow: hidden;
-  background: radial-gradient(circle at 50% 30%, #f3faee 0%, #dcefd2 100%); box-shadow: inset 0 -8px 18px rgba(22,51,0,0.08);
-  animation: lsg-pop 0.35s cubic-bezier(.2,1.3,.4,1); }
-.lsg-head { width: 100%; height: 100%; display: block; }
-.lsg-head .lsg-all, .lsg-head .lsg-skull, .lsg-head .lsg-face, .lsg-head .lsg-lid, .lsg-head .lsg-eye, .lsg-head .lsg-nose, .lsg-head .lsg-ghost { transform-box: fill-box; transform-origin: center; }
-.lsg-head .lsg-all { transform-origin: 50% 100%; }
-.lsg-head .lsg-skull { transform-origin: 50% 90%; }
-.lsg-head .lsg-lid { transform-origin: 50% 0%; transform: scaleY(0); animation: lsg-blink 4.8s ease-in-out infinite; }
-.lsg-head .lsg-mouth-s { opacity: 0; }
-.lsg-badge { position: absolute; right: 2px; bottom: 4px; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 900; border: 3px solid var(--bg-primary, #fff); animation: lsg-pop 0.45s cubic-bezier(.2,1.6,.4,1); }
+.lsg-coin-face { position: relative; aspect-ratio: 1 / 1; border-radius: 18px; overflow: hidden; background: #0b1220;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lsg-ring) 45%, transparent), 0 0 26px color-mix(in srgb, var(--lsg-ring) 35%, transparent), 0 14px 30px rgba(2,8,23,0.35);
+  transition: box-shadow 0.3s; animation: lsg-pop 0.35s cubic-bezier(.2,1.3,.4,1); }
+.lsg-coin-face::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(103,232,249,0.06) 0 1px, transparent 1px 3px), linear-gradient(180deg, transparent 55%, rgba(11,18,32,0.55) 100%); }
+.lsg-scan { position: absolute; left: 0; right: 0; top: 0; height: 22%; pointer-events: none;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--lsg-ring) 28%, transparent) 85%, color-mix(in srgb, var(--lsg-ring) 70%, transparent)); mix-blend-mode: screen; animation: lsg-scanmove 3.2s linear infinite; }
+.lsg-corner { position: absolute; width: 20px; height: 20px; border: 2.5px solid var(--lsg-ring); pointer-events: none; transition: border-color 0.3s; filter: drop-shadow(0 0 4px var(--lsg-ring)); }
+.lsg-corner-tl { top: 0; left: 0; border-right: none; border-bottom: none; border-top-left-radius: 10px; }
+.lsg-corner-tr { top: 0; right: 0; border-left: none; border-bottom: none; border-top-right-radius: 10px; }
+.lsg-corner-bl { bottom: 0; left: 0; border-right: none; border-top: none; border-bottom-left-radius: 10px; }
+.lsg-corner-br { bottom: 0; right: 0; border-left: none; border-top: none; border-bottom-right-radius: 10px; }
+/* Voice waveform over the bottom of the panel — flat while silent, alive while speaking */
+.lsg-voice { position: absolute; left: 20px; right: 20px; bottom: 16px; height: 26px; display: flex; align-items: center; justify-content: center; gap: 3px; pointer-events: none; }
+.lsg-voice span { width: 3px; height: 12%; border-radius: 3px; background: linear-gradient(180deg, #a5f3fc, var(--lsg-ring)); box-shadow: 0 0 6px var(--lsg-ring); opacity: 0.55; transition: height 0.25s, opacity 0.25s; }
+.lsg-speaking .lsg-voice span { height: var(--h); opacity: 1; animation: lsg-wave 0.6s ease-in-out infinite alternate; }
+.lsg-head { width: 100%; height: 100%; }
+.lsg-head-video { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 30%; pointer-events: none; }
+.lsg-badge { position: absolute; right: 0; top: 0; z-index: 2; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 900; border: 3px solid var(--bg-primary, #fff); animation: lsg-pop 0.45s cubic-bezier(.2,1.6,.4,1); }
 .lsg-badge-ok { background: var(--wise-green, #9fe870); color: var(--wise-dark-green, #163300); }
 .lsg-badge-bad { background: #ef4444; color: #fff; }
 .lsg-badge-sun { background: #fbbf24; color: #3b2a00; }
 
-/* Head animations — the preview is mirrored, so "your left" is the left of the screen */
-.lsg-h-turnL .lsg-feat { animation: lsg-turnL 2.6s ease-in-out infinite; }
-.lsg-h-turnL .lsg-hair { animation: lsg-hairL 2.6s ease-in-out infinite; }
-.lsg-h-turnL .lsg-skull { animation: lsg-tiltL 2.6s ease-in-out infinite; }
-.lsg-h-turnL .lsg-ear-l { animation: lsg-earHide 2.6s ease-in-out infinite; }
-.lsg-h-turnL .lsg-eye-l { animation: lsg-squish 2.6s ease-in-out infinite; }
-.lsg-h-turnL .lsg-nose { animation: lsg-noseL 2.6s ease-in-out infinite; }
-.lsg-h-turnR .lsg-feat { animation: lsg-turnR 2.6s ease-in-out infinite; }
-.lsg-h-turnR .lsg-hair { animation: lsg-hairR 2.6s ease-in-out infinite; }
-.lsg-h-turnR .lsg-skull { animation: lsg-tiltR 2.6s ease-in-out infinite; }
-.lsg-h-turnR .lsg-ear-r { animation: lsg-earHide 2.6s ease-in-out infinite; }
-.lsg-h-turnR .lsg-eye-r { animation: lsg-squish 2.6s ease-in-out infinite; }
-.lsg-h-turnR .lsg-nose { animation: lsg-noseR 2.6s ease-in-out infinite; }
-.lsg-h-front .lsg-feat { animation: lsg-settle 1.8s ease-in-out infinite; }
-.lsg-h-blink .lsg-lid { animation: lsg-blink 1.5s ease-in-out infinite; }
-.lsg-h-eyes .lsg-lid { animation: none; }
-.lsg-h-eyes .lsg-eye { animation: lsg-wide 1.4s ease-in-out infinite; }
-.lsg-h-smile .lsg-mouth-n { animation: lsg-fadeOut 2.2s ease-in-out infinite; }
-.lsg-h-smile .lsg-mouth-s { animation: lsg-fadeIn 2.2s ease-in-out infinite; }
-.lsg-h-happy .lsg-mouth-n { opacity: 0; }
-.lsg-h-happy .lsg-mouth-s { opacity: 1; }
-.lsg-h-closer .lsg-all { animation: lsg-grow 1.8s ease-in-out infinite; }
-.lsg-h-farther .lsg-all { animation: lsg-shrink 1.8s ease-in-out infinite; }
-.lsg-h-moveL .lsg-all { animation: lsg-nudgeL 1.6s ease-in-out infinite; }
-.lsg-h-moveR .lsg-all { animation: lsg-nudgeR 1.6s ease-in-out infinite; }
-.lsg-h-moveU .lsg-all { animation: lsg-nudgeU 1.6s ease-in-out infinite; }
-.lsg-h-moveD .lsg-all { animation: lsg-nudgeD 1.6s ease-in-out infinite; }
-.lsg-h-search .lsg-all { animation: lsg-search 2s ease-in-out infinite; }
-.lsg-h-multi .lsg-ghost { animation: lsg-ghost 1.6s ease-in-out infinite; }
-.lsg-h-idle .lsg-all { animation: lsg-breathe 3.2s ease-in-out infinite; }
+/* Slide / zoom of the front clip for position cues */
+.lsg-m-grow { animation: lsg-grow 1.8s ease-in-out infinite; }
+.lsg-m-shrink { animation: lsg-shrink 1.8s ease-in-out infinite; }
+.lsg-m-nudgeL { animation: lsg-nudgeL 1.6s ease-in-out infinite; }
+.lsg-m-nudgeR { animation: lsg-nudgeR 1.6s ease-in-out infinite; }
+.lsg-m-nudgeU { animation: lsg-nudgeU 1.6s ease-in-out infinite; }
+.lsg-m-nudgeD { animation: lsg-nudgeD 1.6s ease-in-out infinite; }
+.lsg-m-search { animation: lsg-search 2s ease-in-out infinite; }
 
 /* Arrow bubbles on the camera */
 .lsg-arrows { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
@@ -643,21 +497,6 @@ export const GUIDE_STYLES = `
 .lsg-seg-active::after { content: ""; position: absolute; inset: 0; width: 45%; border-radius: inherit; background: #4da3ff; animation: lsg-load 1.2s ease-in-out infinite; }
 .lsg-progress-label { font-size: 0.74rem; font-weight: 700; color: var(--text-muted, #6b7280); white-space: nowrap; }
 
-@keyframes lsg-turnL { 0%, 12% { transform: translateX(0); } 40%, 70% { transform: translateX(-6.5px); } 94%, 100% { transform: translateX(0); } }
-@keyframes lsg-turnR { 0%, 12% { transform: translateX(0); } 40%, 70% { transform: translateX(6.5px); } 94%, 100% { transform: translateX(0); } }
-@keyframes lsg-hairL { 0%, 12% { transform: translateX(0); } 40%, 70% { transform: translateX(-3px); } 94%, 100% { transform: translateX(0); } }
-@keyframes lsg-hairR { 0%, 12% { transform: translateX(0); } 40%, 70% { transform: translateX(3px); } 94%, 100% { transform: translateX(0); } }
-@keyframes lsg-tiltL { 0%, 12% { transform: rotate(0) scaleX(1); } 40%, 70% { transform: rotate(-3deg) scaleX(0.96); } 94%, 100% { transform: rotate(0) scaleX(1); } }
-@keyframes lsg-tiltR { 0%, 12% { transform: rotate(0) scaleX(1); } 40%, 70% { transform: rotate(3deg) scaleX(0.96); } 94%, 100% { transform: rotate(0) scaleX(1); } }
-@keyframes lsg-squish { 0%, 12% { transform: scaleX(1); } 40%, 70% { transform: scaleX(0.72); } 94%, 100% { transform: scaleX(1); } }
-@keyframes lsg-noseL { 0%, 12% { transform: translateX(0); } 40%, 70% { transform: translateX(-2px); } 94%, 100% { transform: translateX(0); } }
-@keyframes lsg-noseR { 0%, 12% { transform: translateX(0); } 40%, 70% { transform: translateX(2px); } 94%, 100% { transform: translateX(0); } }
-@keyframes lsg-earHide { 0%, 12% { opacity: 1; } 40%, 70% { opacity: 0; } 94%, 100% { opacity: 1; } }
-@keyframes lsg-settle { 0% { transform: translateX(-3px); } 28% { transform: translateX(2px); } 55%, 100% { transform: translateX(0); } }
-@keyframes lsg-blink { 0%, 42%, 54%, 100% { transform: scaleY(0); } 47%, 49% { transform: scaleY(1); } }
-@keyframes lsg-wide { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
-@keyframes lsg-fadeOut { 0%, 20%, 90%, 100% { opacity: 1; } 35%, 75% { opacity: 0; } }
-@keyframes lsg-fadeIn { 0%, 20%, 90%, 100% { opacity: 0; } 35%, 75% { opacity: 1; } }
 @keyframes lsg-grow { 0%, 100% { transform: scale(0.86); } 55% { transform: scale(1.06); } }
 @keyframes lsg-shrink { 0%, 100% { transform: scale(1.06); } 55% { transform: scale(0.86); } }
 @keyframes lsg-nudgeL { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-6px); } }
@@ -665,18 +504,17 @@ export const GUIDE_STYLES = `
 @keyframes lsg-nudgeU { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes lsg-nudgeD { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
 @keyframes lsg-search { 0%, 100% { opacity: 0.55; transform: scale(0.97); } 50% { opacity: 1; transform: scale(1); } }
-@keyframes lsg-ghost { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.8; } }
-@keyframes lsg-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
 @keyframes lsg-bubble { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 @keyframes lsg-push { 0%, 100% { transform: translateX(2px); } 50% { transform: translateX(-3px); } }
 @keyframes lsg-pop { 0% { transform: scale(0.75); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes lsg-rise { 0% { transform: translateY(5px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-@keyframes lsg-ringpulse { 0% { box-shadow: 0 0 0 0 var(--lsg-ring); } 100% { box-shadow: 0 0 0 10px rgba(0,0,0,0); } }
+@keyframes lsg-scanmove { 0% { transform: translateY(-100%); } 100% { transform: translateY(460%); } }
+@keyframes lsg-wave { 0% { transform: scaleY(0.35); } 100% { transform: scaleY(1); } }
 @keyframes lsg-dot { 0% { box-shadow: 0 0 0 0 var(--lsg-accent); } 100% { box-shadow: 0 0 0 7px rgba(0,0,0,0); } }
 @keyframes lsg-speak { 0% { box-shadow: 0 0 0 0 rgba(159,232,112,0.7); } 100% { box-shadow: 0 0 0 9px rgba(159,232,112,0); } }
 @keyframes lsg-load { 0% { transform: translateX(-100%); } 100% { transform: translateX(230%); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .lsg-coin-ring, .lsg-head *, .lsg-speaker, .lsg-pulse, .lsg-seg-active::after, .lsg-bubble, .lsg-arrow { animation: none !important; }
+  .lsg-scan, .lsg-voice span, .lsg-head, .lsg-speaker, .lsg-pulse, .lsg-seg-active::after, .lsg-bubble, .lsg-arrow { animation: none !important; }
 }
 `;

@@ -1152,6 +1152,10 @@ const sendToBackoffice = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
+    if (app.status !== "verified" || app.globeStatus !== "approved") {
+      return res.status(400).json({ success: false, error: "Application must be verified by Admin and approved by Globe before sending to Backoffice" });
+    }
+
     const resolvedClientCode = backofficeService.deriveClientCode(app, clientCode);
     if (!resolvedClientCode) {
       return res.status(400).json({ success: false, error: "clientCode is required because this application does not have a generated client id" });

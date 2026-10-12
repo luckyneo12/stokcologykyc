@@ -848,6 +848,7 @@ export default function ApplicationDetail() {
           </div>
         </div>
 
+        {app.status === "verified" && app.globeStatus === "approved" && (
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 24 }}>
           <input
             type="text"
@@ -875,6 +876,7 @@ export default function ApplicationDetail() {
             Uses the generated client ID when available; override it only if backoffice needs a different code.
           </div>
         </div>
+        )}
 
         {/* Title Section */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 32 }}>
