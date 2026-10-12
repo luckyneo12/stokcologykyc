@@ -234,11 +234,28 @@ const HEAD_MOTION = {
   no_face: "lsg-m-search",
 };
 
+// Playback speed per clip: the head turns are slowed down so the movement is easy to follow and copy
+// ("slowly turn your head"); a blink or smile at normal speed looks natural.
+const HEAD_CLIP_RATE = { "turn-left": 0.55, "turn-right": 0.55 };
+
 function GuideHead({ cue }) {
   const clip = HEAD_CLIP[cue] || "front";
+  const rate = HEAD_CLIP_RATE[clip] || 1;
+  const videoRef = useRef(null);
+  // The browser resets the speed when a clip (re)loads, so it is set again once it is ready
+  const applyRate = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.defaultPlaybackRate = rate;
+    v.playbackRate = rate;
+  }, [rate]);
+  useEffect(applyRate, [applyRate, clip]);
   return (
     <div className={`lsg-head ${HEAD_MOTION[cue] || ""}`}>
       <video
+        ref={videoRef}
+        onLoadedData={applyRate}
+        onPlay={applyRate}
         className="lsg-head-video"
         src={`${HEAD_CLIP_BASE}/${clip}.mp4`}
         poster={`${HEAD_CLIP_BASE}/poster.jpg`}

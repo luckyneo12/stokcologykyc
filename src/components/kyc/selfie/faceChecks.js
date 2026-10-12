@@ -76,9 +76,11 @@ export const THRESHOLDS = {
 
   skinChromaDistance: 14,
 
-  // Liveness challenge
-  turnLeftYaw: 0.68,
-  turnRightYaw: 0.32,
+  // Liveness challenge. A turn counts only when it is clear (not a small sway) and held for a moment;
+  // straight ahead is ~0.5
+  turnLeftYaw: 0.72,
+  turnRightYaw: 0.28,
+  turnHoldMs: 400,
   // A quick natural blink rarely scores above ~0.5 at camera frame rates
   blinkClosed: 0.45,
   blinkOpen: 0.3,
@@ -835,9 +837,21 @@ export function updateChallengeStep(step, analysis, state) {
     return false;
   }
   if (step === "turn_left" || step === "turn_right") {
+    // The turn must start from facing the camera (a head already turned when the step starts, or still
+    // swinging back from the last step, doesn't count), go clearly to the asked side and stay there for
+    // turnHoldMs — timed, so one jittery frame or a fast camera can't pass it.
+    if (!state.sawStraight) {
+      if (pose.yaw >= THRESHOLDS.yawStraightMin && pose.yaw <= THRESHOLDS.yawStraightMax) state.sawStraight = true;
+      return false;
+    }
     const hit = step === "turn_left" ? pose.yaw > THRESHOLDS.turnLeftYaw : pose.yaw < THRESHOLDS.turnRightYaw;
-    state.consec = hit ? (state.consec || 0) + 1 : 0;
-    return state.consec >= 2;
+    if (!hit) {
+      state.turnedSince = null;
+      return false;
+    }
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (state.turnedSince == null) state.turnedSince = now;
+    return now - state.turnedSince >= THRESHOLDS.turnHoldMs;
   }
   if (step === "blink") {
     const l = blend.eyeBlinkLeft ?? 0;

@@ -120,7 +120,8 @@ export default function GlobeSidebar({ active, onNavigate, collapsed, onToggle }
               key={item.id}
               onClick={() => {
                 if (item.id === "maker_checker") {
-                  window.location.href = "/globe/maker-checker";
+                  // Opening the module always starts on the default list, not the last-used filter
+                  window.location.href = "/globe/maker-checker?filter=verify";
                 } else {
                   if (typeof onNavigate === 'function') onNavigate(item.id);
                   else router.push(`/globe`);

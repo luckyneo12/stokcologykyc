@@ -134,7 +134,9 @@ export default function AdminSidebar({ active, onNavigate, collapsed, onToggle }
             return (
               <button key={item.id} onClick={() => {
                 if (item.id === "maker_checker") {
-                  router.push("/admin/maker-checker");
+                  // Opening the module always starts on the default list — not the filter a dashboard card
+                  // opened last (that one is still remembered when coming back from an application)
+                  window.location.href = "/admin/maker-checker?filter=in_progress";
                 } else {
                   if (pathname !== "/admin") {
                     localStorage.setItem("adminActiveSection", item.id);
