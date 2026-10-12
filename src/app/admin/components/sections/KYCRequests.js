@@ -20,7 +20,7 @@ const STEP_LABELS = {
   11: "Step 11: Document Upload",
   12: "Step 12: eSign Preview", 
   13: "Step 13: Aadhaar eSign", 
-  14: "Step 14: Completion"
+  14: "Step 14: eSign Done"
 };
 
 const STATUS_MAP = { 
@@ -377,7 +377,7 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
           </button>
           {filterOpen && (
             <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
-              {["all", "in_progress", "verify", "completed", "rejected", "on_hold", "globe_approved", "globe_rejected", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
+              {["all", "in_progress", "verify", "completed", "rejected", "globe_approved", "pushed_to_bo", "not_pushed_to_bo"].map(f => (
                 <div 
                   key={f}
                   onClick={() => { setFilter(f); setFilterOpen(false); }}
@@ -470,9 +470,6 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
                           </div>
                         )}
                       </div>
-                      {k.isResubmitted && (
-                        <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
-                      )}
                     </div>
                   </td>
                   <td>

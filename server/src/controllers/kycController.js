@@ -1726,15 +1726,11 @@ const completeCorrectionSession = async (req, res, next) => {
     updateData.stepStatuses = JSON.stringify(stepStatuses);
     updateData.isResubmitted = true;
     updateData.correctionDraft = null;
-    // Corrections after a Globe rejection go back to Globe for a fresh review
-    if (app.globeStatus === "rejected") updateData.globeStatus = "pending";
-
-    // Rejected by Globe only (STK had verified it): the corrected application goes straight back to
-    // Globe's "Verify" list — the STK status stays verified. If STK had rejected it too, STK reviews it first.
-    const globeOnlyRejection = app.globeStatus === "rejected" && app.status === "verified";
-
+    // Corrections always go back to STK first — also after a Globe rejection. The Globe status stays
+    // "rejected" (it remains in Globe's "Rejected" list) until STK verifies it again, which resets it to
+    // pending and sends it to Globe's "Verify" list (see reviewApplication).
     if (req.body.esignCompleted) {
-      updateData.status = globeOnlyRejection ? "verified" : "under_review";
+      updateData.status = "under_review";
       updateData.currentStep = 14;
     } else {
       updateData.status = "pending";

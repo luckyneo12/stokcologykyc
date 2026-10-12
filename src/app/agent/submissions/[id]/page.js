@@ -37,7 +37,7 @@ const USER_STEP_LABELS = {
   11: "Document Upload",
   12: "eSign Preview", 
   13: "Aadhaar eSign", 
-  14: "Completion"
+  14: "eSign Done"
 };
 
 const REVIEW_STEPS = [

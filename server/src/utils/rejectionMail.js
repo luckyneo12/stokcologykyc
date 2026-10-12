@@ -110,7 +110,25 @@ const clearPendingDocStatusFlip = async (prisma, where, side) => {
 // Adds `rejectionMail` to each application (for API responses)
 const withRejectionMailState = (app) => (app ? { ...app, rejectionMail: getRejectionMailState(app) } : app);
 
+// Review-list filters (Prisma). An application only counts as "Rejected" once the reviewer has clicked
+// "Send Rejection Mail" — that opens the applicant's correction session (correctionDraft), which is
+// cleared again when the applicant resubmits. Until then a rejection is still part of the review.
+const REJECTION_SENT_WHERE = {
+  AND: [{ OR: [{ status: "rejected" }, { globeStatus: "rejected" }] }, { correctionDraft: { not: null } }],
+};
+
+// Rejected by Globe, as listed everywhere (Globe "Rejected", admin "Globe Rejected" filter and card): the
+// rejection mail is sent (correction session open) or the applicant already corrected it and it is back
+// with STK for review. Never one STK has rejected — that isn't with Globe at all.
+const GLOBE_REJECTED_SENT_WHERE = {
+  globeStatus: "rejected",
+  status: { not: "rejected" },
+  OR: [{ correctionDraft: { not: null } }, { status: { not: "verified" } }],
+};
+
 module.exports = {
+  REJECTION_SENT_WHERE,
+  GLOBE_REJECTED_SENT_WHERE,
   PENDING_DOC_REJECTIONS_KEY,
   PENDING_DOC_LABELS_KEY,
   PENDING_DOC_BY_KEY,

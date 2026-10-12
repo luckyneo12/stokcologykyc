@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
+import { downloadExcel } from "@/utils/exportExcel";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
@@ -24,7 +25,7 @@ const STEP_LABELS = {
   11: "Step 11: Document Upload",
   12: "Step 12: eSign Preview", 
   13: "Step 13: Aadhaar eSign", 
-  14: "Step 14: Completion"
+  14: "Step 14: eSign Done"
 };
 
 // Same as the Pricing Plan module's formatBoid: long stored BOIDs → 16-char DP ID + Client ID
@@ -409,18 +410,165 @@ export default function MakerCheckerDashboard() {
     }
   }, []);
 
+  // One table row from an application returned by the API (used by the table and the exports)
+  const mapApplication = (app) => {
+    let parsedPersonal = {};
+    try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
+    
+    let parsedIdentity = {};
+    try { parsedIdentity = typeof app.identityDetails === "string" ? JSON.parse(app.identityDetails) : (app.identityDetails || {}); } catch(e) {}
+    
+    let parsedEsign = {};
+    try { parsedEsign = typeof app.esignDetails === "string" ? JSON.parse(app.esignDetails) : (app.esignDetails || {}); } catch(e) {}
+    
+    let parsedBank = {};
+    try { parsedBank = typeof app.bankDetails === "string" ? JSON.parse(app.bankDetails) : (app.bankDetails || {}); } catch(e) {}
+    
+    let parsedAddress = {};
+    try { 
+      parsedAddress = typeof app.address === "string" ? JSON.parse(app.address) : (app.address || parsedPersonal.address || {}); 
+      if (typeof parsedAddress === "string") {
+        try { parsedAddress = JSON.parse(parsedAddress); } catch(e) {}
+      }
+    } catch(e) {}
+    
+    let parsedNominee = {};
+    try { parsedNominee = typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails) : (app.nomineeDetails || {}); } catch(e) {}
+
+    let parsedSelfie = {};
+    try { parsedSelfie = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : (app.selfieDetails || {}); } catch(e) {}
+    
+    let parsedSignature = {};
+    try { parsedSignature = typeof app.signature === "string" ? JSON.parse(app.signature) : (app.signature || {}); } catch(e) {}
+
+    let parsedSegments = {};
+    try { parsedSegments = typeof app.segments === "string" ? JSON.parse(app.segments) : (app.segments || {}); } catch(e) {}
+
+    let parsedOcr = {};
+    try { parsedOcr = typeof app.ocrData === "string" ? JSON.parse(app.ocrData) : (app.ocrData || {}); } catch(e) {}
+    
+    let parsedDocuments = [];
+    try { parsedDocuments = typeof app.documents === "string" ? JSON.parse(app.documents) : (app.documents || []); } catch(e) {}
+
+    let parsedStepStatuses = {};
+    try { parsedStepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {}); } catch(e) {}
+    
+    // Rejections split by who made them — shown under the STK Status / Globe Status columns.
+    // A rejection that doesn't say who made it is shown under STK, marked "source unknown".
+    const stkRejections = [];
+    const globeRejections = [];
+    const addRejection = (side, label, reason, unknownSource = false) =>
+      (side === "Globe" ? globeRejections : stkRejections).push({ label, reason: reason || "No reason provided", unknownSource });
+    Object.entries(parsedStepStatuses)
+      .filter(([step, info]) => !step.startsWith("_") && info?.status === "rejected")
+      .forEach(([step, info]) => addRejection(info.rejectedBy, info.docLabel || FRONTEND_STEP_TITLE_MAP[step] || step, info.reason, !info.rejectedBy));
+    // Document rejections marked but not yet mailed count too
+    const pendingDocLabels = parsedStepStatuses._pendingDocumentRejectionLabels || {};
+    const pendingDocBy = parsedStepStatuses._pendingDocumentRejectionBy || {};
+    Object.entries(parsedStepStatuses._pendingDocumentRejections || {}).forEach(([src, reason]) => {
+      addRejection(pendingDocBy[src], pendingDocLabels[src] || "Document", reason, !pendingDocBy[src]);
+    });
+    // Whole-application rejections (Globe Reject button / STK reject) — their reason
+    if (stkRejections.length === 0 && app.status === "rejected" && app.rejectionReason) addRejection("STK", "Application", app.rejectionReason);
+    if (globeRejections.length === 0 && app.globeStatus === "rejected" && app.globeRemarks) addRejection("Globe", "Application", app.globeRemarks);
+
+    // Export text: every rejection with who made it
+    const rejectionsText = [
+      ...stkRejections.map(r => `STK: ${r.label}: ${r.reason}`),
+      ...globeRejections.map(r => `Globe: ${r.label}: ${r.reason}`),
+    ].join(" | ") || "None";
+
+    const aadhaarRaw = parsedIdentity.aadhaarNumber || parsedIdentity.aadhaar || parsedIdentity.uid || parsedIdentity.maskedAadhaar || parsedPersonal.aadhaar || "";
+    const aadhaarFormatted = aadhaarRaw ? (String(aadhaarRaw).length >= 4 ? `xxxxxxxx${String(aadhaarRaw).slice(-4)}` : String(aadhaarRaw)) : "N/A";
+
+    const rawAddr = [
+      parsedAddress.line1 || parsedAddress.addressLine1 || (typeof parsedAddress === "object" ? parsedAddress.address : null),
+      parsedAddress.line2 || parsedAddress.addressLine2,
+      parsedAddress.line3 || parsedAddress.addressLine3,
+      parsedAddress.street || parsedAddress.locality
+    ].filter(Boolean).join(", ") || (typeof parsedAddress === "string" ? parsedAddress : "") || parsedPersonal.address || "N/A";
+
+    const rawCity = parsedAddress.city || parsedAddress.district || parsedPersonal.city || parsedPersonal.district || "N/A";
+    const rawState = parsedAddress.state || parsedPersonal.state || "N/A";
+    const rawPincode = parsedAddress.pincode || parsedAddress.pinCode || parsedAddress.zip || parsedPersonal.pincode || parsedPersonal.pinCode || "N/A";
+
+    return {
+      id: app.applicationId,
+      boid: formatBoid(app.user?.boid || app.user?.boidAssigned?.boidNumber),
+      dbId: app.id,
+      clientCode: app.clientCode,
+      number: app.user?.phone || parsedPersonal.phone || parsedPersonal.mobile || "N/A",
+      email: app.user?.email || parsedPersonal.email || "N/A",
+      name: parsedPersonal.fullName || parsedPersonal.name || parsedIdentity.name || "N/A",
+      pan: parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || parsedPersonal.panNumber || "N/A",
+      eStampCertNo: app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A",
+      eStampSerialNo: app.user?.eStampAssigned?.serialNo || "N/A",
+      stepNum: app.currentStep || 0,
+      stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
+      type: "Full KYC",
+      status: app.status,
+      rejectionSent: !!app.rejectionSent, // "Send Rejection Mail" clicked — only then is it shown as REJECTED
+      globeStatus: app.globeStatus || "pending",
+      stkApprovedAt: app.stkApprovedAt ? new Date(app.stkApprovedAt).toLocaleString("en-IN") : "N/A",
+      stkRejectedAt: app.stkRejectedAt ? new Date(app.stkRejectedAt).toLocaleString("en-IN") : "N/A",
+      globeApprovedAt: app.globeApprovedAt ? new Date(app.globeApprovedAt).toLocaleString("en-IN") : "N/A",
+      globeRejectedAt: app.globeRejectedAt ? new Date(app.globeRejectedAt).toLocaleString("en-IN") : "N/A",
+      isResubmitted: app.isResubmitted,
+      riskScore: app.riskScore || 0,
+      faceMatch: app.faceMatchScore || 0,
+      startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
+      esignDate: parsedEsign.timestamp || parsedEsign.signedAt || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
+      submittedAt: new Date(app.updatedAt || app.createdAt).toLocaleString(),
+      aadhaar: aadhaarFormatted,
+      dob: parsedPersonal.dob || parsedPersonal.dateOfBirth || parsedIdentity.dob || "N/A",
+      gender: parsedPersonal.gender || parsedIdentity.gender || "N/A",
+      fatherName: parsedPersonal.fatherName || parsedPersonal.father_name || parsedPersonal.father || "N/A",
+      motherName: parsedPersonal.motherName || parsedPersonal.mother_name || parsedPersonal.mother || "N/A",
+      bankName: parsedBank.bankName || parsedBank.bank_name || parsedBank.name || "N/A",
+      accountNo: parsedBank.accountNumber || parsedBank.account_number || parsedBank.accountNo || "N/A",
+      ifsc: parsedBank.ifsc || parsedBank.ifscCode || parsedBank.ifsc_code || "N/A",
+      micr: parsedBank.micr || parsedOcr?.bank?.micr || "N/A",
+      nominees: Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : (parsedNominee.nominees ? 1 : 0),
+      address: rawAddr,
+      city: rawCity,
+      state: rawState,
+      pincode: rawPincode,
+      occupation: parsedPersonal.occupation || "N/A",
+      annualIncome: parsedPersonal.annualIncome || parsedPersonal.annual_income || "N/A",
+      rejections: rejectionsText, // export only
+      stkRejections,
+      globeRejections,
+      pennydropVerify: parsedBank.verified ? "Verified" : (parsedBank.pennyDropStatus || "Pending"),
+      aadhaarSeeding: parsedOcr.pan_verification?.data?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.pan_verification?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.aadhaarSeedingStatus || parsedIdentity.seedingStatus || "N/A",
+      liveImageTime: parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt ? new Date(parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt).toLocaleString("en-IN") : "N/A",
+      signUploadTime: parsedSignature.timestamp || parsedSignature.uploadedAt ? new Date(parsedSignature.timestamp || parsedSignature.uploadedAt).toLocaleString("en-IN") : (parsedSignature.filePreview ? (new Date(app.updatedAt).toLocaleString("en-IN")) : "N/A"),
+      segmentsSelected: Object.keys(parsedSegments).filter(k => parsedSegments[k] === true || parsedSegments[k] === "true").join(", ") || "None",
+      totalNominees: parsedNominee.numberOfNominees || (Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : (parsedNominee.nominees ? 1 : 0)),
+      nomineeOptDate: parsedNominee.optInDate || parsedNominee.optOutDate || parsedNominee.timestamp ? new Date(parsedNominee.optInDate || parsedNominee.optOutDate || parsedNominee.timestamp).toLocaleString("en-IN") : (parsedNominee.opted ? new Date(app.updatedAt).toLocaleString("en-IN") : "N/A"),
+    };
+  };
+
+  // List API URL with the current filter, stage, search and dates
+  const buildListUrl = (pageNum, limit) => {
+    const url = new URL(`${API_BASE_URL}/api/globe/kycs`);
+    if (filter !== "all") url.searchParams.append("globeStatus", filter);
+    if (stageFilter !== "all") url.searchParams.append("stage", stageFilter);
+    if (search) url.searchParams.append("search", search);
+    if (dateRange.start) url.searchParams.append("startDate", dateRange.start);
+    if (dateRange.end) url.searchParams.append("endDate", dateRange.end);
+    url.searchParams.append("page", pageNum);
+    url.searchParams.append("limit", limit);
+    return url;
+  };
+
+  // Only the latest request may update the list — an older, slower search response must not overwrite it
+  const fetchSeqRef = useRef(0);
   const fetchApplications = async (isSilent = false) => {
     if (typeof window === "undefined") return;
+    const seq = ++fetchSeqRef.current;
     if (!isSilent) setLoading(true);
     try {
-      const url = new URL(`${API_BASE_URL}/api/globe/kycs`);
-      if (filter !== "all") url.searchParams.append("globeStatus", filter);
-      if (stageFilter !== "all") url.searchParams.append("stage", stageFilter);
-      if (search) url.searchParams.append("search", search);
-      if (dateRange.start) url.searchParams.append("startDate", dateRange.start);
-      if (dateRange.end) url.searchParams.append("endDate", dateRange.end);
-      url.searchParams.append("page", page);
-      url.searchParams.append("limit", 15);
+      const url = buildListUrl(page, 15);
 
       const token = localStorage.getItem("globeToken");
       const response = await fetch(url, {
@@ -437,156 +585,19 @@ export default function MakerCheckerDashboard() {
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
         const data = await response.json();
+        if (seq !== fetchSeqRef.current) return;
         if (data.success) {
           setTotal(data.pagination?.total || 0);
           setTotalPages(data.pagination?.pages || 1);
           const appsArray = data.data || data.applications || [];
-          const mapped = appsArray.map(app => {
-            let parsedPersonal = {};
-            try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
-            
-            let parsedIdentity = {};
-            try { parsedIdentity = typeof app.identityDetails === "string" ? JSON.parse(app.identityDetails) : (app.identityDetails || {}); } catch(e) {}
-            
-            let parsedEsign = {};
-            try { parsedEsign = typeof app.esignDetails === "string" ? JSON.parse(app.esignDetails) : (app.esignDetails || {}); } catch(e) {}
-            
-            let parsedBank = {};
-            try { parsedBank = typeof app.bankDetails === "string" ? JSON.parse(app.bankDetails) : (app.bankDetails || {}); } catch(e) {}
-            
-            let parsedAddress = {};
-            try { 
-              parsedAddress = typeof app.address === "string" ? JSON.parse(app.address) : (app.address || parsedPersonal.address || {}); 
-              if (typeof parsedAddress === "string") {
-                try { parsedAddress = JSON.parse(parsedAddress); } catch(e) {}
-              }
-            } catch(e) {}
-            
-            let parsedNominee = {};
-            try { parsedNominee = typeof app.nomineeDetails === "string" ? JSON.parse(app.nomineeDetails) : (app.nomineeDetails || {}); } catch(e) {}
-
-            let parsedSelfie = {};
-            try { parsedSelfie = typeof app.selfieDetails === "string" ? JSON.parse(app.selfieDetails) : (app.selfieDetails || {}); } catch(e) {}
-            
-            let parsedSignature = {};
-            try { parsedSignature = typeof app.signature === "string" ? JSON.parse(app.signature) : (app.signature || {}); } catch(e) {}
-
-            let parsedSegments = {};
-            try { parsedSegments = typeof app.segments === "string" ? JSON.parse(app.segments) : (app.segments || {}); } catch(e) {}
-
-            let parsedOcr = {};
-            try { parsedOcr = typeof app.ocrData === "string" ? JSON.parse(app.ocrData) : (app.ocrData || {}); } catch(e) {}
-            
-            let parsedDocuments = [];
-            try { parsedDocuments = typeof app.documents === "string" ? JSON.parse(app.documents) : (app.documents || []); } catch(e) {}
-
-            let parsedStepStatuses = {};
-            try { parsedStepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {}); } catch(e) {}
-            
-            // Rejections split by who made them — shown under the STK Status / Globe Status columns.
-            // A rejection that doesn't say who made it is shown under STK, marked "source unknown".
-            const stkRejections = [];
-            const globeRejections = [];
-            const addRejection = (side, label, reason, unknownSource = false) =>
-              (side === "Globe" ? globeRejections : stkRejections).push({ label, reason: reason || "No reason provided", unknownSource });
-            Object.entries(parsedStepStatuses)
-              .filter(([step, info]) => !step.startsWith("_") && info?.status === "rejected")
-              .forEach(([step, info]) => addRejection(info.rejectedBy, info.docLabel || FRONTEND_STEP_TITLE_MAP[step] || step, info.reason, !info.rejectedBy));
-            // Document rejections marked but not yet mailed count too
-            const pendingDocLabels = parsedStepStatuses._pendingDocumentRejectionLabels || {};
-            const pendingDocBy = parsedStepStatuses._pendingDocumentRejectionBy || {};
-            Object.entries(parsedStepStatuses._pendingDocumentRejections || {}).forEach(([src, reason]) => {
-              addRejection(pendingDocBy[src], pendingDocLabels[src] || "Document", reason, !pendingDocBy[src]);
-            });
-            // Whole-application rejections (Globe Reject button / STK reject) — their reason
-            if (stkRejections.length === 0 && app.status === "rejected" && app.rejectionReason) addRejection("STK", "Application", app.rejectionReason);
-            if (globeRejections.length === 0 && app.globeStatus === "rejected" && app.globeRemarks) addRejection("Globe", "Application", app.globeRemarks);
-
-            // Export text: every rejection with who made it
-            const rejectionsText = [
-              ...stkRejections.map(r => `STK: ${r.label}: ${r.reason}`),
-              ...globeRejections.map(r => `Globe: ${r.label}: ${r.reason}`),
-            ].join(" | ") || "None";
-            const mailPendingSides = app.rejectionMail?.pendingSides || [];
-
-            const aadhaarRaw = parsedIdentity.aadhaarNumber || parsedIdentity.aadhaar || parsedIdentity.uid || parsedIdentity.maskedAadhaar || parsedPersonal.aadhaar || "";
-            const aadhaarFormatted = aadhaarRaw ? (String(aadhaarRaw).length >= 4 ? `xxxxxxxx${String(aadhaarRaw).slice(-4)}` : String(aadhaarRaw)) : "N/A";
-
-            const rawAddr = [
-              parsedAddress.line1 || parsedAddress.addressLine1 || (typeof parsedAddress === "object" ? parsedAddress.address : null),
-              parsedAddress.line2 || parsedAddress.addressLine2,
-              parsedAddress.line3 || parsedAddress.addressLine3,
-              parsedAddress.street || parsedAddress.locality
-            ].filter(Boolean).join(", ") || (typeof parsedAddress === "string" ? parsedAddress : "") || parsedPersonal.address || "N/A";
-
-            const rawCity = parsedAddress.city || parsedAddress.district || parsedPersonal.city || parsedPersonal.district || "N/A";
-            const rawState = parsedAddress.state || parsedPersonal.state || "N/A";
-            const rawPincode = parsedAddress.pincode || parsedAddress.pinCode || parsedAddress.zip || parsedPersonal.pincode || parsedPersonal.pinCode || "N/A";
-
-            return {
-              id: app.applicationId,
-              boid: formatBoid(app.user?.boid || app.user?.boidAssigned?.boidNumber),
-              dbId: app.id,
-              clientCode: app.clientCode,
-              number: app.user?.phone || parsedPersonal.phone || parsedPersonal.mobile || "N/A",
-              email: app.user?.email || parsedPersonal.email || "N/A",
-              name: parsedPersonal.fullName || parsedPersonal.name || parsedIdentity.name || "N/A",
-              pan: parsedIdentity.panNumber || parsedIdentity.pan || parsedPersonal.pan || parsedPersonal.panNumber || "N/A",
-              eStampCertNo: app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A",
-              eStampSerialNo: app.user?.eStampAssigned?.serialNo || "N/A",
-              stepNum: app.currentStep || 0,
-              stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
-              type: "Full KYC",
-              status: app.status,
-              globeStatus: app.globeStatus || "pending",
-              stkApprovedAt: app.stkApprovedAt ? new Date(app.stkApprovedAt).toLocaleString("en-IN") : "N/A",
-              stkRejectedAt: app.stkRejectedAt ? new Date(app.stkRejectedAt).toLocaleString("en-IN") : "N/A",
-              globeApprovedAt: app.globeApprovedAt ? new Date(app.globeApprovedAt).toLocaleString("en-IN") : "N/A",
-              globeRejectedAt: app.globeRejectedAt ? new Date(app.globeRejectedAt).toLocaleString("en-IN") : "N/A",
-              isResubmitted: app.isResubmitted,
-              riskScore: app.riskScore || 0,
-              faceMatch: app.faceMatchScore || 0,
-              startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
-              esignDate: parsedEsign.timestamp || parsedEsign.signedAt || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending"),
-              submittedAt: new Date(app.updatedAt || app.createdAt).toLocaleString(),
-              aadhaar: aadhaarFormatted,
-              dob: parsedPersonal.dob || parsedPersonal.dateOfBirth || parsedIdentity.dob || "N/A",
-              gender: parsedPersonal.gender || parsedIdentity.gender || "N/A",
-              fatherName: parsedPersonal.fatherName || parsedPersonal.father_name || parsedPersonal.father || "N/A",
-              motherName: parsedPersonal.motherName || parsedPersonal.mother_name || parsedPersonal.mother || "N/A",
-              bankName: parsedBank.bankName || parsedBank.bank_name || parsedBank.name || "N/A",
-              accountNo: parsedBank.accountNumber || parsedBank.account_number || parsedBank.accountNo || "N/A",
-              ifsc: parsedBank.ifsc || parsedBank.ifscCode || parsedBank.ifsc_code || "N/A",
-              micr: parsedBank.micr || parsedOcr?.bank?.micr || "N/A",
-              nominees: Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : (parsedNominee.nominees ? 1 : 0),
-              address: rawAddr,
-              city: rawCity,
-              state: rawState,
-              pincode: rawPincode,
-              occupation: parsedPersonal.occupation || "N/A",
-              annualIncome: parsedPersonal.annualIncome || parsedPersonal.annual_income || "N/A",
-              rejections: rejectionsText, // export only
-              stkRejections,
-              globeRejections,
-              // that side's rejections haven't been mailed to the applicant yet
-              stkMailPending: mailPendingSides.includes("STK"),
-              globeMailPending: mailPendingSides.includes("Globe"),
-              pennydropVerify: parsedBank.verified ? "Verified" : (parsedBank.pennyDropStatus || "Pending"),
-              aadhaarSeeding: parsedOcr.pan_verification?.data?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.pan_verification?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.aadhaarSeedingStatus || parsedIdentity.seedingStatus || "N/A",
-              liveImageTime: parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt ? new Date(parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt).toLocaleString("en-IN") : "N/A",
-              signUploadTime: parsedSignature.timestamp || parsedSignature.uploadedAt ? new Date(parsedSignature.timestamp || parsedSignature.uploadedAt).toLocaleString("en-IN") : (parsedSignature.filePreview ? (new Date(app.updatedAt).toLocaleString("en-IN")) : "N/A"),
-              segmentsSelected: Object.keys(parsedSegments).filter(k => parsedSegments[k] === true || parsedSegments[k] === "true").join(", ") || "None",
-              totalNominees: parsedNominee.numberOfNominees || (Array.isArray(parsedNominee.nominees) ? parsedNominee.nominees.length : (parsedNominee.nominees ? 1 : 0)),
-              nomineeOptDate: parsedNominee.optInDate || parsedNominee.optOutDate || parsedNominee.timestamp ? new Date(parsedNominee.optInDate || parsedNominee.optOutDate || parsedNominee.timestamp).toLocaleString("en-IN") : (parsedNominee.opted ? new Date(app.updatedAt).toLocaleString("en-IN") : "N/A"),
-            };
-          });
+          const mapped = appsArray.map(mapApplication);
           setKycs(mapped);
         }
       }
     } catch (err) {
       console.error("Fetch failed", err);
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
   };
 
@@ -635,8 +646,8 @@ export default function MakerCheckerDashboard() {
     if (col === "PAN") return k.pan;
     if (col === "Step") return `Step ${k.stepNum || 0}/14`;
     if (col === "Stage") return k.stepLabel && k.stepLabel.includes(':') ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding");
-    if (col === "STK Status") return k.status;
-    if (col === "Globe Status") return k.globeStatus;
+    if (col === "STK Status") return k.status === "verified" ? "approved" : (k.status === "rejected" && !k.rejectionSent ? "pending" : k.status);
+    if (col === "Globe Status") return k.globeStatus === "rejected" && !k.rejectionSent ? "pending" : k.globeStatus;
     if (col === "STK Approved At") return k.stkApprovedAt;
     if (col === "STK Rejected At") return k.stkRejectedAt;
     if (col === "Globe Approved At") return k.globeApprovedAt;
@@ -672,36 +683,27 @@ export default function MakerCheckerDashboard() {
     return "";
   };
 
-  // One side's rejections (STK or Globe), shown next to its status badge as one compact pill:
-  // the count opens the list with each reason; an amber envelope in the pill = not mailed yet
-  const renderSideRejections = (k, side) => {
+  // One side's rejections (STK or Globe) as one compact pill: the count opens the list with each reason.
+  // With statusLabel (e.g. "REJECTED") the side's status badge is merged into the same pill.
+  const renderSideRejections = (k, side, statusLabel) => {
     const items = side === "Globe" ? k.globeRejections : k.stkRejections;
     if (!items || items.length === 0) return null;
     const menuId = `${k.id}-${side}`;
-    const mailPending = side === "Globe" ? k.globeMailPending : k.stkMailPending;
     return (
       <div className="rejections-dropdown-container" style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
         <button
           onClick={() => setOpenRejectionsId(openRejectionsId === menuId ? null : menuId)}
-          title={`${items.length} rejection(s) by ${side}${mailPending ? " — rejection mail not sent yet" : ""}. Click to see the reasons.`}
+          title={`${items.length} rejection(s) by ${side}. Click to see the reasons.`}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid #fecaca", background: "#fef2f2", color: "#dc2626", fontSize: "0.75rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+          {statusLabel && (
+            <span style={{ paddingRight: 8, marginRight: 2, borderRight: "1px solid #fecaca", letterSpacing: "0.3px" }}>{statusLabel}</span>
+          )}
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           {items.length}
-          {mailPending && (
-            <span style={{ display: "inline-flex", alignItems: "center", paddingLeft: 6, marginLeft: 1, borderLeft: "1px solid #fecaca", color: "#d97706" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 5L2 7"></path></svg>
-            </span>
-          )}
         </button>
         {openRejectionsId === menuId && (
           <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 100, padding: "12px", width: "280px", maxHeight: "300px", overflowY: "auto", whiteSpace: "normal" }}>
             <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", marginBottom: 8, borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>{side.toUpperCase()} REJECTIONS</div>
-            {mailPending && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "6px 8px", borderRadius: 6, background: "#fffbeb", border: "1px solid #fde68a", color: "#b45309", fontSize: "0.75rem", fontWeight: 700 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 5L2 7"></path></svg>
-                Rejection mail not sent yet
-              </div>
-            )}
             {items.map((r, i) => (
               <div key={i} style={{ marginBottom: i < items.length - 1 ? 12 : 0 }}>
                 <div style={{ fontWeight: 700, color: "#ef4444", fontSize: "0.82rem" }}>
@@ -723,8 +725,9 @@ export default function MakerCheckerDashboard() {
     return str === "" || str === "N/A" ? "(Blank)" : str;
   };
 
-  const filteredAndSortedKycs = useMemo(() => {
-    let result = [...kycs];
+  // The table's column filters and sort (also applied to the exports)
+  const applyTableFilters = (list) => {
+    let result = [...list];
 
     Object.keys(columnValueFilters).forEach(col => {
       const selected = columnValueFilters[col];
@@ -754,7 +757,9 @@ export default function MakerCheckerDashboard() {
     }
 
     return result;
-  }, [kycs, columnFilters, columnValueFilters, sortConfig]);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const filteredAndSortedKycs = useMemo(() => applyTableFilters(kycs), [kycs, columnFilters, columnValueFilters, sortConfig]);
 
   const handleDragStart = (e, col) => {
     if (PERMANENT_COLUMNS.includes(col)) {
@@ -790,62 +795,48 @@ export default function MakerCheckerDashboard() {
     }
     setDraggedColumn(null);
   };
-  const exportToCSV = () => {
-    if (!kycs || kycs.length === 0) return;
-    // "Rejections" is no longer a table column but stays in the export (each entry prefixed "STK:" / "Globe:")
-    const headers = ALL_COLUMNS.filter(c => c !== "Actions" && c !== "S.No.").flatMap(c => c === "Step" ? ["Rejections", c] : [c]);
-    const rows = kycs.map(k => headers.map(col => {
-      if (col === "KYC ID") return k.id;
-      if (col === "BOID") return k.boid;
-      if (col === "Number") return k.number;
-      if (col === "Name") return `"${k.name || ""}"`;
-      if (col === "Email") return `"${k.email || ""}"`;
-      if (col === "PAN") return k.pan;
-      if (col === "Step") return `Step ${k.stepNum || 0}/14`;
-      if (col === "Stage") return `"${(k.stepLabel && k.stepLabel.includes(':')) ? k.stepLabel.split(': ')[1] : (k.stepLabel || "Onboarding")}"`;
-      if (col === "STK Status") return k.status;
-      if (col === "Globe Status") return k.globeStatus;
-      if (col === "STK Approved At") return k.stkApprovedAt;
-      if (col === "STK Rejected At") return k.stkRejectedAt;
-      if (col === "Globe Approved At") return k.globeApprovedAt;
-      if (col === "Globe Rejected At") return k.globeRejectedAt;
-      if (col === "E-Stamp Certificate No") return k.eStampCertNo;
-      if (col === "E-Stamp Serial No") return k.eStampSerialNo;
-      if (col === "Aadhaar") return k.aadhaar;
-      if (col === "DOB") return `"${k.dob || ""}"`;
-      if (col === "Gender") return k.gender;
-      if (col === "Father Name") return `"${k.fatherName || ""}"`;
-      if (col === "Mother Name") return `"${k.motherName || ""}"`;
-      if (col === "Bank Name") return `"${k.bankName || ""}"`;
-      if (col === "Account No") return `"${k.accountNo || ""}"`;
-      if (col === "IFSC") return k.ifsc;
-      if (col === "MICR") return k.micr;
-      if (col === "Nominees") return k.nominees;
-      if (col === "Address") return `"${k.address || ""}"`;
-      if (col === "City") return `"${k.city || ""}"`;
-      if (col === "State") return `"${k.state || ""}"`;
-      if (col === "Pincode") return k.pincode;
-      if (col === "Occupation") return `"${k.occupation || ""}"`;
-      if (col === "Annual Income") return `"${k.annualIncome || ""}"`;
-      if (col === "Rejections") return `"${k.rejections || ""}"`;
-      if (col === "Date") return `"${k.submittedAt || ""}"`;
-      if (col === "Pennydrop Verify") return `"${k.pennydropVerify || ""}"`;
-      if (col === "Aadhaar Seeding") return `"${k.aadhaarSeeding || ""}"`;
-      if (col === "LiveImage Time") return `"${k.liveImageTime || ""}"`;
-      if (col === "Sign Upload Time") return `"${k.signUploadTime || ""}"`;
-      if (col === "Segments Selected") return `"${k.segmentsSelected || ""}"`;
-      if (col === "Total Nominees") return k.totalNominees;
-      if (col === "Nominee Opt Date") return `"${k.nomineeOptDate || ""}"`;
-      return "";
-    }));
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `kyc_export_${new Date().getTime()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const [exporting, setExporting] = useState(null); // "table" | "all" while an export is being built
+
+  // Every application matching the current filter / stage / search / dates — all pages, not just the
+  // one on screen — with the table's column filters and sort applied
+  const fetchAllForExport = async () => {
+    const token = localStorage.getItem("globeToken");
+    const all = [];
+    for (let p = 1; ; p++) {
+      const res = await fetch(buildListUrl(p, 200), { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || data.message || "Failed to load applications");
+      const apps = data.data || data.applications || [];
+      all.push(...apps.map(mapApplication));
+      if (apps.length < 200 || p >= (data.pagination?.pages || 1)) break;
+    }
+    return applyTableFilters(all);
+  };
+
+  // "table": the columns shown in the table, in the table's order.
+  // "all": every column, plus every rejection reason (each prefixed "STK:" / "Globe:").
+  const exportToExcel = async (mode) => {
+    if (exporting) return;
+    setExporting(mode);
+    try {
+      const rows = await fetchAllForExport();
+      if (rows.length === 0) {
+        alert("No applications to export.");
+        return;
+      }
+      const columns = mode === "table"
+        ? displayColumns.filter(c => c !== "Actions")
+        : ALL_COLUMNS.filter(c => c !== "Actions").flatMap(c => c === "Step" ? ["Rejections", c] : [c]);
+      const data = rows.map((k, i) => columns.map(col =>
+        col === "S.No." ? i + 1 : col === "Rejections" ? k.rejections : getCellValue(k, col)
+      ));
+      await downloadExcel(`kyc_${mode === "table" ? "table" : "all_columns"}_${new Date().toISOString().slice(0, 10)}.xlsx`, columns, data);
+    } catch (err) {
+      console.error("Export failed", err);
+      alert("Export failed. Please try again.");
+    } finally {
+      setExporting(null);
+    }
   };
 
   if (loadingAuth || !isAuthenticated) return (
@@ -1110,27 +1101,51 @@ export default function MakerCheckerDashboard() {
                   )}
                 </div>
 
-                <button 
-                  onClick={exportToCSV}
-                  disabled={kycs.length === 0}
-                  style={{ 
+                <button
+                  onClick={() => exportToExcel("table")}
+                  disabled={kycs.length === 0 || !!exporting}
+                  title="Excel with the columns shown in the table"
+                  style={{
                     flexShrink: 0,
                     whiteSpace: "nowrap",
-                    padding: "10px 16px", 
-                    borderRadius: 8, 
-                    border: "none", 
-                    background: "var(--wise-green)", 
-                    color: "white", 
-                    fontWeight: 700, 
-                    cursor: kycs.length === 0 ? "not-allowed" : "pointer",
-                    opacity: kycs.length === 0 ? 0.6 : 1,
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    border: "1px solid var(--wise-green)",
+                    background: "transparent",
+                    color: "var(--wise-green)",
+                    fontWeight: 700,
+                    cursor: kycs.length === 0 || exporting ? "not-allowed" : "pointer",
+                    opacity: kycs.length === 0 || (exporting && exporting !== "table") ? 0.6 : 1,
                     display: "flex",
                     alignItems: "center",
                     gap: 8
                   }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                  Export CSV
+                  {exporting === "table" ? "Exporting…" : "Export Table"}
+                </button>
+                <button
+                  onClick={() => exportToExcel("all")}
+                  disabled={kycs.length === 0 || !!exporting}
+                  title="Excel with every column"
+                  style={{
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "var(--wise-green)",
+                    color: "white",
+                    fontWeight: 700,
+                    cursor: kycs.length === 0 || exporting ? "not-allowed" : "pointer",
+                    opacity: kycs.length === 0 || (exporting && exporting !== "all") ? 0.6 : 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  {exporting === "all" ? "Exporting…" : "Export All"}
                 </button>
               </div>
 
@@ -1279,14 +1294,9 @@ export default function MakerCheckerDashboard() {
                           </td>
                         </tr>
                       ) : filteredAndSortedKycs.map((k, index) => (
-                        <tr 
-                          key={k.id} 
-                          onClick={() => {
-                            const sel = window.getSelection();
-                            if (sel && sel.toString().length > 0) return;
-                            router.push(`/globe/maker-checker/${k.id}`);
-                          }} 
-                          style={{ cursor: "pointer", userSelect: "text", WebkitUserSelect: "text" }}
+                        <tr
+                          key={k.id}
+                          style={{ userSelect: "text", WebkitUserSelect: "text" }}
                         >
                           {(() => {
                             // Cells follow the same (draggable) order as the headers
@@ -1445,14 +1455,14 @@ export default function MakerCheckerDashboard() {
                             <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center" }}>
                               {/* Read-only on Globe: the STK status is set by STK only */}
                               {k.status === 'verified' ? (
-                                <span className="badge badge-verified mc-status-badge" style={{ border: "none" }}>VERIFIED</span>
-                              ) : (
+                                <span className="badge badge-verified mc-status-badge" style={{ border: "none" }}>APPROVED</span>
+                              ) : k.status === 'rejected' && !k.rejectionSent ? (
+                                // Rejection mail not sent yet: still under review
+                                <span className="badge badge-pending mc-status-badge" style={{ border: "none" }}>PENDING</span>
+                              ) : k.status === 'rejected' && renderSideRejections(k, "STK", "REJECTED") || (
                                 <span className={`badge ${STATUS_MAP[k.status] || "badge-pending"} mc-status-badge`} style={{ border: "none" }}>{String(k.status || "pending").replace(/_/g, " ").toUpperCase()}</span>
                               )}
-                              {k.isResubmitted && (
-                                <span title="The applicant changed this application after a review" style={{ display: "inline-flex", alignItems: "center", height: 22, fontSize: "0.65rem", fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "0 6px", borderRadius: 6, textTransform: "uppercase", border: "1px solid #fde68a" }}>Modified</span>
-                              )}
-                              {renderSideRejections(k, "STK")}
+                              {!(k.status === 'rejected' && k.rejectionSent) && renderSideRejections(k, "STK")}
                             </div>
                           </td>),
                               "Globe Status": () => (<td>
@@ -1470,11 +1480,14 @@ export default function MakerCheckerDashboard() {
                                 >
                                   Verify
                                 </button>
-                              ) : (
+                              ) : k.globeStatus === "rejected" && !k.rejectionSent ? (
+                                // Rejection mail not sent yet: still under Globe review
+                                <span className="badge badge-pending mc-status-badge" style={{ border: "none" }}>PENDING</span>
+                              ) : k.globeStatus === "rejected" && renderSideRejections(k, "Globe", "REJECTED") || (
                                 // Decided: the status only (changed from inside the application, not from the list)
                                 <span className={`badge ${STATUS_MAP[k.globeStatus] || "badge-pending"} mc-status-badge`} style={{ border: "none" }}>{String(k.globeStatus).toUpperCase()}</span>
                               )}
-                              {renderSideRejections(k, "Globe")}
+                              {!(k.globeStatus === "rejected" && k.rejectionSent) && renderSideRejections(k, "Globe")}
                             </div>
                           </td>),
                               "STK Approved At": () => (<td style={{ fontSize: "0.82rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{k.stkApprovedAt}</td>),

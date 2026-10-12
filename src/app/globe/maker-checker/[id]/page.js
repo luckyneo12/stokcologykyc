@@ -42,7 +42,7 @@ const USER_STEP_LABELS = {
   11: "Document Upload",
   12: "eSign Preview", 
   13: "Aadhaar eSign", 
-  14: "Completion"
+  14: "eSign Done"
 };
 
 const ReverseGeocode = ({ lat, lng, fallback }) => {
@@ -1630,7 +1630,6 @@ export default function AgentReview() {
   const [editValues, setEditValues] = useState({});
   const [editingField, setEditingField] = useState(null);
   const [showGlobalReject, setShowGlobalReject] = useState(false);
-  const [globalRejectReason, setGlobalRejectReason] = useState("");
   const [rejectStepModal, setRejectStepModal] = useState(null);
   const [stepRejectReason, setStepRejectReason] = useState("");
   const [selectedRejectedFields, setSelectedRejectedFields] = useState([]);
@@ -1911,34 +1910,7 @@ export default function AgentReview() {
   };
 
 
-  const handleGlobalReject = async () => {
-    if (!globalRejectReason.trim()) {
-      showToast("Rejection reason is required.", "error");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const token = localStorage.getItem("globeToken");
-      const res = await fetchWithFallback(`/api/globe/kycs/${id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ globeStatus: "rejected", remarks: globalRejectReason }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast("Application rejected.");
-        setShowGlobalReject(false);
-        fetchDetail();
-      } else {
-        showToast(data.error || data.message || "Failed to reject application.", "error");
-      }
-    } catch (error) {
-      console.error(error);
-      showToast("Network error while rejecting.", "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // No whole-application reject without a mail: Globe rejects sections / documents, then sends the rejection mail
 
   const handleGlobalApprove = async () => {
     const currentStatuses = getStepStatuses(app);
@@ -2007,6 +1979,10 @@ export default function AgentReview() {
         });
         fetchDetail();
       } else {
+        setRejectStepModal(null);
+        setStepRejectReason("");
+        setSelectedRejectedFields([]);
+        setRejectEntireModule(false);
         showToast(data.error || "Failed to reject step.", "error");
       }
     } catch (error) {
@@ -2190,8 +2166,11 @@ export default function AgentReview() {
   }, [app]);
   allDocumentsRef.current = allDocuments;
   // Rejection is only allowed once the applicant has completed every step (eSign done = "Verify" filter).
-  // In-progress applications can't be rejected, so any reject dialog opened on one is closed straight away.
-  const canReject = Number(app?.currentStep || 0) >= 14;
+  // In-progress applications can't be rejected, and neither can ones Globe has approved (same rule as
+  // the server), so any reject dialog opened on one is closed straight away.
+  const isInProgress = Number(app?.currentStep || 0) < 14;
+  const isApprovedLocked = app?.globeStatus === "approved";
+  const canReject = !isInProgress && !isApprovedLocked;
   const rejectDialogOpen = !!rejectStepModal || !!rejectDocumentModal || showRejectionConfirmModal || showGlobalReject;
   useEffect(() => {
     if (!app || canReject || !rejectDialogOpen) return;
@@ -2199,8 +2178,10 @@ export default function AgentReview() {
     setRejectDocumentModal(null);
     setShowRejectionConfirmModal(false);
     setShowGlobalReject(false);
-    showToast("This application can't be rejected as it is still in progress. The applicant has not completed all the steps yet.", "error");
-  }, [app, canReject, rejectDialogOpen, showToast]);
+    showToast(isInProgress
+      ? "This application can't be rejected as it is still in progress. The applicant has not completed all the steps yet."
+      : "This application is already approved and can't be rejected.", "error");
+  }, [app, canReject, isInProgress, rejectDialogOpen, showToast]);
 
   if (loading) return <div className="admin-loading" style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", fontSize: "1.2rem", fontWeight: 800 }}>Loading Review Dashboard...</div>;
   if (!app) return <div className="admin-error" style={{ padding: 40, textAlign: "center" }}>Application not found for ID: {id}</div>;
@@ -2383,7 +2364,7 @@ export default function AgentReview() {
               </button>
             </>
           ) : (
-            <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting || !canReject} title={canReject ? undefined : "This application can't be rejected as it is still in progress"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
+            <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting || !canReject} title={canReject ? undefined : isInProgress ? "This application can't be rejected as it is still in progress" : "This application is already approved and can't be rejected"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
               <Mail size={16} /> Send Rejection Mail
             </button>
           )}
@@ -2412,7 +2393,6 @@ export default function AgentReview() {
               const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
               const fields = step.fields(app, activeTab).filter(([, value]) => value !== undefined && value !== null && value !== "");
               const isRejected = statuses[step.id]?.status === "rejected";
-              const isModified = isRejected && app.isResubmitted;
               const displayAsRejected = isRejected && !app.isResubmitted;
               const isVisited = visitedSteps.has(step.id);
 
@@ -2424,7 +2404,7 @@ export default function AgentReview() {
                     style={{ padding: "8px 14px" }}
                   >
                     {/* Left: Checkbox / Visited Icon + Title + Badges */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : isModified ? "#ca8a04" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
                       {isVisited && !displayAsRejected ? (
                         <CheckCircle2 size={16} color="#16a34a" style={{ flexShrink: 0 }} title="Visited" />
                       ) : (
@@ -3493,30 +3473,6 @@ export default function AgentReview() {
         </div>
       )}
 
-      {showGlobalReject && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 400, maxWidth: "90%", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
-            <h3 style={{ margin: "0 0 16px 0", color: "var(--text-primary)" }}>Reject Application</h3>
-            <textarea
-              className="admin-input"
-              autoFocus
-              onFocus={e => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
-              placeholder="Provide a reason for rejecting the application..."
-              value={globalRejectReason}
-              onChange={e => setGlobalRejectReason(e.target.value)}
-              style={{ width: "100%", minHeight: 100, padding: 12, borderRadius: 8, border: "1px solid var(--border-color)", marginBottom: 16 }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-              <button onClick={() => setShowGlobalReject(false)} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)" }}>
-                Cancel
-              </button>
-              <button onClick={handleGlobalReject} disabled={submitting || !globalRejectReason.trim()} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#ef4444", color: "var(--bg-primary)", fontWeight: 600, cursor: submitting || !globalRejectReason.trim() ? "not-allowed" : "pointer", opacity: submitting || !globalRejectReason.trim() ? 0.6 : 1 }}>
-                Confirm Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
 
       {successModalData && (

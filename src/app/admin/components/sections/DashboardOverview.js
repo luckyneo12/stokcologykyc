@@ -6,7 +6,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { 
-  ShieldAlert, Users, FileText, CheckCircle, Clock, AlertTriangle, 
+  ShieldAlert, Users, FileText, CheckCircle, AlertTriangle, 
   ArrowUpRight, ArrowDownRight, Activity, ChevronRight 
 } from 'lucide-react';
 
@@ -146,9 +146,10 @@ export default function DashboardOverview({ onNavigate }) {
   }
 
   const total = liveStats?.total || 0;
-  const verified = liveStats?.verified || 0;
-  const rejected = liveStats?.rejected || 0;
-  const review = liveStats?.review || 0;
+  // Card numbers are counted with the same filter as the list each card opens
+  const verified = liveStats?.stkApprovedCount ?? liveStats?.verified ?? 0;
+  const rejected = liveStats?.rejectedListCount ?? liveStats?.rejected ?? 0;
+  const review = liveStats?.pendingReviewCount ?? liveStats?.review ?? 0;
   const globeApproved = liveStats?.globeApprovedCount || 0;
   const globeRejected = liveStats?.globeRejectedCount || 0;
   const pushedToBo = liveStats?.pushedToBoCount || 0;
@@ -211,14 +212,6 @@ export default function DashboardOverview({ onNavigate }) {
     retentionRate: 100 - d.rate
   }));
 
-  const avgProcessing = liveStats?.averageProcessingTime && liveStats.averageProcessingTime !== "N/A" 
-    ? liveStats.averageProcessingTime 
-    : "3 mins"; // Mock data if empty
-
-  const avgUserCompletion = liveStats?.averageUserCompletionTime && liveStats.averageUserCompletionTime !== "N/A" 
-    ? liveStats.averageUserCompletionTime 
-    : "8 mins"; // Mock data if empty
-
   const rejectionReasonsData = liveStats?.rejectionReasons && liveStats.rejectionReasons.length > 0 
     ? liveStats.rejectionReasons 
     : [
@@ -260,15 +253,13 @@ export default function DashboardOverview({ onNavigate }) {
       {/* Top Metric Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 24, marginBottom: 32 }}>
         <StatCard label="Total Submissions" value={total} trend={getTrendIcon(trends.total)} trendValue={getTrendStr(trends.total)} icon={Users} color="#8b5cf6" onClick={() => window.location.href = "/admin/maker-checker?filter=all"} />
-        <StatCard label="Verified" value={verified} trend={getTrendIcon(trends.verified)} trendValue={getTrendStr(trends.verified)} icon={CheckCircle} color="#10b981" onClick={() => window.location.href = "/admin/maker-checker?filter=completed"} />
+        <StatCard label="Verified" value={verified} trend={getTrendIcon(trends.verified)} trendValue={getTrendStr(trends.verified)} icon={CheckCircle} color="#10b981" onClick={() => window.location.href = "/admin/maker-checker?filter=stk_approved"} />
         <StatCard label="Pending Review" value={review} icon={Activity} color="#f59e0b" onClick={() => window.location.href = "/admin/maker-checker?filter=verify"} />
         <StatCard label="Rejected" value={rejected} trend={getTrendIcon(trends.rejected)} trendValue={getTrendStr(trends.rejected)} icon={ShieldAlert} color="#ef4444" onClick={() => window.location.href = "/admin/maker-checker?filter=rejected"} />
         <StatCard label="Globe Approved" value={globeApproved} icon={CheckCircle} color="#10b981" onClick={() => window.location.href = "/admin/maker-checker?filter=globe_approved"} />
         <StatCard label="Globe Rejected" value={globeRejected} icon={ShieldAlert} color="#ef4444" onClick={() => window.location.href = "/admin/maker-checker?filter=globe_rejected"} />
         <StatCard label="Pushed To BO" value={pushedToBo} icon={CheckCircle} color="#8b5cf6" onClick={() => window.location.href = "/admin/maker-checker?filter=pushed_to_bo"} />
         <StatCard label="Not Pushed" value={notPushedToBo} icon={ShieldAlert} color="#ef4444" onClick={() => window.location.href = "/admin/maker-checker?filter=not_pushed_to_bo"} />
-        <StatCard label="Agent Processing" value={avgProcessing} icon={Clock} color="#3b82f6" />
-        <StatCard label="User Completion" value={avgUserCompletion} icon={Clock} color="#8b5cf6" />
       </div>
 
       {/* Recent KYC Requests Table */}

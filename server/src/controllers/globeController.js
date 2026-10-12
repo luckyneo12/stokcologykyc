@@ -3,41 +3,53 @@ const prisma = new PrismaClient();
 const backofficeService = require("../services/backofficeService");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
-const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
-const { parseStepStatuses, getPendingDocRejections, getRejectionMailState, clearPendingDocStatusFlip } = require("../utils/rejectionMail");
+const { isRejectable, NOT_REJECTABLE_ERROR, isApprovable, NOT_APPROVABLE_ERROR, isLockedByApproval, APPROVED_LOCK_ERROR, rejectionSide } = require("../utils/rejectionGuard");
+const { REJECTION_SENT_WHERE, GLOBE_REJECTED_SENT_WHERE, parseStepStatuses, getPendingDocRejections, getRejectionMailState, clearPendingDocStatusFlip } = require("../utils/rejectionMail");
 
 // Document rejections marked but not yet mailed — the application can't be approved while they exist
 const hasPendingDocRejections = async (where) => {
   const app = await prisma.kycApplication.findUnique({ where, select: { stepStatuses: true } });
   return Object.keys(getPendingDocRejections(parseStepStatuses(app?.stepStatuses))).length > 0;
 };
-const PENDING_DOC_APPROVE_ERROR = "Cannot approve: some documents are marked as rejected. Remove those rejections or send the rejection mail first.";
+// Globe lists. A Globe rejection only counts as "Rejected" once its rejection mail is sent (the applicant's
+// correction session is open) or the applicant has already resubmitted it (back with STK). Until the mail
+// is sent it stays in Globe's review lists, with the pending ones. An application STK has rejected is never
+// on the Globe portal, whatever its Globe status — it comes back once STK verifies it again.
+const GLOBE_REJECTED_WHERE = GLOBE_REJECTED_SENT_WHERE;
+// "All Applications": STK-verified, plus Globe-rejected ones back with STK for review (not STK-rejected)
+const GLOBE_ALL_WHERE = { OR: [{ status: "verified" }, { globeStatus: "rejected", status: { not: "rejected" } }] };
+const GLOBE_AWAITING_WHERE = { status: "verified", OR: [{ globeStatus: "pending" }, { globeStatus: "rejected", correctionDraft: null }] };
+const STK_REVIEW_PENDING_ERROR = "This application is back with STK for review. It can be approved once STK verifies it again.";
+const PENDING_DOC_APPROVE_ERROR ="Cannot approve: some documents are marked as rejected. Remove those rejections or send the rejection mail first.";
 
 class GlobeController {
   async getDashboardKPIs(req, res) {
     try {
-      // 1. Total KYC (Verified by Admin)
+      // Counts match the Globe list (getPendingKYCs), so Pending + Approved + Rejected = Total Received.
+      // 1. Total KYC — the "All Applications" list
       const totalKyc = await prisma.kycApplication.count({
-        where: { status: "verified" },
+        where: GLOBE_ALL_WHERE,
       });
 
       // 2. Approved by Globe
       const approvedByGlobe = await prisma.kycApplication.count({
-        where: { globeStatus: "approved" },
+        where: { status: "verified", globeStatus: "approved" },
       });
 
       // 3. Rejected by Globe
       const rejectedByGlobe = await prisma.kycApplication.count({
-        where: { globeStatus: "rejected" },
+        where: GLOBE_REJECTED_WHERE,
+      });
+
+      // Pending with Globe — the "In Progress" list (includes rejections whose mail isn't sent yet)
+      const pendingByGlobe = await prisma.kycApplication.count({
+        where: GLOBE_AWAITING_WHERE,
       });
 
       // 4. Pushed to Backoffice
       const pushedToBackoffice = await prisma.kycApplication.count({
         where: { pushedToBackoffice: true },
       });
-
-      // 5. Calculate Status Distribution for Pie Chart
-      const pendingByGlobe = totalKyc - (approvedByGlobe + rejectedByGlobe);
 
       // 6. Calculate daily activity for last 7 days for Area Chart
       const sevenDaysAgo = new Date();
@@ -86,7 +98,7 @@ class GlobeController {
 
       // 8. Aging Report (Pending Age)
       const pendingApps = await prisma.kycApplication.findMany({
-        where: { status: "verified", globeStatus: "pending" },
+        where: GLOBE_AWAITING_WHERE,
         select: { createdAt: true }
       });
       
@@ -107,7 +119,7 @@ class GlobeController {
 
       // 9. Rejection Reasons Breakdown
       const rejectedApps = await prisma.kycApplication.findMany({
-        where: { globeStatus: "rejected", globeRemarks: { not: null } },
+        where: { AND: [GLOBE_REJECTED_WHERE, { globeRemarks: { not: null } }] },
         select: { globeRemarks: true }
       });
       
@@ -132,7 +144,7 @@ class GlobeController {
           pushedToBackoffice,
           avgTatHours,
           statusDistribution: [
-            { name: "Pending", value: Math.max(0, pendingByGlobe) },
+            { name: "Pending", value: pendingByGlobe },
             { name: "Approved", value: approvedByGlobe },
             { name: "Rejected", value: rejectedByGlobe }
           ],
@@ -159,26 +171,28 @@ class GlobeController {
 
       const whereClause = {};
       if (globeStatus === "in_progress" || globeStatus === "pending") {
-        // Globe "In Progress": verified by STK, but no action taken on the Globe portal yet
-        whereClause.status = "verified";
-        whereClause.globeStatus = "pending";
+        // Globe "In Progress": verified by STK, Globe hasn't decided yet (a rejection whose mail isn't sent
+        // yet still counts as undecided)
+        whereClause.AND = [GLOBE_AWAITING_WHERE];
       } else if (globeStatus === "verify") {
         // Awaiting Globe's decision: STK-verified, eSign done, Globe status still pending.
         // Pushing to back office is done by admin, so it doesn't affect what Globe sees.
         whereClause.currentStep = { gte: 14 };
-        whereClause.status = "verified";
-        whereClause.globeStatus = "pending";
+        whereClause.AND = [GLOBE_AWAITING_WHERE];
       } else if (globeStatus === "completed" || globeStatus === "approved") {
         // Approved by Globe (STK-verified)
         whereClause.status = "verified";
         whereClause.globeStatus = "approved";
+      } else if (globeStatus === "rejected") {
+        // Rejected on the Globe portal once the rejection mail is sent. Stays here while the user corrects
+        // it and STK re-reviews it, until STK verifies it again.
+        whereClause.AND = [GLOBE_REJECTED_WHERE];
       } else if (globeStatus && globeStatus !== "all") {
-        // e.g. "rejected": rejected on the Globe portal (Reject button, module/document reject or rejection mail)
         whereClause.globeStatus = globeStatus;
         whereClause.status = "verified";
       } else {
-        // All: Globe only ever sees applications verified by STK — if STK later changes that, they drop out
-        whereClause.status = "verified";
+        // All: applications verified by STK, plus Globe-rejected ones back with STK (not STK-rejected)
+        whereClause.AND = [GLOBE_ALL_WHERE];
       }
       if (stage && stage !== "all" && !isNaN(parseInt(stage))) {
         whereClause.currentStep = parseInt(stage);
@@ -196,7 +210,7 @@ class GlobeController {
         }
       }
 
-      const search = req.query.search ? String(req.query.search).trim() : "";
+      const search = req.query.search ? String(req.query.search).trim().replace(/\s+/g, " ") : "";
       if (search) {
         const terms = Array.from(new Set([
           search,
@@ -220,7 +234,9 @@ class GlobeController {
             { user: { email: { contains: term } } },
             { user: { phone: { contains: term } } },
             { user: { eStamp: { contains: term } } },
-            { user: { boid: { contains: term } } }
+            { user: { boid: { contains: term } } },
+            { user: { eStampAssigned: { is: { serialNo: { contains: term } } } } },
+            { user: { boidAssigned: { is: { boidNumber: { contains: term } } } } }
           );
         }
 
@@ -268,7 +284,7 @@ class GlobeController {
         success: true,
         // Who made each rejection (STK / Globe) is worked out first, so rejectionMail.pendingSides puts
         // the "Mail not sent" tag under the right status column
-        data: await attachDecisionTimestamps((await annotateRejectedBy(applications)).map((app) => ({ ...app, rejectionMail: getRejectionMailState(app) }))),
+        data: await attachDecisionTimestamps((await annotateRejectedBy(applications)).map((app) => ({ ...app, rejectionMail: getRejectionMailState(app), rejectionSent: !!app.correctionDraft || (app.globeStatus === "rejected" && !["verified", "rejected"].includes(app.status)) }))),
         pagination: {
           total,
           pages: Math.ceil(total / limit),
@@ -288,6 +304,16 @@ class GlobeController {
       const userId = req.user.id;
 
       const approveWhere = !isNaN(parseInt(id)) && parseInt(id).toString() === id.toString() ? { id: parseInt(id) } : { applicationId: id };
+      const current = await prisma.kycApplication.findUnique({ where: approveWhere, select: { status: true, currentStep: true } });
+      if (!current) {
+        return res.status(404).json({ success: false, message: "Application not found" });
+      }
+      if (!isApprovable(current)) {
+        return res.status(400).json({ success: false, message: NOT_APPROVABLE_ERROR });
+      }
+      if (current.status !== "verified") {
+        return res.status(400).json({ success: false, message: STK_REVIEW_PENDING_ERROR });
+      }
       if (await hasPendingDocRejections(approveWhere)) {
         return res.status(400).json({ success: false, message: PENDING_DOC_APPROVE_ERROR });
       }
@@ -352,12 +378,15 @@ class GlobeController {
         ? { id: parseInt(id) }
         : { applicationId: id };
 
-      const existing = await prisma.kycApplication.findUnique({ where: queryId, select: { currentStep: true } });
+      const existing = await prisma.kycApplication.findUnique({ where: queryId, select: { currentStep: true, status: true, globeStatus: true } });
       if (!existing) {
         return res.status(404).json({ success: false, message: "Application not found" });
       }
       if (!isRejectable(existing)) {
         return res.status(400).json({ success: false, message: NOT_REJECTABLE_ERROR });
+      }
+      if (isLockedByApproval(existing, "Globe")) {
+        return res.status(400).json({ success: false, message: APPROVED_LOCK_ERROR });
       }
       await clearPendingDocStatusFlip(prisma, queryId, "Globe");
 
@@ -468,6 +497,10 @@ class GlobeController {
       if (!['pending', 'approved', 'rejected'].includes(globeStatus)) {
         return res.status(400).json({ success: false, message: "Invalid globe status" });
       }
+      // A rejection must reach the applicant: reject the sections / documents, then "Send Rejection Mail"
+      if (globeStatus === "rejected") {
+        return res.status(400).json({ success: false, message: "To reject, mark the sections or documents as rejected and click Send Rejection Mail." });
+      }
 
       let queryId = {};
       if (!isNaN(parseInt(id)) && parseInt(id).toString() === id.toString()) {
@@ -477,12 +510,27 @@ class GlobeController {
       }
 
       if (globeStatus === "rejected") {
-        const existing = await prisma.kycApplication.findUnique({ where: queryId, select: { currentStep: true } });
+        const existing = await prisma.kycApplication.findUnique({ where: queryId, select: { currentStep: true, status: true, globeStatus: true } });
         if (!existing) {
           return res.status(404).json({ success: false, message: "Application not found" });
         }
         if (!isRejectable(existing)) {
           return res.status(400).json({ success: false, message: NOT_REJECTABLE_ERROR });
+        }
+        if (isLockedByApproval(existing, "Globe")) {
+          return res.status(400).json({ success: false, message: APPROVED_LOCK_ERROR });
+        }
+      }
+      if (globeStatus !== "rejected") {
+        const current = await prisma.kycApplication.findUnique({ where: queryId, select: { status: true, currentStep: true } });
+        if (!current) {
+          return res.status(404).json({ success: false, message: "Application not found" });
+        }
+        if (globeStatus === "approved" && !isApprovable(current)) {
+          return res.status(400).json({ success: false, message: NOT_APPROVABLE_ERROR });
+        }
+        if (current.status !== "verified") {
+          return res.status(400).json({ success: false, message: STK_REVIEW_PENDING_ERROR });
         }
       }
       if (globeStatus === "approved" && await hasPendingDocRejections(queryId)) {

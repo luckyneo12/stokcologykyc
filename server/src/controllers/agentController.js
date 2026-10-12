@@ -3,7 +3,8 @@ const { NOT_TRASHED } = require("../utils/trashStatus");
 const { z } = require("zod");
 const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
-const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
+const { isRejectable, NOT_REJECTABLE_ERROR, isLockedByApproval, APPROVED_LOCK_ERROR, rejectionSide } = require("../utils/rejectionGuard");
+const { statusFilterWhere } = require("../utils/listFilters");
 // Document rejections a reviewer has marked but not yet mailed are kept on the application (reserved
 // keys inside stepStatuses, like welcomeEmailSent) so every reviewer device sees them live. Code reading
 // stepStatuses only looks at { status } entries.
@@ -17,6 +18,8 @@ const {
   hasRejectedSteps: hasRejectedStepEntries,
   rejectionFingerprint,
   getRejectionMailState,
+  REJECTION_SENT_WHERE,
+  GLOBE_REJECTED_SENT_WHERE,
 } = require("../utils/rejectionMail");
 
 // Which side made a rejection — shown as a tag in both portals
@@ -37,36 +40,8 @@ const getAssignedApplications = async (req, res, next) => {
       where.assignedCrmAgentId = agentId;
     }
     
-    const normalizedStatus = String(status || "").toLowerCase();
-    if (normalizedStatus && normalizedStatus !== "all") {
-      if (normalizedStatus === "globe_approved") {
-        // Approved on the Globe portal
-        where.globeStatus = "approved";
-      } else if (normalizedStatus === "globe_rejected") {
-        // Rejected on the Globe portal
-        where.globeStatus = "rejected";
-      } else if (normalizedStatus === "pushed_to_bo") {
-        where.pushedToBackoffice = true;
-      } else if (normalizedStatus === "completed" || normalizedStatus === "not_pushed_to_bo") {
-        where.status = "verified";
-        where.globeStatus = "approved";
-        where.pushedToBackoffice = false;
-      } else if (normalizedStatus === "verify") {
-        // eSign done and not yet pushed to back office — stays here even after STK/Globe are verified.
-        // Rejected / on-hold applications have their own filters. A Globe rejection leaves the STK
-        // status untouched, so Globe-rejected applications are excluded by globeStatus as well.
-        where.currentStep = { gte: 14 };
-        where.status = { notIn: ["rejected", "on_hold"] };
-        where.globeStatus = { not: "rejected" };
-        where.pushedToBackoffice = false;
-      } else if (normalizedStatus === "in_progress" || normalizedStatus === "pending") {
-        where.currentStep = { lt: 14 };
-        where.status = { notIn: ["rejected", "on_hold", "verified"] };
-        // Removing where.status check here to ensure all applications with eSign incomplete are shown
-      } else {
-        where.status = normalizedStatus;
-      }
-    }
+    // Same filter the dashboard cards count with (utils/listFilters)
+    Object.assign(where, statusFilterWhere(status));
 
     if (stage !== "all" && !isNaN(parseInt(stage))) {
       where.currentStep = parseInt(stage);
@@ -85,7 +60,7 @@ const getAssignedApplications = async (req, res, next) => {
     }
 
     if (search) {
-      const q = String(search).trim();
+      const q = String(search).trim().replace(/\s+/g, " ");
       const terms = Array.from(new Set([
         q,
         q.toLowerCase(),
@@ -108,7 +83,9 @@ const getAssignedApplications = async (req, res, next) => {
           { user: { email: { contains: term } } },
           { user: { phone: { contains: term } } },
           { user: { eStamp: { contains: term } } },
-          { user: { boid: { contains: term } } }
+          { user: { boid: { contains: term } } },
+          { user: { eStampAssigned: { is: { serialNo: { contains: term } } } } },
+          { user: { boidAssigned: { is: { boidNumber: { contains: term } } } } }
         );
       }
 
@@ -161,7 +138,7 @@ const getAssignedApplications = async (req, res, next) => {
     // Who made each rejection (STK / Globe) is worked out first, so rejectionMail.pendingSides puts the
     // "Mail not sent" tag under the right status column
     const annotated = await annotateRejectedBy(applications);
-    const listed = annotated.map(({ correctionDraft, ...app }) => ({ ...app, rejectionMail: getRejectionMailState({ ...app, correctionDraft }) }));
+    const listed = annotated.map(({ correctionDraft, ...app }) => ({ ...app, rejectionMail: getRejectionMailState({ ...app, correctionDraft }), rejectionSent: !!correctionDraft || (app.globeStatus === "rejected" && !["verified", "rejected"].includes(app.status)) }));
 
     res.json({
       success: true,
@@ -300,6 +277,9 @@ const reviewStep = async (req, res, next) => {
 
     if (status === "rejected" && !isRejectable(app)) {
       return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
+    }
+    if (status === "rejected" && isLockedByApproval(app, rejectionSide(req.user))) {
+      return res.status(400).json({ success: false, error: APPROVED_LOCK_ERROR });
     }
 
     const configuredStep = REVIEW_STEP_ORDER.find((step) => step.id === stepName);
@@ -545,6 +525,9 @@ const requestModifications = async (req, res, next) => {
 
     if (!isRejectable(app)) {
       return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
+    }
+    if (isLockedByApproval(app, rejectionSide(req.user))) {
+      return res.status(400).json({ success: false, error: APPROVED_LOCK_ERROR });
     }
 
     // Parse stepStatuses to find rejected steps
@@ -818,9 +801,11 @@ const requestModifications = async (req, res, next) => {
         correctionDraft: JSON.stringify(correctionSession),
         // Sent from the Globe portal → a Globe rejection only (the STK status is never changed by Globe);
         // sent by STK → the STK status becomes rejected (Globe status untouched)
+        // An STK rejection takes the application off the Globe portal, so an earlier Globe rejection is
+        // cleared — Globe reviews it afresh once STK verifies it again.
         ...(req.user.role === "globe"
           ? { globeStatus: "rejected", globeReviewedAt: new Date(), globeReviewedBy: req.user.id }
-          : { status: "rejected" }),
+          : { status: "rejected", ...(app.globeStatus === "rejected" ? { globeStatus: "pending", globeRemarks: null } : {}) }),
       },
     });
 
@@ -987,6 +972,9 @@ const savePendingDocumentRejections = async (req, res, next) => {
     if (!app) return res.status(404).json({ success: false, error: "Application not found" });
     if (Object.keys(clean).length > 0 && !isRejectable(app)) {
       return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
+    }
+    if (Object.keys(clean).length > 0 && isLockedByApproval(app, rejectionSide(req.user))) {
+      return res.status(400).json({ success: false, error: APPROVED_LOCK_ERROR });
     }
 
     let stepStatuses = {};

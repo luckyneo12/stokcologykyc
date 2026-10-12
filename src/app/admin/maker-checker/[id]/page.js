@@ -42,7 +42,7 @@ const USER_STEP_LABELS = {
   11: "Document Upload",
   12: "eSign Preview", 
   13: "Aadhaar eSign", 
-  14: "Completion"
+  14: "eSign Done"
 };
 
 const ReverseGeocode = ({ lat, lng, fallback }) => {
@@ -2013,6 +2013,10 @@ export default function AgentReview() {
         });
         fetchDetail();
       } else {
+        setRejectStepModal(null);
+        setStepRejectReason("");
+        setSelectedRejectedFields([]);
+        setRejectEntireModule(false);
         showToast(data.error || "Failed to reject step.", "error");
       }
     } catch (error) {
@@ -2219,8 +2223,11 @@ export default function AgentReview() {
   }, [app]);
   allDocumentsRef.current = allDocuments;
   // Rejection is only allowed once the applicant has completed every step (eSign done = "Verify" filter).
-  // In-progress applications can't be rejected, so any reject dialog opened on one is closed straight away.
-  const canReject = Number(app?.currentStep || 0) >= 14;
+  // In-progress applications can't be rejected, and neither can approved ones (STK approved, or approved
+  // by Globe — same rule as the server), so any reject dialog opened on one is closed straight away.
+  const isInProgress = Number(app?.currentStep || 0) < 14;
+  const isApprovedLocked = app?.status === "verified" || app?.globeStatus === "approved";
+  const canReject = !isInProgress && !isApprovedLocked;
   const rejectDialogOpen = !!rejectStepModal || !!rejectDocumentModal || showRejectionConfirmModal || showGlobalReject;
   useEffect(() => {
     if (!app || canReject || !rejectDialogOpen) return;
@@ -2228,8 +2235,10 @@ export default function AgentReview() {
     setRejectDocumentModal(null);
     setShowRejectionConfirmModal(false);
     setShowGlobalReject(false);
-    showToast("This application can't be rejected as it is still in progress. The applicant has not completed all the steps yet.", "error");
-  }, [app, canReject, rejectDialogOpen, showToast]);
+    showToast(isInProgress
+      ? "This application can't be rejected as it is still in progress. The applicant has not completed all the steps yet."
+      : "This application is already approved and can't be rejected.", "error");
+  }, [app, canReject, isInProgress, rejectDialogOpen, showToast]);
 
   if (loading) return <div className="admin-loading" style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", fontSize: "1.2rem", fontWeight: 800 }}>Loading Review Dashboard...</div>;
   if (!app) return <div className="admin-error" style={{ padding: 40, textAlign: "center" }}>Application not found for ID: {id}</div>;
@@ -2451,7 +2460,7 @@ export default function AgentReview() {
         </div>
         ) : (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
-          <button onClick={handleGlobalApprove} disabled={submitting} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.35)", transition: "all 0.2s" }}>
+          <button onClick={handleGlobalApprove} disabled={submitting || isInProgress} title={isInProgress ? "This application can't be approved as eSign is not done yet" : undefined} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || isInProgress ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : isInProgress ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(0, 217, 138, 0.35)", transition: "all 0.2s" }}>
             <CheckCircle2 size={16} /> Approve KYC
           </button>
 
@@ -2472,7 +2481,7 @@ export default function AgentReview() {
               </button>
             </>
           ) : (
-            <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting || !canReject} title={canReject ? undefined : "This application can't be rejected as it is still in progress"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
+            <button onClick={() => setShowRejectionConfirmModal(true)} disabled={submitting || !canReject} title={canReject ? undefined : isInProgress ? "This application can't be rejected as it is still in progress" : "This application is already approved and can't be rejected"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#ef4444", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(239, 68, 68, 0.35)", transition: "all 0.2s" }}>
               <Mail size={16} /> Send Rejection Mail
             </button>
           )}
@@ -2509,7 +2518,6 @@ export default function AgentReview() {
               const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
               const fields = step.fields(app, activeTab).filter(([, value]) => value !== undefined && value !== null && value !== "");
               const isRejected = statuses[step.id]?.status === "rejected";
-              const isModified = isRejected && app.isResubmitted;
               const displayAsRejected = isRejected && !app.isResubmitted;
               const isVisited = visitedSteps.has(step.id);
 
@@ -2521,7 +2529,7 @@ export default function AgentReview() {
                     style={{ padding: "8px 14px" }}
                   >
                     {/* Left: Checkbox / Visited Icon + Title + Badges */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : isModified ? "#ca8a04" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
                       {isVisited && !displayAsRejected ? (
                         <CheckCircle2 size={16} color="#16a34a" style={{ flexShrink: 0 }} title="Visited" />
                       ) : (

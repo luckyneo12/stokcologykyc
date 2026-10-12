@@ -27,7 +27,7 @@ const STEP_LABELS = {
   11: "Step 11: Document Upload",
   12: "Step 12: eSign Preview", 
   13: "Step 13: Aadhaar eSign", 
-  14: "Step 14: Completion"
+  14: "Step 14: eSign Done"
 };
 
 const STATUS_MAP = { 
@@ -292,14 +292,7 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                 return (
                   <tr 
                     key={routeId} 
-                    style={{ cursor: "pointer", userSelect: "text", WebkitUserSelect: "text" }} 
-                    onClick={(e) => {
-                      const sel = window.getSelection();
-                      if (sel && sel.toString().length > 0) return;
-                      if (!e.target.closest('.action-menu-container') && !e.target.closest('button')) {
-                        window.location.href = `/globe/maker-checker/${routeId}`;
-                      }
-                    }}
+                    style={{ userSelect: "text", WebkitUserSelect: "text" }}
                   >
                     {visibleColumns.includes("S.No.") && (
                       <td style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text-muted)", ...getStickyStyle("S.No.") }}>
@@ -312,7 +305,7 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
                         {app.globeStatus === "pending" && (
                           <>
                             <button onClick={() => handleAction(routeId, 'approve')} style={{ padding: "8px 16px", background: "#10b981", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "0.85rem", transition: "all 0.2s ease" }}>Approve</button>
-                            <button onClick={() => handleAction(routeId, 'reject')} style={{ padding: "8px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: 700, fontSize: "0.85rem", transition: "all 0.2s ease" }}>Reject</button>
+                            {/* No Reject here: rejecting is done inside the application (sections / documents + Send Rejection Mail) */}
                           </>
                         )}
                       </div>

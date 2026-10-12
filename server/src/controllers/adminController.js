@@ -2,8 +2,9 @@ const prisma = require("../config/db");
 const prismaBase = require("../config/prismaBase");
 const { NOT_TRASHED, TRASH_STATUS } = require("../utils/trashStatus");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
-const { isRejectable, NOT_REJECTABLE_ERROR } = require("../utils/rejectionGuard");
-const { PENDING_DOC_STATUS_FLIP_KEY, parseStepStatuses, getPendingDocRejections, withRejectionMailState } = require("../utils/rejectionMail");
+const { isRejectable, NOT_REJECTABLE_ERROR, isApprovable, NOT_APPROVABLE_ERROR, isLockedByApproval, APPROVED_LOCK_ERROR, rejectionSide } = require("../utils/rejectionGuard");
+const { statusFilterWhere } = require("../utils/listFilters");
+const { REJECTION_SENT_WHERE, GLOBE_REJECTED_SENT_WHERE, PENDING_DOC_STATUS_FLIP_KEY, parseStepStatuses, getPendingDocRejections, withRejectionMailState } = require("../utils/rejectionMail");
 const { z } = require("zod");
 const digioClient = require("../services/digioClient");
 const crmService = require("../services/crmService");
@@ -63,34 +64,8 @@ const getApplications = async (req, res, next) => {
 
   try {
     const where = {};
-    const normalizedStatus = String(status || "").toLowerCase();
-    if (normalizedStatus && normalizedStatus !== "all") {
-      if (normalizedStatus === "globe_approved") {
-        where.globeStatus = "approved";
-      } else if (normalizedStatus === "globe_rejected") {
-        where.globeStatus = "rejected";
-      } else if (normalizedStatus === "pushed_to_bo") {
-        where.pushedToBackoffice = true;
-      } else if (normalizedStatus === "completed" || normalizedStatus === "not_pushed_to_bo") {
-        where.status = "verified";
-        where.globeStatus = "approved";
-        where.pushedToBackoffice = false;
-      } else if (normalizedStatus === "verify") {
-        // eSign done and not yet pushed to back office — stays here even after STK/Globe are verified.
-        // Rejected / on-hold applications have their own filters. A Globe rejection leaves the STK
-        // status untouched, so Globe-rejected applications are excluded by globeStatus as well.
-        where.currentStep = { gte: 14 };
-        where.status = { notIn: ["rejected", "on_hold"] };
-        where.globeStatus = { not: "rejected" };
-        where.pushedToBackoffice = false;
-      } else if (normalizedStatus === "in_progress" || normalizedStatus === "pending") {
-        where.currentStep = { lt: 14 };
-        where.status = { notIn: ["rejected", "on_hold", "verified"] };
-        // Removing where.status check here to ensure all applications with eSign incomplete are shown
-      } else {
-        where.status = normalizedStatus;
-      }
-    }
+    // Same filter the dashboard cards count with (utils/listFilters)
+    Object.assign(where, statusFilterWhere(status));
 
     if (search) {
       const q = String(search).trim();
@@ -274,8 +249,17 @@ const reviewApplication = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    if (status === "rejected" && !isRejectable(app)) {
+    // Checked on the step the application ends up at too: "Change Status" can also move it back to an
+    // earlier step, and an application before eSign can be neither approved nor rejected
+    const targetApp = currentStep !== undefined ? { ...app, currentStep } : app;
+    if (status === "rejected" && (!isRejectable(app) || !isRejectable(targetApp))) {
       return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
+    }
+    if (status === "verified" && (!isApprovable(app) || !isApprovable(targetApp))) {
+      return res.status(400).json({ success: false, error: NOT_APPROVABLE_ERROR });
+    }
+    if (status === "rejected" && isLockedByApproval(app, rejectionSide(req.user))) {
+      return res.status(400).json({ success: false, error: APPROVED_LOCK_ERROR });
     }
 
     const statuses = parseStepStatuses(app.stepStatuses);
@@ -308,6 +292,19 @@ const reviewApplication = async (req, res, next) => {
 
     if (currentStep !== undefined) {
       updateData.currentStep = currentStep;
+    }
+
+    // Globe rejected it, the user corrected it and it came back to STK: verifying it again sends it
+    // to Globe for a fresh review (Globe "Verify" list). Re-verifying an application that is still
+    // STK-verified (not yet corrected) leaves Globe's rejection in place.
+    if (status === "verified" && app.globeStatus === "rejected" && app.status !== "verified") {
+      updateData.globeStatus = "pending";
+    }
+    // STK rejecting it takes it off the Globe portal: an earlier Globe rejection is cleared, and Globe
+    // reviews it afresh once STK verifies it again
+    if (status === "rejected" && app.globeStatus === "rejected") {
+      updateData.globeStatus = "pending";
+      updateData.globeRemarks = null;
     }
 
     await prisma.kycApplication.update({
@@ -407,7 +404,8 @@ const getStats = async (req, res, next) => {
       verifiedThisWeekCount, verifiedLastWeekCount,
       rejectedThisWeekCount, rejectedLastWeekCount,
       globeApprovedCount, globeRejectedCount,
-      pushedToBoCount, notPushedToBoCount
+      pushedToBoCount, notPushedToBoCount,
+      stkApprovedCount, pendingReviewCount, rejectedListCount
     ] = await Promise.all([
       prisma.kycApplication.count(),
       prisma.kycApplication.groupBy({
@@ -470,19 +468,14 @@ const getStats = async (req, res, next) => {
       prisma.kycApplication.count({
         where: { status: 'rejected', updatedAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } }
       }),
-      // Globe KPIs
-      prisma.kycApplication.count({
-        where: { globeStatus: 'approved' }
-      }),
-      prisma.kycApplication.count({
-        where: { globeStatus: 'rejected' }
-      }),
-      prisma.kycApplication.count({
-        where: { pushedToBackoffice: true }
-      }),
-      prisma.kycApplication.count({
-        where: { status: 'verified', pushedToBackoffice: false }
-      })
+      // Dashboard cards: each counted with the same filter as the list the card opens (utils/listFilters)
+      prisma.kycApplication.count({ where: statusFilterWhere("globe_approved") }),
+      prisma.kycApplication.count({ where: statusFilterWhere("globe_rejected") }),
+      prisma.kycApplication.count({ where: statusFilterWhere("pushed_to_bo") }),
+      prisma.kycApplication.count({ where: statusFilterWhere("not_pushed_to_bo") }),
+      prisma.kycApplication.count({ where: statusFilterWhere("stk_approved") }),
+      prisma.kycApplication.count({ where: statusFilterWhere("verify") }),
+      prisma.kycApplication.count({ where: statusFilterWhere("rejected") })
     ]);
 
     // Extract status counts
@@ -692,6 +685,9 @@ const getStats = async (req, res, next) => {
       globeRejectedCount,
       pushedToBoCount,
       notPushedToBoCount,
+      stkApprovedCount,
+      pendingReviewCount,
+      rejectedListCount,
       rejectionReasons,
       averageProcessingTime,
       averageUserCompletionTime,

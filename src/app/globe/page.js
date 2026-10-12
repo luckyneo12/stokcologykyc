@@ -76,14 +76,9 @@ export default function GlobePage() {
   }, [activeSection, token]);
 
   const handleAction = async (id, action) => {
-    let url = `${API_BASE_URL}/api/globe/kycs/${id}/${action}`;
-    let body = null;
-    
-    if (action === "reject") {
-      const remarks = prompt("Please enter the reason for rejection:");
-      if (!remarks) return;
-      body = JSON.stringify({ remarks });
-    }
+    // Only "approve" — rejecting is done inside the application, so the applicant always gets the mail
+    const url = `${API_BASE_URL}/api/globe/kycs/${id}/${action}`;
+    const body = null;
 
     try {
       const res = await fetch(url, {

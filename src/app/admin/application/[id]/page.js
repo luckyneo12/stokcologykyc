@@ -184,7 +184,7 @@ const STEP_LABELS = {
   11: "Step 11: Document Upload",
   12: "Step 12: eSign Preview", 
   13: "Step 13: Aadhaar eSign", 
-  14: "Step 14: Completion"
+  14: "Step 14: eSign Done"
 };
 
 const STATUS_MAP = { 

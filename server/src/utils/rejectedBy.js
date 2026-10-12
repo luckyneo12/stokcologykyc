@@ -50,10 +50,12 @@ async function annotateRejectedBy(applications) {
 
     return list.map((app) => {
       const need = needs.get(app.applicationId);
-      if (!need || !by[app.applicationId]) return app;
+      // No audit entry: STK still has it verified while Globe has it rejected, so the rejection is Globe's
+      const fallbackSide = app.status === "verified" && app.globeStatus === "rejected" ? "Globe" : null;
+      if (!need || (!by[app.applicationId] && !fallbackSide)) return app;
       const ss = { ...need.ss };
       for (const step of need.missing) {
-        const side = by[app.applicationId][step];
+        const side = by[app.applicationId]?.[step] || fallbackSide;
         if (side) ss[step] = { ...ss[step], rejectedBy: side };
       }
       return { ...app, stepStatuses: typeof app.stepStatuses === "string" ? JSON.stringify(ss) : ss };

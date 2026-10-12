@@ -18,6 +18,31 @@ router.use(globeAuth);
 // An application in the admin Trash can't be changed from the Globe portal either
 router.param("id", require("../controllers/trashController").rejectIfTrashed);
 
+// Globe only works on applications STK has approved. One STK has rejected (or not approved yet) is not on
+// the Globe portal at all — Globe can't open it, even by link. A Globe-rejected one that is back with STK
+// for review stays in Globe's "Rejected" list, so it can be opened, but not changed until STK approves it.
+const prisma = require("../config/db");
+const NOT_WITH_GLOBE = "This application is not with Globe — STK has not approved it.";
+const BACK_WITH_STK = "This application is back with STK for review. Globe can act on it once STK approves it again.";
+router.param("id", async (req, res, next, id) => {
+  if (req.user?.role !== "globe") return next();
+  try {
+    const key = String(id);
+    const app = await prisma.kycApplication.findFirst({
+      where: { OR: [{ applicationId: key }, ...(/^\d+$/.test(key) ? [{ id: Number(key) }] : [])] },
+      select: { status: true, globeStatus: true },
+    });
+    if (!app) return next(); // the handler answers "not found"
+    const withGlobe = app.status === "verified";
+    const viewable = withGlobe || (app.globeStatus === "rejected" && app.status !== "rejected");
+    if (!viewable) return res.status(403).json({ success: false, error: NOT_WITH_GLOBE, message: NOT_WITH_GLOBE });
+    if (req.method !== "GET" && !withGlobe) return res.status(403).json({ success: false, error: BACK_WITH_STK, message: BACK_WITH_STK });
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/kpis", globeController.getDashboardKPIs);
 router.get("/kycs", globeController.getPendingKYCs);
 
@@ -30,7 +55,8 @@ const globeOnly = (req, res, next) => {
 };
 
 router.post("/kycs/:id/approve", globeOnly, globeController.approveKYC);
-router.post("/kycs/:id/reject", globeOnly, globeController.rejectKYC);
+// No "reject without mail" route: Globe rejects sections / documents and then sends the rejection mail,
+// so the applicant always gets a link to correct them (see agentController.requestModifications)
 // Sending to back office is done from the admin portal only — never by Globe reviewers
 const notGlobe = (req, res, next) => {
   if (req.user.role === "globe") {
