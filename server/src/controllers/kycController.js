@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const prisma = require("../config/db");
 const { z } = require("zod");
 const emailService = require("../services/emailService");
+const mobileSelfieSession = require("../utils/mobileSelfieSession");
 
 const STEP_INDEX = {
   welcome: 0,
@@ -1281,8 +1282,24 @@ const sendWelcome = async (req, res) => {
   }
 };
 
+/**
+ * The phone opened a QR link: exchange the (5-minute) QR token for a 15-minute capture session.
+ * auth has already rejected an expired or replaced QR with 401.
+ */
+const claimMobileSession = async (req, res) => {
+  const claims = req.tokenClaims;
+  if (claims?.purpose !== mobileSelfieSession.QR_PURPOSE) {
+    return res.status(400).json({ success: false, error: "Not a QR selfie link" });
+  }
+  const { token, expiresAt } = mobileSelfieSession.issueSessionToken(claims);
+  res.json({ success: true, token, expiresAt, applicationId: claims.applicationId });
+};
+
 const generateMobileSession = async (req, res, next) => {
   try {
+    if (mobileSelfieSession.isMobileSelfieToken(req.tokenClaims)) {
+      return res.status(403).json({ success: false, error: "Not allowed from the mobile selfie link" });
+    }
     const { applicationId } = req.query;
     if (!applicationId) {
       return res.status(400).json({ success: false, error: "applicationId is required" });
@@ -1296,30 +1313,15 @@ const generateMobileSession = async (req, res, next) => {
        return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    const jwt = require("jsonwebtoken");
-    const secret = process.env.JWT_SECRET || "your-secret-key";
-    
-    // The QR is shown for 5 minutes (expiresAt drives the desktop countdown), but the token itself
-    // lives 15 minutes so a user who scans near the end still has time to finish the in-house
-    // selfie on the phone (location, model download, liveness actions, upload).
-    const token = jwt.sign(
-      {
-        id: req.user.id,
-        applicationId,
-        purpose: "mobile_selfie",
-        role: "user"
-      },
-      secret,
-      { expiresIn: "15m" }
-    );
+    // QR token valid for the 5-minute scan window shown on the desktop; the phone exchanges it for
+    // a 15-minute capture session at /mobile-session/claim. A new QR replaces the older ones.
+    const { token, expiresAt, expiresInSeconds } = mobileSelfieSession.issueQrToken(req.user.id, applicationId);
 
-    // Calculate absolute expiration for the frontend (QR scan window)
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    
     res.json({
       success: true,
       token,
       expiresAt,
+      expiresInSeconds,
       applicationId
     });
 
@@ -1793,6 +1795,7 @@ module.exports = {
   previewPdf,
   sendWelcome,
   generateMobileSession,
+  claimMobileSession,
   getSecureDocument,
   getCorrectionSession,
   saveCorrectionStep,

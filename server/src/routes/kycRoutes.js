@@ -15,6 +15,7 @@ const {
   previewPdf,
   sendWelcome,
   generateMobileSession,
+  claimMobileSession,
   getSecureDocument,
   getCorrectionSession,
   saveCorrectionStep,
@@ -29,6 +30,7 @@ const router = express.Router();
 router.post("/start", auth, startKyc);
 router.get("/me", auth, getMyApplication);
 router.get("/mobile-session", auth, generateMobileSession);
+router.post("/mobile-session/claim", auth, claimMobileSession);
 
 // Structured Step Endpoints for Clarity
 router.put("/save/personal-details", auth, saveStep);

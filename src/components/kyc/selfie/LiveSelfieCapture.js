@@ -36,12 +36,17 @@ import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, us
  *   onCancel()     user closed the capture
  *   variant        "modal" (overlay, default) | "page" (full page, used by /mobile-selfie)
  *   noCameraHint   extra hint shown when no camera is available (e.g. "use the QR option")
+ *   onSessionExpired(message)  the login / QR session ended (server answered 401): the camera is
+ *                  already stopped and nothing is retried. Without it an error card is shown.
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const VIRTUAL_CAMERA_PATTERN = /obs|virtual|manycam|xsplit|snap camera|camtwist|vcam|droidcam|epoccam|ndi|splitcam|youcam/i;
 // The eyewear thresholds in faceChecks.js are calibrated at this width — keep them in sync
 const ANALYSIS_WIDTH = 240;
+// …where a webcam face is ~64 px wide. Phones are scaled to the same face size (not below this width)
+const FACE_ANALYSIS_PX = 64;
+const MIN_ANALYSIS_WIDTH = 96;
 const STABLE_MS = 600; // blocking checks must pass continuously this long before the liveness actions start
 const STEP_TIMEOUT_MS = 12000;
 const LOST_ABORT_MS = 1500;
@@ -49,6 +54,15 @@ const RESTART_COOLDOWN_MS = 2500; // pause before auto-restarting the liveness a
 const CHALLENGE_MAX_AGE_MS = 150000; // server token lives 180s; redo the actions a little before that
 const MAX_CAPTURE_SIDE = 1280;
 const SESSION_EXPIRED_MSG = "Your session has expired. Please refresh the page (or scan the QR code again) and retry.";
+const SESSION_REPLACED_MSG = "A newer QR code was generated on your computer. Please scan the latest QR code.";
+
+/** Error for a 401 from the server: the session (login token / QR link) is over. */
+function sessionExpiredError(serverCode) {
+  return Object.assign(new Error(serverCode === "MOBILE_SESSION_REPLACED" ? SESSION_REPLACED_MSG : SESSION_EXPIRED_MSG), {
+    code: "SESSION_EXPIRED",
+    serverCode,
+  });
+}
 const LOOP_STAGES = ["live", "challenge", "ready"];
 // Only these disable the "Click Selfie" button: one face, no goggles / glasses.
 const BLOCKING_ISSUES = ["noFace", "multipleFaces", "sunglasses", "glasses"];
@@ -178,9 +192,12 @@ export default function LiveSelfieCapture({
   onCancel,
   variant = "modal",
   noCameraHint = "",
+  onSessionExpired,
 }) {
   const location = useLocationGate();
   const platform = getPlatform();
+  const isMobile = platform !== "desktop";
+  const lastFaceWidthRef = useRef(null); // previous frame's face width (normalised), for analysis scaling
 
   // The camera starts right away, in parallel with the location request (location is still required
   // before the liveness actions and the click — until then it is shown over the camera).
@@ -221,6 +238,7 @@ export default function LiveSelfieCapture({
   const videoMimeRef = useRef("video/webm");
   const blinkRef = useRef({ closed: false, lastBlinkAt: -Infinity });
   const finishedRef = useRef(false);
+  const sessionEndedRef = useRef(false);
   const finishRef = useRef(null);
   const lastMetricsRef = useRef({});
   const runAnalysisRef = useRef(null);
@@ -361,7 +379,7 @@ export default function LiveSelfieCapture({
           if (!mountedRef.current) return;
           if (p.state === "denied" && !["done", "submitting"].includes(stageRef.current)) {
             failCamera({ name: "NotAllowedError" });
-          } else if (p.state === "granted" && stageRef.current === "error") {
+          } else if (p.state === "granted" && stageRef.current === "error" && !sessionEndedRef.current) {
             startCamera();
           }
         };
@@ -467,8 +485,15 @@ export default function LiveSelfieCapture({
       canvas = document.createElement("canvas");
       analysisCanvasRef.current = canvas;
     }
-    const w = ANALYSIS_WIDTH;
-    const h = Math.max(1, Math.round((ANALYSIS_WIDTH * srcH) / srcW));
+    let w = ANALYSIS_WIDTH;
+    // Phones (portrait front camera) show the face ~2–3× larger than the webcam the eyewear
+    // checks were calibrated on — scale down so the face is analysed at the calibrated size
+    const lastW = lastFaceWidthRef.current;
+    if (isMobile && lastW) {
+      const target = Math.max(MIN_ANALYSIS_WIDTH, Math.min(ANALYSIS_WIDTH, Math.round(FACE_ANALYSIS_PX / lastW / 8) * 8));
+      w = Math.abs(target - canvas.width) >= 16 || !canvas.width ? target : canvas.width;
+    }
+    const h = Math.max(1, Math.round((w * srcH) / srcW));
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
@@ -580,6 +605,18 @@ export default function LiveSelfieCapture({
     return canvas.toDataURL("image/jpeg", 0.85);
   };
 
+  /**
+   * Back to the "ready" stage after a failed photo (not clear, someone else in view, server
+   * rejection, retake). A fresh blink is required first, so the auto-capture doesn't fire again
+   * straight away and keep re-clicking the same failing shot.
+   */
+  const backToReady = () => {
+    captureReqRef.current = null;
+    blinkRef.current.lastBlinkAt = -Infinity;
+    viewKeyRef.current = "";
+    goto("ready");
+  };
+
   const abortToLive = useCallback((message, ttl = BANNER_MS) => {
     stopRecording();
     captureReqRef.current = null;
@@ -653,8 +690,9 @@ export default function LiveSelfieCapture({
     } catch (e) {
       return; // transient frame error
     }
-    const analysis = analyzeFrame(result, grabPixels(source, video.videoWidth, video.videoHeight), video.videoWidth, video.videoHeight, prevNoseRef.current);
+    const analysis = analyzeFrame(result, grabPixels(source, video.videoWidth, video.videoHeight), video.videoWidth, video.videoHeight, prevNoseRef.current, { mobile: isMobile });
     prevNoseRef.current = analysis.nose;
+    if (analysis.box) lastFaceWidthRef.current = analysis.box.w;
 
     // People further back are too small for the live detector: scan one zoomed-in tile per
     // analysis and keep "multiple faces" on for a while after another person was seen
@@ -713,10 +751,8 @@ export default function LiveSelfieCapture({
           req.lastIssue = "multipleFaces";
         } else if (scanFrameForExtraFace(scannerRef.current, source, analysis.box)) {
           extraFaceAtRef.current = now;
-          captureReqRef.current = null;
           setBanner({ type: "error", text: `${ISSUE_MESSAGES.multipleFaces}. Ask others to move out of the camera view.` });
-          viewKeyRef.current = "";
-          goto("ready");
+          backToReady();
           return;
         } else {
           finalizeCapture(source, analysis);
@@ -726,11 +762,9 @@ export default function LiveSelfieCapture({
         req.lastIssue = failed;
       }
       if (now - req.startedAt > CAPTURE_WAIT_MS) {
-        // Liveness stays valid — let the user simply click again
-        captureReqRef.current = null;
-        setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}. Please click again.` });
-        viewKeyRef.current = "";
-        goto("ready");
+        // Liveness stays valid — blink once and the photo is taken again
+        setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}. Blink once to try again.` });
+        backToReady();
       }
       return;
     }
@@ -894,24 +928,50 @@ export default function LiveSelfieCapture({
       headers: authHeaders(),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401) throw new Error(SESSION_EXPIRED_MSG);
+    if (res.status === 401) throw sessionExpiredError(data.code);
     if (!res.ok || !data.success || !Array.isArray(data.steps)) throw new Error(data.error || "Could not start the liveness check. Please try again.");
     return data;
   };
+
+  /**
+   * The server rejected the session (expired / replaced QR, expired login): stop everything —
+   * camera, recording, analysis — and never retry, so no selfie can be taken with it.
+   */
+  function endSession(err) {
+    if (sessionEndedRef.current || !mountedRef.current) return;
+    sessionEndedRef.current = true;
+    cancelAnimationFrame(rafRef.current);
+    stopRecording();
+    captureReqRef.current = null;
+    challengeRef.current = null;
+    prefetchRef.current = null;
+    setChallengeView(null);
+    setCaptured(null);
+    setBanner(null);
+    stopCamera();
+    const message = err?.message || SESSION_EXPIRED_MSG;
+    if (onSessionExpired) {
+      onSessionExpired(message);
+      return;
+    }
+    setFatal({ kind: "session_expired", title: "Session expired", message, help: "" });
+    goto("error");
+  }
 
   /** Starts fetching a challenge in the background unless a fresh one is already on its way. */
   function prefetchChallenge() {
     const p = prefetchRef.current;
     if (p && performance.now() - p.at < CHALLENGE_PREFETCH_MAX_AGE_MS) return;
     const entry = { at: performance.now(), promise: fetchChallenge() };
-    entry.promise.catch(() => {
+    entry.promise.catch((err) => {
       if (prefetchRef.current === entry) prefetchRef.current = null;
+      if (err?.code === "SESSION_EXPIRED") endSession(err);
     });
     prefetchRef.current = entry;
   }
 
   const startChallenge = async () => {
-    if (stageRef.current !== "live") return;
+    if (stageRef.current !== "live" || sessionEndedRef.current) return;
     setBanner(null);
     goto("challengeLoading");
     try {
@@ -941,6 +1001,10 @@ export default function LiveSelfieCapture({
       goto("challenge");
     } catch (err) {
       if (!mountedRef.current) return;
+      if (err?.code === "SESSION_EXPIRED") {
+        endSession(err);
+        return;
+      }
       const msg = err?.name === "TypeError" ? "Network error. Check your internet connection and try again." : err.message;
       abortToLive(msg);
       cooldownUntilRef.current = performance.now() + 5000;
@@ -993,8 +1057,7 @@ export default function LiveSelfieCapture({
     setCaptured(null);
     setBanner(null);
     if (actionsStillValid(challengeRef.current)) {
-      viewKeyRef.current = "";
-      goto("ready");
+      backToReady();
     } else {
       abortToLive("Please repeat the quick actions, then click the selfie.");
     }
@@ -1039,7 +1102,7 @@ export default function LiveSelfieCapture({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401) throw new Error(SESSION_EXPIRED_MSG);
+      if (res.status === 401) throw sessionExpiredError(data.code);
       if (!res.ok || !data.success) {
         throw Object.assign(new Error(data.error || "Selfie verification failed. Please try again."), { code: data.code });
       }
@@ -1054,13 +1117,16 @@ export default function LiveSelfieCapture({
     } catch (err) {
       if (!mountedRef.current) return;
       setCaptured(null);
+      if (err?.code === "SESSION_EXPIRED") {
+        endSession(err);
+        return;
+      }
       const msg = err?.name === "TypeError" ? "Network error. Check your internet connection and try again." : err.message;
       // Photo-quality failures: keep the completed liveness actions and let the user click again
       const live = challengeRef.current;
       if (RETAKE_CODES.includes(err?.code) && actionsStillValid(live)) {
-        setBanner({ type: "error", text: msg, ttl: SERVER_BANNER_MS });
-        viewKeyRef.current = "";
-        goto("ready");
+        setBanner({ type: "error", text: `${msg} Blink once to take the photo again.`, ttl: SERVER_BANNER_MS });
+        backToReady();
         return;
       }
       abortToLive(msg, SERVER_BANNER_MS);
@@ -1083,7 +1149,7 @@ export default function LiveSelfieCapture({
   };
 
   const retryFatal = () => {
-    if (fatal?.kind === "unsupported") return;
+    if (fatal?.kind === "unsupported" || fatal?.kind === "session_expired") return;
     startCamera();
   };
 
@@ -1151,7 +1217,7 @@ export default function LiveSelfieCapture({
   else if (engineState === "failed") buttonLabel = "Face detection unavailable";
   else if (stage === "live" || stage === "challengeLoading" || stage === "challenge") buttonLabel = "Complete the quick check first";
   else if (stage === "verifying") buttonLabel = "Checking photo…";
-  else if (!view.ready) buttonLabel = issues.length === 1 && issues[0] === "needBlink" ? "Blink once to enable" : "Fix the highlighted items";
+  else if (!view.ready) buttonLabel = issues.length === 1 && issues[0] === "needBlink" ? "Blink once to take the photo" : "Fix the highlighted items";
   else if (canClickSelfie) buttonLabel = "📸 Hold still — capturing…";
 
   const checklistState = (item) => {
@@ -1231,7 +1297,7 @@ export default function LiveSelfieCapture({
             {fatal.help && <p className="lsc-help">{fatal.help}</p>}
             {fatal.kind === "camera_denied" && <p className="lsc-help">This screen continues automatically once camera access is allowed.</p>}
             <div className="lsc-actions">
-              {fatal.kind !== "unsupported" && fatal.kind !== "no_camera" && (
+              {fatal.kind !== "unsupported" && fatal.kind !== "no_camera" && fatal.kind !== "session_expired" && (
                 <button type="button" className="lsc-btn lsc-btn-primary" onClick={retryFatal}>Retry</button>
               )}
               {onCancel && <button type="button" className="lsc-btn lsc-btn-ghost" onClick={cancel}>Close</button>}

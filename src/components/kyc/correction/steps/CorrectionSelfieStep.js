@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
 import { ArrowRightIcon } from "../../Icons";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import { getRequiredLocation } from "@/utils/location";
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
 import LiveSelfieCapture from "../../selfie/LiveSelfieCapture";
@@ -67,6 +68,10 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
   const [matchScore, setMatchScore] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
+  // QR scan window (same 5 minutes as the server-side QR token); qrRound regenerates the QR
+  const [qrTimeLeft, setQrTimeLeft] = useState(0);
+  const [qrExpired, setQrExpired] = useState(false);
+  const [qrRound, setQrRound] = useState(0);
   const [locationDenied, setLocationDenied] = useState(false);
   const [showInhouseCapture, setShowInhouseCapture] = useState(false);
   const pollRef = useRef(null);
@@ -81,7 +86,9 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
     if (!token || !applicationId) return;
 
     let cancelled = false;
+    let timer = null;
     setResumeUrl("");
+    setQrExpired(false);
     (async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/kyc/mobile-session?applicationId=${applicationId}`, {
@@ -91,6 +98,20 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
         if (cancelled) return;
         if (data.success && data.token) {
           setResumeUrl(`${window.location.origin}/mobile-selfie?token=${data.token}&appId=${applicationId}`);
+          // Server-given lifetime first: a wrong PC clock must not shorten / stretch the countdown
+          let seconds = Number(data.expiresInSeconds) || Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000);
+          if (!(seconds > 0)) seconds = 0;
+          const endsAt = Date.now() + seconds * 1000;
+          setQrTimeLeft(seconds);
+          setQrExpired(seconds === 0);
+          timer = setInterval(() => {
+            const left = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
+            setQrTimeLeft(left);
+            if (left === 0) {
+              clearInterval(timer);
+              setQrExpired(true);
+            }
+          }, 1000);
         } else {
           addToast(data.error || "Could not generate QR code. Please try again.", "error");
         }
@@ -98,8 +119,11 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
         if (!cancelled) addToast("Could not generate QR code. Please try again.", "error");
       }
     })();
-    return () => { cancelled = true; };
-  }, [showQR, applicationId, contextToken, addToast]);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [showQR, qrRound, applicationId, contextToken, addToast]);
 
   // ─── Handle successful Digio selfie completion ───────────────────────
   const handleDigioSuccess = useCallback(async (requestId, opts = {}) => {
@@ -335,28 +359,6 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
     return () => window.removeEventListener("message", handleMessage);
   }, [addToast, handleDigioSuccess]);
 
-  // ─── Helper: Get location with enforcement ──────────────────────────
-  const getRequiredLocation = async () => {
-    if (!("geolocation" in navigator)) {
-      return { success: false, error: "location_unavailable" };
-    }
-    try {
-      const pos = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0,
-        });
-      });
-      return { success: true, lat: pos.coords.latitude, lng: pos.coords.longitude };
-    } catch (err) {
-      // err.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-      if (err.code === 1) return { success: false, error: "permission_denied" };
-      if (err.code === 3) return { success: false, error: "timeout" };
-      return { success: false, error: "position_unavailable" };
-    }
-  };
-
   // ─── IN-HOUSE SELFIE (active when USE_INHOUSE_SELFIE, see src/config/selfieConfig.js) ───
   // Face detection (~15 MB) starts loading as soon as this step opens, so the camera screen is
   // ready almost instantly when the user taps the selfie button.
@@ -390,39 +392,15 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
     setPhase("processing");
     setLocationDenied(false);
 
-    // 1. Get location FIRST — mandatory
-    const locResult = await getRequiredLocation();
-    if (!locResult.success) {
-      setLocationDenied(true);
-      setPhase("intro");
-      if (locResult.error === "permission_denied") {
-        addToast("Location permission is required for selfie verification. Please allow location access and try again.", "error");
-      } else if (locResult.error === "timeout") {
-        addToast("Could not fetch your location in time. Please check your GPS/network and try again.", "error");
-      } else {
-        addToast("Location services are not available on this device. Please enable location and try again.", "error");
-      }
-      return;
-    }
-
-    const coords = { lat: locResult.lat, lng: locResult.lng };
-
-    // 2. Wait for Digio SDK to be available (may not be loaded on first attempt on mobile)
-    const sdkReady = await waitForDigioSDK(3000);
-    if (!sdkReady) {
-      addToast("Verification SDK is still loading. Please try again in a moment.", "error");
-      setPhase("intro");
-      return;
-    }
-
-    try {
-      const requestData = await createDigioRequest("SELFIE", coords, applicationId, contextToken);
-      const { requestId, customerIdentifier, applicationId: appId } = requestData;
-
-      const isMobile = isMobileDevice();
-
+    // On desktop Digio opens its own window in init(). That must happen right inside the click:
+    // after the location / server waits the browser blocks the popup and submit() fails with
+    // "Cannot read properties of null (reading 'document')". So the SDK is opened first.
+    const isMobile = isMobileDevice();
+    let aborted = false;
+    const makeDigio = () => {
       const digioOptions = {
         callback: async (response) => {
+          if (aborted) return; // window closed by us after a location / request failure
           if (response.error_code && response.error_code !== "success") {
             addToast(`Selfie verification failed: ${response.message}`, "error");
             setPhase("intro");
@@ -431,26 +409,61 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
           handleDigioSuccess(response.digio_doc_id || response.id, {});
         },
       };
-
       // On mobile, use redirection approach to avoid popup blocking
       if (isMobile) {
         digioOptions.is_redirection_approach = true;
         digioOptions.redirect_url = window.location.origin + window.location.pathname;
       }
+      const instance = initializeDigio(digioOptions);
+      // Always call init() before submit() — required for proper SDK setup
+      if (instance) instance.init();
+      return instance;
+    };
+    // SDK already loaded (the usual case) → open it now, still inside the click
+    let digio = typeof window !== "undefined" && window.Digio ? makeDigio() : null;
 
-      const digio = initializeDigio(digioOptions);
+    const fail = (message) => {
+      aborted = true;
+      try {
+        if (digio && !isMobile && typeof digio.cancel === "function") digio.cancel();
+      } catch (e) {}
+      if (message) addToast(message, "error");
+      setPhase("intro");
+    };
 
-      if (!digio || !requestId) {
-        addToast("Unable to initialize selfie verification flow", "error");
-        setPhase("intro");
+    // 1. Get location FIRST — mandatory
+    const locResult = await getRequiredLocation();
+    if (!locResult.success) {
+      setLocationDenied(true);
+      if (locResult.error === "permission_denied") {
+        fail("Location permission is required for selfie verification. Please allow location access and try again.");
+      } else if (locResult.error === "timeout") {
+        fail("Could not fetch your location in time. Please check your GPS/network and try again.");
+      } else {
+        fail("Location services are not available on this device. Please enable location and try again.");
+      }
+      return;
+    }
+
+    const coords = { lat: locResult.lat, lng: locResult.lng };
+
+    // 2. SDK not loaded at the click (may happen on the first attempt on mobile) — wait for it
+    if (!digio) {
+      const sdkReady = await waitForDigioSDK(3000);
+      if (!sdkReady || !(digio = makeDigio())) {
+        fail("Verification SDK is still loading. Please try again in a moment.");
         return;
       }
+    }
 
-      // Always call init() before submit() — required for proper SDK setup
-      digio.init();
+    try {
+      const requestData = await createDigioRequest("SELFIE", coords, applicationId, contextToken);
+      const { requestId, customerIdentifier } = requestData;
 
-      // Small delay to let SDK UI initialize before submitting
-      await new Promise(r => setTimeout(r, 300));
+      if (!requestId) {
+        fail("Unable to initialize selfie verification flow");
+        return;
+      }
 
       if (requestData.accessToken) {
         digio.submit(requestId, customerIdentifier, requestData.accessToken);
@@ -458,8 +471,7 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
         digio.submit(requestId, customerIdentifier);
       }
     } catch (error) {
-      addToast(error?.message || "Error connecting to selfie verification service", "error");
-      setPhase("intro");
+      fail(error?.message || "Error connecting to selfie verification service");
     }
   };
 
@@ -529,9 +541,18 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
           ) : (
             <div style={{ marginBottom: 24, padding: 24, background: "var(--bg-secondary)", borderRadius: 12 }}>
               <p className="text-body-bold" style={{ marginBottom: 16 }}>Scan with your mobile camera</p>
-              {resumeUrl && (
+              {qrExpired ? (
+                <div style={{ padding: 20, background: "rgba(247, 85, 85, 0.05)", borderRadius: 12, marginBottom: 16, border: "1px solid var(--wise-danger)" }}>
+                  <p style={{ color: "var(--wise-danger)", fontWeight: 600, marginBottom: 6 }}>QR Code Expired</p>
+                  <p className="text-caption" style={{ color: "var(--text-secondary)", marginBottom: 12 }}>Already scanned it? You can still finish the selfie on your phone. Otherwise generate a new QR code.</p>
+                  <button type="button" onClick={() => setQrRound((n) => n + 1)} style={{ background: "var(--wise-danger)", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Generate New QR</button>
+                </div>
+              ) : resumeUrl && (
                 <div style={{ background: "white", padding: 16, borderRadius: 8, display: "inline-block", marginBottom: 16 }}>
                   <QRCode value={resumeUrl} size={256} ecLevel="L" />
+                  <p style={{ fontSize: "1.2rem", fontWeight: 800, color: "#1a1a1a", margin: "12px 0 0", letterSpacing: "1px", textAlign: "center" }}>
+                    {Math.floor(qrTimeLeft / 60).toString().padStart(2, '0')}:{(qrTimeLeft % 60).toString().padStart(2, '0')}
+                  </p>
                 </div>
               )}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 }}>

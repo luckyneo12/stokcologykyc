@@ -74,6 +74,15 @@ export const THRESHOLDS = {
   glassesRimLine: 3.0, // reported in metrics only
   glassesTempleLine: 4.4,
 
+  // Phones: front cameras sharpen edges and smooth skin (beauty / noise filters), which inflates
+  // every edge-vs-cheek ratio and darkens eyes in dim rooms. Stronger evidence is required there.
+  mobileCheekEdgeFloor: 4.5,
+  mobileGlassesFactor: 1.2, // bridge line AND bridge edge must both exceed threshold × this
+  mobileSunglassDarkRatio: 0.4,
+  mobileSunglassMaxTexture: 0.12,
+  mobileSunglassUnderRatio: 0.38,
+  mobileSunglassUnderSkin: 0.3,
+
   skinChromaDistance: 14,
 
   // Liveness challenge. A turn counts only when it is clear (not a small sway) and held for a moment;
@@ -429,9 +438,11 @@ function squareBox(center, half, aspect) {
  * @param frameW   camera frame width in px
  * @param frameH   camera frame height in px
  * @param prevNose previous nose position {x,y} (for the "hold still" check) or null
+ * @param opts     { mobile } — phone camera: stricter eyewear evidence
  * @returns { faceCount, flags, metrics, pose, blend, nose }
  */
-export function analyzeFrame(result, img, frameW, frameH, prevNose) {
+export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
+  const mobile = Boolean(opts.mobile);
   const faces = result?.faceLandmarks || [];
   // MediaPipe can report the same face twice (overlapping boxes) — count distinct faces only
   const oval = getOvalGeometry(frameW, frameH);
@@ -555,7 +566,7 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     cr: (rCheek.cr + lCheek.cr) / 2,
   };
   const cheekEdge = Math.max(
-    3,
+    mobile ? THRESHOLDS.mobileCheekEdgeFloor : 3,
     (horizontalEdgeEnergy(img, squareBox(lms[LM.rightCheek], cheekHalf, aspect)) +
       horizontalEdgeEnergy(img, squareBox(lms[LM.leftCheek], cheekHalf, aspect))) / 2,
   );
@@ -576,11 +587,11 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
     const underSkin = skinFraction(img, under, skinRef);
     const texture = s.std / Math.max(1, cheek.mean);
     const dark =
-      ratio < THRESHOLDS.sunglassDarkRatio &&
+      ratio < (mobile ? THRESHOLDS.mobileSunglassDarkRatio : THRESHOLDS.sunglassDarkRatio) &&
       s.aboveFrac < THRESHOLDS.sunglassScleraFrac &&
-      texture < THRESHOLDS.sunglassMaxTexture &&
-      underRatio < THRESHOLDS.sunglassUnderRatio &&
-      underSkin < THRESHOLDS.sunglassUnderSkin;
+      texture < (mobile ? THRESHOLDS.mobileSunglassMaxTexture : THRESHOLDS.sunglassMaxTexture) &&
+      underRatio < (mobile ? THRESHOLDS.mobileSunglassUnderRatio : THRESHOLDS.sunglassUnderRatio) &&
+      underSkin < (mobile ? THRESHOLDS.mobileSunglassUnderSkin : THRESHOLDS.sunglassUnderSkin);
     return { dark, ratio, sclera: s.aboveFrac, specular: s.brightFrac, underRatio, underSkin, texture, eyeBox: b };
   };
   const rEye = eyeCheck(RIGHT_EYE, rCheek);
@@ -644,7 +655,12 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose) {
       (rimLine > THRESHOLDS.glassesRimLine ? 1 : 0) +
       (templeLine > THRESHOLDS.glassesTempleLine ? 1 : 0);
     metrics.glassesLines = frameLines;
-    if (
+    if (mobile) {
+      // Phones: the temple area often catches hair / ear / background edges, so only a frame
+      // clearly across the nose bridge (strong line AND strong edge energy) counts
+      const f = THRESHOLDS.mobileGlassesFactor;
+      if (bridgeLine > THRESHOLDS.glassesBridgeLine * f && bridgeEdge > THRESHOLDS.glassesBridgeEdge * f) flags.glasses = true;
+    } else if (
       bridgeLine > THRESHOLDS.glassesBridgeLine &&
       (bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine)
     ) {
@@ -787,7 +803,7 @@ export const ISSUE_MESSAGES = {
   notStraight: "Look straight at the camera",
   eyesClosed: "Keep your eyes open",
   moving: "Hold still",
-  needBlink: "Blink once to enable the button",
+  needBlink: "Blink once to take the photo",
 };
 
 // The checks that block the selfie (position / pose are shown only as tips on the camera)

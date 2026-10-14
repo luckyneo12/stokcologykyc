@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { ArrowRightIcon } from "../Icons";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import { getRequiredLocation } from "@/utils/location";
 import { QRCode } from "react-qrcode-logo";
 import { io } from "socket.io-client";
 
@@ -288,28 +289,6 @@ export default function SelfieStep() {
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [addToast, handleDigioSuccess]);
-
-  // ─── Helper: Get location with enforcement ──────────────────────────
-  const getRequiredLocation = async () => {
-    if (!("geolocation" in navigator)) {
-      return { success: false, error: "location_unavailable" };
-    }
-    try {
-      const pos = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0,
-        });
-      });
-      return { success: true, lat: pos.coords.latitude, lng: pos.coords.longitude };
-    } catch (err) {
-      // err.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-      if (err.code === 1) return { success: false, error: "permission_denied" };
-      if (err.code === 3) return { success: false, error: "timeout" };
-      return { success: false, error: "position_unavailable" };
-    }
-  };
 
   // ─── Start selfie verification ───────────────────────────────────────
   const startVerification = async () => {

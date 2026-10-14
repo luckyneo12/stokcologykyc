@@ -13,6 +13,7 @@ import DocumentPreviewModal from "../DocumentPreviewModal";
 import LiveSelfieCapture from "../selfie/LiveSelfieCapture";
 import { preloadFaceEngine } from "../selfie/faceEngine";
 import { USE_INHOUSE_SELFIE } from "@/config/selfieConfig";
+import { getRequiredLocation } from "@/utils/location";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -435,10 +436,9 @@ export default function DocumentUploadStep() {
          const baseUrl = window.location.origin;
          setResumeUrl(`${baseUrl}/mobile-selfie?token=${data.token}&appId=${activeAppId}`);
          
-         const expires = new Date(data.expiresAt).getTime();
-         const now = new Date().getTime();
-         let seconds = Math.floor((expires - now) / 1000);
-         if (seconds < 0) seconds = 0;
+         // Server-given lifetime first: a wrong PC clock must not shorten / stretch the countdown
+         let seconds = Number(data.expiresInSeconds) || Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000);
+         if (!(seconds > 0)) seconds = 0;
          
          setTimeLeft(seconds);
          setQrExpired(false);
@@ -589,50 +589,60 @@ export default function DocumentUploadStep() {
     }
 
     // ─── LEGACY DIGIO SELFIE FLOW (used only when NEXT_PUBLIC_SELFIE_PROVIDER=digio) ───
+    // Digio opens its own window in init(). That must happen right inside the click: after the
+    // location / server waits the browser blocks the popup and submit() fails with
+    // "Cannot read properties of null (reading 'document')". So: open first, then fetch, then submit.
+    let aborted = false;
+    const digio = initializeDigio({
+      callback: (response) => {
+        if (aborted) return; // window closed by us after a location / request failure
+        handleInlineSelfieSuccess(response);
+        // Force close the SDK overlay in case mobile browsers get stuck
+        try {
+          if (digio && typeof digio.cancel === 'function') {
+            digio.cancel();
+          }
+        } catch(e) {}
+      },
+      is_redirection_approach: false // Use iframe/overlay for desktop
+    });
+    if (!digio) {
+      addToast("Verification SDK is still loading. Please try again in a moment.", "error");
+      return;
+    }
+    digio.init();
+
+    const abort = (message) => {
+      aborted = true;
+      try {
+        if (typeof digio.cancel === 'function') digio.cancel();
+      } catch(e) {}
+      addToast(message, "error");
+    };
+
     try {
       addToast("Initializing secure camera...", "info");
-      let coords = { lat: null, lng: null };
-      if ("geolocation" in navigator) {
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-          });
-          coords.lat = pos.coords.latitude;
-          coords.lng = pos.coords.longitude;
-        } catch (err) {
-          console.warn("Geolocation denied:", err.message);
-          addToast("Location permission is required for selfie verification. Please allow location access in your browser settings and try again.", "error");
-          return;
-        }
-      } else {
-        addToast("Location services are not available on this device. Please enable location and try again.", "error");
+      const loc = await getRequiredLocation();
+      if (!loc.success) {
+        console.warn("Geolocation failed:", loc.error);
+        abort(
+          loc.error === "permission_denied"
+            ? "Location permission is required for selfie verification. Please allow location access in your browser settings and try again."
+            : loc.error === "timeout"
+              ? "Could not fetch your location in time. Please check your GPS/network and try again."
+              : "Location services are not available on this device. Please enable location and try again.",
+        );
         return;
       }
+      const coords = { lat: loc.lat, lng: loc.lng };
 
       const requestData = await createDigioRequest("SELFIE", coords);
       const { requestId, customerIdentifier, accessToken } = requestData;
       currentDigioRequestId.current = requestId;
 
-      const digio = initializeDigio({
-        callback: (response) => {
-          handleInlineSelfieSuccess(response);
-          // Force close the SDK overlay in case mobile browsers get stuck
-          try {
-            if (digio && typeof digio.cancel === 'function') {
-              digio.cancel();
-            }
-          } catch(e) {}
-        },
-        is_redirection_approach: false // Use iframe/overlay for desktop
-      });
-
-      if (!digio || !requestId) {
-        addToast("Unable to initialize selfie verification flow", "error");
+      if (!requestId) {
+        abort("Unable to initialize selfie verification flow");
         return;
-      }
-
-      if (!digio.is_redirection_approach) {
-        digio.init();
       }
 
       if (accessToken) {
@@ -641,7 +651,7 @@ export default function DocumentUploadStep() {
         digio.submit(requestId, customerIdentifier);
       }
     } catch (error) {
-       addToast(error?.message || "Error connecting to verification service", "error");
+      abort(error?.message || "Error connecting to verification service");
     }
   };
 
@@ -1078,7 +1088,8 @@ export default function DocumentUploadStep() {
                       
                       {qrExpired ? (
                         <div style={{ padding: "24px", background: "rgba(247, 85, 85, 0.05)", borderRadius: "12px", marginBottom: "16px", border: "1px solid var(--wise-danger)" }}>
-                           <p style={{ color: "var(--wise-danger)", fontWeight: 600, marginBottom: "12px" }}>QR Code Expired</p>
+                           <p style={{ color: "var(--wise-danger)", fontWeight: 600, marginBottom: "6px" }}>QR Code Expired</p>
+                           <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "12px" }}>Already scanned it? You can still finish the selfie on your phone. Otherwise generate a new QR code.</p>
                            <button onClick={generateMobileQR} style={{ background: "var(--wise-danger)", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", fontWeight: 600, cursor: "pointer" }}>Generate New QR</button>
                         </div>
                       ) : resumeUrl ? (

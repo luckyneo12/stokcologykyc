@@ -2,8 +2,76 @@
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
+import { getRequiredLocation } from "@/utils/location";
 import LiveSelfieCapture from "@/components/kyc/selfie/LiveSelfieCapture";
 import { USE_INHOUSE_SELFIE } from "@/config/selfieConfig";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const SESSION_KEY = "mobileSelfieSession";
+const EXPIRED_MSG = "This QR code has expired. Please generate a new QR code on your computer and scan it again.";
+const REPLACED_MSG = "A newer QR code was generated on your computer. Please scan the latest QR code.";
+
+/** Claims of a JWT (not verified — only used to read the expiry / purpose; the server verifies). */
+function readJwt(token) {
+  try {
+    const part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(part.padEnd(part.length + ((4 - (part.length % 4)) % 4), "=")));
+  } catch (e) {
+    return null;
+  }
+}
+
+function tokenExpiresAtMs(token) {
+  const exp = readJwt(token)?.exp;
+  return exp ? exp * 1000 : null;
+}
+
+/**
+ * Turns the token from the QR link into a capture session:
+ *   QR token (5 min)  → exchanged once at /mobile-session/claim for a 15-minute session token.
+ *                       A reload of the same link reuses that session (even after the QR's 5 minutes).
+ *   session token     → (Digio redirect return / older links) used as is while it is valid.
+ * Returns { token, expiresAtMs } | { expired: message } | { error: message }.
+ */
+async function resolveSession(urlToken, appId) {
+  const claims = urlToken ? readJwt(urlToken) : null;
+
+  if (claims?.purpose === "mobile_selfie_qr") {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+      if (saved && saved.qrIssuedAtMs === claims.issuedAtMs && saved.appId === appId && saved.expiresAtMs > Date.now()) {
+        return { token: saved.token, expiresAtMs: saved.expiresAtMs };
+      }
+    } catch (e) {}
+    if (claims.exp && claims.exp * 1000 <= Date.now()) return { expired: EXPIRED_MSG };
+
+    let res, data;
+    try {
+      res = await fetch(`${API_BASE_URL}/api/kyc/mobile-session/claim`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${urlToken}` },
+      });
+      data = await res.json().catch(() => ({}));
+    } catch (e) {
+      return { error: "Network error. Check your internet connection and reload this page." };
+    }
+    if (res.status === 401) return { expired: data?.code === "MOBILE_SESSION_REPLACED" ? REPLACED_MSG : EXPIRED_MSG };
+    if (!res.ok || !data?.success || !data.token) return { error: data?.error || "Could not open the selfie session. Please scan the QR code again." };
+
+    const expiresAtMs = tokenExpiresAtMs(data.token) || Date.now() + 15 * 60 * 1000;
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ qrIssuedAtMs: claims.issuedAtMs, appId, token: data.token, expiresAtMs }));
+    } catch (e) {}
+    return { token: data.token, expiresAtMs };
+  }
+
+  // Session token (Digio redirect return, or a link generated before this change)
+  const token = urlToken || sessionStorage.getItem("kycToken");
+  if (!token) return { error: "Invalid link. Please scan the QR code again." };
+  const expiresAtMs = tokenExpiresAtMs(token);
+  if (expiresAtMs && expiresAtMs <= Date.now()) return { expired: EXPIRED_MSG };
+  return { token, expiresAtMs };
+}
 
 function MobileSelfieContent() {
   const searchParams = useSearchParams();
@@ -12,90 +80,107 @@ function MobileSelfieContent() {
   const [errorMessage, setErrorMessage] = useState("");
   const [locationDenied, setLocationDenied] = useState(false);
   const [session, setSession] = useState({ token: null, appId: null });
+  const [sessionExpiresAtMs, setSessionExpiresAtMs] = useState(null);
   const hasProcessedRedirect = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
     const urlToken = searchParams.get("token");
     const urlAppId = searchParams.get("appId");
-    
-    // Digio redirect may strip URL query parameters, so fallback to sessionStorage
-    const token = urlToken || sessionStorage.getItem("kycToken");
-    const appId = urlAppId || sessionStorage.getItem("kycApplicationId");
-    
-    // Check for Digio Redirect Return
-    const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
-    const digioMessage = searchParams.get("message") || searchParams.get("status");
 
-    if (!token || !appId) {
-      setStatus("error");
-      setErrorMessage("Invalid link. Please scan the QR code again.");
+    (async () => {
+      // Digio redirect may strip URL query parameters, so fallback to sessionStorage
+      const appId = urlAppId || sessionStorage.getItem("kycApplicationId");
+      if (!appId || (!urlToken && !sessionStorage.getItem("kycToken"))) {
+        setStatus("error");
+        setErrorMessage("Invalid link. Please scan the QR code again.");
+        return;
+      }
+
+      // The QR's validity is checked BEFORE anything starts (camera, location, Digio)
+      const resolved = await resolveSession(urlToken, appId);
+      if (cancelled) return;
+      if (resolved.expired) {
+        setErrorMessage(resolved.expired);
+        setStatus("expired");
+        return;
+      }
+      if (resolved.error) {
+        setErrorMessage(resolved.error);
+        setStatus("error");
+        return;
+      }
+      const token = resolved.token;
+      sessionStorage.setItem("kycToken", token);
+      sessionStorage.setItem("kycApplicationId", appId);
+      setSessionExpiresAtMs(resolved.expiresAtMs || null);
+      setSession((prev) => (prev.token === token && prev.appId === appId ? prev : { token, appId }));
+
+      // Check for Digio Redirect Return
+      const documentId = searchParams.get("document_id") || searchParams.get("digio_doc_id");
+      const digioMessage = searchParams.get("message") || searchParams.get("status");
+
+      if (documentId && digioMessage && !hasProcessedRedirect.current) {
+        hasProcessedRedirect.current = true;
+        setStatus("processing");
+    
+        const msgLower = digioMessage.toLowerCase();
+        const isSuccess = 
+          msgLower.includes("success") || 
+          msgLower.includes("completed") || 
+          msgLower.includes("done") || 
+          digioMessage === "Sign completed";
+
+        if (isSuccess) {
+          let savedCoords = null;
+          try {
+            const rawCoords = sessionStorage.getItem("mobileSelfieCoords");
+            if (rawCoords) savedCoords = JSON.parse(rawCoords);
+          } catch (e) {}
+
+          fetchDigioRequestResponse(documentId, "SELFIE", appId, savedCoords ? { coords: savedCoords, lat: savedCoords.lat, lng: savedCoords.lng } : {})
+            .then(async (res) => {
+               if (res?.success) {
+                  setStatus("success");
+               } else {
+                  setStatus("error");
+                  setErrorMessage("Failed to fetch verification results.");
+               }
+            })
+            .catch((err) => {
+               setStatus("error");
+               setErrorMessage("Error verifying selfie.");
+            });
+        } else {
+          setStatus("error");
+          setErrorMessage(`Selfie verification failed: ${digioMessage}`);
+        }
+      } else {
+        setStatus((prev) => (prev === "loading" ? "ready" : prev));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchParams]);
+
+  // The session ends while the page is open → stop (unmounts the camera) and show the expired screen
+  useEffect(() => {
+    if (!sessionExpiresAtMs) return;
+    const expire = () => {
+      setStatus((prev) => (prev === "success" || prev === "expired" ? prev : "expired"));
+      setErrorMessage(EXPIRED_MSG);
+    };
+    const ms = sessionExpiresAtMs - Date.now();
+    if (ms <= 0) {
+      expire();
       return;
     }
+    const t = setTimeout(expire, Math.min(ms, 2147483647));
+    return () => clearTimeout(t);
+  }, [sessionExpiresAtMs]);
 
-    if (urlToken) sessionStorage.setItem("kycToken", urlToken);
-    if (urlAppId) sessionStorage.setItem("kycApplicationId", urlAppId);
-    setSession((prev) => (prev.token === token && prev.appId === appId ? prev : { token, appId }));
-
-    if (documentId && digioMessage && !hasProcessedRedirect.current) {
-      hasProcessedRedirect.current = true;
-      setStatus("processing");
-      
-      const msgLower = digioMessage.toLowerCase();
-      const isSuccess = 
-        msgLower.includes("success") || 
-        msgLower.includes("completed") || 
-        msgLower.includes("done") || 
-        digioMessage === "Sign completed";
-
-      if (isSuccess) {
-        let savedCoords = null;
-        try {
-          const rawCoords = sessionStorage.getItem("mobileSelfieCoords");
-          if (rawCoords) savedCoords = JSON.parse(rawCoords);
-        } catch (e) {}
-
-        fetchDigioRequestResponse(documentId, "SELFIE", appId, savedCoords ? { coords: savedCoords, lat: savedCoords.lat, lng: savedCoords.lng } : {})
-          .then(async (res) => {
-             if (res?.success) {
-                setStatus("success");
-             } else {
-                setStatus("error");
-                setErrorMessage("Failed to fetch verification results.");
-             }
-          })
-          .catch((err) => {
-             setStatus("error");
-             setErrorMessage("Error verifying selfie.");
-          });
-      } else {
-        setStatus("error");
-        setErrorMessage(`Selfie verification failed: ${digioMessage}`);
-      }
-    } else if (status === "loading") {
-       setStatus("ready");
-    }
-  }, [searchParams, status]);
-
-  // ─── Helper: Get location with enforcement (same as desktop SelfieStep) ───
-  const getRequiredLocation = async () => {
-    if (!("geolocation" in navigator)) {
-      return { success: false, error: "location_unavailable" };
-    }
-    try {
-      const pos = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0,
-        });
-      });
-      return { success: true, lat: pos.coords.latitude, lng: pos.coords.longitude };
-    } catch (err) {
-      // err.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-      if (err.code === 1) return { success: false, error: "permission_denied" };
-      if (err.code === 3) return { success: false, error: "timeout" };
-      return { success: false, error: "position_unavailable" };
-    }
+  const handleSessionExpired = (message) => {
+    setErrorMessage(message || EXPIRED_MSG);
+    setStatus((prev) => (prev === "success" ? prev : "expired"));
   };
 
   const startVerification = async () => {
@@ -208,6 +293,18 @@ function MobileSelfieContent() {
     );
   }
 
+  if (status === "expired") {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: 'var(--bg-primary)', padding: 24, textAlign: 'center' }}>
+        <div style={{ maxWidth: 400, width: '100%', padding: 20, background: "rgba(247, 85, 85, 0.1)", border: "1px solid var(--wise-danger)", borderRadius: 12 }}>
+          <h1 style={{ fontSize: "1.3rem", marginBottom: 10, color: "var(--wise-danger)", fontWeight: 800 }}>QR Code Expired</h1>
+          <p style={{ color: "var(--text-primary)", margin: 0, fontWeight: 600, lineHeight: 1.5 }}>{errorMessage || EXPIRED_MSG}</p>
+          <p style={{ color: "var(--text-secondary)", margin: "12px 0 0", fontSize: "0.9rem" }}>No selfie was taken. You can close this page.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (status === "success") {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-primary)', padding: 24, textAlign: 'center' }}>
@@ -244,6 +341,7 @@ function MobileSelfieContent() {
           applicationId={session.appId}
           authToken={session.token}
           onSuccess={() => setStatus("success")}
+          onSessionExpired={handleSessionExpired}
         />
       </div>
     );

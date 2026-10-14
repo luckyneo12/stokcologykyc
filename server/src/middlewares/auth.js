@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../config/db");
+const mobileSelfieSession = require("../utils/mobileSelfieSession");
 
 const JWT_SECRET = process.env.JWT_SECRET || "kyc-secret-key-change-in-production";
 
@@ -10,6 +11,13 @@ const auth = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    // QR selfie link: a newer QR was generated on the desktop — this one no longer works
+    if (mobileSelfieSession.isReplaced(decoded)) {
+      return res.status(401).json({ error: "This QR code was replaced by a newer one.", code: "MOBILE_SESSION_REPLACED" });
+    }
+    // Verified claims of the token itself (req.user also merges in the DB user record)
+    req.tokenClaims = decoded;
     
     // For CRM KYC Team agents, their ID belongs to the CRM DB, not the local DB.
     // Fetching from the local DB would risk ID collisions with regular users,
@@ -32,6 +40,7 @@ const auth = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("[Auth Error] JWT Verify Failed:", error.message);
+    if (error.name === "TokenExpiredError") return res.status(401).json({ error: "Invalid token", code: "TOKEN_EXPIRED" });
     res.status(401).json({ error: "Invalid token" });
   }
 };

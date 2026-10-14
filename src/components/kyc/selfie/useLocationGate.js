@@ -19,8 +19,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * without a refresh, and revoking it mid-capture immediately blocks the selfie.
  */
 const WATCH_OPTIONS = { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 };
+// Phones wait for a real GPS lock with high accuracy (slow indoors). A quick network / cached
+// reading opens the gate right away; the high-accuracy watch keeps refining it in the background.
+const QUICK_FIX_OPTIONS = { enableHighAccuracy: false, timeout: 10000, maximumAge: 2 * 60 * 1000 };
+// Used when the high-accuracy watch times out (no GPS lock) — network location is enough
+const LOW_ACCURACY_WATCH_OPTIONS = { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 };
 // At upload: a brand-new reading (no cached position), high accuracy (GPS on phones)
-const FRESH_FIX_OPTIONS = { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 };
+const FRESH_FIX_OPTIONS = { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 };
 const MAX_COORDS_AGE_MS = 10 * 60 * 1000;
 // The most accurate reading of the last 2 minutes is kept and used if it beats the fresh one
 const BEST_FIX_MAX_AGE_MS = 2 * 60 * 1000;
@@ -80,43 +85,74 @@ export default function useLocationGate() {
     if (watchIdRef.current !== null) return;
     if (!coordsRef.current) setStatus("requesting");
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        if (!mountedRef.current) return;
-        const next = toCoords(pos);
+    const onPosition = (pos) => {
+      if (!mountedRef.current || watchIdRef.current === null) return;
+      const next = toCoords(pos);
+      // A coarse quick reading never replaces a more accurate one that is still fresh
+      const prev = coordsRef.current;
+      const keepPrev = isRecent(prev, REUSE_FIX_MAX_AGE_MS) && (prev.accuracy ?? Infinity) < (next.accuracy ?? Infinity);
+      if (!keepPrev) {
         coordsRef.current = next;
-        bestRef.current = isRecent(bestRef.current, BEST_FIX_MAX_AGE_MS) ? moreAccurate(bestRef.current, next) : next;
         setCoords(next);
-        setStatus("granted");
-      },
+      }
+      bestRef.current = isRecent(bestRef.current, BEST_FIX_MAX_AGE_MS) ? moreAccurate(bestRef.current, next) : next;
+      setStatus("granted");
+    };
+    const onDenied = () => {
+      // Permission blocked or prompt closed — nothing usable any more.
+      // If the permission is still "prompt", the user dismissed the dialog.
+      stopWatch();
+      coordsRef.current = null;
+      bestRef.current = null;
+      setCoords(null);
+      const permState = permStatusRef.current?.state;
+      const dismissed = permState === "prompt";
+      dismissedRef.current = dismissed;
+      setDeniedReason(dismissed ? "dismissed" : "blocked");
+      setStatus("denied");
+    };
+    let lowAccuracy = false;
+    const watch = (options) => {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        onPosition,
+        (err) => {
+          if (!mountedRef.current || watchIdRef.current === null) return;
+          const nextStatus = statusFromError(err);
+          if (nextStatus === "denied") {
+            onDenied();
+            return;
+          }
+          // No GPS lock in time (indoors, GPS warming up): switch to network location
+          // instead of failing — it is what most phones give within a second or two
+          if (!lowAccuracy) {
+            lowAccuracy = true;
+            navigator.geolocation.clearWatch(watchIdRef.current);
+            watch(LOW_ACCURACY_WATCH_OPTIONS);
+            return;
+          }
+          // Transient GPS problems: keep a recent fix if we already have one
+          const recent = coordsRef.current && Date.now() - coordsRef.current.timestamp < MAX_COORDS_AGE_MS;
+          if (!recent) {
+            stopWatch();
+            coordsRef.current = null;
+            bestRef.current = null;
+            setCoords(null);
+            setStatus(nextStatus);
+          }
+        },
+        options,
+      );
+    };
+    watch(WATCH_OPTIONS);
+
+    // Quick first reading in parallel — usually answers in well under a second
+    navigator.geolocation.getCurrentPosition(
+      onPosition,
       (err) => {
-        if (!mountedRef.current) return;
-        const nextStatus = statusFromError(err);
-        if (nextStatus === "denied") {
-          // Permission blocked or prompt closed — nothing usable any more.
-          // If the permission is still "prompt", the user dismissed the dialog.
-          stopWatch();
-          coordsRef.current = null;
-          bestRef.current = null;
-          setCoords(null);
-          const permState = permStatusRef.current?.state;
-          const dismissed = permState === "prompt";
-          dismissedRef.current = dismissed;
-          setDeniedReason(dismissed ? "dismissed" : "blocked");
-          setStatus("denied");
-          return;
-        }
-        // Transient GPS problems: keep a recent fix if we already have one
-        const recent = coordsRef.current && Date.now() - coordsRef.current.timestamp < MAX_COORDS_AGE_MS;
-        if (!recent) {
-          stopWatch();
-          coordsRef.current = null;
-          bestRef.current = null;
-          setCoords(null);
-          setStatus(nextStatus);
-        }
+        // Only a denial matters here; the watch decides about timeouts / GPS off
+        if (mountedRef.current && watchIdRef.current !== null && statusFromError(err) === "denied") onDenied();
       },
-      WATCH_OPTIONS,
+      QUICK_FIX_OPTIONS,
     );
   }, [stopWatch]);
 
