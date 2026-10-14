@@ -3649,6 +3649,10 @@ router.post("/selfie-capture", auth, async (req, res) => {
           clientChecks: clientChecks && typeof clientChecks === "object" ? {
             skinLuma: clientChecks.skinLuma, frameLuma: clientChecks.frameLuma, faceToOval: clientChecks.faceToOval,
             yaw: clientChecks.yaw, pitch: clientChecks.pitch, videoW: clientChecks.videoW, videoH: clientChecks.videoH,
+            device: typeof clientChecks.device === "string" ? clientChecks.device.slice(0, 20) : undefined,
+            slowDevice: clientChecks.slowDevice === true, delegate: typeof clientChecks.delegate === "string" ? clientChecks.delegate.slice(0, 10) : undefined,
+            analysisMs: clientChecks.analysisMs, analysisIntervalMs: clientChecks.analysisIntervalMs,
+            eyewearOverride: clientChecks.eyewearOverride === true,
           } : null,
           timings,
         },
@@ -3826,7 +3830,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
     let safeClientChecks = null;
     if (clientChecks && typeof clientChecks === "object" && !Array.isArray(clientChecks)) {
       safeClientChecks = {};
-      Object.keys(clientChecks).slice(0, 30).forEach((key) => {
+      Object.keys(clientChecks).slice(0, 48).forEach((key) => {
         const val = clientChecks[key];
         if (typeof val === "number" && Number.isFinite(val)) safeClientChecks[key.slice(0, 40)] = val;
         else if (typeof val === "boolean") safeClientChecks[key.slice(0, 40)] = val;

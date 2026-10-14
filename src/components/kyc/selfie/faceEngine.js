@@ -72,7 +72,7 @@ async function createEngine() {
  */
 let scannerPromise = null;
 
-async function createScanner() {
+async function createScanner(preferCpu) {
   installMediapipeLogFilter();
   const { FilesetResolver, FaceLandmarker } = await import("@mediapipe/tasks-vision");
   const fileset = await FilesetResolver.forVisionTasks(WASM_BASE_PATH);
@@ -84,6 +84,13 @@ async function createScanner() {
     outputFaceBlendshapes: false,
     outputFacialTransformationMatrixes: false,
   };
+  // Phones: CPU, so this occasional scan doesn't compete with the live detector for the GPU
+  if (preferCpu) {
+    return FaceLandmarker.createFromOptions(fileset, {
+      ...options,
+      baseOptions: { modelAssetPath: MODEL_PATH, delegate: "CPU" },
+    });
+  }
   try {
     return await FaceLandmarker.createFromOptions(fileset, {
       ...options,
@@ -98,9 +105,9 @@ async function createScanner() {
 }
 
 /** Returns the shared extra-face scanner, loading it on first call. A failed load can be retried. */
-export function loadFaceScanner() {
+export function loadFaceScanner({ preferCpu = false } = {}) {
   if (!scannerPromise) {
-    scannerPromise = createScanner().catch((err) => {
+    scannerPromise = createScanner(preferCpu).catch((err) => {
       scannerPromise = null;
       throw err;
     });

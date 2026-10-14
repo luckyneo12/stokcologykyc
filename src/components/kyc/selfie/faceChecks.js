@@ -93,6 +93,12 @@ export const THRESHOLDS = {
   // A quick natural blink rarely scores above ~0.5 at camera frame rates
   blinkClosed: 0.45,
   blinkOpen: 0.3,
+  // Slow devices (few analyses per second) often catch a blink only half-closed
+  blinkClosedSlow: 0.32,
+  // Relative to the user's own open-eye level (droopy / narrow eyes sit above 0.3 when open):
+  // closed = clearly above it, open again = back close to it
+  blinkRise: 0.15,
+  blinkReopen: 0.1,
   // A normal smile passes: either a moderate smile score, or a clear rise from the user's own
   // neutral face during this step (people smile differently; no teeth needed)
   smile: 0.3,
@@ -513,7 +519,7 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
   }
 
   // Pixel checks need the image
-  if (!img) return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box };
+  if (!img) return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box, appearanceChecked: false };
 
   // ── Lighting ──
   const inner = {
@@ -826,6 +832,43 @@ export function orderedIssues(flags) {
   return ISSUE_PRIORITY.filter((k) => flags[k]);
 }
 
+// ─── Blink ──────────────────────────────────────────────────────────────────
+/**
+ * Detects one blink: both eyes clearly closed, then open again. Thresholds are absolute AND
+ * relative to the user's own open-eye level, so people whose eyes look half-closed when open still
+ * pass. On a typical device (open level ~0.05) this is exactly the old rule: > 0.45, then < 0.3.
+ * slow = few analyses per second: a frame often catches the eyes only half-closed, so 0.32 counts.
+ * A photo can't blink either way — its scores don't change.
+ */
+export function createBlinkTracker() {
+  let openLevel = null; // running average of the open-eye score
+  let closed = false;
+  return {
+    /** Returns true on the frame where a blink completes. */
+    update(blend, slow = false) {
+      const l = blend?.eyeBlinkLeft ?? 0;
+      const r = blend?.eyeBlinkRight ?? 0;
+      const avg = (l + r) / 2;
+      if (openLevel === null) openLevel = Math.min(avg, 0.4);
+      const closeAt = Math.max(slow ? THRESHOLDS.blinkClosedSlow : THRESHOLDS.blinkClosed, openLevel + THRESHOLDS.blinkRise);
+      const openAt = Math.max(THRESHOLDS.blinkOpen, openLevel + THRESHOLDS.blinkReopen);
+      if (l > closeAt && r > closeAt) {
+        closed = true;
+        return false;
+      }
+      if (l < openAt && r < openAt) {
+        // Only clearly-open frames move the open level (never half-closed ones)
+        openLevel = openLevel * 0.85 + Math.min(avg, 0.4) * 0.15;
+        if (closed) {
+          closed = false;
+          return true;
+        }
+      }
+      return false;
+    },
+  };
+}
+
 // ─── Liveness challenge ─────────────────────────────────────────────────────
 export const LOOK_STRAIGHT_TEXT = "Now look straight at the camera";
 
@@ -844,9 +887,10 @@ export const CHALLENGE_TEXT = {
 
 /**
  * Advances one challenge step. `state` is a mutable object kept by the caller per step.
+ * ctx.slow: the device analyses only a few frames per second (more lenient blink).
  * Returns true when the step is complete.
  */
-export function updateChallengeStep(step, analysis, state) {
+export function updateChallengeStep(step, analysis, state, ctx = {}) {
   const { pose, blend } = analysis;
   if (!pose) {
     state.consec = 0;
@@ -870,10 +914,8 @@ export function updateChallengeStep(step, analysis, state) {
     return now - state.turnedSince >= THRESHOLDS.turnHoldMs;
   }
   if (step === "blink") {
-    const l = blend.eyeBlinkLeft ?? 0;
-    const r = blend.eyeBlinkRight ?? 0;
-    if (l > THRESHOLDS.blinkClosed && r > THRESHOLDS.blinkClosed) state.sawClosed = true;
-    return Boolean(state.sawClosed && l < THRESHOLDS.blinkOpen && r < THRESHOLDS.blinkOpen);
+    if (!state.blink) state.blink = createBlinkTracker();
+    return state.blink.update(blend, Boolean(ctx.slow));
   }
   if (step === "smile") {
     const s = ((blend.mouthSmileLeft ?? 0) + (blend.mouthSmileRight ?? 0)) / 2;

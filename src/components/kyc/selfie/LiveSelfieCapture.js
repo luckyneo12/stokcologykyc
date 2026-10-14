@@ -18,6 +18,7 @@ import {
   THRESHOLDS,
   scanTileForExtraFace,
   scanFrameForExtraFace,
+  createBlinkTracker,
 } from "./faceChecks";
 import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, useGuidePrefs, useGuideVoice } from "./SelfieGuide";
 
@@ -47,6 +48,12 @@ const ANALYSIS_WIDTH = 240;
 // …where a webcam face is ~64 px wide. Phones are scaled to the same face size (not below this width)
 const FACE_ANALYSIS_PX = 64;
 const MIN_ANALYSIS_WIDTH = 96;
+// Phones: the background-person tile scan runs at most this often (each scan is a full extra
+// face detection; on every analysis it roughly doubled the work). The photo itself still gets
+// the complete scan before it is accepted.
+const MOBILE_TILE_SCAN_MS = 800;
+// Stages where the pixel checks (lighting, eyewear) are not used — only face position / pose
+const NO_PIXEL_STAGES = ["challenge", "review", "submitting"];
 const STABLE_MS = 600; // blocking checks must pass continuously this long before the liveness actions start
 const STEP_TIMEOUT_MS = 12000;
 const LOST_ABORT_MS = 1500;
@@ -80,6 +87,28 @@ const CRITICAL_DURING_CHALLENGE = ["noFace", "multipleFaces"];
 // delays the shot by a few frames instead of failing it.
 const FINAL_PHOTO_CHECKS = ["noFace", "multipleFaces", "turned", "eyesClosed"];
 const CAPTURE_WAIT_MS = 2000;
+
+// ── Slow devices (low-end phones, CPU-only face detection) ──
+// Fewer analyses per second means: a blink is caught half-closed, the face moves further between
+// two analyses and every step needs more wall-clock time. A device is "slow" once its analysis
+// interval stays at or above SLOW_INTERVAL_MS (≤ ~5 analyses/s) for SLOW_FRAMES analyses in a row;
+// it then stays slow for the rest of the capture. The checks themselves are the same.
+const SLOW_INTERVAL_MS = 190;
+const SLOW_FRAMES = 5;
+const SLOW_TIMING = {
+  stepTimeoutMs: 20000,
+  lostAbortMs: 2500,
+  captureWaitMs: 3500,
+  continuityLostMs: 1200,
+  continuityMaxJump: 0.6,
+  continuityMaxScale: 1.6,
+};
+
+// ── Eyewear the user says they are not wearing ──
+// When "glasses / goggles detected" keeps blocking for this long, the user can confirm they wear
+// none and continue. The photo is then judged by the server's liveness + face match as usual, and
+// the confirmation is stored with it (clientChecks.eyewearOverride) for the reviewer.
+const EYEWEAR_OVERRIDE_AFTER_MS = 8000;
 // Ready + every check passing this long → the selfie is taken automatically
 const AUTO_CAPTURE_MS = 1000;
 // Glasses / goggles at the moment of the click. The on-screen warning waits ~1–1.5 s before
@@ -117,16 +146,19 @@ const EXTRA_FACE_HOLD_MS = 3500;
  * left the camera, a second face stayed in view, or the face jumped / changed size abruptly
  * (what happens when a photo is pushed in front of the camera).
  */
-function trackContinuity(c, analysis, now) {
+function trackContinuity(c, analysis, now, slow = false) {
+  const lostMs = slow ? SLOW_TIMING.continuityLostMs : CONTINUITY_LOST_MS;
+  const maxJump = slow ? SLOW_TIMING.continuityMaxJump : CONTINUITY_MAX_JUMP;
+  const maxScale = slow ? SLOW_TIMING.continuityMaxScale : CONTINUITY_MAX_SCALE;
   const t = c.track || (c.track = { lastBox: null, lostSince: null, multiSince: null });
   if (analysis.faceCount === 0) {
     if (t.lostSince === null) t.lostSince = now;
-    return now - t.lostSince <= CONTINUITY_LOST_MS;
+    return now - t.lostSince <= lostMs;
   }
   t.lostSince = null;
   if (analysis.faceCount > 1) {
     if (t.multiSince === null) t.multiSince = now;
-    if (now - t.multiSince > CONTINUITY_LOST_MS) return false;
+    if (now - t.multiSince > lostMs) return false;
   } else {
     t.multiSince = null;
   }
@@ -134,7 +166,7 @@ function trackContinuity(c, analysis, now) {
   if (box && t.lastBox) {
     const jump = Math.hypot(box.cx - t.lastBox.cx, box.cy - t.lastBox.cy) / Math.max(1e-6, t.lastBox.w);
     const scale = box.w / Math.max(1e-6, t.lastBox.w);
-    if (jump > CONTINUITY_MAX_JUMP || scale > CONTINUITY_MAX_SCALE || scale < 1 / CONTINUITY_MAX_SCALE) return false;
+    if (jump > maxJump || scale > maxScale || scale < 1 / maxScale) return false;
   }
   if (box) t.lastBox = box;
   return true;
@@ -236,7 +268,13 @@ export default function LiveSelfieCapture({
   const videoChunksRef = useRef([]);
   const videoBytesRef = useRef(0);
   const videoMimeRef = useRef("video/webm");
-  const blinkRef = useRef({ closed: false, lastBlinkAt: -Infinity });
+  const blinkRef = useRef({ lastBlinkAt: -Infinity });
+  const blinkTrackerRef = useRef(createBlinkTracker()); // natural blinks (needed before the click)
+  const slowRef = useRef(false); // low-end device: lenient timings, see SLOW_TIMING
+  const slowFramesRef = useRef(0);
+  const eyewearSinceRef = useRef(null); // when the eyewear warning started blocking
+  const eyewearOverrideRef = useRef(false); // user confirmed: no glasses / goggles
+  const [offerEyewearOverride, setOfferEyewearOverride] = useState(false);
   const finishedRef = useRef(false);
   const sessionEndedRef = useRef(false);
   const finishRef = useRef(null);
@@ -247,6 +285,7 @@ export default function LiveSelfieCapture({
   const frameCanvasRef = useRef(null);
   const scannerRef = useRef(null); // IMAGE-mode landmarker for small background faces
   const scanTileRef = useRef(0);
+  const lastTileScanRef = useRef(-Infinity);
   const extraFaceAtRef = useRef(-Infinity); // last time the tile scan saw another person
   const bannerRef = useRef(null);
   const prefetchRef = useRef(null); // { promise, at } — challenge fetched ahead of time
@@ -298,7 +337,9 @@ export default function LiveSelfieCapture({
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: isMobile
+            ? { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }
+            : { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
       } catch (err) {
@@ -354,7 +395,7 @@ export default function LiveSelfieCapture({
       console.warn("[LiveSelfie] Camera error:", err?.name, err?.message);
       failCamera(err);
     }
-  }, [failCamera, goto, stopCamera]);
+  }, [failCamera, goto, isMobile, stopCamera]);
 
   // Keep overlay geometry in sync if the camera changes resolution (e.g. phone rotation)
   useEffect(() => {
@@ -399,7 +440,7 @@ export default function LiveSelfieCapture({
         if (!mountedRef.current) return;
         engineRef.current = engine;
         setEngineState("ready");
-        loadFaceScanner()
+        loadFaceScanner({ preferCpu: isMobile })
           .then((scanner) => { scannerRef.current = scanner; })
           .catch((err) => console.warn("[LiveSelfie] Extra-face scanner failed to load:", err?.message));
       })
@@ -407,7 +448,7 @@ export default function LiveSelfieCapture({
         console.error("[LiveSelfie] Face engine failed to load:", err);
         if (mountedRef.current) setEngineState("failed");
       });
-  }, []);
+  }, [isMobile]);
 
   // ─── Mount / unmount ──────────────────────────────────────────────────
   useEffect(() => {
@@ -662,12 +703,17 @@ export default function LiveSelfieCapture({
     octx.scale(-1, 1);
     octx.drawImage(frame, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, out.width, out.height);
 
+    // Device / timing info first: it is what tells why a capture was hard on a given phone
     lastMetricsRef.current = {
-      ...analysis.metrics,
+      device: platform,
+      slowDevice: slowRef.current,
       delegate: engine?.delegate,
       analysisMs: Math.round(emaRef.current),
+      analysisIntervalMs: Math.round(intervalRef.current),
+      eyewearOverride: eyewearOverrideRef.current,
       videoW: frame.width,
       videoH: frame.height,
+      ...analysis.metrics,
     };
     captureReqRef.current = null;
     setBanner(null);
@@ -690,28 +736,24 @@ export default function LiveSelfieCapture({
     } catch (e) {
       return; // transient frame error
     }
-    const analysis = analyzeFrame(result, grabPixels(source, video.videoWidth, video.videoHeight), video.videoWidth, video.videoHeight, prevNoseRef.current, { mobile: isMobile });
+    // Copying the frame's pixels (a GPU → CPU read, slow on phones) only where they are checked
+    const pixels = NO_PIXEL_STAGES.includes(st) ? null : grabPixels(source, video.videoWidth, video.videoHeight);
+    const analysis = analyzeFrame(result, pixels, video.videoWidth, video.videoHeight, prevNoseRef.current, { mobile: isMobile });
     prevNoseRef.current = analysis.nose;
     if (analysis.box) lastFaceWidthRef.current = analysis.box.w;
 
     // People further back are too small for the live detector: scan one zoomed-in tile per
     // analysis and keep "multiple faces" on for a while after another person was seen
-    if (analysis.faceCount === 1 && scannerRef.current && LOOP_STAGES.includes(st)) {
+    if (analysis.faceCount === 1 && scannerRef.current && LOOP_STAGES.includes(st) && (!isMobile || now - lastTileScanRef.current >= MOBILE_TILE_SCAN_MS)) {
+      lastTileScanRef.current = now;
       const tile = scanTileRef.current++;
       if (scanTileForExtraFace(scannerRef.current, source, tile, analysis.box)) extraFaceAtRef.current = now;
     }
     if (analysis.faceCount >= 1 && now - extraFaceAtRef.current < EXTRA_FACE_HOLD_MS) analysis.flags.multipleFaces = true;
 
     // Natural blink tracking (eyes closed → open again)
-    if (analysis.faceCount === 1) {
-      const b = blinkRef.current;
-      const l = analysis.blend.eyeBlinkLeft ?? 0;
-      const r = analysis.blend.eyeBlinkRight ?? 0;
-      if (l > THRESHOLDS.blinkClosed && r > THRESHOLDS.blinkClosed) b.closed = true;
-      else if (b.closed && l < THRESHOLDS.blinkOpen && r < THRESHOLDS.blinkOpen) {
-        b.closed = false;
-        b.lastBlinkAt = now;
-      }
+    if (analysis.faceCount === 1 && blinkTrackerRef.current.update(analysis.blend, slowRef.current)) {
+      blinkRef.current.lastBlinkAt = now;
     }
 
     // Raw eyewear verdicts of recent judged frames (used at the click, see recentAppearanceIssue)
@@ -724,7 +766,7 @@ export default function LiveSelfieCapture({
     // While reviewing / uploading only keep watching the face: a swap marks the actions as broken
     if (st === "review" || st === "submitting") {
       const c = challengeRef.current;
-      if (c && !trackContinuity(c, analysis, now)) c.broken = true;
+      if (c && !trackContinuity(c, analysis, now, slowRef.current)) c.broken = true;
       return;
     }
 
@@ -733,7 +775,7 @@ export default function LiveSelfieCapture({
       const c = challengeRef.current;
       const req = captureReqRef.current;
       if (!c || !req) return;
-      if (!trackContinuity(c, analysis, now)) {
+      if (!trackContinuity(c, analysis, now, slowRef.current)) {
         captureReqRef.current = null;
         abortToLive("We lost track of your face. Keep your face in the oval and repeat the quick actions.");
         return;
@@ -741,7 +783,7 @@ export default function LiveSelfieCapture({
       const failed =
         FINAL_PHOTO_CHECKS.find((k) => analysis.flags[k]) ||
         // The photo's own frame must be judged (frontal, lit) and free of eyewear…
-        (!analysis.appearanceChecked ? "notStraight" : APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k])) ||
+        (!analysis.appearanceChecked ? "notStraight" : (!eyewearOverrideRef.current && APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k]))) ||
         // …and so must the last moments before it (catches glasses put on just before the click)
         recentAppearanceIssue(now);
       if (!failed) {
@@ -761,7 +803,7 @@ export default function LiveSelfieCapture({
       } else {
         req.lastIssue = failed;
       }
-      if (now - req.startedAt > CAPTURE_WAIT_MS) {
+      if (now - req.startedAt > (slowRef.current ? SLOW_TIMING.captureWaitMs : CAPTURE_WAIT_MS)) {
         // Liveness stays valid — blink once and the photo is taken again
         setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}. Blink once to try again.` });
         backToReady();
@@ -770,6 +812,18 @@ export default function LiveSelfieCapture({
     }
 
     const flags = smootherRef.current.push(analysis.flags, now, analysis.appearanceChecked !== false);
+    // Eyewear warning blocking for a long time → offer "I'm not wearing glasses"
+    const eyewearShown = Boolean(flags.sunglasses || flags.glasses) && (st === "live" || st === "ready");
+    if (eyewearOverrideRef.current) {
+      delete flags.sunglasses;
+      delete flags.glasses;
+    } else if (eyewearShown) {
+      if (eyewearSinceRef.current === null) eyewearSinceRef.current = now;
+      if (now - eyewearSinceRef.current >= EYEWEAR_OVERRIDE_AFTER_MS) setOfferEyewearOverride(true);
+    } else if (st === "live" || st === "ready") {
+      eyewearSinceRef.current = null;
+      setOfferEyewearOverride(false);
+    }
     const allIssues = orderedIssues(flags);
     const blockingSet = st === "ready" ? READY_BLOCKING_ISSUES : BLOCKING_ISSUES;
     const issues = allIssues.filter((k) => blockingSet.includes(k));
@@ -778,7 +832,15 @@ export default function LiveSelfieCapture({
     // Adaptive rate: slower devices analyse less often so the preview stays smooth
     const dt = performance.now() - t0;
     emaRef.current = emaRef.current * 0.8 + dt * 0.2;
-    intervalRef.current = Math.min(320, Math.max(90, emaRef.current * 3));
+    // Phones: at most ~25% of the main thread (touch, scrolling and the UI stay responsive);
+    // still ~8 analyses/s on a typical phone, enough to catch a natural blink
+    intervalRef.current = isMobile
+      ? Math.min(350, Math.max(110, emaRef.current * 4))
+      : Math.min(320, Math.max(90, emaRef.current * 3));
+    if (!slowRef.current) {
+      slowFramesRef.current = intervalRef.current >= SLOW_INTERVAL_MS ? slowFramesRef.current + 1 : 0;
+      if (slowFramesRef.current >= SLOW_FRAMES) slowRef.current = true;
+    }
 
     if (st === "live") {
       // Exactly one face in THIS frame too (the smoothed flags lag a few hundred ms)
@@ -800,7 +862,7 @@ export default function LiveSelfieCapture({
     if (st === "challenge") {
       const c = challengeRef.current;
       if (!c) return;
-      if (!trackContinuity(c, analysis, now)) {
+      if (!trackContinuity(c, analysis, now, slowRef.current)) {
         abortToLive("We lost track of your face. Keep your face in the oval and repeat the quick actions.");
         return;
       }
@@ -809,12 +871,12 @@ export default function LiveSelfieCapture({
       const critical = CRITICAL_DURING_CHALLENGE.find((k) => flags[k]);
       if (critical) {
         if (c.lostSince === null) c.lostSince = now;
-        if (now - c.lostSince > LOST_ABORT_MS) abortToLive(`Liveness check stopped: ${ISSUE_MESSAGES[critical]}.`);
+        if (now - c.lostSince > (slowRef.current ? SLOW_TIMING.lostAbortMs : LOST_ABORT_MS)) abortToLive(`Liveness check stopped: ${ISSUE_MESSAGES[critical]}.`);
         return;
       }
       c.lostSince = null;
 
-      if (now - c.stepStartedAt > STEP_TIMEOUT_MS) {
+      if (now - c.stepStartedAt > (slowRef.current ? SLOW_TIMING.stepTimeoutMs : STEP_TIMEOUT_MS)) {
         abortToLive("We couldn't detect the movement in time. Let's try again — follow the instruction on the camera.");
         return;
       }
@@ -835,7 +897,7 @@ export default function LiveSelfieCapture({
       }
 
       const step = c.steps[c.index];
-      if (updateChallengeStep(step, analysis, c.stepState)) {
+      if (updateChallengeStep(step, analysis, c.stepState, { slow: slowRef.current })) {
         c.completed.push(step);
         c.completedAt.push(new Date().toISOString());
         c.index += 1;
@@ -857,7 +919,7 @@ export default function LiveSelfieCapture({
     if (st === "ready") {
       const c = challengeRef.current;
       if (!c) return;
-      if (!trackContinuity(c, analysis, now)) {
+      if (!trackContinuity(c, analysis, now, slowRef.current)) {
         abortToLive("We lost track of your face. Keep your face in the oval and repeat the quick actions.");
         return;
       }
@@ -876,6 +938,7 @@ export default function LiveSelfieCapture({
 
   /** Eyewear seen in too many of the last RECENT_APPEARANCE_MS of judged frames, or null. */
   function recentAppearanceIssue(now) {
+    if (eyewearOverrideRef.current) return null;
     const recent = appearanceHistoryRef.current.filter((h) => h.t >= now - RECENT_APPEARANCE_MS);
     if (!recent.length) return null;
     return APPEARANCE_PHOTO_CHECKS.find((k) => recent.filter((h) => h[k]).length / recent.length >= RECENT_APPEARANCE_MAX) || null;
@@ -1148,6 +1211,17 @@ export default function LiveSelfieCapture({
     onCancel?.();
   };
 
+  /** User confirms they wear no glasses / goggles: the eyewear check stops blocking (recorded). */
+  const confirmNoEyewear = () => {
+    const ok = typeof window === "undefined" || window.confirm(
+      "Continue only if you are NOT wearing glasses or goggles.\n\nYour photo will still be verified and is reviewed by our team.",
+    );
+    if (!ok) return;
+    eyewearOverrideRef.current = true;
+    setOfferEyewearOverride(false);
+    viewKeyRef.current = "";
+  };
+
   const retryFatal = () => {
     if (fatal?.kind === "unsupported" || fatal?.kind === "session_expired") return;
     startCamera();
@@ -1246,7 +1320,7 @@ export default function LiveSelfieCapture({
 
   const content = (
     <div
-      className={`lsc-root lsc-${variant}`}
+      className={`lsc-root lsc-${variant}${isMobile ? " lsc-lite" : ""}`}
       role="dialog"
       aria-modal={variant === "modal"}
       aria-label="Selfie capture"
@@ -1435,6 +1509,13 @@ export default function LiveSelfieCapture({
             {issues.filter((k) => DETECTED_LABELS[k]).map((k) => (
               <span key={k} className="lsc-alert-chip">⚠ {DETECTED_LABELS[k]}</span>
             ))}
+          </div>
+        )}
+
+        {showCamera && offerEyewearOverride && LOOP_STAGES.includes(stage) && (issues.includes("sunglasses") || issues.includes("glasses")) && (
+          <div className="lsc-eyewear-offer">
+            <p>Not wearing glasses or goggles? Bright light or reflections can confuse this check.</p>
+            <button type="button" className="lsc-btn lsc-btn-ghost" onClick={confirmNoEyewear}>I&apos;m not wearing glasses — continue</button>
           </div>
         )}
 
@@ -1650,6 +1731,8 @@ const STYLES = `
 .lsc-banner-success { background: rgba(48,164,108,0.1); color: #1f7a4f; border: 1px solid rgba(48,164,108,0.3); }
 .lsc-alerts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .lsc-alert-chip { background: #dc2626; color: #fff; font-weight: 800; font-size: 0.8rem; padding: 7px 12px; border-radius: 999px; animation: lsc-rise 0.3s ease-out; }
+.lsc-eyewear-offer { margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: var(--lsc-soft); text-align: center; }
+.lsc-eyewear-offer p { margin: 0 0 8px; font-size: 0.8rem; color: var(--lsc-muted); }
 .lsc-link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
 
 /* Checklist */
@@ -1686,4 +1769,9 @@ const STYLES = `
 @media (prefers-reduced-motion: reduce) {
   .lsc-live-dot, .lsc-oval-glow, .lsc-panel { animation: none !important; }
 }
+/* Phones: no endless decorative animations / blur over the live video (each repaints every frame) */
+.lsc-lite .lsc-live-dot, .lsc-lite .lsc-oval-glow { animation: none !important; }
+.lsc-lite .lsc-oval-glow { opacity: 0.3; }
+.lsc-lite .lsc-camera { box-shadow: none; }
+.lsc-modal.lsc-lite, .lsc-lite .lsc-modal { backdrop-filter: none; -webkit-backdrop-filter: none; }
 `;
