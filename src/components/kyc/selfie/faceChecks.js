@@ -80,10 +80,12 @@ export const THRESHOLDS = {
   glassesRimLine: 3.0, // reported in metrics only
   glassesTempleLine: 4.4,
 
-  // Phones: front cameras sharpen edges and smooth skin (beauty / noise filters), which inflates
-  // every edge-vs-cheek ratio and darkens eyes in dim rooms. Stronger evidence is required there.
-  mobileCheekEdgeFloor: 4.5,
-  mobileGlassesFactor: 1.2, // bridge line AND bridge edge must both exceed threshold × this
+  // Phones — CLEAR glasses: same rule as the desktop, with a slightly lower bridge-line threshold
+  // (the face is analysed at a smaller size on phones, so a thin frame gives a weaker line).
+  // Real phone selfies: with glasses bridge line 3.46 / bridge edge 2.43 (missed by the old stricter
+  // phone rule); without glasses 2.69 / 1.56, 1.44 / 0.90, 2.17 / 1.61.
+  mobileGlassesBridgeLine: 3.3,
+  // Phones — GOGGLES / sunglasses stay strict (dim rooms + dark eyes gave false "goggles" alerts):
   mobileSunglassDarkRatio: 0.4,
   mobileSunglassMaxTexture: 0.12,
   mobileSunglassUnderRatio: 0.38,
@@ -383,7 +385,7 @@ let scanCanvas = null;
  * Runs the scanner on one tile of `frame` (canvas / video, un-mirrored). Returns true when it
  * finds a face that is not the user's (mainBox: normalised { cx, cy, w, h } from analyzeFrame).
  */
-export function scanTileForExtraFace(scanner, frame, tileIndex, mainBox, tiles = EXTRA_FACE_TILES) {
+export function scanTileForExtraFace(scanner, frame, tileIndex, mainBox, tiles = EXTRA_FACE_TILES, maxSide = SCAN_MAX_SIDE) {
   const tile = tiles[tileIndex % tiles.length];
   const W = frame.videoWidth || frame.width;
   const H = frame.videoHeight || frame.height;
@@ -393,7 +395,7 @@ export function scanTileForExtraFace(scanner, frame, tileIndex, mainBox, tiles =
   const sy = crop.sy + tile.y * crop.sh;
   const sw = tile.s * crop.sw;
   const sh = tile.s * crop.sh;
-  const scale = Math.min(1, SCAN_MAX_SIDE / Math.max(sw, sh));
+  const scale = Math.min(1, maxSide / Math.max(sw, sh));
   if (!scanCanvas) scanCanvas = document.createElement("canvas");
   const cw = Math.max(1, Math.round(sw * scale));
   const ch = Math.max(1, Math.round(sh * scale));
@@ -589,7 +591,7 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
     cr: (rCheek.cr + lCheek.cr) / 2,
   };
   const cheekEdge = Math.max(
-    mobile ? THRESHOLDS.mobileCheekEdgeFloor : 3,
+    3,
     (horizontalEdgeEnergy(img, squareBox(lms[LM.rightCheek], cheekHalf, aspect)) +
       horizontalEdgeEnergy(img, squareBox(lms[LM.leftCheek], cheekHalf, aspect))) / 2,
   );
@@ -678,13 +680,10 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
       (rimLine > THRESHOLDS.glassesRimLine ? 1 : 0) +
       (templeLine > THRESHOLDS.glassesTempleLine ? 1 : 0);
     metrics.glassesLines = frameLines;
-    if (mobile) {
-      // Phones: the temple area often catches hair / ear / background edges, so only a frame
-      // clearly across the nose bridge (strong line AND strong edge energy) counts
-      const f = THRESHOLDS.mobileGlassesFactor;
-      if (bridgeLine > THRESHOLDS.glassesBridgeLine * f && bridgeEdge > THRESHOLDS.glassesBridgeEdge * f) flags.glasses = true;
-    } else if (
-      bridgeLine > THRESHOLDS.glassesBridgeLine &&
+    // A frame across the nose bridge (strong line) confirmed by its edge energy or by an arm line
+    const bridgeLineMin = mobile ? THRESHOLDS.mobileGlassesBridgeLine : THRESHOLDS.glassesBridgeLine;
+    if (
+      bridgeLine > bridgeLineMin &&
       (bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine)
     ) {
       flags.glasses = true;

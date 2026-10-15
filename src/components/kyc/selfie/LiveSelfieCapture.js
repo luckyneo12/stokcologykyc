@@ -54,6 +54,24 @@ const MIN_ANALYSIS_WIDTH = 96;
 // face detection; on every analysis it roughly doubled the work). The photo itself still gets
 // the complete scan before it is accepted.
 const MOBILE_TILE_SCAN_MS = 800;
+
+// ── Low-end phones (an analysis keeps taking over LOW_END_ANALYSIS_MS) ──
+// Each analysis blocks the page while it runs; on such phones it took ~300 ms, so with the normal
+// spacing the page was blocked ~80% of the time (the lag). For these phones only:
+//  - the page is blocked at most ~half the time (LOW_END_DUTY), up to LOW_END_MAX_INTERVAL_MS apart
+//  - the background-people scan runs every LOW_END_TILE_SCAN_MS on a smaller picture, not during the
+//    head-turn / blink actions (the photo itself still gets the full scan before it is accepted)
+//  - the picture copy for lighting / eyewear runs on every second analysis (the last result is kept
+//    in between; the photo itself is always fully checked)
+// Laptops and normal phones are not affected.
+const LOW_END_ANALYSIS_MS = 100;
+const LOW_END_FRAMES = 5;
+const LOW_END_DUTY = 2; // interval = analysis time × this → page blocked ≤ 50%
+const LOW_END_MAX_INTERVAL_MS = 650;
+const LOW_END_TILE_SCAN_MS = 2500;
+const LOW_END_SCAN_SIDE = 384;
+const LOW_END_EXTRA_FACE_HOLD_MS = 6000; // scans are further apart → keep a seen person flagged longer
+const PIXEL_FLAGS = ["tooDark", "backlit", "tooBright", "uneven"]; // results that need the picture copy
 // Stages where the pixel checks (lighting, eyewear) are not used — only face position / pose
 const NO_PIXEL_STAGES = ["challenge", "review", "submitting"];
 const STABLE_MS = 600; // blocking checks must pass continuously this long before the liveness actions start
@@ -111,11 +129,6 @@ const SLOW_TIMING = {
   continuityMaxScale: 1.6,
 };
 
-// ── Eyewear the user says they are not wearing ──
-// When "glasses / goggles detected" keeps blocking for this long, the user can confirm they wear
-// none and continue. The photo is then judged by the server's liveness + face match as usual, and
-// the confirmation is stored with it (clientChecks.eyewearOverride) for the reviewer.
-const EYEWEAR_OVERRIDE_AFTER_MS = 8000;
 // Ready + every check passing this long → the selfie is taken automatically
 const AUTO_CAPTURE_MS = 1000;
 // Glasses / goggles at the moment of the click. The on-screen warning waits ~1–1.5 s before
@@ -283,9 +296,11 @@ export default function LiveSelfieCapture({
   const blinkTrackerRef = useRef(createBlinkTracker()); // natural blinks (needed before the click)
   const slowRef = useRef(false); // low-end device: lenient timings, see SLOW_TIMING
   const slowFramesRef = useRef(0);
-  const eyewearSinceRef = useRef(null); // when the eyewear warning started blocking
-  const eyewearOverrideRef = useRef(false); // user confirmed: no glasses / goggles
-  const [offerEyewearOverride, setOfferEyewearOverride] = useState(false);
+  const lowEndRef = useRef(false); // low-end phone (see LOW_END_*) — sticky for this capture
+  const lowEndFramesRef = useRef(0);
+  const analysisCountRef = useRef(0);
+  const lastPixelFlagsRef = useRef({}); // lighting results of the last analysis with a picture copy
+  const partTimesRef = useRef({ detect: 0, pixels: 0, scan: 0 }); // average ms per part (measurements)
   const errorHoldUntilRef = useRef(0); // no blink counts before this time (after an error)
   const blinkHintRef = useRef({ poseOk: true, since: 0 }); // "look straight and blink" hint (debounced)
   const [errorHold, setErrorHold] = useState(null); // { text } shown on the camera while held
@@ -750,7 +765,10 @@ export default function LiveSelfieCapture({
       delegate: engine?.delegate,
       analysisMs: Math.round(emaRef.current),
       analysisIntervalMs: Math.round(intervalRef.current),
-      eyewearOverride: eyewearOverrideRef.current,
+      lowEndDevice: lowEndRef.current,
+      detectMs: Math.round(partTimesRef.current.detect),
+      pixelsMs: Math.round(partTimesRef.current.pixels),
+      scanMs: Math.round(partTimesRef.current.scan),
       videoW: frame.width,
       videoH: frame.height,
       ...analysis.metrics,
@@ -776,24 +794,48 @@ export default function LiveSelfieCapture({
     } catch (e) {
       return; // transient frame error
     }
-    // Copying the frame's pixels (a GPU → CPU read, slow on phones) only where they are checked
-    const pixels = NO_PIXEL_STAGES.includes(st) ? null : grabPixels(source, video.videoWidth, video.videoHeight);
+    const parts = partTimesRef.current;
+    const tDetect = performance.now();
+    parts.detect = parts.detect ? parts.detect * 0.8 + (tDetect - t0) * 0.2 : tDetect - t0;
+    // Copying the frame's pixels (a GPU → CPU read, slow on phones) only where they are checked;
+    // low-end phones: every second analysis (never while the photo itself is being checked)
+    const lowEnd = lowEndRef.current;
+    const skipPixelsLowEnd = lowEnd && st !== "verifying" && analysisCountRef.current++ % 2 === 1;
+    const pixels = NO_PIXEL_STAGES.includes(st) || skipPixelsLowEnd ? null : grabPixels(source, video.videoWidth, video.videoHeight);
+    if (pixels) {
+      const tPixels = performance.now() - tDetect;
+      parts.pixels = parts.pixels ? parts.pixels * 0.8 + tPixels * 0.2 : tPixels;
+    }
     const analysis = analyzeFrame(result, pixels, video.videoWidth, video.videoHeight, prevNoseRef.current, {
       mobile: isMobile,
       dtMs: prevNoseRef.current ? now - prevNoseAtRef.current : 0,
     });
     prevNoseRef.current = analysis.nose;
     prevNoseAtRef.current = now;
+    if (pixels) {
+      lastPixelFlagsRef.current = Object.fromEntries(PIXEL_FLAGS.filter((k) => analysis.flags[k]).map((k) => [k, true]));
+    } else if (skipPixelsLowEnd) {
+      Object.assign(analysis.flags, lastPixelFlagsRef.current);
+    }
     if (analysis.box) lastFaceWidthRef.current = analysis.box.w;
 
     // People further back are too small for the live detector: scan one zoomed-in tile per
     // analysis and keep "multiple faces" on for a while after another person was seen
-    if (analysis.faceCount === 1 && scannerRef.current && LOOP_STAGES.includes(st) && (!isMobile || now - lastTileScanRef.current >= MOBILE_TILE_SCAN_MS)) {
+    const scanEvery = lowEnd ? LOW_END_TILE_SCAN_MS : isMobile ? MOBILE_TILE_SCAN_MS : 0;
+    const scanNow = LOOP_STAGES.includes(st) && !(lowEnd && st === "challenge");
+    if (analysis.faceCount === 1 && scannerRef.current && scanNow && now - lastTileScanRef.current >= scanEvery) {
       lastTileScanRef.current = now;
       const tile = scanTileRef.current++;
-      if (scanTileForExtraFace(scannerRef.current, source, tile, analysis.box)) extraFaceAtRef.current = now;
+      const tScan = performance.now();
+      const found = lowEnd
+        ? scanTileForExtraFace(scannerRef.current, source, tile, analysis.box, EXTRA_FACE_TILES_LITE, LOW_END_SCAN_SIDE)
+        : scanTileForExtraFace(scannerRef.current, source, tile, analysis.box);
+      const scanMs = performance.now() - tScan;
+      parts.scan = parts.scan ? parts.scan * 0.8 + scanMs * 0.2 : scanMs;
+      if (found) extraFaceAtRef.current = now;
     }
-    if (analysis.faceCount >= 1 && now - extraFaceAtRef.current < EXTRA_FACE_HOLD_MS) analysis.flags.multipleFaces = true;
+    const extraFaceHold = lowEnd ? LOW_END_EXTRA_FACE_HOLD_MS : EXTRA_FACE_HOLD_MS;
+    if (analysis.faceCount >= 1 && now - extraFaceAtRef.current < extraFaceHold) analysis.flags.multipleFaces = true;
 
     // Natural blink tracking (eyes closed → open again)
     if (now < errorHoldUntilRef.current) {
@@ -829,7 +871,7 @@ export default function LiveSelfieCapture({
       const failed =
         FINAL_PHOTO_CHECKS.find((k) => analysis.flags[k]) ||
         // The photo's own frame must be judged (frontal, lit) and free of eyewear…
-        (!analysis.appearanceChecked ? (analysis.appearanceSkip || "notStraight") : (!eyewearOverrideRef.current && APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k]))) ||
+        (!analysis.appearanceChecked ? (analysis.appearanceSkip || "notStraight") : APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k])) ||
         // …and so must the last moments before it (catches glasses put on just before the click)
         recentAppearanceIssue(now);
       if (!failed) {
@@ -858,18 +900,6 @@ export default function LiveSelfieCapture({
     }
 
     const flags = smootherRef.current.push(analysis.flags, now, analysis.appearanceChecked !== false);
-    // Eyewear warning blocking for a long time → offer "I'm not wearing glasses"
-    const eyewearShown = Boolean(flags.sunglasses || flags.glasses) && (st === "live" || st === "ready");
-    if (eyewearOverrideRef.current) {
-      delete flags.sunglasses;
-      delete flags.glasses;
-    } else if (eyewearShown) {
-      if (eyewearSinceRef.current === null) eyewearSinceRef.current = now;
-      if (now - eyewearSinceRef.current >= EYEWEAR_OVERRIDE_AFTER_MS) setOfferEyewearOverride(true);
-    } else if (st === "live" || st === "ready") {
-      eyewearSinceRef.current = null;
-      setOfferEyewearOverride(false);
-    }
     const allIssues = orderedIssues(flags);
     const blockingSet = st === "ready" ? READY_BLOCKING_ISSUES : BLOCKING_ISSUES;
     const issues = allIssues.filter((k) => blockingSet.includes(k));
@@ -880,9 +910,15 @@ export default function LiveSelfieCapture({
     emaRef.current = emaRef.current * 0.8 + dt * 0.2;
     // Phones: at most ~25% of the main thread (touch, scrolling and the UI stay responsive);
     // still ~8 analyses/s on a typical phone, enough to catch a natural blink
-    intervalRef.current = isMobile
-      ? Math.min(350, Math.max(110, emaRef.current * 4))
-      : Math.min(320, Math.max(90, emaRef.current * 3));
+    intervalRef.current = lowEndRef.current
+      ? Math.min(LOW_END_MAX_INTERVAL_MS, Math.max(110, emaRef.current * LOW_END_DUTY))
+      : isMobile
+        ? Math.min(350, Math.max(110, emaRef.current * 4))
+        : Math.min(320, Math.max(90, emaRef.current * 3));
+    if (isMobile && !lowEndRef.current) {
+      lowEndFramesRef.current = emaRef.current > LOW_END_ANALYSIS_MS ? lowEndFramesRef.current + 1 : 0;
+      if (lowEndFramesRef.current >= LOW_END_FRAMES) lowEndRef.current = true;
+    }
     if (!slowRef.current) {
       slowFramesRef.current = intervalRef.current >= SLOW_INTERVAL_MS ? slowFramesRef.current + 1 : 0;
       if (slowFramesRef.current >= SLOW_FRAMES) slowRef.current = true;
@@ -994,7 +1030,6 @@ export default function LiveSelfieCapture({
 
   /** Eyewear seen in too many of the last RECENT_APPEARANCE_MS of judged frames, or null. */
   function recentAppearanceIssue(now) {
-    if (eyewearOverrideRef.current) return null;
     const recent = appearanceHistoryRef.current.filter((h) => h.t >= now - RECENT_APPEARANCE_MS);
     if (!recent.length) return null;
     return APPEARANCE_PHOTO_CHECKS.find((k) => recent.filter((h) => h[k]).length / recent.length >= RECENT_APPEARANCE_MAX) || null;
@@ -1265,17 +1300,6 @@ export default function LiveSelfieCapture({
     stopRecording();
     stopCamera();
     onCancel?.();
-  };
-
-  /** User confirms they wear no glasses / goggles: the eyewear check stops blocking (recorded). */
-  const confirmNoEyewear = () => {
-    const ok = typeof window === "undefined" || window.confirm(
-      "Continue only if you are NOT wearing glasses or goggles.\n\nYour photo will still be verified and is reviewed by our team.",
-    );
-    if (!ok) return;
-    eyewearOverrideRef.current = true;
-    setOfferEyewearOverride(false);
-    viewKeyRef.current = "";
   };
 
   const retryFatal = () => {
@@ -1572,13 +1596,6 @@ export default function LiveSelfieCapture({
           </div>
         )}
 
-        {showCamera && offerEyewearOverride && LOOP_STAGES.includes(stage) && (issues.includes("sunglasses") || issues.includes("glasses")) && (
-          <div className="lsc-eyewear-offer">
-            <p>Not wearing glasses or goggles? Bright light or reflections can confuse this check.</p>
-            <button type="button" className="lsc-btn lsc-btn-ghost" onClick={confirmNoEyewear}>I&apos;m not wearing glasses — continue</button>
-          </div>
-        )}
-
         {engineState === "failed" && showCamera && (
           <div className="lsc-banner lsc-banner-error" role="alert">
             Face detection couldn't load. Check your connection and{" "}
@@ -1791,8 +1808,6 @@ const STYLES = `
 .lsc-banner-success { background: rgba(48,164,108,0.1); color: #1f7a4f; border: 1px solid rgba(48,164,108,0.3); }
 .lsc-alerts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .lsc-alert-chip { background: #dc2626; color: #fff; font-weight: 800; font-size: 0.8rem; padding: 7px 12px; border-radius: 999px; animation: lsc-rise 0.3s ease-out; }
-.lsc-eyewear-offer { margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: var(--lsc-soft); text-align: center; }
-.lsc-eyewear-offer p { margin: 0 0 8px; font-size: 0.8rem; color: var(--lsc-muted); }
 .lsc-link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
 
 /* Checklist */
