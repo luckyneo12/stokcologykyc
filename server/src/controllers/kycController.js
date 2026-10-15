@@ -1090,6 +1090,44 @@ const bypassEsign = async (req, res, next) => {
   }
 };
 
+// ─── eSign preview: reuse of identical builds (speed only) ──────────────────────────────────────
+const PREVIEW_CACHE = new Map(); // fingerprint → { at, promise }
+const PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
+const PREVIEW_CACHE_MAX = 15;
+
+/** Hash of everything a preview PDF is built from. Volatile bookkeeping fields are left out. */
+async function previewFingerprint(applicationData, skipAppend) {
+  const { updatedAt, currentStep, generatedPdfBase64, user, ...data } = applicationData;
+  const { updatedAt: userUpdatedAt, lastLoginAt, ...userData } = user || {};
+  const [template, eStamp] = await Promise.all([
+    prisma.pdfTemplate.findFirst({ where: { isActive: true }, select: { id: true, updatedAt: true } }).catch(() => null),
+    applicationData.userId
+      ? prisma.eStamp.findUnique({ where: { assignedTo: applicationData.userId }, select: { fileUrl: true, updatedAt: true } }).catch(() => null)
+      : null,
+  ]);
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ data, userData, skipAppend: !!skipAppend, template, eStamp }))
+    .digest("hex");
+}
+
+/** Runs build() once per fingerprint; callers with the same fingerprint share the result. */
+function cachedPreviewBuild(fingerprint, build) {
+  const now = Date.now();
+  for (const [key, entry] of PREVIEW_CACHE) {
+    if (now - entry.at > PREVIEW_CACHE_TTL_MS) PREVIEW_CACHE.delete(key);
+  }
+  let entry = PREVIEW_CACHE.get(fingerprint);
+  if (!entry) {
+    entry = { at: now, promise: Promise.resolve().then(build) };
+    // a failed build is never reused
+    entry.promise.catch(() => PREVIEW_CACHE.delete(fingerprint));
+    PREVIEW_CACHE.set(fingerprint, entry);
+    while (PREVIEW_CACHE.size > PREVIEW_CACHE_MAX) PREVIEW_CACHE.delete(PREVIEW_CACHE.keys().next().value);
+  }
+  return entry.promise;
+}
+
 const previewPdf = async (req, res, next) => {
   try {
     const { generateKycPdf } = require("../utils/pdfGenerator");
@@ -1121,16 +1159,6 @@ const previewPdf = async (req, res, next) => {
 
     // Merge latest frontend state with DB state
     const applicationData = { ...app, ...req.body };
-    
-    // TEMPORARY LOGGING TO DEBUG NOMINEE PDF ISSUE
-    require("fs").writeFileSync(
-      require("path").join(__dirname, "../../../preview_pdf_nominee_log.json"),
-      JSON.stringify({
-        appNomineeDetails: app.nomineeDetails,
-        reqBodyNomineeDetails: req.body.nomineeDetails,
-        mergedApplicationDataNomineeDetails: applicationData.nomineeDetails
-      }, null, 2)
-    );
     
     // Preserve backend documents (like Digilocker PDFs) that the frontend might not have in its state
     if (app.documents) {
@@ -1167,7 +1195,14 @@ const previewPdf = async (req, res, next) => {
     }
 
     const skipAppend = applicationData.previewOnly && !applicationData.forceAppendDocuments;
-    const pdfBase64 = await generateKycPdf(applicationData, { skipDocumentAppend: skipAppend });
+
+    // Same data → same PDF: a preview built moments ago (or being built right now, e.g. started in the
+    // background from the document step) is reused instead of building it again. The fingerprint covers
+    // everything the PDF is built from: the merged data, the active template version and the e-stamp.
+    const fingerprint = await previewFingerprint(applicationData, skipAppend);
+    const pdfBase64 = await cachedPreviewBuild(fingerprint, () =>
+      generateKycPdf(applicationData, { skipDocumentAppend: skipAppend }),
+    );
 
     res.json({ success: true, pdfBase64 });
   } catch (error) {

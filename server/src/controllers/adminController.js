@@ -249,6 +249,12 @@ const reviewApplication = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
+    // A reviewer can move an application back to an earlier step (or keep it), never forward: the user
+    // must complete the steps after the current one themselves
+    if (currentStep !== undefined && currentStep > Number(app.currentStep || 0)) {
+      return res.status(400).json({ success: false, error: "The step can only be moved back to an earlier step, not forward. The user has to complete the next steps themselves." });
+    }
+
     // Checked on the step the application ends up at too: "Change Status" can also move it back to an
     // earlier step, and an application before eSign can be neither approved nor rejected
     const targetApp = currentStep !== undefined ? { ...app, currentStep } : app;

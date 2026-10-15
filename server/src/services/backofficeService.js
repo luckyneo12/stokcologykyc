@@ -873,3 +873,5 @@ class BackofficeService {
 }
 
 module.exports = new BackofficeService();
+// State name → code exactly as sent to the back office (also used by the admin "Export All")
+module.exports.mapState = mapState;

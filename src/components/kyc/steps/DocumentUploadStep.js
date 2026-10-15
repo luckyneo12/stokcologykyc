@@ -122,7 +122,8 @@ export default function DocumentUploadStep() {
     financialProof, signature, panUpload, selfie, personalDetails, 
     segments, bankDetails, updateState, nextStep, prevStep, addToast, 
     applicationId, setApplicationId, syncProgress, updateNested,
-    preGeneratePdf, rejectionMode, stepStatuses, rejectedStepsList
+    preGeneratePdf, rejectionMode, stepStatuses, rejectedStepsList,
+    identityDetails, address, nomineeDetails, ocrData, selfieDetails, documents
   } = useKYC();
 
   const isRejection = Boolean(rejectionMode);
@@ -190,6 +191,41 @@ export default function DocumentUploadStep() {
   const [resumeUrl, setResumeUrl] = useState("");
   const [timeLeft, setTimeLeft] = useState(0);
   const [qrExpired, setQrExpired] = useState(false);
+
+  // ─── Speed: build the eSign preview PDF in the background ─────────────────────────────────────
+  // Once everything on this step is done, the same request the eSign preview will make is sent now, so
+  // the server has the PDF ready (or half-built) when the user reaches the preview. Same data as the
+  // preview's request → the server reuses it; anything changes later → the preview simply builds fresh.
+  // Nothing is shown or saved here and a failure is ignored — the preview works exactly as before.
+  const lastPrebuildRef = useRef("");
+  useEffect(() => {
+    const ready =
+      !!sigPreview &&
+      selfiePhase === "done" &&
+      !(needsBankProof && !bankProofPreview) &&
+      !(isFinProofRequired && (!finType || !finPreview)) &&
+      !(finPreview && !finType);
+    if (!ready || typeof window === "undefined") return;
+    // Same object, same key order as the eSign preview's request (EsignPreviewStep). Without an uploaded
+    // financial proof, "Continue" saves { type: "Skipped" } — the preview then sends that.
+    const body = JSON.stringify({
+      personalDetails, identityDetails, address, bankDetails, nomineeDetails, ocrData, selfieDetails, documents,
+      panUpload, financialProof: finPreview ? financialProof : { type: "Skipped" }, selfie, signature,
+    });
+    if (body === lastPrebuildRef.current) return;
+    const timer = setTimeout(() => {
+      lastPrebuildRef.current = body;
+      const token = sessionStorage.getItem("kycToken") || localStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || localStorage.getItem("token");
+      fetch(`${API_BASE_URL}/api/kyc/preview-pdf`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body,
+      }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [sigPreview, selfiePhase, needsBankProof, bankProofPreview, isFinProofRequired, finType, finPreview,
+      personalDetails, identityDetails, address, bankDetails, nomineeDetails, ocrData, selfieDetails, documents,
+      panUpload, financialProof, selfie, signature]);
   const timerRef = useRef(null);
   const selfiePollRef = useRef(null);
   const currentDigioRequestId = useRef(null);

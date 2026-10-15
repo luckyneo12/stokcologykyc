@@ -3,6 +3,62 @@ const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const axios = require('axios');
+
+// ─── Download helpers (SPEED ONLY) ─────────────────────────────────────────────────────────────
+// Every file the PDF needs is requested at the start, all at once; the code below then runs exactly as
+// before, in the same order, and simply picks up the file that is already downloaded. Same URLs, same
+// request options, same handling of the answer → the PDF itself is unchanged.
+const IMG_FETCH_OPTS = { responseType: 'arraybuffer', validateStatus: () => true, timeout: 10000 };
+const DOC_FETCH_OPTS = { responseType: 'arraybuffer', timeout: 10000 };
+const SIG_FETCH_OPTS = { responseType: 'arraybuffer' };
+const GEO_FETCH_OPTS = { headers: { 'User-Agent': 'KYCPortal/1.0' }, timeout: 3000 };
+// Reverse-geocoded selfie addresses (same coordinates → same address), kept across PDF builds
+const GEO_CACHE = new Map();
+const GEO_CACHE_MAX = 500;
+
+const geocodeUrl = (lat, lng) => `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+
+/** URL an image FIELD is downloaded from (Cloudinary: forced to PNG/JPG, as before). */
+function imageFetchUrl(imgRelPath) {
+  if (imgRelPath.includes('cloudinary.com')) {
+    if (imgRelPath.toLowerCase().endsWith('.pdf')) {
+      imgRelPath = imgRelPath.slice(0, -4) + '.png';
+    } else if (!imgRelPath.includes('f_jpg') && !imgRelPath.includes('f_png')) {
+      imgRelPath = imgRelPath.replace('/upload/', '/upload/f_jpg/');
+    }
+  }
+  return imgRelPath;
+}
+
+/** URL an APPENDED document is downloaded from (Cloudinary: signed private download URL, as before). */
+function docDownloadUrl(docPathRel) {
+  const isPdf = docPathRel.toLowerCase().endsWith('.pdf') || docPathRel.includes('application/pdf') || docPathRel.includes('f_pdf');
+  let downloadUrl = docPathRel;
+  if (docPathRel.includes('cloudinary.com')) {
+    const urlObj = new URL(docPathRel);
+    const pathMatch = urlObj.pathname.match(/\/(image|video|raw)\/upload\/(?:v\d+\/)?(.+)$/);
+    if (pathMatch) {
+      const { v2: cloudinary } = require("cloudinary");
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+      });
+      const resourceType = pathMatch[1];
+      const publicIdWithExt = pathMatch[2];
+      const ext = publicIdWithExt.match(/\.([^.]+)$/)?.[1] || (isPdf ? "pdf" : "png");
+      const publicId = publicIdWithExt.replace(/\.[^.]+$/, "");
+
+      downloadUrl = cloudinary.utils.private_download_url(publicId, ext, {
+        resource_type: resourceType,
+        type: "upload",
+        attachment: false,
+      });
+    }
+  }
+  return downloadUrl;
+}
 
 function getVariableValue(variableName, appData) {
   const safeJsonParse = (str) => {
@@ -589,6 +645,201 @@ async function generateKycPdf(applicationData, options = {}) {
       where: { isActive: true }
     });
 
+    // ─── Speed: start every download now (see the helpers at the top). Nothing below changes. ───
+    const timing = { start: Date.now() };
+    const fetchCache = new Map();
+    const prefetch = (mode, url, opts) => {
+      if (!url || !/^https?:\/\//i.test(url)) return;
+      const key = `${mode}|${url}`;
+      if (fetchCache.has(key)) return;
+      const p = axios.get(url, opts);
+      p.catch(() => {}); // a failed early download is handled where the file is used
+      fetchCache.set(key, p);
+    };
+    /** The early download if there is one (same answer as a request made now), else a normal request. */
+    const getWithPrefetch = async (mode, url, opts) => {
+      const early = fetchCache.get(`${mode}|${url}`);
+      if (!early) return axios.get(url, opts);
+      try {
+        return await early;
+      } catch (e) {
+        // A quick failure (network blip) is retried once; a timeout is not (it would only wait longer)
+        if (e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message || '')) throw e;
+        return axios.get(url, opts);
+      }
+    };
+
+    const imageVariables = [
+      'selfie', 'signature', 'signatureOptOut', 'signatureOptIn', 
+      'signatureNominee2', 'signatureNominee3',
+      'panImage', 'aadhaarImage', 
+      'bankProof', 'incomeProof', 'pepProof', 
+      'nominee1Proof', 'nominee2Proof', 'nominee3Proof', 
+      'guardian1Proof', 'guardian2Proof', 'guardian3Proof', 
+      'addressProof', 'panDocument'
+    ];
+
+    /** The file an image field shows (moved unchanged from the field loop). */
+    const resolveFieldImagePath = (field) => {
+      let imgRelPath = null;
+      if (field.variable === 'selfie') {
+        imgRelPath = (typeof parsedSelfieDetails === 'string' ? parsedSelfieDetails : (parsedSelfieDetails.filePreview || parsedSelfieDetails.path || parsedSelfieDetails.preview)) 
+                     || (typeof applicationData.selfie === 'string' ? applicationData.selfie : applicationData.selfie?.preview);
+      } else if (field.variable === 'signature' || field.variable === 'signatureOptOut' || field.variable === 'signatureOptIn' || field.variable === 'signatureNominee2' || field.variable === 'signatureNominee3') {
+        let shouldShow = false;
+        if (field.variable === 'signature') shouldShow = true;
+        else if (field.variable === 'signatureOptOut' && !isNomineeOptIn) shouldShow = true;
+        else if (field.variable === 'signatureOptIn' && isNomineeOptIn) shouldShow = true;
+        else if (field.variable === 'signatureNominee2' && isNomineeOptIn && parsedNomineeDetails.nominees?.length > 1 && parsedNomineeDetails.nominees[1]?.name) shouldShow = true;
+        else if (field.variable === 'signatureNominee3' && isNomineeOptIn && parsedNomineeDetails.nominees?.length > 2 && parsedNomineeDetails.nominees[2]?.name) shouldShow = true;
+      
+        if (shouldShow) {
+          imgRelPath = typeof parsedSignature === 'string' ? parsedSignature : (parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview);
+        }
+
+      } else if (field.variable === 'panImage') {
+        imgRelPath = typeof parsedPanUpload === 'string' ? parsedPanUpload : (parsedPanUpload?.filePreview || parsedPanUpload?.path || parsedPanUpload?.preview);
+        if (!imgRelPath) {
+          const panDoc = parsedDocuments.find(d => d.path && /digilocker_pan|_pan_issued|(^|[\/_])pan([\/_]|\.)/i.test(d.path));
+          if (panDoc) imgRelPath = panDoc.path;
+        }
+      } else if (field.variable === 'panDocument') {
+        const panDoc = [...parsedDocuments].reverse().find(d => d.type === 'PAN') 
+                    || [...parsedDocuments].reverse().find(d => d.path && /digilocker_pan|_pan_issued/i.test(d.path));
+        if (panDoc) imgRelPath = panDoc.path;
+      } else if (field.variable === 'aadhaarImage') {
+        const aadhaarDoc = [...parsedDocuments].reverse().find(d => d.type === 'AADHAAR') 
+                        || [...parsedDocuments].reverse().find(d => d.path && d.type !== 'PHOTO' && /digilocker_aadhaar|_aadhaar_issued|aadhaar|aadhar|uid/i.test(d.path));
+        if (aadhaarDoc) imgRelPath = aadhaarDoc.path;
+      } else if (field.variable === 'bankProof') {
+        imgRelPath = typeof parsedBankDetails === 'string' ? parsedBankDetails : (parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof);
+      } else if (field.variable === 'incomeProof') {
+        imgRelPath = typeof parsedFinancialProof === 'string' ? parsedFinancialProof : (parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview);
+      } else if (field.variable === 'pepProof') {
+        imgRelPath = typeof parsedPersonalDetails === 'string' ? parsedPersonalDetails : (parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview);
+      } else if (field.variable === 'nominee1Proof') {
+        if (isNomineeOptIn) {
+          imgRelPath = parsedNomineeDetails?.nominees?.[0]?.proofPath || parsedNomineeDetails?.nominees?.[0]?.proofPreview || parsedNomineeDetails?.nominees?.[0]?.preview;
+        }
+      } else if (field.variable === 'nominee2Proof') {
+        if (isNomineeOptIn) {
+          imgRelPath = parsedNomineeDetails?.nominees?.[1]?.proofPath || parsedNomineeDetails?.nominees?.[1]?.proofPreview || parsedNomineeDetails?.nominees?.[1]?.preview;
+        }
+      } else if (field.variable === 'nominee3Proof') {
+        if (isNomineeOptIn) {
+          imgRelPath = parsedNomineeDetails?.nominees?.[2]?.proofPath || parsedNomineeDetails?.nominees?.[2]?.proofPreview || parsedNomineeDetails?.nominees?.[2]?.preview;
+        }
+      } else if (field.variable === 'guardian1Proof') {
+        if (isNomineeOptIn) {
+          imgRelPath = parsedNomineeDetails?.nominees?.[0]?.guardianProofPath || parsedNomineeDetails?.nominees?.[0]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[0]?.guardianPreview;
+        }
+      } else if (field.variable === 'guardian2Proof') {
+        if (isNomineeOptIn) {
+          imgRelPath = parsedNomineeDetails?.nominees?.[1]?.guardianProofPath || parsedNomineeDetails?.nominees?.[1]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[1]?.guardianPreview;
+        }
+      } else if (field.variable === 'guardian3Proof') {
+        if (isNomineeOptIn) {
+          imgRelPath = parsedNomineeDetails?.nominees?.[2]?.guardianProofPath || parsedNomineeDetails?.nominees?.[2]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[2]?.guardianPreview;
+        }
+      } else if (field.variable === 'addressProof') {
+        const addrDoc = parsedDocuments.find(d => d.path && /address_proof|driving_license|voter|passport/i.test(d.path));
+        if (addrDoc) imgRelPath = addrDoc.path;
+      }
+
+      return imgRelPath;
+    };
+
+    let templateFields = [];
+    if (activeTemplate) {
+      let parsedFields = safeJsonParse(activeTemplate.fields);
+      if (Array.isArray(parsedFields)) {
+        templateFields = parsedFields;
+      } else if (parsedFields && Array.isArray(parsedFields.variables)) {
+        templateFields = parsedFields.variables;
+      }
+    }
+
+      const docsToAppend = [];
+      const seenTypes = new Set();
+      
+      // Reverse the array so we process the newest documents first
+      [...parsedDocuments].reverse().forEach(doc => {
+        if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'ESIGN_DOCUMENT' && doc.type !== 'DIGILOCKER_DOCUMENT') {
+          // Use the document type as a unique identifier
+          const typeKey = doc.type || doc.name || doc.path;
+          
+          if (!seenTypes.has(typeKey)) {
+            seenTypes.add(typeKey);
+            // unshift puts the newest documents at the front so the chronological order is preserved
+            docsToAppend.unshift({ path: doc.path, title: doc.type || 'Document' });
+          }
+        }
+      });
+    
+    const panPath = parsedPanUpload?.path || parsedPanUpload?.filePreview || parsedPanUpload?.preview;
+    if (panPath) docsToAppend.push({ path: panPath, title: 'PAN Upload' });
+    
+    const finPath = parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview;
+    if (finPath) docsToAppend.push({ path: finPath, title: 'Financial Proof' });
+    
+    const bankPath = parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof;
+    if (bankPath) docsToAppend.push({ path: bankPath, title: 'Bank Proof' });
+    
+    // Add fallback to path if the previous bug caused pepProof to be saved at root of personalDetails
+    const pepPath = parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview || (parsedPersonalDetails?.path && String(parsedPersonalDetails.path).includes("kyc_uploads") ? parsedPersonalDetails.path : null);
+    if (pepPath) docsToAppend.push({ path: pepPath, title: 'PEP Proof' });
+    
+    const actualNomineeDetails = parsedNomineeDetails?.nomineeDetails || parsedNomineeDetails;
+    if (actualNomineeDetails?.nominees && Array.isArray(actualNomineeDetails.nominees)) {
+      actualNomineeDetails.nominees.forEach((nom, idx) => {
+        const nomPath = nom.proofPath || nom.proofPreview || nom.preview;
+        if (nomPath) docsToAppend.push({ path: nomPath, title: `Nominee ${idx + 1} Proof` });
+        
+        const guardPath = nom.guardianProofPath || nom.guardianProofPreview || nom.guardianPreview;
+        if (guardPath) docsToAppend.push({ path: guardPath, title: `Nominee ${idx + 1} Guardian Proof` });
+      });
+    }
+    
+    const parsedSigApp = safeJsonParse(applicationData.signature) || {};
+    const sigDocPath = parsedSigApp?.path || parsedSigApp?.filePreview || parsedSigApp?.preview || (typeof parsedSigApp === 'string' && parsedSigApp.startsWith('http') ? parsedSigApp : null);
+    if (sigDocPath) docsToAppend.push({ path: sigDocPath, title: 'Customer Signature' });
+
+    const selfieDocPath = parsedSelfieDetails?.path || parsedSelfieDetails?.filePreview || parsedSelfieDetails?.preview || applicationData?.selfie?.preview;
+
+    // Start the downloads (images on the form, documents appended at the end, e-stamp, signature, address)
+    try {
+      for (const field of templateFields) {
+        if (!imageVariables.includes(field.variable)) continue;
+        const p = resolveFieldImagePath(field);
+        if (p && /^https?:\/\//i.test(p)) prefetch('img', imageFetchUrl(p), IMG_FETCH_OPTS);
+      }
+      if (!options.skipDocumentAppend) {
+        const prefetchDoc = (p) => {
+          try {
+            if (p && /^https?:\/\//i.test(p)) prefetch('doc', docDownloadUrl(p), DOC_FETCH_OPTS);
+          } catch (e) {}
+        };
+        docsToAppend.forEach((d) => prefetchDoc(d.path));
+        prefetchDoc(selfieDocPath);
+        if (String(parsedPersonalDetails.ddpi || '').toLowerCase() === 'yes' && applicationData.userId) {
+          prisma.eStamp.findUnique({ where: { assignedTo: applicationData.userId } })
+            .then((e) => prefetchDoc(e?.fileUrl))
+            .catch(() => {});
+        }
+        const sigStamp = parsedSignature?.filePreview || parsedSignature?.path || parsedSignature?.preview || (typeof parsedSignature === 'string' ? parsedSignature : null);
+        if (sigStamp && sigStamp.startsWith('http')) prefetch('sig', sigStamp, SIG_FETCH_OPTS);
+        if (selfieDocPath) {
+          const sg = safeJsonParse(applicationData.selfieDetails) || {};
+          const gd = safeJsonParse(applicationData.geoDetails) || {};
+          const lat0 = sg.geo?.latitude || sg.latitude || sg.lat || gd.latitude || gd.lat || '';
+          const lng0 = sg.geo?.longitude || sg.longitude || sg.lng || gd.longitude || gd.lng || '';
+          if (lat0 && lng0 && !GEO_CACHE.has(geocodeUrl(lat0, lng0))) prefetch('geo', geocodeUrl(lat0, lng0), GEO_FETCH_OPTS);
+        }
+      }
+    } catch (e) {
+      console.warn('[PDF Gen] Early downloads not started:', e.message); // the build continues normally
+    }
+
     let officialPdfPath = path.join(__dirname, '../../../public/official_form.pdf');
     if (activeTemplate && activeTemplate.basePdfUrl) {
       // Strip leading slash to prevent path.join from treating it as an absolute path
@@ -637,18 +888,13 @@ async function generateKycPdf(applicationData, options = {}) {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const dingbats = await pdfDoc.embedFont(StandardFonts.ZapfDingbats);
+    timing.loaded = Date.now();
 
     let esignCoordinatesMap = {};
 
     // If template exists, populate fields over the existing pages
     if (activeTemplate) {
-      let parsedFields = safeJsonParse(activeTemplate.fields);
-      let fields = [];
-      if (Array.isArray(parsedFields)) {
-        fields = parsedFields;
-      } else if (parsedFields && Array.isArray(parsedFields.variables)) {
-        fields = parsedFields.variables;
-      }
+      const fields = templateFields;
       const pages = pdfDoc.getPages();
       const embeddedMediaCache = new Map();
 
@@ -662,82 +908,8 @@ async function generateKycPdf(applicationData, options = {}) {
         // We will assume frontend sends y from top, so we do height - y.
         const yPos = height - field.y; 
 
-        const imageVariables = [
-          'selfie', 'signature', 'signatureOptOut', 'signatureOptIn', 
-          'signatureNominee2', 'signatureNominee3',
-          'panImage', 'aadhaarImage', 
-          'bankProof', 'incomeProof', 'pepProof', 
-          'nominee1Proof', 'nominee2Proof', 'nominee3Proof', 
-          'guardian1Proof', 'guardian2Proof', 'guardian3Proof', 
-          'addressProof', 'panDocument'
-        ];
-
         if (imageVariables.includes(field.variable)) {
-          let imgRelPath = null;
-          if (field.variable === 'selfie') {
-            imgRelPath = (typeof parsedSelfieDetails === 'string' ? parsedSelfieDetails : (parsedSelfieDetails.filePreview || parsedSelfieDetails.path || parsedSelfieDetails.preview)) 
-                         || (typeof applicationData.selfie === 'string' ? applicationData.selfie : applicationData.selfie?.preview);
-          } else if (field.variable === 'signature' || field.variable === 'signatureOptOut' || field.variable === 'signatureOptIn' || field.variable === 'signatureNominee2' || field.variable === 'signatureNominee3') {
-            let shouldShow = false;
-            if (field.variable === 'signature') shouldShow = true;
-            else if (field.variable === 'signatureOptOut' && !isNomineeOptIn) shouldShow = true;
-            else if (field.variable === 'signatureOptIn' && isNomineeOptIn) shouldShow = true;
-            else if (field.variable === 'signatureNominee2' && isNomineeOptIn && parsedNomineeDetails.nominees?.length > 1 && parsedNomineeDetails.nominees[1]?.name) shouldShow = true;
-            else if (field.variable === 'signatureNominee3' && isNomineeOptIn && parsedNomineeDetails.nominees?.length > 2 && parsedNomineeDetails.nominees[2]?.name) shouldShow = true;
-            
-            if (shouldShow) {
-              imgRelPath = typeof parsedSignature === 'string' ? parsedSignature : (parsedSignature.filePreview || parsedSignature.path || parsedSignature.preview);
-            }
-
-          } else if (field.variable === 'panImage') {
-            imgRelPath = typeof parsedPanUpload === 'string' ? parsedPanUpload : (parsedPanUpload?.filePreview || parsedPanUpload?.path || parsedPanUpload?.preview);
-            if (!imgRelPath) {
-              const panDoc = parsedDocuments.find(d => d.path && /digilocker_pan|_pan_issued|(^|[\/_])pan([\/_]|\.)/i.test(d.path));
-              if (panDoc) imgRelPath = panDoc.path;
-            }
-          } else if (field.variable === 'panDocument') {
-            const panDoc = [...parsedDocuments].reverse().find(d => d.type === 'PAN') 
-                        || [...parsedDocuments].reverse().find(d => d.path && /digilocker_pan|_pan_issued/i.test(d.path));
-            if (panDoc) imgRelPath = panDoc.path;
-          } else if (field.variable === 'aadhaarImage') {
-            const aadhaarDoc = [...parsedDocuments].reverse().find(d => d.type === 'AADHAAR') 
-                            || [...parsedDocuments].reverse().find(d => d.path && d.type !== 'PHOTO' && /digilocker_aadhaar|_aadhaar_issued|aadhaar|aadhar|uid/i.test(d.path));
-            if (aadhaarDoc) imgRelPath = aadhaarDoc.path;
-          } else if (field.variable === 'bankProof') {
-            imgRelPath = typeof parsedBankDetails === 'string' ? parsedBankDetails : (parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof);
-          } else if (field.variable === 'incomeProof') {
-            imgRelPath = typeof parsedFinancialProof === 'string' ? parsedFinancialProof : (parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview);
-          } else if (field.variable === 'pepProof') {
-            imgRelPath = typeof parsedPersonalDetails === 'string' ? parsedPersonalDetails : (parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview);
-          } else if (field.variable === 'nominee1Proof') {
-            if (isNomineeOptIn) {
-              imgRelPath = parsedNomineeDetails?.nominees?.[0]?.proofPath || parsedNomineeDetails?.nominees?.[0]?.proofPreview || parsedNomineeDetails?.nominees?.[0]?.preview;
-            }
-          } else if (field.variable === 'nominee2Proof') {
-            if (isNomineeOptIn) {
-              imgRelPath = parsedNomineeDetails?.nominees?.[1]?.proofPath || parsedNomineeDetails?.nominees?.[1]?.proofPreview || parsedNomineeDetails?.nominees?.[1]?.preview;
-            }
-          } else if (field.variable === 'nominee3Proof') {
-            if (isNomineeOptIn) {
-              imgRelPath = parsedNomineeDetails?.nominees?.[2]?.proofPath || parsedNomineeDetails?.nominees?.[2]?.proofPreview || parsedNomineeDetails?.nominees?.[2]?.preview;
-            }
-          } else if (field.variable === 'guardian1Proof') {
-            if (isNomineeOptIn) {
-              imgRelPath = parsedNomineeDetails?.nominees?.[0]?.guardianProofPath || parsedNomineeDetails?.nominees?.[0]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[0]?.guardianPreview;
-            }
-          } else if (field.variable === 'guardian2Proof') {
-            if (isNomineeOptIn) {
-              imgRelPath = parsedNomineeDetails?.nominees?.[1]?.guardianProofPath || parsedNomineeDetails?.nominees?.[1]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[1]?.guardianPreview;
-            }
-          } else if (field.variable === 'guardian3Proof') {
-            if (isNomineeOptIn) {
-              imgRelPath = parsedNomineeDetails?.nominees?.[2]?.guardianProofPath || parsedNomineeDetails?.nominees?.[2]?.guardianProofPreview || parsedNomineeDetails?.nominees?.[2]?.guardianPreview;
-            }
-          } else if (field.variable === 'addressProof') {
-            const addrDoc = parsedDocuments.find(d => d.path && /address_proof|driving_license|voter|passport/i.test(d.path));
-            if (addrDoc) imgRelPath = addrDoc.path;
-          }
-
+          let imgRelPath = resolveFieldImagePath(field);
           if (imgRelPath) {
             try {
               let embeddedMedia = embeddedMediaCache.get(imgRelPath);
@@ -753,21 +925,10 @@ async function generateKycPdf(applicationData, options = {}) {
                   isPng = imgRelPath.includes('image/png');
                 } else if (imgRelPath.startsWith('http://') || imgRelPath.startsWith('https://')) {
                   // If it's a cloudinary URL, safely force PNG/JPG format
-                  if (imgRelPath.includes('cloudinary.com')) {
-                    if (imgRelPath.toLowerCase().endsWith('.pdf')) {
-                      imgRelPath = imgRelPath.slice(0, -4) + '.png';
-                    } else if (!imgRelPath.includes('f_jpg') && !imgRelPath.includes('f_png')) {
-                      imgRelPath = imgRelPath.replace('/upload/', '/upload/f_jpg/');
-                    }
-                  }
+                  imgRelPath = imageFetchUrl(imgRelPath);
                   console.log(`[PDF Gen] Fetching image from URL: ${imgRelPath}`);
                   try {
-                    const axios = require('axios');
-                    const response = await axios.get(imgRelPath, { 
-                      responseType: 'arraybuffer',
-                      validateStatus: () => true,
-                      timeout: 10000 // 10s timeout to prevent hanging
-                    });
+                    const response = await getWithPrefetch('img', imgRelPath, IMG_FETCH_OPTS);
                     
                     if (response.status >= 200 && response.status < 300) {
                       imgBytes = Buffer.from(response.data);
@@ -1015,6 +1176,8 @@ async function generateKycPdf(applicationData, options = {}) {
       }
     }
 
+    timing.filled = Date.now();
+
     // 5. Append Uploaded and Extracted Documents (ALWAYS RUNS)
     const appendDocument = async (docPathRel, title) => {
       if (!docPathRel) return;
@@ -1029,36 +1192,8 @@ async function generateKycPdf(applicationData, options = {}) {
           isPdf = docPathRel.includes('application/pdf');
           isPng = docPathRel.includes('image/png');
         } else if (docPathRel.startsWith('http://') || docPathRel.startsWith('https://')) {
-          let downloadUrl = docPathRel;
-          
-          if (docPathRel.includes('cloudinary.com')) {
-            const urlObj = new URL(docPathRel);
-            const pathMatch = urlObj.pathname.match(/\/(image|video|raw)\/upload\/(?:v\d+\/)?(.+)$/);
-            if (pathMatch) {
-              const { v2: cloudinary } = require("cloudinary");
-              cloudinary.config({
-                cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-                api_key: process.env.CLOUDINARY_API_KEY,
-                api_secret: process.env.CLOUDINARY_API_SECRET,
-              });
-              const resourceType = pathMatch[1];
-              const publicIdWithExt = pathMatch[2];
-              const ext = publicIdWithExt.match(/\.([^.]+)$/)?.[1] || (isPdf ? "pdf" : "png");
-              const publicId = publicIdWithExt.replace(/\.[^.]+$/, "");
-              
-              downloadUrl = cloudinary.utils.private_download_url(publicId, ext, {
-                resource_type: resourceType,
-                type: "upload",
-                attachment: false,
-              });
-            }
-          }
-
-          const axios = require('axios');
-          const response = await axios.get(downloadUrl, { 
-            responseType: 'arraybuffer',
-            timeout: 10000 // 10s timeout
-          });
+          const downloadUrl = docDownloadUrl(docPathRel);
+          const response = await getWithPrefetch('doc', downloadUrl, DOC_FETCH_OPTS);
           if (response.status === 200) {
             bytes = response.data;
             const contentType = response.headers['content-type'] || '';
@@ -1135,52 +1270,6 @@ async function generateKycPdf(applicationData, options = {}) {
       }
     };
 
-      const docsToAppend = [];
-      const seenTypes = new Set();
-      
-      // Reverse the array so we process the newest documents first
-      [...parsedDocuments].reverse().forEach(doc => {
-        if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'ESIGN_DOCUMENT' && doc.type !== 'DIGILOCKER_DOCUMENT') {
-          // Use the document type as a unique identifier
-          const typeKey = doc.type || doc.name || doc.path;
-          
-          if (!seenTypes.has(typeKey)) {
-            seenTypes.add(typeKey);
-            // unshift puts the newest documents at the front so the chronological order is preserved
-            docsToAppend.unshift({ path: doc.path, title: doc.type || 'Document' });
-          }
-        }
-      });
-    
-    const panPath = parsedPanUpload?.path || parsedPanUpload?.filePreview || parsedPanUpload?.preview;
-    if (panPath) docsToAppend.push({ path: panPath, title: 'PAN Upload' });
-    
-    const finPath = parsedFinancialProof?.path || parsedFinancialProof?.filePreview || parsedFinancialProof?.preview;
-    if (finPath) docsToAppend.push({ path: finPath, title: 'Financial Proof' });
-    
-    const bankPath = parsedBankDetails?.proofPath || parsedBankDetails?.proofPreview || parsedBankDetails?.proof;
-    if (bankPath) docsToAppend.push({ path: bankPath, title: 'Bank Proof' });
-    
-    // Add fallback to path if the previous bug caused pepProof to be saved at root of personalDetails
-    const pepPath = parsedPersonalDetails?.pepProof || parsedPersonalDetails?.pepProofPreview || (parsedPersonalDetails?.path && String(parsedPersonalDetails.path).includes("kyc_uploads") ? parsedPersonalDetails.path : null);
-    if (pepPath) docsToAppend.push({ path: pepPath, title: 'PEP Proof' });
-    
-    const actualNomineeDetails = parsedNomineeDetails?.nomineeDetails || parsedNomineeDetails;
-    if (actualNomineeDetails?.nominees && Array.isArray(actualNomineeDetails.nominees)) {
-      actualNomineeDetails.nominees.forEach((nom, idx) => {
-        const nomPath = nom.proofPath || nom.proofPreview || nom.preview;
-        if (nomPath) docsToAppend.push({ path: nomPath, title: `Nominee ${idx + 1} Proof` });
-        
-        const guardPath = nom.guardianProofPath || nom.guardianProofPreview || nom.guardianPreview;
-        if (guardPath) docsToAppend.push({ path: guardPath, title: `Nominee ${idx + 1} Guardian Proof` });
-      });
-    }
-    
-    const parsedSigApp = safeJsonParse(applicationData.signature) || {};
-    const sigDocPath = parsedSigApp?.path || parsedSigApp?.filePreview || parsedSigApp?.preview || (typeof parsedSigApp === 'string' && parsedSigApp.startsWith('http') ? parsedSigApp : null);
-    if (sigDocPath) docsToAppend.push({ path: sigDocPath, title: 'Customer Signature' });
-
-    const selfieDocPath = parsedSelfieDetails?.path || parsedSelfieDetails?.filePreview || parsedSelfieDetails?.preview || applicationData?.selfie?.preview;
 
     if (!options.skipDocumentAppend) {
       const seenPaths = new Set();
@@ -1216,8 +1305,7 @@ async function generateKycPdf(applicationData, options = {}) {
             let sigBytes = null;
             if (sigRel.startsWith('http')) {
               try {
-                const axios = require('axios');
-                const sigResp = await axios.get(sigRel, { responseType: 'arraybuffer' });
+                const sigResp = await getWithPrefetch('sig', sigRel, SIG_FETCH_OPTS);
                 sigBytes = sigResp.data;
               } catch(e) {}
             } else {
@@ -1254,11 +1342,13 @@ async function generateKycPdf(applicationData, options = {}) {
          
          if (lat && lng) {
              try {
-                 const axios = require('axios');
-                 const res = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
-                     headers: { 'User-Agent': 'KYCPortal/1.0' },
-                     timeout: 3000
-                 });
+                 const geoUrl = geocodeUrl(lat, lng);
+                 const cachedGeo = GEO_CACHE.get(geoUrl);
+                 const res = cachedGeo ? { data: cachedGeo } : await getWithPrefetch('geo', geoUrl, GEO_FETCH_OPTS);
+                 if (!cachedGeo && res.data && res.data.display_name) {
+                     if (GEO_CACHE.size >= GEO_CACHE_MAX) GEO_CACHE.delete(GEO_CACHE.keys().next().value);
+                     GEO_CACHE.set(geoUrl, res.data);
+                 }
                  if (res.data && res.data.display_name) {
                      let placeName = res.data.name || res.data.address?.amenity || res.data.address?.building || '';
                      let display = res.data.display_name;
@@ -1284,7 +1374,10 @@ async function generateKycPdf(applicationData, options = {}) {
     }
 
     console.log(`[PDF Gen] Successfully generated PDF`);
+    const appendedAt = Date.now();
     const pdfBase64 = await pdfDoc.saveAsBase64();
+    const doneAt = Date.now();
+    console.log(`[PDF Gen] Timing: template ${timing.loaded - timing.start} ms, form fields ${timing.filled - timing.loaded} ms, attachments ${appendedAt - timing.filled} ms, save ${doneAt - appendedAt} ms, total ${doneAt - timing.start} ms`);
     if (options.extractEsignCoordinates) {
       return { pdfBase64, esignCoordinatesMap };
     }

@@ -2,7 +2,8 @@ import { useKYC } from "@/context/KYCContext";
 import { useState, useEffect } from "react";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Logo from "../Logo";
-import PdfMobileViewer from "../PdfMobileViewer";
+// Continuous-scroll viewer; falls back to the previous PdfMobileViewer by itself on any failure
+import PdfScrollViewer from "../PdfScrollViewer";
 
 export default function EsignPreviewStep() {
   const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents, preGeneratedPdf, generatedPdfBase64 } = useKYC();
@@ -112,7 +113,7 @@ export default function EsignPreviewStep() {
           </div>
         )}
 
-        {pdfUrl && <PdfMobileViewer url={pdfUrl} />}
+        {pdfUrl && <PdfScrollViewer url={pdfUrl} />}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 32, maxWidth: "480px", marginLeft: "auto", marginRight: "auto" }}>

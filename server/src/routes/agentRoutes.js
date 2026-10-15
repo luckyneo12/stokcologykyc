@@ -1,5 +1,5 @@
 const express = require("express");
-const { getAssignedApplications, reviewStep, getApReferrals, requestModifications, getCorrectionLink, savePendingDocumentRejections } = require("../controllers/agentController");
+const { getAssignedApplications, exportApplicationsFull, reviewStep, getApReferrals, requestModifications, getCorrectionLink, savePendingDocumentRejections } = require("../controllers/agentController");
 const { auth } = require("../middlewares/auth");
 
 const router = express.Router();
@@ -27,6 +27,7 @@ const apAuth = (req, res, next) => {
 };
 
 router.get("/applications", agentAuth, getAssignedApplications);
+router.post("/applications/export-full", agentAuth, exportApplicationsFull);
 router.post("/kyc/:id/step/:stepName/review", agentAuth, reviewStep);
 router.post("/kyc/:id/request-modifications", agentAuth, requestModifications);
 router.get("/kyc/:id/correction-link", agentAuth, getCorrectionLink);

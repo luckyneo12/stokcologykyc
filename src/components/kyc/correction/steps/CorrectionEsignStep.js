@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
-import PdfMobileViewer from "../../PdfMobileViewer";
+// Continuous-scroll viewer; falls back to the previous PdfMobileViewer by itself on any failure
+import PdfScrollViewer from "../../PdfScrollViewer";
 import { initializeDigio, fetchDigioRequestResponse, createDigioRequest } from "@/utils/digio";
 
 export default function CorrectionEsignStep() {
@@ -339,7 +340,7 @@ export default function CorrectionEsignStep() {
         ) : (
           <>
             <div style={{ width: "100%", maxWidth: "800px", height: "65vh", border: "1px solid var(--border-color)", borderRadius: 12, overflowY: "auto", background: "#f8f9fa", position: "relative" }}>
-              <PdfMobileViewer url={pdfUrl} hideActions={true} />
+              <PdfScrollViewer url={pdfUrl} hideActions={true} height="100%" />
             </div>
 
             {(phase === "digio" || phase === "processing") ? (

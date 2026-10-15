@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
-import { downloadExcel } from "@/utils/exportExcel";
+import { downloadExcel, downloadGroupedExcel } from "@/utils/exportExcel";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
@@ -791,8 +791,36 @@ export default function MakerCheckerDashboard() {
     return applyTableFilters(all);
   };
 
+  // "all": every stored detail of the same rows, as columns grouped by topic (bank together, each nominee
+  // together, …). The rows are exactly the ones "Export Table" would give (same filters, search and sort);
+  // the server adds the full details in batches.
+  const exportAllGrouped = async (rows) => {
+    const token = localStorage.getItem("adminToken");
+    const ids = rows.map((k) => k.id).filter(Boolean);
+    let groups = null;
+    const detailRows = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const res = await fetch(`${API_BASE_URL}/api/agent/applications/export-full`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ applicationIds: ids.slice(i, i + 200) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to load the export details");
+      groups = groups || data.groups;
+      detailRows.push(...data.rows);
+    }
+    // Files stored on this server are saved as "/uploads/…" — make them full links
+    const absolute = (v) => (typeof v === "string" && v.startsWith("/uploads/") ? `${API_BASE_URL}${v}` : v);
+    await downloadGroupedExcel(
+      `kyc_all_details_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      [{ name: "#", columns: ["S.No."] }, ...(groups || [])],
+      detailRows.map((r, i) => [i + 1, ...r.map(absolute)]),
+    );
+  };
+
   // "table": the columns shown in the table, in the table's order.
-  // "all": every column, plus every rejection reason (each prefixed "STK:" / "Globe:").
+  // "all": every stored detail, grouped by topic (exportAllGrouped).
   const exportToExcel = async (mode) => {
     if (exporting) return;
     setExporting(mode);
@@ -800,6 +828,10 @@ export default function MakerCheckerDashboard() {
       const rows = await fetchAllForExport();
       if (rows.length === 0) {
         alert("No applications to export.");
+        return;
+      }
+      if (mode === "all") {
+        await exportAllGrouped(rows);
         return;
       }
       const columns = mode === "table"
@@ -889,7 +921,7 @@ export default function MakerCheckerDashboard() {
                   </button>
                   {filterOpen && (
                     <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10, padding: "8px 0", overflow: "hidden" }}>
-                      {["all", "in_progress", "verify", "completed", "rejected", "pushed_to_bo", "globe_approved"].map(f => (
+                      {["all", "in_progress", "verify", "completed", "rejected", "pushed_to_bo"].map(f => (
                         <div 
                           key={f}
                           onClick={() => handleFilterChange(f)}
@@ -1572,7 +1604,10 @@ export default function MakerCheckerDashboard() {
                             value={pendingStep !== null ? pendingStep : currentAppStep}
                             onChange={e => setPendingStep(parseInt(e.target.value))}
                           >
-                            {Object.entries(STEP_LABELS).map(([num, label]) => <option key={num} value={num}>{label}</option>)}
+                            {Object.entries(STEP_LABELS).map(([num, label]) => (
+                              // Steps can only be moved back (or kept) — never forward past where the user is
+                              <option key={num} value={num} disabled={Number(num) > Number(currentAppStep || 0)}>{label}{Number(num) > Number(currentAppStep || 0) ? " — locked" : ""}</option>
+                            ))}
                           </select>
                           {pendingStep !== null && pendingStep !== currentAppStep && (
                             <button 

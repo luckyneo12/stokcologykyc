@@ -1639,7 +1639,10 @@ export default function ApplicationDetail() {
                 value={pendingStep !== null ? pendingStep : app.currentStep}
                 onChange={e => setPendingStep(parseInt(e.target.value))}
               >
-                {Object.entries(STEP_LABELS).map(([num, label]) => <option key={num} value={num}>{label}</option>)}
+                {Object.entries(STEP_LABELS).map(([num, label]) => (
+                              // Steps can only be moved back (or kept) — never forward past where the user is
+                              <option key={num} value={num} disabled={Number(num) > Number(app.currentStep || 0)}>{label}{Number(num) > Number(app.currentStep || 0) ? " — locked" : ""}</option>
+                            ))}
               </select>
               {pendingStep !== null && pendingStep !== app.currentStep && (
                 <button 

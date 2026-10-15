@@ -5,6 +5,7 @@ const { attachDecisionTimestamps } = require("../utils/decisionTimestamps");
 const { annotateRejectedBy } = require("../utils/rejectedBy");
 const { isRejectable, NOT_REJECTABLE_ERROR, isLockedByApproval, APPROVED_LOCK_ERROR, rejectionSide } = require("../utils/rejectionGuard");
 const { statusFilterWhere } = require("../utils/listFilters");
+const { exportGroups, exportRow, STEP_SAVE_ACTION_NAMES } = require("../utils/fullExport");
 // Document rejections a reviewer has marked but not yet mailed are kept on the application (reserved
 // keys inside stepStatuses, like welcomeEmailSent) so every reviewer device sees them live. Code reading
 // stepStatuses only looks at { status } entries.
@@ -147,6 +148,120 @@ const getAssignedApplications = async (req, res, next) => {
       page: pageNum,
       totalPages: Math.ceil(total / take)
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// "Export All": every stored detail of the given applications, as grouped columns (utils/fullExport).
+// The browser sends the ids of the rows it is exporting (already filtered / sorted like the table), at most
+// EXPORT_BATCH per request; rows come back in the same order. Read-only.
+const EXPORT_BATCH = 200;
+const exportApplicationsFull = async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.applicationIds)
+      ? [...new Set(req.body.applicationIds.filter((id) => typeof id === "string" && id.length > 0 && id.length <= 64))]
+      : [];
+    if (ids.length === 0) return res.status(400).json({ success: false, error: "applicationIds is required" });
+    if (ids.length > EXPORT_BATCH) return res.status(400).json({ success: false, error: `At most ${EXPORT_BATCH} applications per request` });
+
+    const where = { applicationId: { in: ids } };
+    if (req.user.role === "agent") where.assignedCrmAgentId = Number(req.user.id); // same rule as the list
+
+    const applications = await prisma.kycApplication.findMany({
+      where,
+      // Everything except the large generated PDF / raw NSDL request, which are not exported
+      select: {
+        applicationId: true, userId: true, status: true, currentStep: true, createdAt: true, updatedAt: true, submittedAt: true,
+        clientCode: true, identityMethod: true, personalDetails: true, declarations: true, identityDetails: true,
+        ocrData: true, address: true, bankDetails: true, nomineeDetails: true, nomineeAllocation: true,
+        panUpload: true, signature: true, financialProof: true, selfieDetails: true, selfie: true, documents: true,
+        segments: true, bsda: true, esignDetails: true, stepStatuses: true, nsdlResponse: true, globeStatus: true,
+        globeRemarks: true, rejectionReason: true, isResubmitted: true, riskScore: true, riskCategory: true,
+        faceMatchScore: true, source: true, pushedToBackoffice: true, pushedToBackofficeAt: true, correctionDraft: true,
+        user: { select: { email: true, phone: true, apCode: true, eStamp: true, boid: true, boidAssigned: { select: { boidNumber: true } }, eStampAssigned: { select: { serialNo: true, certificateNo: true } } } },
+      },
+    });
+
+    // Same "rejected by" and approved / rejected times as the table
+    const annotated = await attachDecisionTimestamps(await annotateRejectedBy(applications));
+
+    // From the audit log: who approved (latest approval per side) and when each journey step was last saved
+    const extras = {};
+    try {
+      const logs = await prisma.auditLog.findMany({
+        where: { targetId: { in: ids }, action: { in: ["ADMIN_STATUS_VERIFIED", "GLOBE_STATUS_APPROVED", "GLOBE_APPROVED_KYC", ...STEP_SAVE_ACTION_NAMES] } },
+        orderBy: { timestamp: "asc" },
+        select: { targetId: true, action: true, crmAgentName: true, timestamp: true },
+      });
+      for (const log of logs) {
+        const entry = (extras[log.targetId] = extras[log.targetId] || { stepTimes: {} });
+        if (log.action === "ADMIN_STATUS_VERIFIED") entry.stkApprovedBy = log.crmAgentName || "";
+        else if (log.action === "GLOBE_STATUS_APPROVED" || log.action === "GLOBE_APPROVED_KYC") entry.globeApprovedBy = log.crmAgentName || "";
+        else entry.stepTimes[log.action] = log.timestamp; // ascending → the latest save wins
+      }
+    } catch (e) {
+      // optional — the export still works without these columns
+    }
+
+    // Last status change (STK or Globe) and OTP verification times, also from the audit log
+    try {
+      const statusLogs = await prisma.auditLog.findMany({
+        where: { targetId: { in: ids }, OR: [{ action: { startsWith: "ADMIN_STATUS_" } }, { action: { startsWith: "GLOBE_STATUS_" } }, { action: { in: ["GLOBE_APPROVED_KYC", "GLOBE_REJECTED_KYC"] } }] },
+        select: { targetId: true, timestamp: true },
+      });
+      for (const log of statusLogs) {
+        const entry = (extras[log.targetId] = extras[log.targetId] || { stepTimes: {} });
+        if (!entry.statusDate || log.timestamp > entry.statusDate) entry.statusDate = log.timestamp;
+      }
+
+      // Mobile OTP: logged against the user at registration / each OTP login
+      const appsByUser = new Map();
+      for (const a of applications) if (a.userId) appsByUser.set(a.userId, [...(appsByUser.get(a.userId) || []), a.applicationId]);
+      if (appsByUser.size) {
+        const otpLogs = await prisma.auditLog.findMany({
+          where: { userId: { in: [...appsByUser.keys()] }, action: { in: ["USER_REGISTERED", "USER_LOGGED_IN"] } },
+          select: { userId: true, timestamp: true },
+        });
+        for (const log of otpLogs) {
+          for (const appId of appsByUser.get(log.userId) || []) {
+            const entry = (extras[appId] = extras[appId] || { stepTimes: {} });
+            if (!entry.mobileOtpFirst || log.timestamp < entry.mobileOtpFirst) entry.mobileOtpFirst = log.timestamp;
+            if (!entry.mobileOtpLast || log.timestamp > entry.mobileOtpLast) entry.mobileOtpLast = log.timestamp;
+          }
+        }
+      }
+
+      // Email OTP: logged with the email address (the user is not known at that moment)
+      const appsByEmail = new Map();
+      for (const a of applications) {
+        // the verified email is saved in the application's personal details (the user record often has none)
+        let personalEmail = "";
+        try { personalEmail = (typeof a.personalDetails === "string" ? JSON.parse(a.personalDetails) : a.personalDetails || {}).email || ""; } catch (e) {}
+        const email = String(personalEmail || a.user?.email || "").trim().toLowerCase();
+        if (email) appsByEmail.set(email, [...(appsByEmail.get(email) || []), a.applicationId]);
+      }
+      if (appsByEmail.size) {
+        const emailLogs = await prisma.auditLog.findMany({
+          where: { action: "USER_EMAIL_VERIFIED", OR: [...appsByEmail.keys()].map((email) => ({ details: { contains: email } })) },
+          select: { details: true, timestamp: true },
+        });
+        for (const log of emailLogs) {
+          let email = "";
+          try { email = String(JSON.parse(log.details || "{}").email || "").trim().toLowerCase(); } catch (e) {}
+          for (const appId of appsByEmail.get(email) || []) {
+            const entry = (extras[appId] = extras[appId] || { stepTimes: {} });
+            if (!entry.emailOtp || log.timestamp > entry.emailOtp) entry.emailOtp = log.timestamp;
+          }
+        }
+      }
+    } catch (e) {
+      // optional — the export still works without these columns
+    }
+
+    const byId = new Map(annotated.map((a) => [a.applicationId, a]));
+    const rows = ids.filter((id) => byId.has(id)).map((id) => exportRow(byId.get(id), extras[id]));
+    res.json({ success: true, groups: exportGroups(), rows });
   } catch (error) {
     next(error);
   }
@@ -303,6 +418,24 @@ const reviewStep = async (req, res, next) => {
         stepStatuses = JSON.parse(app.stepStatuses);
       } catch (e) {
         stepStatuses = {};
+      }
+    }
+
+    // Globe: never undoes a rejection, and never changes / takes over one STK made. A Globe rejection
+    // stays Globe's (rejectedBy "Globe"); Globe may still re-save its own with a new reason or more fields.
+    if (req.user.role === "globe") {
+      const existing = stepStatuses[stepName];
+      if (existing?.status === "rejected") {
+        if (existing.rejectedBy !== "Globe") {
+          return res.status(403).json({ success: false, error: "This was rejected by STK. Only STK can change or undo it." });
+        }
+        const undoes =
+          status !== "rejected" ||
+          (existing.rejectEntireModule === true && !rejectEntireModule) ||
+          (Array.isArray(existing.rejectedFields) ? existing.rejectedFields : []).some((f) => !rejectedFields.includes(f));
+        if (undoes) {
+          return res.status(403).json({ success: false, error: "Rejections can't be undone from the Globe portal. If one was made by mistake, please ask the STK team." });
+        }
       }
     }
 
@@ -981,6 +1114,20 @@ const savePendingDocumentRejections = async (req, res, next) => {
     if (app.stepStatuses) {
       try { stepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : app.stepStatuses; } catch (e) { stepStatuses = {}; }
     }
+    // Globe: can add document rejections and edit its own, but never removes one (undo) or edits STK's
+    if (req.user.role === "globe") {
+      const prevPending = getPendingDocRejections(stepStatuses);
+      const prevBy = stepStatuses[PENDING_DOC_BY_KEY] || {};
+      for (const [src, prevReason] of Object.entries(prevPending)) {
+        if (!(src in clean)) {
+          return res.status(403).json({ success: false, error: "Rejections can't be undone from the Globe portal. If one was made by mistake, please ask the STK team." });
+        }
+        if ((prevBy[src] || "STK") !== "Globe" && clean[src] !== prevReason) {
+          return res.status(403).json({ success: false, error: "This was rejected by STK. Only STK can change or undo it." });
+        }
+      }
+    }
+
     // Optional document names (e.g. "PAN Card") so lists can show which document is rejected
     const inputLabels = req.body?.labels && typeof req.body.labels === "object" ? req.body.labels : {};
     const labels = {};
@@ -1048,6 +1195,7 @@ const savePendingDocumentRejections = async (req, res, next) => {
 
 module.exports = {
   getAssignedApplications,
+  exportApplicationsFull,
   reviewStep,
   getApReferrals,
   requestModifications,

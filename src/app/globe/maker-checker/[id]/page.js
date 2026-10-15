@@ -2023,7 +2023,8 @@ export default function AgentReview() {
   };
 
   // Undoing a rejection always asks "Are you sure?" first
-  const confirmUndoRejection = (label, onConfirm) => setUndoConfirm({ label, onConfirm });
+  // Globe can't undo rejections (STK's or its own) — only STK can (admin portal)
+  const confirmUndoRejection = () => showToast("Rejections can't be undone from the Globe portal. If one was made by mistake, please ask the STK team.", "error");
   const handleUnrejectStep = (stepId, stepTitle) => confirmUndoRejection(stepTitle, () => performUnrejectStep(stepId, stepTitle));
 
   // Right-click on a rejected field: remove just that field from the module's rejection.
@@ -2424,6 +2425,11 @@ export default function AgentReview() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          // Only Globe's own rejection can be edited here; STK's stays STK's
+                          if (isRejected && statuses[step.id]?.rejectedBy !== "Globe") {
+                            showToast("This was rejected by STK. Only STK can change or undo it.", "error");
+                            return;
+                          }
                           if (displayAsRejected || isRejected) {
                             setStepRejectReason(statuses[step.id]?.reason || "");
                             setSelectedRejectedFields(Array.isArray(statuses[step.id]?.rejectedFields) ? statuses[step.id].rejectedFields : []);
@@ -2434,11 +2440,6 @@ export default function AgentReview() {
                             setRejectEntireModule(false);
                           }
                           setRejectStepModal(step);
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (isRejected) handleUnrejectStep(step.id, step.title);
                         }}
                         style={{
                           display: "flex",
@@ -2453,7 +2454,7 @@ export default function AgentReview() {
                           transition: "all 0.2s",
                           boxShadow: isRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
                         }}
-                        title={isRejected ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Step"}
+                        title={isRejected ? (statuses[step.id]?.rejectedBy === "Globe" ? "Rejected by Globe (click to modify reason)" : "Rejected by STK") : "Reject Step"}
                       >
                         <Ban size={13} color={isRejected ? "#ffffff" : "#ef4444"} />
                       </button>
@@ -2570,8 +2571,7 @@ export default function AgentReview() {
                                       const isFieldRejected = fieldStatus?.status === "rejected" && Array.isArray(fieldStatus?.rejectedFields) && fieldStatus.rejectedFields.includes(label);
                                       return (
                                         <div key={label}
-                                          onContextMenu={isFieldRejected ? (e) => { e.preventDefault(); e.stopPropagation(); handleUnrejectField(step, label); } : undefined}
-                                          title={isFieldRejected ? "Rejected field — right-click to undo" : undefined}
+                                                                                    title={isFieldRejected ? "Rejected field" : undefined}
                                           style={{ 
                                           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
                                           padding: "10px 14px", background: isFieldRejected ? "rgba(239, 68, 68, 0.08)" : "var(--bg-secondary)", borderRadius: "10px", 
@@ -2853,28 +2853,15 @@ export default function AgentReview() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (sentRejection) {
-                            showToast(`${doc.label || "Document"} is already rejected${sentRejection.rejectedBy ? ` by ${sentRejection.rejectedBy}` : ""}: ${sentRejection.reason || "No reason"}. Right-click to undo.`, "error");
+                            showToast(`${doc.label || "Document"} is already rejected${sentRejection.rejectedBy ? ` by ${sentRejection.rejectedBy}` : ""}: ${sentRejection.reason || "No reason"}.`, "error");
+                            return;
+                          }
+                          if (pendingReason && docRejectedBy !== "Globe") {
+                            showToast("This was rejected by STK. Only STK can change or undo it.", "error");
                             return;
                           }
                           setDocumentRejectReason(pendingReason || "");
                           setRejectDocumentModal(doc);
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (pendingKey) {
-                            // Same as "Remove" in the rejection summary
-                            confirmUndoRejection(doc.label || "Document", () => {
-                              setDocumentRejections(prev => {
-                                const next = { ...prev };
-                                delete next[pendingKey];
-                                return next;
-                              });
-                              showToast(`Rejection removed for ${doc.label || "Document"}.`, "success");
-                            });
-                          } else if (sentRejection) {
-                            handleUnrejectStep(sentRejection.stepId, doc.label || "Document");
-                          }
                         }}
                         style={{
                           cursor: "pointer",
@@ -2891,9 +2878,9 @@ export default function AgentReview() {
                           padding: 0
                         }}
                         title={pendingReason
-                          ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${pendingReason} — not sent yet (click to modify, right-click to undo)`
+                          ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${pendingReason} — not sent yet${docRejectedBy === "Globe" ? " (click to modify)" : ""}`
                           : sentRejection
-                            ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${sentRejection.reason || "No reason"} (right-click to undo)`
+                            ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${sentRejection.reason || "No reason"}`
                             : "Reject Document"}
                       >
                         <Ban size={13} color={isDocRejected ? "#ffffff" : "#ef4444"} />
@@ -3374,6 +3361,7 @@ export default function AgentReview() {
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                        {status.rejectedBy === "Globe" ? (
                         <button 
                           onClick={() => {
                             setStepRejectReason(status.reason || "");
@@ -3384,13 +3372,9 @@ export default function AgentReview() {
                         >
                           Edit
                         </button>
-                        <button 
-                          onClick={() => handleUnrejectStep(key, stepObj?.label || key)}
-                          disabled={submitting}
-                          style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "#ef4444", transition: "all 0.2s" }}
-                        >
-                          Remove
-                        </button>
+                        ) : (
+                          <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)" }}>Rejected by STK</span>
+                        )}
                       </div>
                     </div>
                   );
@@ -3409,6 +3393,7 @@ export default function AgentReview() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                      {pendingDocRejectionBy[src] === "Globe" ? (
                       <button 
                         onClick={() => {
                           setDocumentRejectReason(reason);
@@ -3419,19 +3404,9 @@ export default function AgentReview() {
                       >
                         Edit
                       </button>
-                      <button 
-                        onClick={() => confirmUndoRejection(doc?.label || "Document", () => {
-                          setDocumentRejections(prev => {
-                            const next = { ...prev };
-                            delete next[src];
-                            return next;
-                          });
-                        })}
-                        disabled={submitting}
-                        style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "#ef4444", transition: "all 0.2s" }}
-                      >
-                        Remove
-                      </button>
+                      ) : (
+                        <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-muted)" }}>Rejected by STK</span>
+                      )}
                     </div>
                   </div>
                 );

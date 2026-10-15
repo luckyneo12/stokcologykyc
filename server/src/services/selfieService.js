@@ -2,9 +2,11 @@ const digioClient = require("./digioClient");
 
 // Digio workflow used for the selfie request (override with DIGIO_SELFIE_WORKFLOW in .env).
 // Digio's with_template API takes the workflow NAME, not its ID (KTP…) — an ID gives "Template not found".
-// ONLY_SELFIE_FLOW has just the selfie step. Don't use DIGILOCKER_CONDITIONAL_JOURNEY_PAN_V0702
-// (KTP251129130344112KVAZBQHT3474J9) here — it makes the user redo DigiLocker and PAN first.
-const SELFIE_WORKFLOW = process.env.DIGIO_SELFIE_WORKFLOW || "ONLY_SELFIE_FLOW";
+// Current: DIGILOCKER_CONDITIONAL_JOURNEY_PAN_V0702_Clone (workflow ID KTP261015125945597T2VGAMF6ZUG3F1) —
+// selfie-only clone of the combined journey.
+// Others: DIGILOCKER_CONDITIONAL_JOURNEY_PAN_V0702 (KTP251129130344112KVAZBQHT3474J9) = full journey, Digio
+// shows DigiLocker → PAN → Selfie; ONLY_SELFIE_FLOW (KTP261015120630980SP6NLBS3LITVIS).
+const SELFIE_WORKFLOW = process.env.DIGIO_SELFIE_WORKFLOW || "DIGILOCKER_CONDITIONAL_JOURNEY_PAN_V0702_Clone";
 
 /**
  * Selfie & Liveness Verification Service

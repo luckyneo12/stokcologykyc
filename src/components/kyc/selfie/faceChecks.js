@@ -43,7 +43,13 @@ export const THRESHOLDS = {
   pitchStraightMax: 0.66,
   maxRollDeg: 14,
   eyesClosed: 0.5,
-  maxMovement: 0.045, // nose travel between analyses, fraction of face width
+  maxMovement: 0.045, // nose travel per MOVEMENT_REF_MS (fraction of face width)
+  // Movement is judged per time, not per analysis: a slow device (few analyses per second) sees a
+  // bigger jump between two analyses for the same slight sway. Travel over a longer gap is scaled
+  // down to this reference interval (never up — fast devices keep the original rule). Gaps longer
+  // than movementMaxGapMs count as that long, so a real head movement is still caught.
+  movementRefMs: 110,
+  movementMaxGapMs: 400,
 
   // Face counting: overlapping boxes are the same face; tiny boxes are spurious
   duplicateIoU: 0.3,
@@ -362,6 +368,12 @@ export const EXTRA_FACE_TILES = [
   { x: 0, y: 0, s: 1 },
   ...SCAN_STEPS.flatMap((y) => SCAN_STEPS.map((x) => ({ x, y, s: SCAN_TILE }))),
 ];
+// Phones run the scan on the CPU: the photo check uses the full window + 4 overlapping 60% tiles
+// (5 detections instead of 10, still covering the whole window; faces up to 20% of it fit a tile).
+export const EXTRA_FACE_TILES_LITE = [
+  { x: 0, y: 0, s: 1 },
+  ...[0, 0.4].flatMap((y) => [0, 0.4].map((x) => ({ x, y, s: 0.6 }))),
+];
 const SCAN_MAX_SIDE = 512;
 const EXTRA_FACE_MIN_WIDTH = 0.15; // of the main face width — smaller detections are ignored
 const EXTRA_FACE_MAX_COVER = 0.3; // a detection mostly inside the main face is the main face itself
@@ -371,8 +383,8 @@ let scanCanvas = null;
  * Runs the scanner on one tile of `frame` (canvas / video, un-mirrored). Returns true when it
  * finds a face that is not the user's (mainBox: normalised { cx, cy, w, h } from analyzeFrame).
  */
-export function scanTileForExtraFace(scanner, frame, tileIndex, mainBox) {
-  const tile = EXTRA_FACE_TILES[tileIndex % EXTRA_FACE_TILES.length];
+export function scanTileForExtraFace(scanner, frame, tileIndex, mainBox, tiles = EXTRA_FACE_TILES) {
+  const tile = tiles[tileIndex % tiles.length];
   const W = frame.videoWidth || frame.width;
   const H = frame.videoHeight || frame.height;
   if (!scanner || !W || !H || !mainBox) return false;
@@ -418,9 +430,9 @@ export function scanTileForExtraFace(scanner, frame, tileIndex, mainBox) {
 }
 
 /** Every tile of one frame (used on the exact photo before it is accepted). */
-export function scanFrameForExtraFace(scanner, frame, mainBox) {
-  for (let i = 0; i < EXTRA_FACE_TILES.length; i++) {
-    if (scanTileForExtraFace(scanner, frame, i, mainBox)) return true;
+export function scanFrameForExtraFace(scanner, frame, mainBox, tiles = EXTRA_FACE_TILES) {
+  for (let i = 0; i < tiles.length; i++) {
+    if (scanTileForExtraFace(scanner, frame, i, mainBox, tiles)) return true;
   }
   return false;
 }
@@ -501,7 +513,10 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
   if (blinkL > THRESHOLDS.eyesClosed && blinkR > THRESHOLDS.eyesClosed) flags.eyesClosed = true;
 
   if (prevNose) {
-    const move = Math.hypot(nose.x - prevNose.x, (nose.y - prevNose.y) / aspect) / Math.max(1e-6, face.w);
+    const rawMove = Math.hypot(nose.x - prevNose.x, (nose.y - prevNose.y) / aspect) / Math.max(1e-6, face.w);
+    // opts.dtMs: time since the previous analysis (absent → judged per analysis, as before)
+    const gap = Math.min(Math.max(Number(opts.dtMs) || 0, THRESHOLDS.movementRefMs), THRESHOLDS.movementMaxGapMs);
+    const move = rawMove * (THRESHOLDS.movementRefMs / gap);
     metrics.movement = round(move);
     if (move > THRESHOLDS.maxMovement) flags.moving = true;
   }
@@ -563,7 +578,9 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
     pitch >= THRESHOLDS.appearancePitchMin && pitch <= THRESHOLDS.appearancePitchMax &&
     Math.abs(roll) <= THRESHOLDS.appearanceMaxRoll;
   if (!exposureOk || !frontal) {
-    return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box, appearanceChecked: false };
+    // appearanceSkip: why it could not be judged — the photo check tells the user the right fix
+    const appearanceSkip = !exposureOk ? "tooDark" : "notStraight";
+    return { faceCount, flags, metrics, pose, blend, nose: { x: nose.x, y: nose.y }, box, appearanceChecked: false, appearanceSkip };
   }
 
   const skinRef = {
@@ -810,6 +827,8 @@ export const ISSUE_MESSAGES = {
   eyesClosed: "Keep your eyes open",
   moving: "Hold still",
   needBlink: "Blink once to take the photo",
+  needBlinkStraight: "Look straight at the camera, hold still and blink",
+  scannerLoading: "Still getting the photo check ready",
 };
 
 // The checks that block the selfie (position / pose are shown only as tips on the camera)
@@ -839,13 +858,36 @@ export function orderedIssues(flags) {
  * pass. On a typical device (open level ~0.05) this is exactly the old rule: > 0.45, then < 0.3.
  * slow = few analyses per second: a frame often catches the eyes only half-closed, so 0.32 counts.
  * A photo can't blink either way — its scores don't change.
+ *
+ * Turning, tilting or lowering the head makes the eyes LOOK narrower (higher blink scores), so only
+ * frames where the user faces the camera and holds still count: any other frame cancels a half-seen
+ * blink. Moving the head around therefore never counts as a blink.
  */
+export function isBlinkPose(pose) {
+  if (!pose) return false;
+  return (
+    // Up/down and tilt use the wider eyewear-check range,
+    // because a phone held below the face reads as a slight up/down tilt
+    // Left/right: the same range as the "turned" warning, so a head that gets no warning can always blink
+    pose.yaw >= THRESHOLDS.yawTurnedMin && pose.yaw <= THRESHOLDS.yawTurnedMax &&
+    pose.pitch >= THRESHOLDS.appearancePitchMin && pose.pitch <= THRESHOLDS.appearancePitchMax &&
+    Math.abs(pose.roll) <= THRESHOLDS.appearanceMaxRoll
+  );
+}
+
 export function createBlinkTracker() {
   let openLevel = null; // running average of the open-eye score
   let closed = false;
   return {
-    /** Returns true on the frame where a blink completes. */
-    update(blend, slow = false) {
+    /**
+     * Returns true on the frame where a blink completes.
+     * analysis (optional): this frame's analyzeFrame result — its pose / movement gate the blink.
+     */
+    update(blend, slow = false, analysis = null) {
+      if (analysis && (!isBlinkPose(analysis.pose) || analysis.flags?.moving)) {
+        closed = false; // head turned / tilted / moving: whatever was seen is not a blink
+        return false;
+      }
       const l = blend?.eyeBlinkLeft ?? 0;
       const r = blend?.eyeBlinkRight ?? 0;
       const avg = (l + r) / 2;
@@ -865,6 +907,10 @@ export function createBlinkTracker() {
         }
       }
       return false;
+    },
+    /** Forget a blink in progress (the open-eye level is kept). */
+    reset() {
+      closed = false;
     },
   };
 }
@@ -915,7 +961,7 @@ export function updateChallengeStep(step, analysis, state, ctx = {}) {
   }
   if (step === "blink") {
     if (!state.blink) state.blink = createBlinkTracker();
-    return state.blink.update(blend, Boolean(ctx.slow));
+    return state.blink.update(blend, Boolean(ctx.slow), analysis);
   }
   if (step === "smile") {
     const s = ((blend.mouthSmileLeft ?? 0) + (blend.mouthSmileRight ?? 0)) / 2;

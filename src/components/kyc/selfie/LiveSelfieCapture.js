@@ -19,6 +19,8 @@ import {
   scanTileForExtraFace,
   scanFrameForExtraFace,
   createBlinkTracker,
+  isBlinkPose,
+  EXTRA_FACE_TILES_LITE,
 } from "./faceChecks";
 import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, useGuidePrefs, useGuideVoice } from "./SelfieGuide";
 
@@ -85,7 +87,12 @@ const CRITICAL_DURING_CHALLENGE = ["noFace", "multipleFaces"];
 // Re-checked on the exact photo after the button is pressed. The photo is taken from the first
 // live frame that passes these (within CAPTURE_WAIT_MS), so a blink or a passing glance just
 // delays the shot by a few frames instead of failing it.
-const FINAL_PHOTO_CHECKS = ["noFace", "multipleFaces", "turned", "eyesClosed"];
+// "moving": the photo is taken from a still frame only (no blur, no half-turned face).
+const FINAL_PHOTO_CHECKS = ["noFace", "multipleFaces", "turned", "eyesClosed", "moving"];
+// After a failed photo the error stays on the camera this long; blinks during it don't count, so the
+// user reads it, then blinks to take the photo again.
+const ERROR_HOLD_MS = 3000;
+const BLINK_HINT_DELAY_MS = 600; // pose must stay off / back this long before the blink hint changes
 const CAPTURE_WAIT_MS = 2000;
 
 // ── Slow devices (low-end phones, CPU-only face detection) ──
@@ -128,7 +135,10 @@ const CHALLENGE_PREFETCH_MAX_AGE_MS = 60000;
 const RETAKE_CODES = ["FACE_MATCH_FAILED", "FACE_MATCH_LOW", "FACE_MATCH_UNAVAILABLE", "LIVENESS_FAILED", "LIVENESS_UNAVAILABLE", "NO_FACE", "MULTIPLE_FACES"];
 
 // ── Anti-swap (someone doing the actions live, then holding up a photo) ──
-const CLICK_WINDOW_MS = 30000; // the selfie must be clicked within this time after the actions
+// The selfie must be taken within this time after the actions. Each failed try (photo check + error
+// shown + blink + capture) takes ~8–10 s, so this leaves room for several retries; the server's
+// challenge token (180 s, see CHALLENGE_MAX_AGE_MS) is the hard limit.
+const CLICK_WINDOW_MS = 60000;
 const BLINK_RECENT_MS = 10000; // …and a natural blink must have happened this recently
 const CONTINUITY_LOST_MS = 700; // face may vanish only this long between the actions and the click
 const CONTINUITY_MAX_JUMP = 0.35; // max face-centre move per analysis, as a fraction of face width
@@ -256,6 +266,7 @@ export default function LiveSelfieCapture({
   const mountedRef = useRef(true);
   const smootherRef = useRef(createFlagSmoother());
   const prevNoseRef = useRef(null);
+  const prevNoseAtRef = useRef(0); // time of the analysis prevNoseRef comes from
   const stableSinceRef = useRef(null);
   const lastRunRef = useRef(0);
   const intervalRef = useRef(100);
@@ -275,6 +286,9 @@ export default function LiveSelfieCapture({
   const eyewearSinceRef = useRef(null); // when the eyewear warning started blocking
   const eyewearOverrideRef = useRef(false); // user confirmed: no glasses / goggles
   const [offerEyewearOverride, setOfferEyewearOverride] = useState(false);
+  const errorHoldUntilRef = useRef(0); // no blink counts before this time (after an error)
+  const blinkHintRef = useRef({ poseOk: true, since: 0 }); // "look straight and blink" hint (debounced)
+  const [errorHold, setErrorHold] = useState(null); // { text } shown on the camera while held
   const finishedRef = useRef(false);
   const sessionEndedRef = useRef(false);
   const finishRef = useRef(null);
@@ -284,6 +298,7 @@ export default function LiveSelfieCapture({
   const appearanceHistoryRef = useRef([]); // [{ t, sunglasses, glasses }] of judged frames
   const frameCanvasRef = useRef(null);
   const scannerRef = useRef(null); // IMAGE-mode landmarker for small background faces
+  const scannerStateRef = useRef("loading"); // loading | ready | failed (after the retries)
   const scanTileRef = useRef(0);
   const lastTileScanRef = useRef(-Infinity);
   const extraFaceAtRef = useRef(-Infinity); // last time the tile scan saw another person
@@ -440,9 +455,23 @@ export default function LiveSelfieCapture({
         if (!mountedRef.current) return;
         engineRef.current = engine;
         setEngineState("ready");
-        loadFaceScanner({ preferCpu: isMobile })
-          .then((scanner) => { scannerRef.current = scanner; })
-          .catch((err) => console.warn("[LiveSelfie] Extra-face scanner failed to load:", err?.message));
+        // Background-people scanner: a few retries (slow / flaky networks), then give up — the photo is
+        // then accepted without this one extra scan (live face count + server liveness still apply)
+        scannerStateRef.current = "loading";
+        const loadScanner = (attempt) => {
+          loadFaceScanner({ preferCpu: isMobile })
+            .then((scanner) => {
+              scannerRef.current = scanner;
+              scannerStateRef.current = "ready";
+            })
+            .catch((err) => {
+              console.warn(`[LiveSelfie] Extra-face scanner failed to load (try ${attempt}):`, err?.message);
+              if (!mountedRef.current) return;
+              if (attempt < 3) setTimeout(() => mountedRef.current && loadScanner(attempt + 1), 3000 * attempt);
+              else scannerStateRef.current = "failed";
+            });
+        };
+        loadScanner(1);
       })
       .catch((err) => {
         console.error("[LiveSelfie] Face engine failed to load:", err);
@@ -498,6 +527,13 @@ export default function LiveSelfieCapture({
       goto("live");
     }
   }, [location.granted, goto]);
+
+  // A held error message leaves the camera after ERROR_HOLD_MS
+  useEffect(() => {
+    if (!errorHold) return;
+    const t = setTimeout(() => setErrorHold((cur) => (cur === errorHold ? null : cur)), ERROR_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [errorHold]);
 
   // Messages clear themselves, so a fixed problem never keeps showing an old warning
   useEffect(() => {
@@ -651,9 +687,13 @@ export default function LiveSelfieCapture({
    * rejection, retake). A fresh blink is required first, so the auto-capture doesn't fire again
    * straight away and keep re-clicking the same failing shot.
    */
-  const backToReady = () => {
+  // errorText: shown on the camera for ERROR_HOLD_MS; no blink counts until it has been shown.
+  const backToReady = (errorText = null) => {
     captureReqRef.current = null;
     blinkRef.current.lastBlinkAt = -Infinity;
+    blinkTrackerRef.current.reset();
+    errorHoldUntilRef.current = errorText ? performance.now() + ERROR_HOLD_MS : 0;
+    setErrorHold(errorText ? { text: errorText } : null);
     viewKeyRef.current = "";
     goto("ready");
   };
@@ -738,8 +778,12 @@ export default function LiveSelfieCapture({
     }
     // Copying the frame's pixels (a GPU → CPU read, slow on phones) only where they are checked
     const pixels = NO_PIXEL_STAGES.includes(st) ? null : grabPixels(source, video.videoWidth, video.videoHeight);
-    const analysis = analyzeFrame(result, pixels, video.videoWidth, video.videoHeight, prevNoseRef.current, { mobile: isMobile });
+    const analysis = analyzeFrame(result, pixels, video.videoWidth, video.videoHeight, prevNoseRef.current, {
+      mobile: isMobile,
+      dtMs: prevNoseRef.current ? now - prevNoseAtRef.current : 0,
+    });
     prevNoseRef.current = analysis.nose;
+    prevNoseAtRef.current = now;
     if (analysis.box) lastFaceWidthRef.current = analysis.box.w;
 
     // People further back are too small for the live detector: scan one zoomed-in tile per
@@ -752,7 +796,9 @@ export default function LiveSelfieCapture({
     if (analysis.faceCount >= 1 && now - extraFaceAtRef.current < EXTRA_FACE_HOLD_MS) analysis.flags.multipleFaces = true;
 
     // Natural blink tracking (eyes closed → open again)
-    if (analysis.faceCount === 1 && blinkTrackerRef.current.update(analysis.blend, slowRef.current)) {
+    if (now < errorHoldUntilRef.current) {
+      blinkTrackerRef.current.reset(); // the error is still being shown: no blink counts yet
+    } else if (analysis.faceCount === 1 && blinkTrackerRef.current.update(analysis.blend, slowRef.current, analysis)) {
       blinkRef.current.lastBlinkAt = now;
     }
 
@@ -783,18 +829,18 @@ export default function LiveSelfieCapture({
       const failed =
         FINAL_PHOTO_CHECKS.find((k) => analysis.flags[k]) ||
         // The photo's own frame must be judged (frontal, lit) and free of eyewear…
-        (!analysis.appearanceChecked ? "notStraight" : (!eyewearOverrideRef.current && APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k]))) ||
+        (!analysis.appearanceChecked ? (analysis.appearanceSkip || "notStraight") : (!eyewearOverrideRef.current && APPEARANCE_PHOTO_CHECKS.find((k) => analysis.flags[k]))) ||
         // …and so must the last moments before it (catches glasses put on just before the click)
         recentAppearanceIssue(now);
       if (!failed) {
         // Hard gate on the exact photo: nobody else anywhere in it, however small
-        if (!scannerRef.current) {
-          // Scanner still loading — wait for it (within CAPTURE_WAIT_MS) rather than skip the check
-          req.lastIssue = "multipleFaces";
-        } else if (scanFrameForExtraFace(scannerRef.current, source, analysis.box)) {
+        if (!scannerRef.current && scannerStateRef.current !== "failed") {
+          // Scanner still loading — wait for it (within the capture wait) rather than skip the check
+          req.lastIssue = "scannerLoading";
+        } else if (scannerRef.current && scanFrameForExtraFace(scannerRef.current, source, analysis.box, isMobile ? EXTRA_FACE_TILES_LITE : undefined)) {
           extraFaceAtRef.current = now;
           setBanner({ type: "error", text: `${ISSUE_MESSAGES.multipleFaces}. Ask others to move out of the camera view.` });
-          backToReady();
+          backToReady(ISSUE_MESSAGES.multipleFaces);
           return;
         } else {
           finalizeCapture(source, analysis);
@@ -806,7 +852,7 @@ export default function LiveSelfieCapture({
       if (now - req.startedAt > (slowRef.current ? SLOW_TIMING.captureWaitMs : CAPTURE_WAIT_MS)) {
         // Liveness stays valid — blink once and the photo is taken again
         setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}. Blink once to try again.` });
-        backToReady();
+        backToReady(`Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}`);
       }
       return;
     }
@@ -929,7 +975,17 @@ export default function LiveSelfieCapture({
         return;
       }
       // A natural blink must have happened recently (a printed photo can't blink)
-      const readyIssues = now - blinkRef.current.lastBlinkAt > BLINK_RECENT_MS ? [...issues, "needBlink"] : issues;
+      // While a blink can't count (head turned / tilted / moving), say so — after a short delay, so the
+      // text doesn't flicker on a single jittery frame
+      const blinkPoseOk = analysis.faceCount === 1 && isBlinkPose(analysis.pose) && !analysis.flags.moving;
+      const hint = blinkHintRef.current;
+      if (blinkPoseOk === hint.poseOk) hint.since = now;
+      else if (now - hint.since >= BLINK_HINT_DELAY_MS) {
+        hint.poseOk = blinkPoseOk;
+        hint.since = now;
+      }
+      const needBlink = hint.poseOk ? "needBlink" : "needBlinkStraight";
+      const readyIssues = now - blinkRef.current.lastBlinkAt > BLINK_RECENT_MS ? [...issues, needBlink] : issues;
       // "Click Selfie" is enabled only while every blocking check passes
       publishView(readyIssues, readyIssues.length === 0, tips, Math.ceil(msLeft / 1000));
       publishNudge(tips.includes("notCentered") ? analysis : null, video);
@@ -1189,7 +1245,7 @@ export default function LiveSelfieCapture({
       const live = challengeRef.current;
       if (RETAKE_CODES.includes(err?.code) && actionsStillValid(live)) {
         setBanner({ type: "error", text: `${msg} Blink once to take the photo again.`, ttl: SERVER_BANNER_MS });
-        backToReady();
+        backToReady(msg);
         return;
       }
       abortToLive(msg, SERVER_BANNER_MS);
@@ -1260,6 +1316,10 @@ export default function LiveSelfieCapture({
       statusTone = "action";
     }
   } else if (stage === "verifying") statusText = "Checking photo…";
+  else if (stage === "ready" && errorHold) {
+    statusText = errorHold.text;
+    statusTone = "warn";
+  }
   else if (stage === "live" || stage === "ready") {
     if (primaryIssue) {
       statusText = ISSUE_MESSAGES[primaryIssue];
@@ -1291,7 +1351,7 @@ export default function LiveSelfieCapture({
   else if (engineState === "failed") buttonLabel = "Face detection unavailable";
   else if (stage === "live" || stage === "challengeLoading" || stage === "challenge") buttonLabel = "Complete the quick check first";
   else if (stage === "verifying") buttonLabel = "Checking photo…";
-  else if (!view.ready) buttonLabel = issues.length === 1 && issues[0] === "needBlink" ? "Blink once to take the photo" : "Fix the highlighted items";
+  else if (!view.ready) buttonLabel = issues.length === 1 && String(issues[0]).startsWith("needBlink") ? ISSUE_MESSAGES[issues[0]] : "Fix the highlighted items";
   else if (canClickSelfie) buttonLabel = "📸 Hold still — capturing…";
 
   const checklistState = (item) => {
