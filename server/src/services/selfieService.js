@@ -7,6 +7,9 @@ const digioClient = require("./digioClient");
 // Others: DIGILOCKER_CONDITIONAL_JOURNEY_PAN_V0702 (KTP251129130344112KVAZBQHT3474J9) = full journey, Digio
 // shows DigiLocker → PAN → Selfie; ONLY_SELFIE_FLOW (KTP261015120630980SP6NLBS3LITVIS).
 const SELFIE_WORKFLOW = process.env.DIGIO_SELFIE_WORKFLOW || "DIGILOCKER_CONDITIONAL_JOURNEY_PAN_V0702_Clone";
+// Digio's standard selfie-only template — not yet enabled on our account ("Template with name: SELFIE_KYC
+// not found"). Once Digio enables it, uncomment this and comment out the line above:
+// const SELFIE_WORKFLOW = process.env.DIGIO_SELFIE_WORKFLOW || "SELFIE_KYC";
 
 /**
  * Selfie & Liveness Verification Service

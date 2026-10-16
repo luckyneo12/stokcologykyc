@@ -23,6 +23,7 @@ import {
   EXTRA_FACE_TILES_LITE,
 } from "./faceChecks";
 import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, useGuidePrefs, useGuideVoice } from "./SelfieGuide";
+import { SELFIE_LIVENESS_ACTIONS, SELFIE_GUIDE } from "@/config/selfieConfig";
 
 /**
  * In-house live selfie capture (replaces the Digio selfie SDK; see src/config/selfieConfig.js).
@@ -31,6 +32,10 @@ import { GuideHeadCoin, GuideCaption, GuideArrows, GUIDE_STYLES, getGuideCue, us
  * steadily) → random liveness challenge (server-issued) → auto-capture of a straight, clear frame
  * → re-check of the captured photo → review → upload to /api/digio/selfie-capture, which runs
  * passive liveness + face match and stores selfieDetails (incl. lat/lng) in the existing shape.
+ *
+ * With SELFIE_LIVENESS_ACTIONS off (default) there is no challenge: once the checks pass steadily
+ * the "Click Selfie" button enables and the user takes the photo; the photo re-check, review and
+ * server checks (Digio passive liveness + face match) are unchanged.
  *
  * Props:
  *   applicationId  KYC application id (falls back to session storage)
@@ -292,6 +297,7 @@ export default function LiveSelfieCapture({
   const videoChunksRef = useRef([]);
   const videoBytesRef = useRef(0);
   const videoMimeRef = useRef("video/webm");
+  const attemptClipRef = useRef(null); // Promise<dataURL|null>: this attempt's video, cut at the click
   const blinkRef = useRef({ lastBlinkAt: -Infinity });
   const blinkTrackerRef = useRef(createBlinkTracker()); // natural blinks (needed before the click)
   const slowRef = useRef(false); // low-end device: lenient timings, see SLOW_TIMING
@@ -709,6 +715,12 @@ export default function LiveSelfieCapture({
     blinkTrackerRef.current.reset();
     errorHoldUntilRef.current = errorText ? performance.now() + ERROR_HOLD_MS : 0;
     setErrorHold(errorText ? { text: errorText } : null);
+    // Without liveness actions every attempt gets its own video, so the saved video shows only
+    // the attempt whose selfie passed (not earlier failed photos / retakes)
+    if (!SELFIE_LIVENESS_ACTIONS) {
+      attemptClipRef.current = null;
+      startRecording();
+    }
     viewKeyRef.current = "";
     goto("ready");
   };
@@ -774,6 +786,8 @@ export default function LiveSelfieCapture({
       ...analysis.metrics,
     };
     captureReqRef.current = null;
+    // Without liveness actions the attempt's video ends at the click (review time is not included)
+    if (!SELFIE_LIVENESS_ACTIONS) attemptClipRef.current = snapshotVideo().catch(() => null);
     setBanner(null);
     setCaptured(out.toDataURL("image/jpeg", 0.9));
     goto("review");
@@ -862,8 +876,8 @@ export default function LiveSelfieCapture({
     if (st === "verifying") {
       const c = challengeRef.current;
       const req = captureReqRef.current;
-      if (!c || !req) return;
-      if (!trackContinuity(c, analysis, now, slowRef.current)) {
+      if (!req || (SELFIE_LIVENESS_ACTIONS && !c)) return;
+      if (SELFIE_LIVENESS_ACTIONS && !trackContinuity(c, analysis, now, slowRef.current)) {
         captureReqRef.current = null;
         abortToLive("We lost track of your face. Keep your face in the oval and repeat the quick actions.");
         return;
@@ -893,7 +907,8 @@ export default function LiveSelfieCapture({
       }
       if (now - req.startedAt > (slowRef.current ? SLOW_TIMING.captureWaitMs : CAPTURE_WAIT_MS)) {
         // Liveness stays valid — blink once and the photo is taken again
-        setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}. Blink once to try again.` });
+        const again = SELFIE_LIVENESS_ACTIONS ? "Blink once to try again." : "Hold still and click the selfie again.";
+        setBanner({ type: "error", text: `Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}. ${again}` });
         backToReady(`Photo not clear: ${ISSUE_MESSAGES[req.lastIssue]}`);
       }
       return;
@@ -932,12 +947,16 @@ export default function LiveSelfieCapture({
         stableSinceRef.current = null;
       }
       // Fetch the liveness challenge in the background so the actions start without a wait
-      if (analysis.faceCount >= 1 && locationRef.current.granted) prefetchChallenge();
+      if (SELFIE_LIVENESS_ACTIONS && analysis.faceCount >= 1 && locationRef.current.granted) prefetchChallenge();
       publishView(issues, false, tips);
       publishNudge(tips.includes("notCentered") ? analysis : null, video);
       // Blocking checks steady → start the quick liveness actions automatically
+      // (without actions: go straight to the "Click Selfie" stage)
       const steady = stableSinceRef.current !== null && now - stableSinceRef.current >= STABLE_MS;
-      if (steady && now >= cooldownUntilRef.current && locationRef.current.granted) startChallenge();
+      if (steady && now >= cooldownUntilRef.current && locationRef.current.granted) {
+        if (SELFIE_LIVENESS_ACTIONS) startChallenge();
+        else enterClickStage();
+      }
       return;
     }
 
@@ -999,6 +1018,13 @@ export default function LiveSelfieCapture({
     }
 
     if (st === "ready") {
+      // Without liveness actions: "Click Selfie" is enabled while every blocking check passes
+      // (one face, no eyewear, looking straight) — no blink, no click window
+      if (!SELFIE_LIVENESS_ACTIONS) {
+        publishView(issues, issues.length === 0 && analysis.faceCount === 1, tips);
+        publishNudge(tips.includes("notCentered") ? analysis : null, video);
+        return;
+      }
       const c = challengeRef.current;
       if (!c) return;
       if (!trackContinuity(c, analysis, now, slowRef.current)) {
@@ -1165,6 +1191,15 @@ export default function LiveSelfieCapture({
     }
   };
 
+  /** No liveness actions: checks passed steadily → the "Click Selfie" stage (session video starts). */
+  function enterClickStage() {
+    if (stageRef.current !== "live" || sessionEndedRef.current) return;
+    attemptClipRef.current = null;
+    startRecording(); // fresh video for this attempt
+    viewKeyRef.current = "";
+    goto("ready");
+  }
+
   const clickSelfie = () => {
     if (!canClickSelfie || !engineRef.current) return;
     captureReqRef.current = { startedAt: performance.now(), lastIssue: null };
@@ -1177,8 +1212,9 @@ export default function LiveSelfieCapture({
   // Any check failing in between (canClickSelfie → false) restarts the wait.
   const clickSelfieRef = useRef(null);
   clickSelfieRef.current = clickSelfie;
+  // Without liveness actions the user takes the photo with the button (no auto-capture).
   useEffect(() => {
-    if (!canClickSelfie) return;
+    if (!canClickSelfie || !SELFIE_LIVENESS_ACTIONS) return;
     const timer = setTimeout(() => clickSelfieRef.current?.(), AUTO_CAPTURE_MS);
     return () => clearTimeout(timer);
   }, [canClickSelfie]);
@@ -1210,7 +1246,7 @@ export default function LiveSelfieCapture({
   const retake = () => {
     setCaptured(null);
     setBanner(null);
-    if (actionsStillValid(challengeRef.current)) {
+    if (!SELFIE_LIVENESS_ACTIONS || actionsStillValid(challengeRef.current)) {
       backToReady();
     } else {
       abortToLive("Please repeat the quick actions, then click the selfie.");
@@ -1219,7 +1255,7 @@ export default function LiveSelfieCapture({
 
   const submit = async () => {
     const c = challengeRef.current;
-    if (!captured || !c) return;
+    if (!captured || (SELFIE_LIVENESS_ACTIONS && !c)) return;
     setBanner(null);
     goto("submitting");
 
@@ -1239,7 +1275,7 @@ export default function LiveSelfieCapture({
 
     // The session video is NOT sent with the selfie (a large upload would delay verification);
     // it is snapshotted now and uploaded in the background once the selfie is saved.
-    const videoSnapshot = snapshotVideo().catch(() => null);
+    const videoSnapshot = (!SELFIE_LIVENESS_ACTIONS && attemptClipRef.current) || snapshotVideo().catch(() => null);
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/digio/selfie-capture`, {
@@ -1249,9 +1285,13 @@ export default function LiveSelfieCapture({
           applicationId: resolveAppId(applicationId),
           selfie: captured,
           location: { lat: coords.lat, lng: coords.lng, accuracy: coords.accuracy },
-          challengeToken: c.token,
-          challenge: { completed: c.completed, completedAt: c.completedAt },
-          challengeFrame: c.keyframe,
+          ...(SELFIE_LIVENESS_ACTIONS
+            ? {
+                challengeToken: c.token,
+                challenge: { completed: c.completed, completedAt: c.completedAt },
+                challengeFrame: c.keyframe,
+              }
+            : {}),
           clientChecks: lastMetricsRef.current,
         }),
       });
@@ -1278,8 +1318,9 @@ export default function LiveSelfieCapture({
       const msg = err?.name === "TypeError" ? "Network error. Check your internet connection and try again." : err.message;
       // Photo-quality failures: keep the completed liveness actions and let the user click again
       const live = challengeRef.current;
-      if (RETAKE_CODES.includes(err?.code) && actionsStillValid(live)) {
-        setBanner({ type: "error", text: `${msg} Blink once to take the photo again.`, ttl: SERVER_BANNER_MS });
+      if (RETAKE_CODES.includes(err?.code) && (!SELFIE_LIVENESS_ACTIONS || actionsStillValid(live))) {
+        const again = SELFIE_LIVENESS_ACTIONS ? " Blink once to take the photo again." : "";
+        setBanner({ type: "error", text: `${msg}${again}`, ttl: SERVER_BANNER_MS });
         backToReady(msg);
         return;
       }
@@ -1368,15 +1409,16 @@ export default function LiveSelfieCapture({
   // Compact portrait preview, similar in size to the Digio selfie window
   const cameraBoxStyle = { width: `min(100%, ${variant === "page" ? 320 : 280}px)`, aspectRatio: "3 / 4" };
 
-  let buttonLabel = "📸 Click Selfie";
+  let buttonLabel = "Click Selfie";
   if (locationPending) buttonLabel = "Getting your location…";
   else if (!location.granted) buttonLabel = "Location required";
   else if (engineState === "loading" || stage === "starting") buttonLabel = "Getting ready…";
   else if (engineState === "failed") buttonLabel = "Face detection unavailable";
-  else if (stage === "live" || stage === "challengeLoading" || stage === "challenge") buttonLabel = "Complete the quick check first";
+  else if (stage === "challengeLoading" || stage === "challenge" || (stage === "live" && SELFIE_LIVENESS_ACTIONS)) buttonLabel = "Complete the quick check first";
+  else if (stage === "live") buttonLabel = issues.length ? "Fix the highlighted items" : "Hold still…";
   else if (stage === "verifying") buttonLabel = "Checking photo…";
   else if (!view.ready) buttonLabel = issues.length === 1 && String(issues[0]).startsWith("needBlink") ? ISSUE_MESSAGES[issues[0]] : "Fix the highlighted items";
-  else if (canClickSelfie) buttonLabel = "📸 Hold still — capturing…";
+  else if (canClickSelfie) buttonLabel = SELFIE_LIVENESS_ACTIONS ? "Hold still — capturing…" : "Click Selfie";
 
   const checklistState = (item) => {
     if (engineState !== "ready" || !LOOP_STAGES.includes(stage)) return "pending";
@@ -1398,7 +1440,9 @@ export default function LiveSelfieCapture({
         nudge,
         ready: view.ready,
       });
-  const guideVoice = useGuideVoice(guideCue, guidePrefs.lang, guidePrefs.muted);
+  // Guide off: no voice (the hook stays mounted, silent)
+  const guideVoice = useGuideVoice(SELFIE_GUIDE ? guideCue : null, guidePrefs.lang, SELFIE_GUIDE ? guidePrefs.muted : true);
+  const statusCardTone = ["warn", "ok", "action"].includes(statusTone) ? statusTone : "info";
   // Wide layout (camera | guide) while the camera or the captured photo is shown
   const twoColumn = showCamera || stage === "review" || stage === "submitting";
 
@@ -1408,7 +1452,7 @@ export default function LiveSelfieCapture({
       role="dialog"
       aria-modal={variant === "modal"}
       aria-label="Selfie capture"
-      onPointerDownCapture={guideVoice.prime}
+      onPointerDownCapture={SELFIE_GUIDE ? guideVoice.prime : undefined}
     >
       <style>{STYLES + GUIDE_STYLES}</style>
       <div className={`lsc-panel ${twoColumn ? "lsc-panel-wide" : ""}`}>
@@ -1505,7 +1549,7 @@ export default function LiveSelfieCapture({
             )}
 
             {/* Auto-capture countdown + shutter flash (visual only) */}
-            {canClickSelfie && (
+            {canClickSelfie && SELFIE_LIVENESS_ACTIONS && (
               <div className="lsc-auto" aria-hidden="true">
                 <span className="lsc-auto-label">Hold still…</span>
                 <span className="lsc-auto-bar"><span style={{ animationDuration: `${AUTO_CAPTURE_MS}ms` }} /></span>
@@ -1559,7 +1603,16 @@ export default function LiveSelfieCapture({
 
         <div className="lsc-side">
         {/* ── Guide: head on its own + instruction, voice controls and progress ── */}
-        {showCamera && (
+        {/* Guide off: a simple text status card (same look as the guide caption, no video / voice) */}
+        {showCamera && !SELFIE_GUIDE && statusText && (
+          <div className={`lsg-caption lsg-tone-${statusCardTone} lsc-status-card`}>
+            <div className="lsg-cap-top">
+              <span className="lsg-cap-label"><span className="lsg-pulse" aria-hidden="true" />{STATUS_CARD_LABELS[statusCardTone]}</span>
+            </div>
+            <p className="lsg-text" key={statusText} aria-live="polite">{statusText}</p>
+          </div>
+        )}
+        {showCamera && SELFIE_GUIDE && (
           <div className="lsc-guide-card">
             <GuideHeadCoin cue={guideCue} speaking={guideVoice.speaking} />
             <GuideCaption
@@ -1618,10 +1671,12 @@ export default function LiveSelfieCapture({
                 </li>
               );
             })}
-            <li className={`lsc-check ${livenessState === "ok" ? "ok" : ""}`}>
-              <span className="lsc-check-icon">{livenessState === "ok" ? "✓" : livenessState === "active" ? "…" : "•"}</span>
-              Liveness check
-            </li>
+            {SELFIE_LIVENESS_ACTIONS && (
+              <li className={`lsc-check ${livenessState === "ok" ? "ok" : ""}`}>
+                <span className="lsc-check-icon">{livenessState === "ok" ? "✓" : livenessState === "active" ? "…" : "•"}</span>
+                Liveness check
+              </li>
+            )}
           </ul>
         )}
 
@@ -1645,8 +1700,11 @@ export default function LiveSelfieCapture({
             <button type="button" className="lsc-btn lsc-btn-primary" onClick={submit}>Submit Selfie</button>
           </div>
         )}
-        {stage === "live" && (
+        {stage === "live" && SELFIE_LIVENESS_ACTIONS && (
           <p className="lsc-footnote">First do two quick actions shown on the camera (like turning your head or blinking). Your photo is then taken automatically.</p>
+        )}
+        {(stage === "live" || stage === "ready") && !SELFIE_LIVENESS_ACTIONS && (
+          <p className="lsc-footnote">Keep your face inside the oval and look straight at the camera. When every check is green, tap Click Selfie.</p>
         )}
         </div>
         </div>
@@ -1725,6 +1783,9 @@ function LocationPanel({ location, platform, compact = false }) {
   );
 }
 
+// Heading of the simple status card (guide off), per tone
+const STATUS_CARD_LABELS = { action: "Do this", warn: "Fix this", ok: "All set", info: "Please wait" };
+
 // ─── Styles (scoped by the lsc- prefix) ─────────────────────────────────
 const STYLES = `
 .lsc-root { font-family: inherit; color: var(--text-primary, #0e0f0c);
@@ -1762,6 +1823,8 @@ const STYLES = `
 @media (max-width: 760px) { .lsc-two { display: flex; flex-direction: column; align-items: stretch; gap: 0; } }
 .lsc-guide-card { padding: 18px 16px 16px; border-radius: 22px; background: linear-gradient(180deg, rgba(159,232,112,0.16) 0%, rgba(159,232,112,0) 55%), var(--lsc-surface); border: 1px solid var(--lsc-line); }
 @media (max-width: 760px) { .lsc-guide-card { margin-top: 14px; } }
+.lsc-side .lsc-status-card { margin-top: 0; }
+@media (max-width: 760px) { .lsc-side .lsc-status-card { margin-top: 14px; } }
 .lsc-review-note { padding: 18px; border-radius: 20px; background: var(--lsc-soft); }
 @media (max-width: 760px) { .lsc-review-note { margin-top: 14px; } }
 

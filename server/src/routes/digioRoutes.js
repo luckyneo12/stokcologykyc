@@ -3304,6 +3304,11 @@ const SELFIE_MIN_SESSION_MATCH = Number(process.env.SELFIE_MIN_SESSION_MATCH || 
 const SELFIE_KEYFRAME_MAX_BASE64 = 3 * 1024 * 1024;
 const SELFIE_VIDEO_MAX_BASE64 = 22 * 1024 * 1024; // ~16 MB video
 const SELFIE_VIDEO_TOKEN_TTL_SECONDS = 15 * 60;
+// Head-turn + blink actions (steps 2 and 3b below). OFF by default: the browser then sends no
+// challenge and the selfie is verified by passive liveness + face match only. Set
+// SELFIE_LIVENESS_ACTIONS=true here AND NEXT_PUBLIC_SELFIE_LIVENESS_ACTIONS=true in the frontend
+// to bring the actions back — the two must match.
+const SELFIE_REQUIRE_ACTIONS = String(process.env.SELFIE_LIVENESS_ACTIONS || "false").toLowerCase() === "true";
 
 /**
  * User-facing reason from a failed Digio liveness result, or null. Digio explains some failures,
@@ -3528,9 +3533,10 @@ router.post("/selfie-capture", auth, async (req, res) => {
     }
     // Frame grabbed during the liveness actions (required for the anti-swap check)
     if (
-      typeof challengeFrame !== "string" ||
-      !/^data:image\/(jpeg|png);base64,/.test(challengeFrame) ||
-      challengeFrame.length > SELFIE_KEYFRAME_MAX_BASE64
+      SELFIE_REQUIRE_ACTIONS && (
+        typeof challengeFrame !== "string" ||
+        !/^data:image\/(jpeg|png);base64,/.test(challengeFrame) ||
+        challengeFrame.length > SELFIE_KEYFRAME_MAX_BASE64)
     ) {
       return res.status(400).json({
         success: false,
@@ -3567,31 +3573,33 @@ router.post("/selfie-capture", auth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    // ── 2. Liveness challenge verification (signed, single-use) ──────────
-    let challengePayload;
-    try {
-      challengePayload = jwt.verify(String(challengeToken || ""), SELFIE_CHALLENGE_SECRET);
-    } catch (e) {
-      return res.status(400).json({
-        success: false,
-        code: "CHALLENGE_INVALID",
-        error: "The liveness check expired. Please take the selfie again.",
-      });
-    }
-    sweepUsedSelfieChallenges();
-    const completedSteps = Array.isArray(challenge?.completed) ? challenge.completed.map(String) : [];
-    if (
-      challengePayload.purpose !== "selfie_challenge" ||
-      challengePayload.uid !== String(req.user.id) ||
-      challengePayload.appId !== application.applicationId ||
-      usedSelfieChallenges.has(challengePayload.jti) ||
-      JSON.stringify(completedSteps) !== JSON.stringify(challengePayload.steps)
-    ) {
-      return res.status(400).json({
-        success: false,
-        code: "CHALLENGE_INVALID",
-        error: "The liveness check could not be verified. Please take the selfie again.",
-      });
+    // ── 2. Liveness challenge verification (signed, single-use) — only with the actions on ──
+    let challengePayload = null;
+    if (SELFIE_REQUIRE_ACTIONS) {
+      try {
+        challengePayload = jwt.verify(String(challengeToken || ""), SELFIE_CHALLENGE_SECRET);
+      } catch (e) {
+        return res.status(400).json({
+          success: false,
+          code: "CHALLENGE_INVALID",
+          error: "The liveness check expired. Please take the selfie again.",
+        });
+      }
+      sweepUsedSelfieChallenges();
+      const completedSteps = Array.isArray(challenge?.completed) ? challenge.completed.map(String) : [];
+      if (
+        challengePayload.purpose !== "selfie_challenge" ||
+        challengePayload.uid !== String(req.user.id) ||
+        challengePayload.appId !== application.applicationId ||
+        usedSelfieChallenges.has(challengePayload.jti) ||
+        JSON.stringify(completedSteps) !== JSON.stringify(challengePayload.steps)
+      ) {
+        return res.status(400).json({
+          success: false,
+          code: "CHALLENGE_INVALID",
+          error: "The liveness check could not be verified. Please take the selfie again.",
+        });
+      }
     }
     // The challenge is marked as used only once the selfie is actually saved (step 6), so a
     // retake after a failed liveness / face match can reuse the actions just completed.
@@ -3601,15 +3609,22 @@ router.post("/selfie-capture", auth, async (req, res) => {
     //        check fails, the already-uploaded selfie is deleted again.
     const cleanSelfie = selfie.replace(/^data:image\/[a-z]+;base64,/, "");
     const selfieBuffer = Buffer.from(cleanSelfie, "base64");
-    const challengeFrameBuffer = Buffer.from(challengeFrame.replace(/^data:image\/[a-z]+;base64,/, ""), "base64");
+    const challengeFrameBuffer = SELFIE_REQUIRE_ACTIONS
+      ? Buffer.from(challengeFrame.replace(/^data:image\/[a-z]+;base64,/, ""), "base64")
+      : null;
     const appRef = application.applicationId;
     const sourcePhotoUrl = findSelfieSourcePhotoUrl(application);
 
+    // Action-frame checks (anti-swap) only exist with the actions on
     const [livenessRes, frameLivenessRes, sessionMatchRes, docMatchRes, uploadRes] = await timed(timings, "checks", () =>
       Promise.all([
         timed(timings, "selfieLiveness", () => settle(digioClient.checkPassiveLiveness(selfieBuffer, `${appRef}_IL_${Date.now()}`))),
-        timed(timings, "frameLiveness", () => settle(digioClient.checkPassiveLiveness(challengeFrameBuffer, `${appRef}_ICL_${Date.now()}`))),
-        timed(timings, "sessionMatch", () => settle(digioClient.checkFaceMatch(challengeFrameBuffer, selfieBuffer, `${appRef}_ISM_${Date.now()}`, SELFIE_MIN_SESSION_MATCH))),
+        SELFIE_REQUIRE_ACTIONS
+          ? timed(timings, "frameLiveness", () => settle(digioClient.checkPassiveLiveness(challengeFrameBuffer, `${appRef}_ICL_${Date.now()}`)))
+          : { skipped: "no_actions" },
+        SELFIE_REQUIRE_ACTIONS
+          ? timed(timings, "sessionMatch", () => settle(digioClient.checkFaceMatch(challengeFrameBuffer, selfieBuffer, `${appRef}_ISM_${Date.now()}`, SELFIE_MIN_SESSION_MATCH)))
+          : { skipped: "no_actions" },
         timed(timings, "documentMatch", async () => {
           if (!sourcePhotoUrl) return { skipped: "no_source" };
           const source = await settle(getSelfieSourcePhotoBuffer(appRef, sourcePhotoUrl));
@@ -3712,7 +3727,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
     // ── 3b. Anti-swap: action frame must be live AND the same person as the final photo ──
     let sessionMatchScore = null;
     let challengeFrameLivenessScore = null;
-    {
+    if (SELFIE_REQUIRE_ACTIONS) {
       const sessionError = !frameLivenessRes.ok ? frameLivenessRes.error : !sessionMatchRes.ok ? sessionMatchRes.error : null;
       if (sessionError) {
         const status = sessionError.response?.status;
@@ -3814,14 +3829,16 @@ router.post("/selfie-capture", auth, async (req, res) => {
     const savedSelfiePath = uploadedSelfieUrl;
 
     // Every check passed and the photo is stored — the liveness challenge is now used up
-    if (usedSelfieChallenges.has(challengePayload.jti)) {
-      return reject(400, {
-        success: false,
-        code: "CHALLENGE_INVALID",
-        error: "The liveness check could not be verified. Please take the selfie again.",
-      });
+    if (challengePayload) {
+      if (usedSelfieChallenges.has(challengePayload.jti)) {
+        return reject(400, {
+          success: false,
+          code: "CHALLENGE_INVALID",
+          error: "The liveness check could not be verified. Please take the selfie again.",
+        });
+      }
+      usedSelfieChallenges.set(challengePayload.jti, challengePayload.exp * 1000);
     }
-    usedSelfieChallenges.set(challengePayload.jti, challengePayload.exp * 1000);
 
     // ── 6. Persist in the same shape the admin pages / PDF already read ──
     const capturedAt = new Date().toISOString();
@@ -3876,12 +3893,15 @@ router.post("/selfie-capture", auth, async (req, res) => {
       source: "INHOUSE_LIVE_CAPTURE",
       capturedAt,
       updatedAt: capturedAt,
-      livenessChallenge: {
-        steps: challengePayload.steps,
-        completedAt: Array.isArray(challenge?.completedAt) ? challenge.completedAt.slice(0, 5) : [],
-        sessionMatchScore,
-        actionFrameLivenessScore: challengeFrameLivenessScore,
-      },
+      // null when the selfie was taken without the head-turn / blink actions
+      livenessChallenge: challengePayload
+        ? {
+            steps: challengePayload.steps,
+            completedAt: Array.isArray(challenge?.completedAt) ? challenge.completedAt.slice(0, 5) : [],
+            sessionMatchScore,
+            actionFrameLivenessScore: challengeFrameLivenessScore,
+          }
+        : null,
       ...(safeClientChecks ? { clientChecks: safeClientChecks } : {}),
       userAgent: String(req.headers["user-agent"] || "").slice(0, 300),
     };
@@ -3909,7 +3929,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
         applicationId: application.applicationId,
         faceMatchScore: genuineFaceMatchScore,
         livenessScore: genuineLivenessScore,
-        challengeSteps: challengePayload.steps,
+        challengeSteps: challengePayload ? challengePayload.steps : null,
         sessionMatchScore,
         videoPending: !!videoMatch,
         lat,
