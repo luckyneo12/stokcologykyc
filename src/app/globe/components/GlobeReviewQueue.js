@@ -103,7 +103,8 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
     if (!PERMANENT_COLUMNS.includes(colName)) return {};
     
     // Dynamically adjust Actions width based on whether we need space for Approve/Reject buttons
-    const actionsWidth = isPending ? 320 : 80;
+    // (120: room for the View button plus the cell padding, so it is never clipped)
+    const actionsWidth = isPending ? 320 : 120;
     
     let left = 0;
     for (const c of PERMANENT_COLUMNS) {
@@ -184,10 +185,10 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: "1.8rem", fontWeight: 900, letterSpacing: "-0.5px", margin: 0, color: "var(--text-primary)" }}>
+          <h2 className="admin-section-title" style={{ fontSize: "1.8rem", fontWeight: 900, letterSpacing: "-0.5px", margin: 0, color: "var(--text-primary)" }}>
             {title}
           </h2>
-          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontWeight: 600 }}>
+          <p className="admin-section-subtitle" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontWeight: 600 }}>
             {isPending ? "Manage and process pending KYC applications" : `View ${activeSection} KYC applications`}
           </p>
         </div>

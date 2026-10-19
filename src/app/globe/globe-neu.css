@@ -1,0 +1,76 @@
+/* ============================================================
+   Globe portal — the admin portal's soft-UI theme (admin-neu.css) in Globe green.
+   admin-neu.css does the design; this file only swaps its violet accent for green.
+   Loaded by globe/layout.js after admin-neu.css; scoped to the Globe wrapper (.globe-neu).
+   ============================================================ */
+
+/* Accent tokens. !important + the extra class: globe-table.css forces its lime with !important */
+:root:has(.globe-neu),
+.globe-portal-theme.globe-neu {
+  --neu-accent: #15803d !important;
+  --neu-accent-fill: linear-gradient(145deg, #22a654 0%, #15803d 100%) !important;
+  --neu-row-hover: #eefaf1 !important;
+  --neu-row-shadow: rgba(21, 128, 61, 0.36) !important;
+  --neu-head-ink: #166534 !important;
+  --wise-green: var(--neu-accent) !important;
+  --wise-green-hover: #166534 !important;
+  --wise-green-alpha: rgba(21, 128, 61, 0.12) !important;
+}
+
+/* Hovered table row: solid Globe green instead of violet */
+html .admin-neu.globe-neu .admin-table tbody tr:hover td,
+html .admin-neu.globe-neu .mc-readable .admin-table tbody tr:hover td {
+  background: #17843f !important;
+  color: #ffffff !important;
+}
+
+/* Accent glows / pressed shadows that were tinted violet */
+.admin-neu.globe-neu .admin-btn-primary:active:not(:disabled),
+.admin-neu.globe-neu .neu-btn-primary:active:not(:disabled),
+.admin-neu.globe-neu :where(button:is([style*="background: var(--text-primary)"], [style*="background: var(--wise-green)"]), .api-btn.btn-save, .pdfb-tbtn.primary):active:not(:disabled) {
+  box-shadow: inset 3px 3px 7px rgba(4, 45, 20, 0.5), inset -2px -2px 5px rgba(255, 255, 255, 0.15) !important;
+}
+.admin-neu.globe-neu .neu-section-icon { box-shadow: var(--neu-raised-sm), 0 6px 14px -6px rgba(21, 128, 61, 0.55); }
+.admin-neu.globe-neu .admin-table thead .mc-th-btn.is-active { box-shadow: var(--neu-raised-xs), 0 4px 10px -4px rgba(21, 128, 61, 0.6); }
+.admin-neu.globe-neu :is(.neu-detail-col:hover, .neu-detail-preview:hover) > .neu-panel-head .neu-panel-icon {
+  box-shadow: var(--neu-raised-xs), 0 6px 14px -6px rgba(21, 128, 61, 0.7);
+}
+.admin-neu.globe-neu :is(.neu-detail-col:hover) > .neu-panel-head .neu-panel-count { box-shadow: 0 4px 10px -4px rgba(21, 128, 61, 0.7); }
+.admin-neu.globe-neu .neu-tab-acc.is-open { box-shadow: var(--neu-raised-sm), 0 0 0 1px rgba(21, 128, 61, 0.2); }
+.admin-neu.globe-neu .neu-detail-bar .neu-dh-applicant > .neu-dh-avatar.neu-dh-avatar {
+  box-shadow: var(--neu-raised-xs), 0 8px 18px -8px rgba(21, 128, 61, 0.75) !important;
+}
+.admin-neu.globe-neu .neu-detail-bar .neu-dh-applicant:hover > .neu-dh-avatar.neu-dh-avatar {
+  box-shadow: var(--neu-raised-sm), 0 12px 24px -8px rgba(21, 128, 61, 0.85) !important;
+}
+/* Controls / menus over the green hovered row: dark-green shadow instead of dark-violet */
+html .admin-neu.globe-neu .admin-table tbody tr:hover td :is(.action-menu-container > button, .neu-btn-soft, .mc-rej-chip, .badge, button[style*="border: 1px solid var(--border-color)"]) {
+  box-shadow: 0 1px 2px rgba(4, 45, 20, 0.28), 0 4px 10px -3px rgba(4, 45, 20, 0.45) !important;
+}
+.admin-neu.globe-neu .premium-action-menu {
+  box-shadow: 0 2px 6px rgba(4, 45, 20, 0.12), 0 16px 36px -10px rgba(4, 45, 20, 0.38) !important;
+}
+
+/* ---------- Dark mode (Globe theme button) ----------
+   admin-neu.css supplies the dark surfaces and text; these swap its dark violet accent for green.
+   Both selectors are needed: the light overrides above sit on :root and on the Globe wrapper itself. */
+:root[data-theme="dark"]:has(.globe-neu),
+[data-theme="dark"] .globe-portal-theme.globe-neu {
+  --neu-accent: #4ade80 !important;
+  --neu-accent-fill: linear-gradient(145deg, #22c55e 0%, #15803d 100%) !important;
+  --neu-row-hover: #1f3328 !important;
+  --neu-row-shadow: rgba(0, 0, 0, 0.55) !important;
+  --neu-head-ink: #86efac !important;
+  --wise-green: var(--neu-accent) !important;
+  --wise-green-hover: #86efac !important;
+  --wise-dark-green: #bbf7d0 !important;
+  --wise-green-alpha: rgba(74, 222, 128, 0.16) !important;
+}
+html[data-theme="dark"] .admin-neu.globe-neu .admin-table tbody tr:hover td,
+html[data-theme="dark"] .admin-neu.globe-neu .mc-readable .admin-table tbody tr:hover td {
+  background: #15803d !important;
+  color: #ffffff !important;
+}
+
+/* Client code: globe-table.css colours it violet / lavender (dark); use the Globe accent in both themes */
+.admin-neu.globe-neu .admin-table tr td.mc-client-code { color: var(--neu-accent); }

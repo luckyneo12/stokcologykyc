@@ -1,5 +1,8 @@
 import "../globals.css";
 import "./globe-table.css";
+import "../admin/admin-neu.css";
+import "./globe-neu.css";
+import GlobeThemeShell from "./components/GlobeThemeShell";
 
 export const metadata = {
   title: "Globe UAT - Dashboard",
@@ -8,19 +11,22 @@ export const metadata = {
 
 export default function GlobeLayout({ children }) {
   return (
-    <div className="globe-portal-theme" style={{ minHeight: "100vh", width: "100%" }}>
+    <>
       <script
         dangerouslySetInnerHTML={{
           __html: `
             (function() {
               try {
-                document.documentElement.setAttribute('data-theme', 'light');
+                // Globe keeps its own light / dark choice (theme button in the header)
+                var theme = localStorage.getItem('globeTheme');
+                document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
               } catch (e) {}
             })();
           `,
         }}
       />
-      {children}
-    </div>
+      {/* Same soft-UI look as the admin portal, in Globe green (sign-in pages keep their own design) */}
+      <GlobeThemeShell>{children}</GlobeThemeShell>
+    </>
   );
 }

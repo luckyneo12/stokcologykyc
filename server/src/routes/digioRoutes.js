@@ -1692,54 +1692,79 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
       }
     }
 
-    // Scan for Address (Deep Component Search)
-    const house =
-      findValue(digioResponse, "house_no") || findValue(digioResponse, "house");
-    const street = findValue(digioResponse, "street");
-    const landmark = findValue(digioResponse, "landmark");
-    const loc =
-      findValue(digioResponse, "loc") || findValue(digioResponse, "location");
-    const vtc =
-      findValue(digioResponse, "vtc") ||
-      findValue(digioResponse, "city") ||
-      findValue(digioResponse, "district_or_city");
-    const dist =
-      findValue(digioResponse, "dist") ||
-      findValue(digioResponse, "district") ||
-      findValue(digioResponse, "district_or_city");
-    const state = findValue(digioResponse, "state");
-    const pc =
-      findValue(digioResponse, "pc") || findValue(digioResponse, "pincode");
-
-    // Reconstruct Line 1 from pieces with cleaning
-    const cleanPrefix = (str) => {
-      if (!str || typeof str !== "string") return str;
-      // Remove S/O:, W/O:, D/O:, C/O: and everything up to the first comma or space if it looks like a name
-      return str
-        .replace(/^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+[^,]+,?\s*/i, "")
-        .trim();
+    // Scan for Address (Deep Component Search) — from the Aadhaar (DigiLocker) data only.
+    // A selfie result carries a GEO_TAGGING "address" (where the phone was when the selfie was taken);
+    // searching the whole response picked that up as Line 1. The selfie location belongs only to the
+    // selfie page / IPV, never to the applicant's address.
+    const isGeoTag = (node) => String(node?.type || "").toUpperCase() === "GEO_TAGGING";
+    const isSelfieAction = (action) => ["selfie", "liveness"].includes(String(action?.type || "").toLowerCase());
+    const withoutGeoTags = (node) => {
+      if (Array.isArray(node)) return node.filter((n) => !isGeoTag(n)).map(withoutGeoTags);
+      if (!node || typeof node !== "object") return node;
+      const out = {};
+      for (const [k, v] of Object.entries(node)) out[k] = withoutGeoTags(v);
+      return out;
     };
-
-    const addressParts = [cleanPrefix(house), street, landmark, loc].filter(
-      Boolean,
-    );
-    if (addressParts.length > 0) {
-      nextAddress.line1 = addressParts.join(", ");
-    } else {
-      const fullAddr =
-        findValue(digioResponse, "address_information") ||
-        findValue(digioResponse, "address");
-      if (typeof fullAddr === "string")
-        nextAddress.line1 = cleanPrefix(fullAddr);
-      else if (fullAddr && typeof fullAddr === "object") {
-        const rawAddr = fullAddr.address || fullAddr.line1 || nextAddress.line1;
-        nextAddress.line1 = cleanPrefix(rawAddr);
-      }
+    let addressSource = null;
+    if (digilockerActions.length > 0) {
+      addressSource = digilockerActions.map((action) => action?.details).filter(Boolean);
+    } else if (!["SELFIE", "LIVENESS"].includes(String(payload.type || "").toUpperCase())) {
+      addressSource = withoutGeoTags(
+        Array.isArray(digioResponse?.actions)
+          ? { ...digioResponse, actions: digioResponse.actions.filter((action) => !isSelfieAction(action)) }
+          : digioResponse,
+      );
     }
 
-    if (vtc || dist) nextAddress.city = vtc || dist;
-    if (state) nextAddress.state = state;
-    if (pc) nextAddress.pincode = pc;
+    if (addressSource) {
+      const house =
+        findValue(addressSource, "house_no") || findValue(addressSource, "house");
+      const street = findValue(addressSource, "street");
+      const landmark = findValue(addressSource, "landmark");
+      const loc =
+        findValue(addressSource, "loc") || findValue(addressSource, "location");
+      const vtc =
+        findValue(addressSource, "vtc") ||
+        findValue(addressSource, "city") ||
+        findValue(addressSource, "district_or_city");
+      const dist =
+        findValue(addressSource, "dist") ||
+        findValue(addressSource, "district") ||
+        findValue(addressSource, "district_or_city");
+      const state = findValue(addressSource, "state");
+      const pc =
+        findValue(addressSource, "pc") || findValue(addressSource, "pincode");
+
+      // Reconstruct Line 1 from pieces with cleaning
+      const cleanPrefix = (str) => {
+        if (!str || typeof str !== "string") return str;
+        // Remove S/O:, W/O:, D/O:, C/O: and everything up to the first comma or space if it looks like a name
+        return str
+          .replace(/^(S\/O|W\/O|D\/O|C\/O|CO|SO)[:\s]+[^,]+,?\s*/i, "")
+          .trim();
+      };
+
+      const addressParts = [cleanPrefix(house), street, landmark, loc].filter(
+        Boolean,
+      );
+      if (addressParts.length > 0) {
+        nextAddress.line1 = addressParts.join(", ");
+      } else {
+        const fullAddr =
+          findValue(addressSource, "address_information") ||
+          findValue(addressSource, "address");
+        if (typeof fullAddr === "string")
+          nextAddress.line1 = cleanPrefix(fullAddr);
+        else if (fullAddr && typeof fullAddr === "object") {
+          const rawAddr = fullAddr.address || fullAddr.line1 || nextAddress.line1;
+          nextAddress.line1 = cleanPrefix(rawAddr);
+        }
+      }
+
+      if (vtc || dist) nextAddress.city = vtc || dist;
+      if (state) nextAddress.state = state;
+      if (pc) nextAddress.pincode = pc;
+    }
 
     // --- DOCUMENT EXTRACTION ENGINE ---
     const previousDocuments = parseJsonField(application.documents, []);

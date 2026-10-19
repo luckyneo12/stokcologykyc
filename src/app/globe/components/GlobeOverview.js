@@ -3,32 +3,46 @@ import {
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts';
 import { useRouter } from 'next/navigation';
+import { Users, Clock3, CheckCircle, ShieldAlert } from 'lucide-react';
 
 const COLORS = ['#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6'];
 
-const StatCard = ({ label, value, color, onClick }) => (
-  <div 
-    onClick={onClick}
-    style={{
-      background: "var(--bg-primary)",
-      border: "1px solid var(--border-color)",
-      borderRadius: 24,
-      padding: "24px 28px",
-      boxShadow: "0 4px 24px rgba(0,0,0,0.02)",
-      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-      position: "relative",
-      overflow: "hidden",
-      cursor: onClick ? "pointer" : "default"
-    }}
-    onMouseOver={onClick ? (e) => e.currentTarget.style.transform = "translateY(-4px)" : undefined}
-    onMouseOut={onClick ? (e) => e.currentTarget.style.transform = "translateY(0)" : undefined}
-  >
-    <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
-      {label}
+// Same metric card as the admin dashboard
+const StatCard = ({ label, value, color, icon: Icon, onClick }) => (
+  <div className="premium-metric-card" style={{
+    background: "var(--bg-card)",
+    border: "1px solid var(--border-color)",
+    borderRadius: 24,
+    padding: "24px 28px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.02)",
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    position: "relative",
+    overflow: "hidden",
+    cursor: onClick ? "pointer" : "default"
+  }}
+  onClick={onClick}
+  onMouseOver={(e) => {
+    e.currentTarget.style.transform = "translateY(-4px)";
+    e.currentTarget.style.boxShadow = "0 12px 32px rgba(0,0,0,0.06)";
+    e.currentTarget.style.borderColor = `${color}40`;
+  }}
+  onMouseOut={(e) => {
+    e.currentTarget.style.transform = "translateY(0)";
+    e.currentTarget.style.boxShadow = "0 4px 24px rgba(0,0,0,0.02)";
+    e.currentTarget.style.borderColor = "var(--border-color)";
+  }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+      <div style={{
+        width: 44, height: 44, borderRadius: 12,
+        background: "var(--bg-secondary)",
+        border: "1px solid var(--border-color)",
+        display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-primary)"
+      }}>
+        {Icon && <Icon size={22} strokeWidth={2} />}
+      </div>
     </div>
-    <div style={{ fontSize: "2.5rem", fontWeight: 900, color, letterSpacing: "-1px" }}>
-      {value}
-    </div>
+    <div style={{ fontSize: "2.5rem", fontWeight: 900, marginBottom: 4, letterSpacing: "-1px", color: "var(--text-primary)" }}>{value}</div>
+    <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
   </div>
 );
 
@@ -40,20 +54,20 @@ export default function GlobeOverview({ kpis, onNavigate }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32 }}>
         <div>
-          <h2 style={{ fontSize: "1.8rem", fontWeight: 900, letterSpacing: "-0.5px", margin: 0, color: "var(--text-primary)" }}>
+          <h2 className="admin-section-title" style={{ fontSize: "1.8rem", fontWeight: 900, letterSpacing: "-0.5px", margin: 0, color: "var(--text-primary)" }}>
             Globe Analytics
           </h2>
-          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontWeight: 600 }}>
+          <p className="admin-section-subtitle" style={{ margin: "4px 0 0", color: "var(--text-muted)", fontWeight: 600 }}>
             Real-time insights and activity overview
           </p>
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24, marginBottom: 40 }}>
-        <StatCard label="Total Received" value={kpis.totalKyc} color="#8b5cf6" onClick={() => { window.location.href = "/globe/maker-checker?filter=all"; }} />
-        <StatCard label="Total Pending" value={kpis.statusDistribution?.find(s => s.name === "Pending")?.value || 0} color="#3b82f6" onClick={() => onNavigate && onNavigate("pending")} />
-        <StatCard label="Approved" value={kpis.approvedByGlobe} color="#10b981" onClick={() => onNavigate && onNavigate("approved")} />
-        <StatCard label="Rejected" value={kpis.rejectedByGlobe} color="#ef4444" onClick={() => onNavigate && onNavigate("rejected")} />
+        <StatCard label="Total Received" value={kpis.totalKyc} color="#8b5cf6" icon={Users} onClick={() => { window.location.href = "/globe/maker-checker?filter=all"; }} />
+        <StatCard label="Total Pending" value={kpis.statusDistribution?.find(s => s.name === "Pending")?.value || 0} color="#3b82f6" icon={Clock3} onClick={() => onNavigate && onNavigate("pending")} />
+        <StatCard label="Approved" value={kpis.approvedByGlobe} color="#10b981" icon={CheckCircle} onClick={() => onNavigate && onNavigate("approved")} />
+        <StatCard label="Rejected" value={kpis.rejectedByGlobe} color="#ef4444" icon={ShieldAlert} onClick={() => onNavigate && onNavigate("rejected")} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24, marginBottom: 40 }}>

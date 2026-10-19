@@ -424,6 +424,10 @@ html .admin-neu .admin-table:not(.mc-readable .admin-table) th {
   padding-top: 18px !important;
   padding-bottom: 14px !important;
 }
+/* …but a frozen (sticky) header cell must stay solid, or the columns scrolling under it show through */
+html .admin-neu .admin-table:not(.mc-readable .admin-table) th[style*="position: sticky"] {
+  background: var(--neu-base) !important;
+}
 html .admin-neu .admin-table:not(.mc-readable .admin-table) tbody tr:first-child td { border-top: none !important; }
 
 /* Section heading above a card (title + action) */
@@ -737,20 +741,33 @@ body:has(.admin-neu) > .column-filter-container input[type="text"] {
 [data-theme="dark"] .admin-neu .badge-review { color: #60a5fa; }
 
 /* ---------- Menus & modals ---------- */
+/* Row ⋮ menu: it opens over the violet hovered row, so no white soft-UI highlight (it glows there) —
+   a plain dark shadow and a thin edge instead */
 .admin-neu .premium-action-menu {
   background: var(--neu-base) !important;
-  border: none;
-  border-radius: 20px;
-  box-shadow: var(--neu-pop) !important;
-  padding: 10px;
+  border: 1px solid var(--neu-line);
+  border-radius: 18px;
+  box-shadow: 0 2px 6px rgba(25, 8, 70, 0.12), 0 16px 36px -10px rgba(25, 8, 70, 0.38) !important;
+  padding: 8px;
   backdrop-filter: none !important;
 }
-.admin-neu .premium-action-item { font-size: 0.9rem; font-weight: 500; border-radius: 12px; }
+.admin-neu .premium-action-item {
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 11px;
+  box-shadow: none !important;
+  transition: background 0.15s ease, color 0.15s ease !important;
+}
 .admin-neu .premium-action-item:hover {
-  background: var(--neu-well);
-  box-shadow: var(--neu-inset-sm);
+  background: var(--wise-green-alpha);
+  color: var(--neu-accent);
+  box-shadow: none !important;
   transform: none;
 }
+/* The row whose ⋮ menu is open stays above the others (a neighbouring row lifting on hover must not cover it) */
+.admin-neu .admin-table tbody tr:has(.premium-action-menu) { position: relative; z-index: 40; }
+.admin-neu .premium-action-item[style*="ef4444"]:hover,
+.admin-neu .premium-action-item.danger:hover { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
 .admin-neu .premium-action-item.success { color: var(--neu-accent); font-weight: 600; }
 
 .admin-neu .neu-modal {

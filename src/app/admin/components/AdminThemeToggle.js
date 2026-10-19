@@ -1,11 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 
-export default function AdminThemeToggle() {
+// storageKey: which saved setting this portal uses (the Globe portal keeps its own: "globeTheme")
+export default function AdminThemeToggle({ storageKey = "adminTheme" }) {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    const isDark = localStorage.getItem("adminTheme") === "dark" || document.documentElement.getAttribute("data-theme") === "dark";
+    const isDark = localStorage.getItem(storageKey) === "dark" || document.documentElement.getAttribute("data-theme") === "dark";
     setDark(isDark);
     if (isDark) document.documentElement.setAttribute("data-theme", "dark");
   }, []);
@@ -14,7 +15,7 @@ export default function AdminThemeToggle() {
     const next = !dark;
     setDark(next);
     document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
-    localStorage.setItem("adminTheme", next ? "dark" : "light");
+    localStorage.setItem(storageKey, next ? "dark" : "light");
   };
 
   return (

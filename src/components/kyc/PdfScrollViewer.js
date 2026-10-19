@@ -1,6 +1,8 @@
 "use client";
 import { Component, useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, PanelLeft, FileText, Maximize2 } from "lucide-react";
 import PdfMobileViewer from "./PdfMobileViewer";
+import "./pdf-preview.css";
 
 /**
  * Continuous-scroll PDF viewer (eSign preview, correction eSign).
@@ -64,6 +66,7 @@ function ScrollViewer({ url, height, onFail }) {
   const [current, setCurrent] = useState(1);
   const [pageInput, setPageInput] = useState("1");
   const [narrow, setNarrow] = useState(false);
+  const [thumbsOpen, setThumbsOpen] = useState(true); // the reader can hide the page rail
 
   const boxRef = useRef(null);
   const scrollRef = useRef(null);
@@ -86,7 +89,8 @@ function ScrollViewer({ url, height, onFail }) {
     return () => { aliveRef.current = false; };
   }, []);
 
-  const showThumbs = boxWidth >= SIDEBAR_MIN_WIDTH && numPages > 1;
+  const canShowThumbs = boxWidth >= SIDEBAR_MIN_WIDTH && numPages > 1;
+  const showThumbs = canShowThumbs && thumbsOpen;
   const pageWidth = Math.max(0, Math.floor((areaWidth - 24) * zoom));
   const pageHeight = (n) => Math.round(pageWidth * (ratios[n] || baseRatio));
 
@@ -302,6 +306,29 @@ function ScrollViewer({ url, height, onFail }) {
     };
   }, [doc, numPages]);
 
+  // Visual only: reading-progress line and the "Page x of y" chip that shows while scrolling.
+  // Written straight to the element (CSS variable / class), so scrolling causes no re-render.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const box = boxRef.current;
+    if (!el || !box || !doc) return;
+    let hideTimer = 0;
+    const onScroll = () => {
+      const max = el.scrollHeight - el.clientHeight;
+      box.style.setProperty("--pv-progress", max > 0 ? (el.scrollTop / max).toFixed(4) : "0");
+      box.classList.add("is-scrolling");
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => box.classList.remove("is-scrolling"), 900);
+    };
+    onScroll();
+    box.classList.remove("is-scrolling");
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      clearTimeout(hideTimer);
+    };
+  }, [doc, showThumbs]);
+
   // Keep the active thumbnail in view
   useEffect(() => {
     const t = thumbsRef.current?.querySelector(`[data-thumb="${current}"]`);
@@ -333,108 +360,130 @@ function ScrollViewer({ url, height, onFail }) {
   };
 
   const boxHeight = height || (narrow ? "70vh" : "min(78vh, 1000px)");
-  const btn = {
-    height: 34, minWidth: 34, padding: "0 10px", borderRadius: 10, border: "1px solid var(--border-color)",
-    background: "var(--bg-card, #fff)", color: "var(--text-primary)", fontWeight: 800, cursor: "pointer",
-    display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.95rem",
-  };
+  const zoomIndex = ZOOM_STEPS.indexOf(zoom) === -1 ? 2 : ZOOM_STEPS.indexOf(zoom);
 
   return (
-    <div
-      ref={boxRef}
-      style={{ width: "100%", height: boxHeight, minHeight: 420, display: "flex", flexDirection: "column", background: "var(--bg-secondary, #f4f6f3)" }}
-    >
-      {/* Toolbar */}
-      <div
-        style={{
-          flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap",
-          padding: "10px 14px", background: "var(--bg-elevated, #fff)", borderBottom: "1px solid var(--border-color)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-primary)", fontWeight: 700 }}>
-          <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>Page</span>
+    <div ref={boxRef} className="pv-viewer" style={{ height: boxHeight }}>
+      {/* Header */}
+      <div className="pv-toolbar">
+        <div className="pv-title">
+          {canShowThumbs && (
+            <button
+              type="button"
+              className={`pv-btn pv-rail-toggle${thumbsOpen ? " is-on" : ""}`}
+              onClick={() => setThumbsOpen((v) => !v)}
+              aria-pressed={thumbsOpen}
+              aria-label={thumbsOpen ? "Hide page thumbnails" : "Show page thumbnails"}
+              title={thumbsOpen ? "Hide pages" : "Show pages"}
+            >
+              <PanelLeft size={17} />
+            </button>
+          )}
+          <span className="pv-title-icon" aria-hidden="true"><FileText size={16} /></span>
+          <span className="pv-title-text">
+            <span className="pv-title-name">Application Form</span>
+            <span className="pv-title-sub">{numPages ? `${numPages} pages` : "Loading…"}</span>
+          </span>
+        </div>
+
+        <div className="pv-group pv-nav" role="group" aria-label="Pages">
+          <button type="button" className="pv-btn" onClick={() => goTo(current - 1)} disabled={!doc || current <= 1} aria-label="Previous page" title="Previous page">
+            <ChevronLeft size={18} />
+          </button>
           <input
             type="number"
             inputMode="numeric"
+            className="pv-page-input"
             min={1}
             max={numPages || 1}
             value={pageInput}
             aria-label="Go to page"
-            onFocus={() => { inputFocused.current = true; }}
+            onFocus={(e) => { inputFocused.current = true; e.currentTarget.select(); }}
             onBlur={() => { inputFocused.current = false; if (pageInput) goTo(pageInput); }}
             onChange={(e) => setPageInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
-            style={{
-              width: 64, height: 34, borderRadius: 10, border: "1px solid var(--border-color)", textAlign: "center",
-              fontWeight: 800, fontSize: "0.95rem", background: "var(--bg-card, #fff)", color: "var(--text-primary)",
-            }}
           />
-          <span style={{ fontSize: "0.9rem" }}>/ {numPages || "…"}</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button type="button" style={{ ...btn, opacity: zoom <= ZOOM_STEPS[0] ? 0.4 : 1 }} onClick={() => changeZoom(-1)} disabled={zoom <= ZOOM_STEPS[0]} aria-label="Zoom out">−</button>
-          <button type="button" style={{ ...btn, minWidth: 64, fontSize: "0.8rem" }} onClick={() => changeZoom(0)} title="Fit to width">
-            {Math.round(zoom * 100)}%
+          <span className="pv-page-total">/ {numPages || "…"}</span>
+          <button type="button" className="pv-btn" onClick={() => goTo(current + 1)} disabled={!doc || current >= numPages} aria-label="Next page" title="Next page">
+            <ChevronRight size={18} />
           </button>
-          <button type="button" style={{ ...btn, opacity: zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1] ? 0.4 : 1 }} onClick={() => changeZoom(1)} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} aria-label="Zoom in">+</button>
         </div>
+
+        <div className="pv-group pv-zoom" role="group" aria-label="Zoom">
+          <button type="button" className="pv-btn" onClick={() => changeZoom(-1)} disabled={zoom <= ZOOM_STEPS[0]} aria-label="Zoom out" title="Zoom out">
+            <ZoomOut size={17} />
+          </button>
+          <span className="pv-zoom-meter" aria-hidden="true">
+            <span style={{ width: `${(zoomIndex / (ZOOM_STEPS.length - 1)) * 100}%` }} />
+          </span>
+          <span className="pv-zoom-value">{Math.round(zoom * 100)}%</span>
+          <button type="button" className="pv-btn" onClick={() => changeZoom(1)} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} aria-label="Zoom in" title="Zoom in">
+            <ZoomIn size={17} />
+          </button>
+          <span className="pv-group-sep" aria-hidden="true" />
+          <button type="button" className={`pv-btn${zoom === 1 ? " is-on" : ""}`} onClick={() => changeZoom(0)} aria-label="Fit to width" title="Fit to width">
+            <Maximize2 size={15} />
+          </button>
+        </div>
+        <span className="pv-progress" aria-hidden="true" />
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        {/* Thumbnails (wide screens) */}
+      <div className="pv-body">
+        {/* Page rail (wide screens) */}
         {showThumbs && (
-          <div
-            ref={thumbsRef}
-            style={{
-              width: THUMB_WIDTH + 28, flexShrink: 0, overflowY: "auto", padding: "12px 10px", position: "relative",
-              borderRight: "1px solid var(--border-color)", background: "var(--bg-elevated, #fff)",
-            }}
-          >
+          <div ref={thumbsRef} className="pv-thumbs" style={{ width: THUMB_WIDTH + 36 }}>
             {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
               <button
                 key={n}
                 type="button"
                 data-thumb={n}
                 onClick={() => goTo(n)}
-                style={{
-                  display: "block", width: THUMB_WIDTH + 8, margin: "0 0 10px", padding: 3, borderRadius: 8, cursor: "pointer",
-                  border: n === current ? "2px solid var(--wise-green, #9fe870)" : "2px solid transparent", background: "transparent",
-                }}
+                className={`pv-thumb${n === current ? " is-current" : ""}`}
+                style={{ width: THUMB_WIDTH + 12 }}
+                aria-label={`Page ${n}`}
+                aria-current={n === current ? "page" : undefined}
               >
-                <canvas
-                  ref={(c) => { thumbCanvases.current[n] = c; }}
-                  style={{ display: "block", width: THUMB_WIDTH, height: Math.round(THUMB_WIDTH * (ratios[n] || baseRatio)), background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}
-                />
-                <span style={{ display: "block", marginTop: 4, fontSize: "0.72rem", fontWeight: 700, color: "var(--text-secondary)" }}>{n}</span>
+                <span className="pv-thumb-frame">
+                  <canvas
+                    ref={(c) => { thumbCanvases.current[n] = c; }}
+                    style={{ width: THUMB_WIDTH, height: Math.round(THUMB_WIDTH * (ratios[n] || baseRatio)) }}
+                  />
+                </span>
+                <span className="pv-thumb-num">{n}</span>
               </button>
             ))}
           </div>
         )}
 
         {/* Pages */}
-        <div ref={scrollRef} style={{ flex: 1, minWidth: 0, overflow: "auto", position: "relative", WebkitOverflowScrolling: "touch" }}>
-          {!doc && (
-            <div style={{ padding: "80px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div className="loader" style={{ marginBottom: 16, width: "36px", height: "36px", border: "4px solid var(--border-color)", borderTop: "4px solid var(--wise-green)" }}></div>
-              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>Loading Preview...</span>
-            </div>
-          )}
-          {doc && pageWidth > 0 && (
-            <div style={{ padding: `12px 12px ${PAGE_GAP + 12}px`, width: pageWidth + 24, margin: "0 auto" }}>
-              {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
-                <div
-                  key={n}
-                  data-page={n}
-                  ref={(el) => { pageEls.current[n] = el; }}
-                  style={{ width: pageWidth, height: pageHeight(n), marginBottom: PAGE_GAP, background: "#fff", boxShadow: "0 2px 10px rgba(0,0,0,0.12)", borderRadius: 4, overflow: "hidden", position: "relative" }}
-                >
-                  <canvas
-                    ref={(c) => { canvases.current[n] = c; }}
-                    style={{ display: "block", width: "100%", height: "100%" }}
-                  />
-                </div>
-              ))}
-            </div>
+        <div className="pv-stage">
+          <div ref={scrollRef} className="pv-pages">
+            {!doc && (
+              <div className="pv-skeleton" aria-live="polite">
+                <span className="pv-skeleton-label">Loading preview…</span>
+                <div className="pv-skeleton-page" />
+                <div className="pv-skeleton-page" />
+              </div>
+            )}
+            {doc && pageWidth > 0 && (
+              <div style={{ padding: `20px 12px ${PAGE_GAP + 40}px`, width: pageWidth + 24, margin: "0 auto" }}>
+                {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => (
+                  <div
+                    key={n}
+                    data-page={n}
+                    ref={(el) => { pageEls.current[n] = el; }}
+                    className={`pv-page${n === current ? " is-current" : ""}`}
+                    style={{ width: pageWidth, height: pageHeight(n), marginBottom: PAGE_GAP + 6 }}
+                  >
+                    <canvas ref={(c) => { canvases.current[n] = c; }} />
+                    <span className="pv-page-tag">{n}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {doc && numPages > 0 && (
+            <span className="pv-float-chip" aria-hidden="true">Page {current} of {numPages}</span>
           )}
         </div>
       </div>

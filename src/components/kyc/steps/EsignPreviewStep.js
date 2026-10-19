@@ -4,12 +4,32 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Logo from "../Logo";
 // Continuous-scroll viewer; falls back to the previous PdfMobileViewer by itself on any failure
 import PdfScrollViewer from "../PdfScrollViewer";
+import { Check } from "lucide-react";
+import "../pdf-preview.css";
+
+// Shown one after another while the form is being built (just messages, not real progress)
+const MERGE_STEPS = [
+  "Collecting your details…",
+  "Filling in your application form…",
+  "Adding your documents…",
+  "Merging everything into one PDF…",
+  "Almost ready…",
+];
 
 export default function EsignPreviewStep() {
   const { user, identityDetails, identityMethod, personalDetails, selfie, signature, nextStep, prevStep, address, bankDetails, ocrData, applicationId, nomineeDetails, selfieDetails, financialProof, panUpload, documents, preGeneratedPdf, generatedPdfBase64 } = useKYC();
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [mergeStep, setMergeStep] = useState(0);
+
+  // Rotate the waiting messages while the PDF is being prepared (stays on the last one)
+  useEffect(() => {
+    if (!loading) return;
+    setMergeStep(0);
+    const t = setInterval(() => setMergeStep((i) => Math.min(i + 1, MERGE_STEPS.length - 1)), 2800);
+    return () => clearInterval(t);
+  }, [loading]);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   
@@ -92,9 +112,17 @@ export default function EsignPreviewStep() {
         boxShadow: "0 20px 40px rgba(0,0,0,0.1)"
       }}>
         {loading && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg-card)", zIndex: 10 }}>
-            <div className="loader" style={{ marginBottom: 24, width: "48px", height: "48px", border: "4px solid var(--border-color)", borderTop: "4px solid var(--wise-green)" }}></div>
-            <p style={{ fontWeight: 800, color: "var(--text-primary)", fontSize: "1.2rem", textAlign: "center" }}>Merging your documents please wait few seconds..</p>
+          <div className="pv-loading" role="status" aria-live="polite">
+            <div className="pv-docs" aria-hidden="true">
+              <div className="pv-sheet s1"><i /><i /><i /><i /></div>
+              <div className="pv-sheet s3"><i /><i /><i /><i /></div>
+              <div className="pv-sheet s2"><i /><i /><i /><i /></div>
+              <span className="pv-docs-tick"><Check size={16} strokeWidth={3} /></span>
+            </div>
+            <p className="pv-loading-title">Merging your documents</p>
+            <p key={mergeStep} className="pv-loading-step">{MERGE_STEPS[mergeStep]}</p>
+            <div className="pv-bar" aria-hidden="true" />
+            <p className="pv-loading-hint">Please wait a few seconds. Large uploads, like a long bank statement, can take a little longer.</p>
           </div>
         )}
 

@@ -2,6 +2,8 @@
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { downloadExcel } from "@/utils/exportExcel";
 import { createPortal } from "react-dom";
+import { ListFilter, ArrowUpDown, ArrowUp, ArrowDown, EyeOff } from "lucide-react";
+import AdminThemeToggle from "../../admin/components/AdminThemeToggle";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -77,6 +79,8 @@ export default function MakerCheckerDashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openRejectionsId, setOpenRejectionsId] = useState(null);
+  const [rejectionsPopPos, setRejectionsPopPos] = useState(null); // where the open rejections popup sits on screen
+  const rejectionsAnchorRef = useRef(null); // the chip the open popup belongs to
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
@@ -243,6 +247,37 @@ export default function MakerCheckerDashboard() {
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
+
+  // The rejections popup is drawn above the page (so the table never clips it). It opens below its chip,
+  // or above it when there is not enough room below, and stays on screen.
+  const getRejectionsPopPos = (chip) => {
+    const r = chip.getBoundingClientRect();
+    const W = 320, GAP = 8;
+    const spaceBelow = window.innerHeight - r.bottom - GAP;
+    const spaceAbove = r.top - GAP;
+    const above = spaceBelow < 260 && spaceAbove > spaceBelow;
+    const left = Math.min(Math.max(12, r.left), window.innerWidth - W - 12);
+    return above
+      ? { left, bottom: window.innerHeight - r.top + GAP, maxHeight: Math.min(380, spaceAbove - 12) }
+      : { left, top: r.bottom + GAP, maxHeight: Math.min(380, spaceBelow - 12) };
+  };
+  // While open, it follows its chip when the page or table scrolls; it closes once the chip leaves the screen
+  useEffect(() => {
+    if (!openRejectionsId) return;
+    const follow = (e) => {
+      if (e?.target?.closest?.(".mc-rej-pop")) return; // scrolling the popup's own list
+      const chip = rejectionsAnchorRef.current;
+      const r = chip?.isConnected ? chip.getBoundingClientRect() : null;
+      if (!r || r.bottom < 0 || r.top > window.innerHeight) { setOpenRejectionsId(null); return; }
+      setRejectionsPopPos(getRejectionsPopPos(chip));
+    };
+    window.addEventListener("scroll", follow, true);
+    window.addEventListener("resize", follow);
+    return () => {
+      window.removeEventListener("scroll", follow, true);
+      window.removeEventListener("resize", follow);
+    };
+  }, [openRejectionsId]);
 
   const handleContinueJourney = async (k) => {
     try {
@@ -693,8 +728,15 @@ export default function MakerCheckerDashboard() {
     return (
       <div className="rejections-dropdown-container" style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={() => setOpenRejectionsId(openRejectionsId === menuId ? null : menuId)}
+          className="mc-rej-chip"
+          onClick={(e) => {
+            if (openRejectionsId === menuId) { setOpenRejectionsId(null); return; }
+            rejectionsAnchorRef.current = e.currentTarget;
+            setRejectionsPopPos(getRejectionsPopPos(e.currentTarget));
+            setOpenRejectionsId(menuId);
+          }}
           title={`${items.length} rejection(s) by ${side}. Click to see the reasons.`}
+          aria-expanded={openRejectionsId === menuId}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid #fecaca", background: "#fef2f2", color: "#dc2626", fontSize: "0.75rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
           {statusLabel && (
             <span style={{ paddingRight: 8, marginRight: 2, borderRight: "1px solid #fecaca", letterSpacing: "0.3px" }}>{statusLabel}</span>
@@ -702,20 +744,27 @@ export default function MakerCheckerDashboard() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           {items.length}
         </button>
-        {openRejectionsId === menuId && (
-          <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 100, padding: "12px", width: "280px", maxHeight: "300px", overflowY: "auto", whiteSpace: "normal" }}>
-            <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", marginBottom: 8, borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>{side.toUpperCase()} REJECTIONS</div>
-            {items.map((r, i) => (
-              <div key={i} style={{ marginBottom: i < items.length - 1 ? 12 : 0 }}>
-                <div style={{ fontWeight: 700, color: "#ef4444", fontSize: "0.82rem" }}>
-                  {r.label}
-                  {r.unknownSource && <span title="Saved before the portal recorded who made each rejection" style={{ marginLeft: 6, fontWeight: 600, fontSize: "0.7rem", color: "var(--text-muted)" }}>(source unknown)</span>}
+        {openRejectionsId === menuId && rejectionsPopPos && typeof document !== "undefined" && createPortal((
+          // Drawn above the page so the table never clips it; the container class keeps clicks inside from closing it
+          <div className="rejections-dropdown-container mc-rej-pop" role="dialog" aria-label={`${side} rejections`}
+            style={{ position: "fixed", ...rejectionsPopPos }} onClick={(e) => e.stopPropagation()}>
+            <div className="mc-rej-pop-head">
+              <span>{side} rejections</span>
+              <span className="mc-rej-pop-count">{items.length}</span>
+            </div>
+            <div className="mc-rej-pop-list">
+              {items.map((r, i) => (
+                <div key={i} className="mc-rej-pop-item">
+                  <div className="mc-rej-pop-label">
+                    {r.label}
+                    {r.unknownSource && <span className="mc-rej-pop-note" title="Saved before the portal recorded who made each rejection">(source unknown)</span>}
+                  </div>
+                  <div className="mc-rej-pop-reason">{r.reason}</div>
                 </div>
-                <div style={{ color: "var(--text-primary)", marginTop: 2, lineHeight: 1.4, fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>{r.reason}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        )}
+        ), document.body)}
       </div>
     );
   };
@@ -869,31 +918,26 @@ export default function MakerCheckerDashboard() {
         />
         
         <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-          <div style={{ 
-            padding: "16px 28px", 
-            display: "flex", 
-            justifyContent: "space-between", 
-            alignItems: "center",
-            background: "var(--bg-primary)",
-            borderBottom: "1px solid var(--border-color)",
-            zIndex: 20
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div>
-                <h1 style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.5px", margin: 0 }}>Maker / Checker Queue</h1>
-                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: 4, margin: 0 }}>Review applications step-by-step.</p>
+          {/* Top Header (same style as the admin portal) */}
+          <header className="admin-header">
+            <div className="neu-page-head">
+              <h1 className="neu-page-title">Maker / Checker Queue</h1>
+              <p className="neu-page-sub">Review applications step-by-step</p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <AdminThemeToggle storageKey="globeTheme" />
+              <div style={{ textAlign: "right", borderLeft: "1px solid var(--border-color)", paddingLeft: 16 }}>
+                <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>{globeUser?.email || "Agent"}</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Role: Globe Reviewer</div>
+              </div>
+              <div className="neu-avatar" style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-dark-green)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 12px", background: "var(--bg-secondary)", borderRadius: 99, border: "1px solid var(--border-color)" }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 10px rgba(16,185,129,0.5)" }}></div>
-                <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)" }}>{globeUser?.email || "Agent"}</span>
-              </div>
-            </div>
-          </div>
+          </header>
 
           {/* Same background as the table, so the list reads as a plain table (no card) */}
-          <main style={{ padding: "24px", flex: 1, width: "100%", overflowY: "auto", background: "var(--bg-primary)" }}>
+          <main className="neu-main" style={{ padding: "24px", flex: 1, width: "100%", overflowY: "auto", background: "var(--bg-sticky)" }}>
             <div className="admin-animate">
               {/* Controls — kept above the table so their dropdowns are never covered by its sticky header */}
               <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "nowrap", alignItems: "center", position: "relative", zIndex: 30 }}>
@@ -1174,7 +1218,7 @@ export default function MakerCheckerDashboard() {
                             <div style={{ display: "flex", gap: 4 }}>
                               {!NO_FILTER_SORT_COLUMNS.includes(h) && (<>
                               <button 
-                                className="column-filter-container"
+                                className={`column-filter-container mc-th-btn${(columnFilters[h] || columnValueFilters[h]?.length) ? " is-active" : ""}`}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (activeFilterCol === h) { setActiveFilterCol(null); return; }
@@ -1185,11 +1229,12 @@ export default function MakerCheckerDashboard() {
                                 style={{ background: "transparent", border: "none", cursor: "pointer", color: (columnFilters[h] || columnValueFilters[h]?.length) ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
                                 title="Filter"
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                                <ListFilter size={13} strokeWidth={2.4} />
                               </button>
 
-                              <button 
-                                onClick={(e) => { 
+                              <button
+                                className={`mc-th-btn${sortConfig.key === h ? " is-active" : ""}`}
+                                onClick={(e) => {
                                   e.stopPropagation();
                                   setSortConfig(prev => {
                                     if (prev.key === h) {
@@ -1203,16 +1248,17 @@ export default function MakerCheckerDashboard() {
                                 title="Sort"
                               >
                                 {sortConfig.key === h ? (
-                                  sortConfig.direction === 'asc' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                  sortConfig.direction === 'asc' ? <ArrowUp size={13} strokeWidth={2.4} /> : <ArrowDown size={13} strokeWidth={2.4} />
                                 ) : (
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                                  <ArrowUpDown size={13} strokeWidth={2.4} />
                                 )}
                               </button>
                               </>)}
 
                               {!PERMANENT_COLUMNS.includes(h) && (
-                                <button 
-                                  onClick={(e) => { 
+                                <button
+                                  className="mc-th-btn"
+                                  onClick={(e) => {
                                     e.stopPropagation();
                                     setVisibleColumns(prev => {
                                       const next = prev.filter(c => c !== h);
@@ -1223,7 +1269,7 @@ export default function MakerCheckerDashboard() {
                                   style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}
                                   title="Hide Column"
                                 >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                  <EyeOff size={13} strokeWidth={2.4} />
                                 </button>
                               )}
                             </div>

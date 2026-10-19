@@ -257,10 +257,9 @@ function getVariableValue(variableName, appData) {
       return eDate.toLocaleDateString('en-GB');
     }
     case 'place': {
-      const selfie = safeJsonParse(appData.selfieDetails) || {};
-      const esign = safeJsonParse(appData.esignDetails) || {};
-      const geoAddress = esign.geo?.address || safeJsonParse(appData.geoDetails)?.address || selfie.geo?.address || '';
-      return geoAddress.split(',')[0] || aDetails.city || '';
+      // The applicant's own city. Never the selfie / device location: that is shown only on the
+      // selfie page (and in the admin IPV module).
+      return aDetails.city || '';
     }
     case 'fullName': return pDetails.fullName;
     case 'fatherName': return pDetails.fatherName;

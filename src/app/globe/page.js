@@ -6,6 +6,16 @@ import io from "socket.io-client";
 import GlobeSidebar from "./components/GlobeSidebar";
 import GlobeOverview from "./components/GlobeOverview";
 import GlobeReviewQueue from "./components/GlobeReviewQueue";
+import AdminThemeToggle from "../admin/components/AdminThemeToggle";
+
+// Page name shown in the top bar (same style as the admin portal)
+const SECTION_META = {
+  overview: { title: "Dashboard", subtitle: "Globe review activity at a glance" },
+  all: { title: "All Applications", subtitle: "Every application sent to Globe for review" },
+  pending: { title: "Pending", subtitle: "Applications waiting for a Globe decision" },
+  approved: { title: "Approved", subtitle: "Applications approved by Globe" },
+  rejected: { title: "Rejected", subtitle: "Applications rejected by Globe" },
+};
 
 export default function GlobePage() {
   const [loading, setLoading] = useState(true);
@@ -102,10 +112,17 @@ export default function GlobePage() {
     }
   };
 
-  if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-secondary)", color: "var(--text-muted)", fontWeight: 700 }}>Loading Globe Portal...</div>;
+  if (loading) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", gap: 14, alignItems: "center", justifyContent: "center", background: "var(--bg-secondary)", color: "var(--text-muted)", fontWeight: 600 }}>
+      <div className="loader"></div>
+      Loading Globe Portal...
+    </div>
+  );
+
+  const meta = SECTION_META[activeSection] || SECTION_META.overview;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-secondary)" }}>
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--bg-secondary)" }}>
       {/* Sidebar */}
       <GlobeSidebar 
         active={activeSection} 
@@ -115,19 +132,51 @@ export default function GlobePage() {
       />
 
       {/* Main Content Area */}
-      <main style={{ 
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflowY: "auto" }}>
+        {/* Top bar */}
+        <header className="admin-header" style={{
+          padding: "24px 40px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          borderBottom: "1px solid var(--border-color)",
+          background: "var(--bg-primary)",
+          position: "sticky",
+          top: 0,
+          zIndex: 20
+        }}>
+          <div className="neu-page-head">
+            <h1 className="neu-page-title">{meta.title}</h1>
+            <p className="neu-page-sub">
+              {activeSection === "overview" && <span className="neu-live-dot" />}
+              {meta.subtitle}
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <AdminThemeToggle storageKey="globeTheme" />
+            <div style={{ textAlign: "right", borderLeft: "1px solid var(--border-color)", paddingLeft: 16 }}>
+              <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>Globe Team</div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Role: Reviewer</div>
+            </div>
+            <div className="neu-avatar" style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green-alpha)", border: "1px solid var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+          </div>
+        </header>
+
+      <main className="neu-main" style={{ 
         flex: 1, 
-        height: "100vh", 
-        overflowY: "auto",
-        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        width: "100%",
+        padding: "24px",
         position: "relative"
       }}>
         {/* Dynamic Content */}
-        <div style={{ padding: "40px 48px", maxWidth: "1600px", margin: "0 auto", animation: "fadeIn 0.4s ease forwards" }}>
+        <div style={{ maxWidth: "1600px", margin: "0 auto", animation: "fadeIn 0.4s ease forwards" }}>
           {activeSection === "overview" && <GlobeOverview kpis={kpis} onNavigate={handleNavigate} />}
           {["all", "pending", "approved", "rejected"].includes(activeSection) && <GlobeReviewQueue applications={applications} handleAction={handleAction} activeSection={activeSection} />}
         </div>
       </main>
+      </div>
 
       {/* Inline styles for basic animations */}
       <style dangerouslySetInnerHTML={{__html: `
