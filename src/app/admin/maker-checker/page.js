@@ -82,6 +82,7 @@ export default function MakerCheckerDashboard() {
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
   const [pendingStep, setPendingStep] = useState(null);
+  const [furthestStep, setFurthestStep] = useState(null); // furthest step the open application has reached
   const [copiedKey, setCopiedKey] = useState(null);
   const handleCopy = (e, text, key) => {
     e.stopPropagation();
@@ -247,6 +248,24 @@ export default function MakerCheckerDashboard() {
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
+
+  // Change Progress: steps up to the furthest one the user has reached can be chosen (so moving an
+  // application back can be undone); only steps beyond it are locked
+  useEffect(() => {
+    if (!changeStatusAppId) { setFurthestStep(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = localStorage.getItem("adminToken");
+        const res = await fetch(`${API_BASE_URL}/api/admin/review/${changeStatusAppId}/furthest-step`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!cancelled && data.success) setFurthestStep(Number(data.furthestStep));
+      } catch (e) {
+        // keeps the safe default (current step)
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [changeStatusAppId]);
 
   // The rejections popup is drawn above the page (so the table never clips it). It opens below its chip,
   // or above it when there is not enough room below, and stays on screen.
@@ -1707,59 +1726,74 @@ export default function MakerCheckerDashboard() {
                 </div>
               </div>
 
-              {changeStatusAppId && (
-                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div className="neu-modal" style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 320, border: "1px solid var(--border-color)", boxShadow: "0 10px 30px rgba(0,0,0,0.3)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                      <h3 style={{ margin: 0 }}>Change Progress</h3>
-                      <button onClick={() => { setChangeStatusAppId(null); setPendingStep(null); }} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)" }}>×</button>
-                    </div>
-                    
-                    {/* Progress Section */}
-                    {(() => {
-                      const appForStatus = kycs.find(k => k.id === changeStatusAppId);
-                      const currentAppStep = appForStatus ? (appForStatus.stepNum || 0) : 0;
-                      return (
-                        <div style={{ padding: 16, border: pendingStep !== null && pendingStep !== currentAppStep ? "2px solid var(--wise-green)" : "1px solid var(--border-color)", borderRadius: 8, background: "var(--bg-secondary)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>PROGRESS</span>
-                            {pendingStep !== null && pendingStep !== currentAppStep && (
-                              <span style={{ fontSize: "0.6rem", color: "var(--wise-green)", fontWeight: 800 }}>CHANGED</span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: "1.2rem", fontWeight: 900, color: "var(--wise-green)", marginTop: 8, marginBottom: 4, lineHeight: "1.4", paddingBottom: "2px" }}>
-                            {STEP_LABELS[currentAppStep] || `Step ${currentAppStep}`}
-                          </div>
-                          <select 
-                            className="admin-select" 
-                            style={{ width: "100%", marginTop: 12, height: "44px", fontSize: "0.95rem", padding: "8px 12px", borderRadius: "8px" }}
-                            value={pendingStep !== null ? pendingStep : currentAppStep}
-                            onChange={e => setPendingStep(parseInt(e.target.value))}
-                          >
-                            {Object.entries(STEP_LABELS).map(([num, label]) => (
-                              // Steps can only be moved back (or kept) — never forward past where the user is
-                              <option key={num} value={num} disabled={Number(num) > Number(currentAppStep || 0)}>{label}{Number(num) > Number(currentAppStep || 0) ? " — locked" : ""}</option>
-                            ))}
-                          </select>
-                          {pendingStep !== null && pendingStep !== currentAppStep && (
-                            <button
-                              className="neu-btn-primary"
-                              onClick={() => {
-                                updateStatus(changeStatusAppId, appForStatus?.status || "pending", { currentStep: pendingStep });
-                                setChangeStatusAppId(null);
-                                setPendingStep(null);
-                              }}
-                              style={{ width: "100%", marginTop: 16, padding: "12px", borderRadius: 8, background: "var(--wise-green)", color: "white", border: "none", fontWeight: 800, cursor: "pointer", fontSize: "0.95rem", boxShadow: "0 4px 12px rgba(48, 164, 108, 0.3)", transition: "all 0.2s ease" }}
-                            >
-                              Save Step Change
-                            </button>
-                          )}
+              {changeStatusAppId && (() => {
+                const appForStatus = kycs.find(k => k.id === changeStatusAppId);
+                const currentAppStep = appForStatus ? (appForStatus.stepNum || 0) : 0;
+                const reached = Math.max(Number(currentAppStep || 0), furthestStep ?? 0);
+                const selected = pendingStep !== null ? pendingStep : currentAppStep;
+                const changed = pendingStep !== null && pendingStep !== currentAppStep;
+                const stepName = (n) => (STEP_LABELS[n] || `Step ${n}`).replace(/^Step \d+:\s*/, "");
+                const close = () => { setChangeStatusAppId(null); setPendingStep(null); };
+                // Drawn on <body>: an animated parent would otherwise trap this fixed overlay inside the table area
+                // The frosted backdrop starts after the sidebar, so the sidebar stays visible
+                const sidebarW = typeof document !== "undefined" ? Math.round(document.querySelector(".admin-neu aside")?.getBoundingClientRect().width || 0) : 0;
+                return createPortal((
+                  <div className="mc-step-overlay" style={{ left: sidebarW }} onClick={close}>
+                    <div className="neu-modal mc-step-modal" role="dialog" aria-label="Change progress" onClick={(e) => e.stopPropagation()}>
+                      <div className="mc-step-modal-head">
+                        <div>
+                          <h3>Change Progress</h3>
+                          <p>Currently at <strong>Step {currentAppStep} · {stepName(currentAppStep)}</strong></p>
                         </div>
-                      );
-                    })()}
+                        <button type="button" className="mc-step-close" onClick={close} aria-label="Close">×</button>
+                      </div>
+
+                      {/* Steps 1–14 (Welcome is not a step to move to). Steps the user has not reached are locked. */}
+                      <div className="mc-step-grid" role="listbox" aria-label="Move to step">
+                        {Object.keys(STEP_LABELS).map(Number).filter(n => n > 0).map(n => {
+                          const locked = n > reached;
+                          return (
+                            <button
+                              type="button"
+                              key={n}
+                              role="option"
+                              aria-selected={n === selected}
+                              disabled={locked}
+                              onClick={() => setPendingStep(n)}
+                              title={locked ? "The user has not reached this step yet" : n === currentAppStep ? "Current step" : undefined}
+                              className={`mc-step-pill${n === selected ? " is-selected" : ""}${n === currentAppStep ? " is-current" : ""}${locked ? " is-locked" : ""}`}
+                            >
+                              <span className="mc-step-pill-num">{n}</span>
+                              <span className="mc-step-pill-name">{stepName(n)}</span>
+                              {locked && (
+                                <svg className="mc-step-pill-lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mc-step-foot">
+                        <span className={`mc-step-summary${changed ? " is-changed" : ""}`}>
+                          {changed ? <>Step {currentAppStep} <span aria-hidden="true">→</span> Step {pendingStep}</> : "Choose a step to move to"}
+                        </span>
+                        <button
+                          type="button"
+                          className="neu-btn-primary mc-step-save"
+                          disabled={!changed}
+                          onClick={() => {
+                            updateStatus(changeStatusAppId, appForStatus?.status || "pending", { currentStep: pendingStep });
+                            setChangeStatusAppId(null);
+                            setPendingStep(null);
+                          }}
+                        >
+                          Save Step Change
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                ), document.body);
+              })()}
 
             </div>
           </main>

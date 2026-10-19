@@ -232,6 +232,51 @@ const getApplicationById = async (req, res, next) => {
   }
 };
 
+/**
+ * Furthest step an application has reached: its current step, every step the user saved (audit
+ * "stepIndex" = the step they were on after that save) and every step a reviewer set. Moving an
+ * application back keeps this, so it can be moved forward again up to here (undo), never beyond.
+ */
+async function getFurthestStep(app) {
+  let furthest = Number(app.currentStep || 0);
+  const id = app.applicationId;
+  const logs = await prisma.auditLog.findMany({
+    where: {
+      AND: [
+        { OR: [{ targetId: id }, { details: { contains: `"applicationId":"${id}"` } }] },
+        { OR: [{ action: { startsWith: "USER_SAVED_" } }, { action: "kyc_step_saved" }, { action: { startsWith: "ADMIN_STATUS_" } }] },
+      ],
+    },
+    select: { details: true },
+  });
+  for (const log of logs) {
+    try {
+      const d = JSON.parse(log.details || "{}");
+      if (d.applicationId && d.applicationId !== id) continue;
+      for (const v of [d.stepIndex, d.currentStep, d.fromStep]) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > furthest && n <= 14) furthest = n;
+      }
+    } catch (e) {
+      // not JSON — ignore
+    }
+  }
+  return furthest;
+}
+
+const getApplicationFurthestStep = async (req, res, next) => {
+  try {
+    const app = await prisma.kycApplication.findUnique({
+      where: { applicationId: req.params.id },
+      select: { applicationId: true, currentStep: true },
+    });
+    if (!app) return res.status(404).json({ success: false, error: "Application not found" });
+    res.json({ success: true, currentStep: Number(app.currentStep || 0), furthestStep: await getFurthestStep(app) });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const reviewApplication = async (req, res, next) => {
   let payload;
   try {
@@ -249,10 +294,14 @@ const reviewApplication = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Application not found" });
     }
 
-    // A reviewer can move an application back to an earlier step (or keep it), never forward: the user
-    // must complete the steps after the current one themselves
+    // A reviewer can move an application back to an earlier step, and forward again up to the
+    // furthest step it had already reached (undo a move back) — never beyond: the user has to
+    // complete new steps themselves
     if (currentStep !== undefined && currentStep > Number(app.currentStep || 0)) {
-      return res.status(400).json({ success: false, error: "The step can only be moved back to an earlier step, not forward. The user has to complete the next steps themselves." });
+      const furthest = await getFurthestStep(app);
+      if (currentStep > furthest) {
+        return res.status(400).json({ success: false, error: `The step can only be moved up to Step ${furthest}, the furthest the user has reached. The user has to complete the next steps themselves.` });
+      }
     }
 
     // Checked on the step the application ends up at too: "Change Status" can also move it back to an
@@ -366,7 +415,8 @@ const reviewApplication = async (req, res, next) => {
           applicationId: req.params.id, 
           status,
           reason: reason || null, 
-          currentStep 
+          currentStep,
+          ...(currentStep !== undefined ? { fromStep: Number(app.currentStep || 0) } : {})
         }),
         targetId: String(req.params.id),
         targetType: "KycApplication",
@@ -2055,6 +2105,7 @@ module.exports = {
   getApplications,
   getApplicationById,
   reviewApplication,
+  getApplicationFurthestStep,
   getStats,
   getAuditLogs,
   getUsers,

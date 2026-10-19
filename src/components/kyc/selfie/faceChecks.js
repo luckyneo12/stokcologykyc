@@ -680,12 +680,16 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
       (rimLine > THRESHOLDS.glassesRimLine ? 1 : 0) +
       (templeLine > THRESHOLDS.glassesTempleLine ? 1 : 0);
     metrics.glassesLines = frameLines;
-    // A frame across the nose bridge (strong line) confirmed by its edge energy or by an arm line
+    // A frame across the nose bridge (strong line) confirmed by its edge energy or by an arm line.
+    // Phones: the bridge line must be confirmed by the bridge's own edge energy. The arm (temple)
+    // line is not accepted there — on phone selfies without glasses, hair, ears and background give
+    // it 4.5–13 (above its 4.4 limit), so with it a sharpened / noisy bridge line alone was enough.
+    // Real phone selfie with glasses: bridge line 3.46, bridge edge 2.43 → still detected.
     const bridgeLineMin = mobile ? THRESHOLDS.mobileGlassesBridgeLine : THRESHOLDS.glassesBridgeLine;
-    if (
-      bridgeLine > bridgeLineMin &&
-      (bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine)
-    ) {
+    const confirmed = mobile
+      ? bridgeEdge > THRESHOLDS.glassesBridgeEdge
+      : bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine;
+    if (bridgeLine > bridgeLineMin && confirmed) {
       flags.glasses = true;
     }
   }
@@ -725,12 +729,16 @@ const SHOW_FRACTION = 0.75;
 const CLEAR_FRACTION = 0.25;
 const LATCH_RESET_HITS = 2; // detections during the clearing wait that restart it
 const LATCH_MIN_FRAMES = 4; // judged frames needed before a latched warning can clear
+// Eyewear warnings need at least this many judged frames of evidence before they show. A slow phone
+// analyses only ~2 frames a second, so two noisy frames used to be enough — and the latch then kept
+// "Glasses detected" on screen. Fast devices have many more frames in the window: no change there.
+const APPEARANCE_SHOW_MIN_FRAMES = 4;
 
-/** Share of frames with the flag since `from` — at least the last 2 frames on slow devices. */
-function fractionSince(samples, from) {
+/** Share of frames with the flag since `from` — at least the last `minFrames` frames on slow devices. */
+function fractionSince(samples, from, minFrames = 2) {
   let start = samples.findIndex((s) => s.t >= from);
   if (start === -1) start = samples.length;
-  start = Math.max(0, Math.min(start, samples.length - 2));
+  start = Math.max(0, Math.min(start, samples.length - minFrames));
   let hit = 0;
   for (let i = start; i < samples.length; i++) if (samples[i].v) hit++;
   const n = samples.length - start;
@@ -750,12 +758,14 @@ export function createFlagSmoother() {
           s.samples.push({ t: now, v });
           // A little extra history so the "covered" test also works at low frame rates
           const keepFrom = now - Math.max(cfg.on, cfg.off) - 1000;
-          while (s.samples.length > 2 && s.samples[0].t < keepFrom) s.samples.shift();
+          const keepMin = cfg.appearance ? APPEARANCE_SHOW_MIN_FRAMES : 2; // very slow phones keep enough frames
+          while (s.samples.length > keepMin && s.samples[0].t < keepFrom) s.samples.shift();
 
           if (!s.shown) {
             // Enough history to cover the window (the oldest kept frame is old enough)
             const covered = s.samples[0].t <= now - cfg.on * 0.9;
-            if (v && covered && fractionSince(s.samples, now - cfg.on) >= SHOW_FRACTION) {
+            const minFrames = cfg.appearance ? APPEARANCE_SHOW_MIN_FRAMES : 2;
+            if (v && covered && s.samples.length >= minFrames && fractionSince(s.samples, now - cfg.on, minFrames) >= SHOW_FRACTION) {
               s.shown = true;
               s.clearSince = null;
             }

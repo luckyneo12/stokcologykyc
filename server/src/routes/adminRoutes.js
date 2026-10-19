@@ -3,6 +3,7 @@ const {
   getApplications,
   getApplicationById,
   reviewApplication,
+  getApplicationFurthestStep,
   getStats,
   getAuditLogs,
   getUsers,
@@ -36,6 +37,7 @@ router.use("/estamp", estampRoutes);
 router.get("/applications", adminAuth, getApplications);
 router.get("/application/:id", adminAuth, getApplicationById);
 router.put("/review/:id", adminAuth, reviewApplication);
+router.get("/review/:id/furthest-step", adminAuth, getApplicationFurthestStep);
 // "Delete" moves the application to the Trash; it is removed only from there
 router.delete("/application/:id", adminAuth, trash.moveToTrash);
 router.get("/trash", adminAuth, trash.listTrash);

@@ -143,6 +143,9 @@ const AUTO_CAPTURE_MS = 1000;
 const APPEARANCE_PHOTO_CHECKS = ["sunglasses", "glasses"];
 const RECENT_APPEARANCE_MS = 1200;
 const RECENT_APPEARANCE_MAX = 0.3;
+// …judged over at least this many frames: a slow phone has only ~2 in 1.2 s, so one noisy frame (50%)
+// used to block the photo. Fast devices have many more frames in the window: no change there.
+const RECENT_APPEARANCE_MIN_FRAMES = 4;
 // Messages under the camera disappear on their own; server verdicts stay a little longer
 const BANNER_MS = 6000;
 const SERVER_BANNER_MS = 12000;
@@ -862,7 +865,7 @@ export default function LiveSelfieCapture({
     if (analysis.faceCount === 1 && analysis.appearanceChecked) {
       const hist = appearanceHistoryRef.current;
       hist.push({ t: now, sunglasses: !!analysis.flags.sunglasses, glasses: !!analysis.flags.glasses });
-      while (hist.length && hist[0].t < now - RECENT_APPEARANCE_MS) hist.shift();
+      while (hist.length > RECENT_APPEARANCE_MIN_FRAMES && hist[0].t < now - RECENT_APPEARANCE_MS) hist.shift();
     }
 
     // While reviewing / uploading only keep watching the face: a swap marks the actions as broken
@@ -1056,7 +1059,9 @@ export default function LiveSelfieCapture({
 
   /** Eyewear seen in too many of the last RECENT_APPEARANCE_MS of judged frames, or null. */
   function recentAppearanceIssue(now) {
-    const recent = appearanceHistoryRef.current.filter((h) => h.t >= now - RECENT_APPEARANCE_MS);
+    const hist = appearanceHistoryRef.current;
+    let recent = hist.filter((h) => h.t >= now - RECENT_APPEARANCE_MS);
+    if (recent.length < RECENT_APPEARANCE_MIN_FRAMES) recent = hist.slice(-RECENT_APPEARANCE_MIN_FRAMES);
     if (!recent.length) return null;
     return APPEARANCE_PHOTO_CHECKS.find((k) => recent.filter((h) => h[k]).length / recent.length >= RECENT_APPEARANCE_MAX) || null;
   }

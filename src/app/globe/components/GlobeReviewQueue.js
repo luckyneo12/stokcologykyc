@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { ListFilter, ArrowUpDown, ArrowUp, ArrowDown, EyeOff } from "lucide-react";
 import "../globe-table.css";
 
 function formatTimePending(createdAt) {
@@ -44,9 +46,39 @@ const PERMANENT_COLUMNS = ["S.No.", "Actions", "Name", "Client Code"];
 const PERMANENT_WIDTHS = {
   "S.No.": 60,
   "Actions": 320, // This will be dynamically overridden in the component
-  "Name": 180,
-  "Client Code": 120
+  "Name": 210, // room for the label + filter / sort buttons
+  "Client Code": 200
 };
+const NO_FILTER_SORT_COLUMNS = ["S.No.", "Actions"]; // nothing useful to filter or sort by
+
+/** Text shown in a column for an application (used by the column filters and sorting). */
+function getCellValue(app, col) {
+  const parse = (v) => { try { return typeof v === "string" ? JSON.parse(v) : (v || {}); } catch (e) { return {}; } };
+  const personal = parse(app.personalDetails);
+  const identity = parse(app.identityDetails);
+  const esign = parse(app.esignDetails);
+  const stepLabel = STEP_LABELS[app.currentStep] || "Onboarding";
+  switch (col) {
+    case "Name": return personal.fullName || personal.name || "N/A";
+    case "Client Code": return app.clientCode || "N/A";
+    case "KYC ID": return app.applicationId || app.id;
+    case "Number": return app.user?.phone || "N/A";
+    case "Email": return app.user?.email || personal.email || "N/A";
+    case "PAN": return identity.panNumber || identity.pan || personal.pan || "N/A";
+    case "Step": return `Step ${app.currentStep || 0}/14`;
+    case "Stage": return stepLabel.includes(":") ? stepLabel.split(": ")[1] : stepLabel;
+    case "Status": return (app.status === "under_review" ? "pending" : app.status || "").replace("_", " ").toUpperCase();
+    case "Globe Status": return String(app.globeStatus || "").toUpperCase();
+    case "Time Pending": return app.globeStatus === "pending" ? formatTimePending(app.updatedAt || app.createdAt) : "-";
+    case "E-Stamp Certificate No": return app.user?.eStampAssigned?.certificateNo || app.user?.eStamp || "N/A";
+    case "E-Stamp Serial No": return app.user?.eStampAssigned?.serialNo || "N/A";
+    case "Start Date": return app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A";
+    case "eSign Date": return esign.timestamp || (app.currentStep >= 14 ? new Date(app.updatedAt).toLocaleString("en-IN") : "Pending");
+    case "Date": return new Date(app.updatedAt || app.createdAt).toLocaleString();
+    default: return "";
+  }
+}
+
 const ALL_COLUMNS = ["S.No.", "Actions", "Name", "Client Code", "KYC ID", "Number", "Email", "PAN", "Step", "Stage", "Status", "Globe Status", "Time Pending", "E-Stamp Certificate No", "E-Stamp Serial No", "Start Date", "eSign Date", "Date"];
 
 export default function GlobeReviewQueue({ applications, handleAction, activeSection }) {
@@ -58,6 +90,53 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
   const [columnsLoaded, setColumnsLoaded] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
+  // Column filters / sort (same as the Maker / Checker list)
+  const [columnFilters, setColumnFilters] = useState({});
+  const [columnValueFilters, setColumnValueFilters] = useState({}); // { [column]: [selected values] }
+  const [activeFilterCol, setActiveFilterCol] = useState(null);
+  const [filterPopupPos, setFilterPopupPos] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
+  const toFilterValue = (v) => {
+    const str = String(v ?? "").trim();
+    return str === "" || str === "N/A" ? "(Blank)" : str;
+  };
+  const displayApps = useMemo(() => {
+    let result = [...(applications || [])];
+    Object.keys(columnValueFilters).forEach(col => {
+      const selected = columnValueFilters[col];
+      if (selected && selected.length > 0) result = result.filter(a => selected.includes(toFilterValue(getCellValue(a, col))));
+    });
+    Object.keys(columnFilters).forEach(col => {
+      const term = columnFilters[col]?.toLowerCase();
+      if (term) result = result.filter(a => String(getCellValue(a, col) || "").toLowerCase().includes(term));
+    });
+    if (sortConfig.key && sortConfig.direction) {
+      result.sort((a, b) => {
+        const aVal = String(getCellValue(a, sortConfig.key) || "").toLowerCase();
+        const bVal = String(getCellValue(b, sortConfig.key) || "").toLowerCase();
+        if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applications, columnFilters, columnValueFilters, sortConfig]);
+
+  // The filter popup is drawn above the page; close it when the page / table scrolls or resizes
+  useEffect(() => {
+    if (!activeFilterCol) return;
+    const close = (e) => {
+      if (e?.target?.closest && e.target.closest(".column-filter-container")) return;
+      setActiveFilterCol(null);
+    };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [activeFilterCol]);
   const handleCopy = (e, text, key) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (!text || text === "N/A" || text === "Pending" || text === "—") return;
@@ -94,6 +173,9 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
       if (!e.target.closest('.action-menu-container')) {
         setOpenMenuId(null);
       }
+      if (!e.target.closest('.column-filter-container')) {
+        setActiveFilterCol(null);
+      }
     };
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
@@ -128,9 +210,9 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
   };
 
   const exportToCSV = () => {
-    if (!applications || applications.length === 0) return;
+    if (!displayApps || displayApps.length === 0) return;
     const headers = ALL_COLUMNS.filter(c => c !== "Actions" && c !== "S.No.");
-    const rows = applications.map(app => {
+    const rows = displayApps.map(app => {
       let parsedPersonal = {};
       try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
       let parsedIdentity = {};
@@ -258,17 +340,124 @@ export default function GlobeReviewQueue({ applications, handleAction, activeSec
           <table className="admin-table">
             <thead>
               <tr>
-                {ALL_COLUMNS.filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h)).map(h => <th key={h} style={getStickyStyle(h, true)}>{h}</th>)}
+                {ALL_COLUMNS.filter(h => visibleColumns.includes(h) || PERMANENT_COLUMNS.includes(h)).map(h => (
+                  <th key={h} style={getStickyStyle(h, true)}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span>{h}</span>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {!NO_FILTER_SORT_COLUMNS.includes(h) && (<>
+                          <button
+                            className={`column-filter-container mc-th-btn${(columnFilters[h] || columnValueFilters[h]?.length) ? " is-active" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (activeFilterCol === h) { setActiveFilterCol(null); return; }
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setFilterPopupPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 8, window.innerWidth - 232)) });
+                              setActiveFilterCol(h);
+                            }}
+                            style={{ background: "transparent", border: "none", cursor: "pointer", color: (columnFilters[h] || columnValueFilters[h]?.length) ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
+                            title="Filter"
+                          >
+                            <ListFilter size={13} strokeWidth={2.4} />
+                          </button>
+                          <button
+                            className={`mc-th-btn${sortConfig.key === h ? " is-active" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSortConfig(prev => {
+                                if (prev.key === h) {
+                                  if (prev.direction === "asc") return { key: h, direction: "desc" };
+                                  return { key: null, direction: null };
+                                }
+                                return { key: h, direction: "asc" };
+                              });
+                            }}
+                            style={{ background: "transparent", border: "none", cursor: "pointer", color: sortConfig.key === h ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
+                            title="Sort"
+                          >
+                            {sortConfig.key === h ? (
+                              sortConfig.direction === "asc" ? <ArrowUp size={13} strokeWidth={2.4} /> : <ArrowDown size={13} strokeWidth={2.4} />
+                            ) : (
+                              <ArrowUpDown size={13} strokeWidth={2.4} />
+                            )}
+                          </button>
+                        </>)}
+                        {!PERMANENT_COLUMNS.includes(h) && (
+                          <button
+                            className="mc-th-btn"
+                            onClick={(e) => { e.stopPropagation(); setVisibleColumns(prev => prev.filter(c => c !== h)); }}
+                            style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}
+                            title="Hide Column"
+                          >
+                            <EyeOff size={13} strokeWidth={2.4} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {activeFilterCol === h && filterPopupPos && createPortal((
+                      <div className="column-filter-container" style={{ position: "fixed", top: filterPopupPos.top, left: filterPopupPos.left, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 6, padding: 8, zIndex: 2000, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", textAlign: "left" }} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder={`Search ${h}...`}
+                          value={columnFilters[h] || ""}
+                          onChange={(e) => setColumnFilters(prev => ({ ...prev, [h]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === "Enter") setActiveFilterCol(null); }}
+                          style={{ padding: "4px 8px", fontSize: "0.8rem", borderRadius: 4, border: "1px solid var(--border-color)", width: 150 }}
+                        />
+                        {(() => {
+                          // Values of this column, narrowed by the search text
+                          const term = (columnFilters[h] || "").toLowerCase();
+                          const values = Array.from(new Set((applications || []).map(a => toFilterValue(getCellValue(a, h)))))
+                            .filter(v => !term || v.toLowerCase().includes(term))
+                            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                          const selected = columnValueFilters[h] || [];
+                          const toggleValue = (v) => setColumnValueFilters(prev => {
+                            const cur = prev[h] || [];
+                            const next = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v];
+                            return { ...prev, [h]: next };
+                          });
+                          return (
+                            <>
+                              <div style={{ maxHeight: 220, overflowY: "auto", marginTop: 6, width: 200 }}>
+                                {values.length === 0 ? (
+                                  <div style={{ padding: "6px 4px", fontSize: "0.78rem", color: "var(--text-muted)" }}>No values</div>
+                                ) : values.map(v => (
+                                  <label key={v} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px", fontSize: "0.78rem", color: "var(--text-primary)", cursor: "pointer", fontWeight: 500, textTransform: "none", letterSpacing: "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={v}>
+                                    <input type="checkbox" checked={selected.includes(v)} onChange={() => toggleValue(v)} />
+                                    {v}
+                                  </label>
+                                ))}
+                              </div>
+                              {(selected.length > 0 || columnFilters[h]) && (
+                                <button
+                                  onClick={() => {
+                                    setColumnValueFilters(prev => { const next = { ...prev }; delete next[h]; return next; });
+                                    setColumnFilters(prev => { const next = { ...prev }; delete next[h]; return next; });
+                                  }}
+                                  style={{ marginTop: 6, width: "100%", padding: "4px 8px", fontSize: "0.75rem", fontWeight: 700, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer" }}
+                                >
+                                  Clear filter
+                                </button>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ), document.body)}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {(!applications || applications.length === 0) ? (
+              {(!displayApps || displayApps.length === 0) ? (
                 <tr>
                   <td colSpan="9" style={{ textAlign: "center", padding: "40px" }}>
                     No matching KYC requests found.
                   </td>
                 </tr>
-              ) : applications.map((app, index) => {
+              ) : displayApps.map((app, index) => {
                 let parsedPersonal = {};
                 try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
                 let parsedIdentity = {};

@@ -242,6 +242,24 @@ export default function ApplicationDetail() {
   const [app, setApp] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pendingStep, setPendingStep] = useState(null);
+  const [furthestStep, setFurthestStep] = useState(null);
+
+  // Steps up to the furthest one the user has reached can be chosen (moving back can be undone)
+  useEffect(() => {
+    if (!id) { setFurthestStep(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = localStorage.getItem("adminToken");
+        const res = await fetch(`${API_BASE_URL}/api/admin/review/${id}/furthest-step`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!cancelled && data.success) setFurthestStep(Number(data.furthestStep));
+      } catch (e) {
+        // keeps the safe default (current step)
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
@@ -1641,7 +1659,7 @@ export default function ApplicationDetail() {
               >
                 {Object.entries(STEP_LABELS).map(([num, label]) => (
                               // Steps can only be moved back (or kept) — never forward past where the user is
-                              <option key={num} value={num} disabled={Number(num) > Number(app.currentStep || 0)}>{label}{Number(num) > Number(app.currentStep || 0) ? " — locked" : ""}</option>
+                              <option key={num} value={num} disabled={Number(num) > Math.max(Number(app.currentStep || 0), furthestStep ?? 0)}>{label}{Number(num) > Math.max(Number(app.currentStep || 0), furthestStep ?? 0) ? " — locked" : ""}</option>
                             ))}
               </select>
               {pendingStep !== null && pendingStep !== app.currentStep && (
