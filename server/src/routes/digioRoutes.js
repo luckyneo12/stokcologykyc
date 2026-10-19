@@ -3023,7 +3023,9 @@ router.post("/verify-ifsc", auth, async (req, res) => {
           data: {
             bank: data.BANK,
             branch: data.BRANCH,
+            address: data.ADDRESS, // branch address — sent to the back office as BankAddress1
             city: data.CITY,
+            district: data.DISTRICT,
             state: data.STATE,
             micr: data.MICR,
           },

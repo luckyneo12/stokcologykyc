@@ -4,6 +4,7 @@ const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const axios = require('axios');
+const { findDdpiBlanks } = require('./estampBlanks');
 
 // ─── Download helpers (SPEED ONLY) ─────────────────────────────────────────────────────────────
 // Every file the PDF needs is requested at the start, all at once; the code below then runs exactly as
@@ -764,7 +765,8 @@ async function generateKycPdf(applicationData, options = {}) {
       
       // Reverse the array so we process the newest documents first
       [...parsedDocuments].reverse().forEach(doc => {
-        if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'ESIGN_DOCUMENT' && doc.type !== 'DIGILOCKER_DOCUMENT') {
+        // OVD is appended separately, as the very last document (below)
+        if (doc?.path && doc.type !== 'ESIGN' && doc.type !== 'ESIGN_DOCUMENT' && doc.type !== 'DIGILOCKER_DOCUMENT' && doc.type !== 'OVD') {
           // Use the document type as a unique identifier
           const typeKey = doc.type || doc.name || doc.path;
           
@@ -803,6 +805,10 @@ async function generateKycPdf(applicationData, options = {}) {
     const parsedSigApp = safeJsonParse(applicationData.signature) || {};
     const sigDocPath = parsedSigApp?.path || parsedSigApp?.filePreview || parsedSigApp?.preview || (typeof parsedSigApp === 'string' && parsedSigApp.startsWith('http') ? parsedSigApp : null);
     if (sigDocPath) docsToAppend.push({ path: sigDocPath, title: 'Customer Signature' });
+
+    // OVD requested by an admin (uploaded in the correction portal) — always the last pages, titled "OVD"
+    const ovdDoc = [...parsedDocuments].reverse().find((d) => d?.type === 'OVD' && d.path);
+    if (ovdDoc) docsToAppend.push({ path: ovdDoc.path, title: 'OVD' });
 
     const selfieDocPath = parsedSelfieDetails?.path || parsedSelfieDetails?.filePreview || parsedSelfieDetails?.preview || applicationData?.selfie?.preview;
 
@@ -1258,12 +1264,15 @@ async function generateKycPdf(applicationData, options = {}) {
           }
 
           const imgDims = img.scaleToFit(pWidth - 100, pHeight - 100);
-          imgPage.drawImage(img, {
+          const placed = {
             x: pWidth / 2 - imgDims.width / 2,
             y: pHeight / 2 - imgDims.height / 2,
             width: imgDims.width,
             height: imgDims.height,
-          });
+          };
+          imgPage.drawImage(img, placed);
+          // Where the image landed (used by the e-stamp page to write onto its printed blanks)
+          return { page: imgPage, ...placed, bytes };
         }
       } catch (e) {
         console.error(`[PDF Gen] Failed to append document ${docPathRel}:`, e.message);
@@ -1276,14 +1285,15 @@ async function generateKycPdf(applicationData, options = {}) {
       
       // 1. Page 56: E-Stamp (or blank if no DDPI)
       let eStampAppended = false;
+      let eStampPlacement = null; // where the e-stamp image sits on its page
       const eStampStartIndex = pdfDoc.getPageCount();
-      
+
       const hasDdpi = String(parsedPersonalDetails.ddpi || '').toLowerCase() === 'yes';
       if (hasDdpi && applicationData.userId) {
          try {
            const eStamp = await prisma.eStamp.findUnique({ where: { assignedTo: applicationData.userId } });
            if (eStamp && eStamp.fileUrl) {
-             await appendDocument(eStamp.fileUrl, 'E-Stamp');
+             eStampPlacement = await appendDocument(eStamp.fileUrl, 'E-Stamp');
              seenPaths.add(eStamp.fileUrl);
              eStampAppended = true;
            }
@@ -1296,6 +1306,7 @@ async function generateKycPdf(applicationData, options = {}) {
       }
       
       const eStampEndIndex = pdfDoc.getPageCount() - 1;
+      let stampSigImg = null; // the applicant's signature, reused on the e-stamp's DDPI block
       if (eStampEndIndex >= eStampStartIndex) {
          const stampPage = pdfDoc.getPage(eStampEndIndex);
          
@@ -1318,8 +1329,74 @@ async function generateKycPdf(applicationData, options = {}) {
                try {
                  const sigImg = await (sigBytes[0] === 0x89 ? pdfDoc.embedPng(sigBytes) : pdfDoc.embedJpg(sigBytes));
                  stampPage.drawImage(sigImg, { x: 50, y: 20, width: 100, height: 40 });
+                 stampSigImg = sigImg;
                } catch(e) {}
             }
+         }
+      }
+
+      // E-stamp only: fill the DDPI blanks printed on the stamp — name after "Mr./Mrs./Ms./M/s.", the eSign
+      // date after "on", the signature beside the "Signature of 1st Holder" mark and the Digio eSign box
+      // beside the signature. The blanks are found in the stamp image itself (scans differ in size and
+      // margins); a stamp without the printed DDPI text (older blank stamps) is left exactly as before.
+      if (eStampAppended && eStampPlacement?.page) {
+         try {
+           const blanks = await findDdpiBlanks(eStampPlacement.bytes);
+           if (!blanks) {
+             console.log('[PDF Gen] E-stamp has no printed DDPI blanks; page left as it is');
+           } else {
+             const { page: sp, x: ix, y: iy, width: iw, height: ih } = eStampPlacement;
+             // image fractions (y from the top) → PDF points
+             const toX = (fx) => ix + iw * fx;
+             const toY = (fyFromTop) => iy + ih * (1 - fyFromTop);
+             // The signature row is not underlined, so it is placed from the "____ on ____" row: offsets are
+             // in units of that row's width (measured on the stamp layout), which scale with every scan
+             const originX = toX(blanks.left.x0);
+             const originY = toY(blanks.left.y);
+             const unit = (blanks.date.x1 - blanks.left.x0) * iw;
+             const box = (dx0, dx1, dy0, dy1) => ({
+               x: originX + dx0 * unit,
+               y: originY - dy1 * unit, // PDF y is the bottom edge
+               width: (dx1 - dx0) * unit,
+               height: (dy1 - dy0) * unit,
+             });
+             const fitText = (text, maxWidth, size) => {
+               let s = size;
+               while (s > 6 && boldFont.widthOfTextAtSize(text, s) > maxWidth) s -= 0.5;
+               return s;
+             };
+             const lift = unit * 0.006; // keep the text just above the printed line
+
+             const clientName = String(parsedPersonalDetails.fullName || parsedPersonalDetails.name || '').trim().toUpperCase();
+             if (clientName) {
+               const lineW = (blanks.name.x1 - blanks.name.x0) * iw;
+               const size = fitText(clientName, lineW - unit * 0.02, 10);
+               sp.drawText(clientName, { x: toX(blanks.name.x0) + unit * 0.01, y: toY(blanks.name.y) + lift, size, font: boldFont, color: rgb(0, 0, 0) });
+             }
+
+             const esignDate = String(getVariableValue('date', applicationData) || '');
+             if (esignDate) {
+               const lineW = (blanks.date.x1 - blanks.date.x0) * iw;
+               const size = fitText(esignDate, lineW - unit * 0.02, 10);
+               const textW = boldFont.widthOfTextAtSize(esignDate, size);
+               sp.drawText(esignDate, { x: toX(blanks.date.x0) + (lineW - textW) / 2, y: toY(blanks.date.y) + lift, size, font: boldFont, color: rgb(0, 0, 0) });
+             }
+
+             // Signature right of the "Signature of 1st Holder" mark, above its label
+             if (stampSigImg) {
+               const sb = box(0.043, 0.223, 0.065, 0.184);
+               const dims = stampSigImg.scaleToFit(sb.width, sb.height);
+               sp.drawImage(stampSigImg, { x: sb.x + (sb.width - dims.width) / 2, y: sb.y + (sb.height - dims.height) / 2, width: dims.width, height: dims.height });
+             }
+
+             // Digio eSign box beside the signature, ending before the "Signature of 2nd Holder" mark
+             const eb = box(0.230, 0.486, 0.029, 0.187);
+             const pageNum = String(eStampEndIndex + 1);
+             if (!esignCoordinatesMap[pageNum]) esignCoordinatesMap[pageNum] = [];
+             esignCoordinatesMap[pageNum].push(eb);
+           }
+         } catch (e) {
+           console.error('[PDF Gen] Could not fill the e-stamp page:', e.message);
          }
       }
       

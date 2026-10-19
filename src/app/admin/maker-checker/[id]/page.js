@@ -19,7 +19,7 @@ import {
   Mail,
   User, Phone,
   ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download, Copy, Check,
-  RotateCcw, Trash2
+  RotateCcw, Trash2, PenLine, CalendarClock
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
 import { io } from "socket.io-client";
@@ -750,10 +750,20 @@ function mediaFromString(value, label) {
 
 function normalizeDocuments(app) {
   const docs = app.documents;
-  if (Array.isArray(docs)) return docs;
-  if (docs && typeof docs === "object") return Object.values(docs).flat().filter(Boolean);
+  // The admin-requested OVD is listed on its own — keep it out of the keyword matching (Aadhaar, PAN, PDF…)
+  if (Array.isArray(docs)) return docs.filter((d) => d?.type !== "OVD");
+  if (docs && typeof docs === "object") return Object.values(docs).flat().filter((d) => d && d.type !== "OVD");
   return [];
 }
+
+// The OVD the applicant uploaded after an admin requested one (latest), or null
+function findOvdDocument(app) {
+  const docs = Array.isArray(app?.documents) ? app.documents : [];
+  return [...docs].reverse().find((d) => d?.type === "OVD" && d.path) || null;
+}
+
+const OVD_STEP_ID = "ovdRequest";
+const OVD_DEFAULT_REASON = "Please upload an Officially Valid Document (OVD) for verification.";
 
 function findDocument(app, keywords, label, excludeKeywords = []) {
   const lowerKeywords = keywords.map((keyword) => keyword.toLowerCase());
@@ -983,7 +993,7 @@ const DOC_LABEL_REJECTION_STEP = {
 
 // Small "STK" / "Globe" tag showing which side made a rejection
 const RejectedByTag = ({ by }) => !by ? null : (
-  <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "1px 5px", borderRadius: 4, letterSpacing: "0.3px", whiteSpace: "nowrap", background: by === "Globe" ? "#dbeafe" : "#fee2e2", color: by === "Globe" ? "#1d4ed8" : "#b91c1c" }}>by {by}</span>
+  <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "1px 5px", borderRadius: 4, letterSpacing: "0.3px", whiteSpace: "nowrap", flexShrink: 0, background: by === "Globe" ? "#dbeafe" : "#fee2e2", color: by === "Globe" ? "#1d4ed8" : "#b91c1c" }}>by {by}</span>
 );
 
 function getApplicantPan(app) {
@@ -1509,6 +1519,61 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
   );
 }
 
+/**
+ * Soft-UI dropdown for editing a field with fixed choices (replaces the browser's plain list).
+ * Opens straight away. Picking an option → onPick(value); clicking away, Esc or Tab → onDismiss()
+ * (the same two outcomes the old <select>'s change / blur gave). Arrow keys + Enter work too.
+ */
+function NeuSelect({ value, options, onPick, onDismiss }) {
+  const items = [{ value: "", label: "Select…" }, ...options.map(o => ({ value: o, label: o }))];
+  const [active, setActive] = useState(Math.max(0, items.findIndex(o => o.value === value)));
+  const rootRef = useRef(null);
+  const doneRef = useRef(false);
+  const latest = useRef({ onPick, onDismiss });
+  latest.current = { onPick, onDismiss };
+  const pick = (v) => { if (doneRef.current) return; doneRef.current = true; latest.current.onPick(v); };
+  const dismiss = () => { if (doneRef.current) return; doneRef.current = true; latest.current.onDismiss(); };
+
+  useEffect(() => {
+    rootRef.current?.focus({ preventScroll: true });
+    const onDown = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) dismiss(); };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onKeyDown = (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(i => Math.min(items.length - 1, i + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive(i => Math.max(0, i - 1)); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(0); }
+    else if (e.key === "End") { e.preventDefault(); setActive(items.length - 1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(items[active].value); }
+    else if (e.key === "Escape" || e.key === "Tab") { dismiss(); }
+  };
+  const current = items.find(o => o.value === value);
+
+  return (
+    <div ref={rootRef} className="neu-select" tabIndex={0} role="listbox" aria-activedescendant={`neu-opt-${active}`}
+      onKeyDown={onKeyDown} onClick={(e) => e.stopPropagation()}>
+      <div className="neu-select-trigger" onMouseDown={(e) => { e.preventDefault(); dismiss(); }}>
+        <span className={current && current.value ? "" : "is-placeholder"}>{current && current.value ? current.label : "Select…"}</span>
+        <ChevronDown size={15} />
+      </div>
+      <ul className="neu-select-list">
+        {items.map((o, i) => (
+          <li key={o.value || "__none"} id={`neu-opt-${i}`} role="option" aria-selected={o.value === value}
+            className={`neu-select-opt${i === active ? " is-active" : ""}${o.value === value ? " is-selected" : ""}${o.value === "" ? " is-none" : ""}`}
+            onMouseEnter={() => setActive(i)}
+            onMouseDown={(e) => { e.preventDefault(); pick(o.value); }}>
+            <span>{o.label}</span>
+            {o.value === value && o.value !== "" && <Check size={14} />}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, y: 0 }, label, pan }) {
   const [zoom, setZoom] = useState(defaultZoom);
   const [offset, setOffset] = useState(defaultOffset);
@@ -1517,6 +1582,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
+
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1533,7 +1599,7 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
   return (
     <div style={{ flex: 1, position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f3f4f6" }}>
       {isPdf(src) ? (
-        <object data={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : withDownloadName(getSafePreviewUrl(src), label, pan)} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none" }}>
+        <object data={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : withDownloadName(getSafePreviewUrl(src), label, pan)} type="application/pdf" style={{ flex: 1, width: "100%", height: "100%", border: "none", ...((zoom !== 1 || rotation % 360 !== 0) ? { transform: `scale(${zoom}) rotate(${rotation}deg)`, transition: "transform 0.2s ease" } : null) }}>
           <embed src={getSafePreviewUrl(src).startsWith('JVBER') ? `data:application/pdf;base64,${getSafePreviewUrl(src)}` : withDownloadName(getSafePreviewUrl(src), label, pan)} type="application/pdf" style={{ width: "100%", height: "100%" }} />
         </object>
       ) : (
@@ -1577,8 +1643,9 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
           </div>
         </div>
       )}
-      {!(isPdf(src)) && (
-        <div style={{ position: "absolute", bottom: 12, right: 12, display: "flex", gap: 6, background: "var(--bg-primary)", padding: "4px 8px", borderRadius: 20, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)", zIndex: 10 }}>
+      {/* Every document has its own controls (PDFs too) */}
+      {(
+        <div className="neu-viewer-tools" style={{ position: "absolute", bottom: 12, right: 12, display: "flex", gap: 6, background: "var(--bg-primary)", padding: "4px 8px", borderRadius: 20, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)", zIndex: 10 }}>
           <button onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={14} /></button>
           <button onClick={() => setZoom(Math.min(3, zoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={14} /></button>
           <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
@@ -1597,6 +1664,8 @@ function IndependentImageViewer({ src, defaultZoom = 1, defaultOffset = { x: 0, 
               setTimeout(() => setDownloading(false), 1500);
             }
           }} style={{ background: "transparent", border: "none", cursor: downloading ? "wait" : "pointer", color: "var(--text-muted)", opacity: downloading ? 0.4 : 1 }} title={downloading ? "Preparing download…" : "Download"}><Download size={14} /></button>
+          <div style={{ width: 1, background: "var(--border-color)", margin: "0 2px" }} />
+          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center", minWidth: 34, justifyContent: "center" }}>{Math.round(zoom * 100)}%</span>
         </div>
       )}
     </div>
@@ -1640,6 +1709,7 @@ export default function AgentReview() {
   const [rejectDocumentModal, setRejectDocumentModal] = useState(null);
   const [documentRejectReason, setDocumentRejectReason] = useState("");
   const [undoConfirm, setUndoConfirm] = useState(null); // { label, onConfirm } — "Are you sure?" before undoing a rejection
+  const [ovdModal, setOvdModal] = useState(null); // { reason } while the "Request OVD" dialog is open
   const [successModalData, setSuccessModalData] = useState(null);
   const [accumulatedEdits, setAccumulatedEdits] = useState({});
   const [copiedKey, setCopiedKey] = useState(null);
@@ -2056,6 +2126,38 @@ export default function AgentReview() {
     }
   };
 
+  // Admin asks the applicant for an extra OVD: saved as a rejection of the "ovdRequest" step, so it is mailed
+  // and corrected exactly like any other rejection (Send Rejection Mail → correction portal → re-eSign).
+  const handleRequestOvd = async () => {
+    const reason = (ovdModal?.reason || "").trim();
+    if (!reason) {
+      showToast("Please enter what the applicant should upload.", "error");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetchWithFallback(`/api/agent/kyc/${id}/step/${OVD_STEP_ID}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: "rejected", reason, rejectedFields: [], rejectEntireModule: false }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOvdModal(null);
+        showToast("OVD requested. Click \"Send Rejection Mail\" to notify the applicant.", "success");
+        fetchDetail();
+      } else {
+        showToast(data.error || "Failed to request the OVD.", "error");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Network error while requesting the OVD.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Undoing a rejection always asks "Are you sure?" first
   const confirmUndoRejection = (label, onConfirm) => setUndoConfirm({ label, onConfirm });
   const handleUnrejectStep = (stepId, stepTitle) => confirmUndoRejection(stepTitle, () => performUnrejectStep(stepId, stepTitle));
@@ -2218,6 +2320,10 @@ export default function AgentReview() {
     if (esignPath) {
       pushDoc(firstMedia(esignPath, app.esignDetails || (Array.isArray(app.documents) && [...app.documents].reverse().find(d => String(d?.type).toUpperCase().includes("ESIGN"))?.path) ? "eSigned PDF" : "eSigned PDF (Unsigned)"), "esignPreview");
     }
+
+    // OVD uploaded after an admin requested it
+    const ovdDoc = findOvdDocument(app);
+    if (ovdDoc) pushDoc(firstMedia(ovdDoc.path, "OVD (Officially Valid Document)"), OVD_STEP_ID);
 
     return docs;
   }, [app]);
@@ -2396,35 +2502,35 @@ export default function AgentReview() {
         />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", background: "var(--bg-secondary)", overflow: "hidden", fontFamily: "'Inter', sans-serif" }}>
       {/* Top Bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", columnGap: 20, rowGap: 10, padding: "10px 24px", minHeight: 68, background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
+      <div className="neu-detail-bar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", columnGap: 20, rowGap: 10, padding: "10px 24px", minHeight: 68, background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)" }}>
         {/* Applicant */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 0 auto" }}>
-          <div style={{ width: 38, height: 38, flexShrink: 0, borderRadius: "50%", background: "var(--wise-green)", color: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.9rem" }}>
-            {getInitials(getApplicantName(app))}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h1 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.25, maxWidth: 360, overflowWrap: "anywhere" }}>{getApplicantName(app)}</h1>
+        <div className="neu-dh-applicant">
+          <div className="neu-dh-avatar" aria-hidden="true">{getInitials(getApplicantName(app))}</div>
+          <div className="neu-dh-id">
+            <div className="neu-dh-row">
+              <h1 className="neu-dh-name">{getApplicantName(app)}</h1>
               {inTrash ? (
-                <span style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "2px 8px", background: "#fee2e2", color: "#b91c1c", borderRadius: 4, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.3px" }}>In Trash</span>
+                <span className="neu-dh-status is-trash"><span className="neu-dh-status-dot" />In Trash</span>
               ) : (
-                <span style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "2px 8px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.3px" }}>Pending Review</span>
+                <span className="neu-dh-status is-pending"><span className="neu-dh-status-dot" />Pending Review</span>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 10, rowGap: 4, whiteSpace: "nowrap" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: "0.85rem", color: "var(--wise-green)", fontWeight: 700, letterSpacing: "0.5px", userSelect: "text", WebkitUserSelect: "text", cursor: "text" }}>
+            <div className="neu-dh-row neu-dh-meta">
+              <span className="neu-dh-chip is-pan">
+                <span className="neu-dh-chip-k">PAN</span>
+                <span className="neu-dh-chip-v">
                   {app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId}
                 </span>
-                <button onClick={(e) => handleCopy(e, app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId, 'app-pan')} title="Copy PAN" style={{ background: "transparent", border: "none", cursor: "pointer", padding: 2, color: copiedKey === 'app-pan' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                  {copiedKey === 'app-pan' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                <button className={`neu-dh-copy${copiedKey === 'app-pan' ? " is-done" : ""}`} onClick={(e) => handleCopy(e, app.personalDetails?.pan || app.identityDetails?.manualPan || app.identityDetails?.pan || app.applicationId, 'app-pan')} title="Copy PAN" aria-label="Copy PAN">
+                  {copiedKey === 'app-pan' ? <Check size={12} /> : <Copy size={12} />}
                 </button>
               </span>
               {app.clientCode && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(159, 232, 112, 0.15)", padding: "2px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: 700, color: "var(--text-primary)", userSelect: "text", cursor: "text" }}>
-                  UCC: {app.clientCode}
-                  <button onClick={(e) => handleCopy(e, app.clientCode, 'app-cc')} title="Copy UCC" style={{ background: "transparent", border: "none", cursor: "pointer", padding: 1, color: copiedKey === 'app-cc' ? "#16a34a" : "var(--text-muted)", display: "inline-flex", alignItems: "center" }}>
-                    {copiedKey === 'app-cc' ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
+                <span className="neu-dh-chip is-ucc">
+                  <span className="neu-dh-chip-k">UCC</span>
+                  <span className="neu-dh-chip-v">{app.clientCode}</span>
+                  <button className={`neu-dh-copy${copiedKey === 'app-cc' ? " is-done" : ""}`} onClick={(e) => handleCopy(e, app.clientCode, 'app-cc')} title="Copy UCC" aria-label="Copy UCC">
+                    {copiedKey === 'app-cc' ? <Check size={12} /> : <Copy size={12} />}
                   </button>
                 </span>
               )}
@@ -2433,14 +2539,15 @@ export default function AgentReview() {
         </div>
 
         {/* Dates */}
-        <div style={{ display: "flex", alignItems: "center", gap: 20, flexShrink: 0 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{formattedESignDate}</span>
-            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>eSign Date</span>
+        <div className="neu-dh-dates">
+          <div className="neu-dh-date">
+            <span className="neu-dh-date-k"><PenLine size={12} aria-hidden="true" />eSign Date</span>
+            <span className="neu-dh-date-v">{formattedESignDate}</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <span style={{ fontSize: "0.85rem", color: "var(--wise-dark-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{formattedKycDate}</span>
-            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>Date of KYC</span>
+          <span className="neu-dh-dates-sep" aria-hidden="true" />
+          <div className="neu-dh-date">
+            <span className="neu-dh-date-k"><CalendarClock size={12} aria-hidden="true" />Date of KYC</span>
+            <span className="neu-dh-date-v">{formattedKycDate}</span>
           </div>
         </div>
 
@@ -2467,6 +2574,17 @@ export default function AgentReview() {
           {Object.values(statuses).some(s => s.status === "rejected") && (
             <button onClick={handleAdminCorrection} disabled={submitting} title="Open Correction Portal as User" style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 0 16px rgba(245, 158, 11, 0.35)", transition: "all 0.2s" }}>
               <LayoutTemplate size={16} /> Correct as Admin
+            </button>
+          )}
+
+          {/* Admin only: ask the applicant for an extra OVD. Saved as a rejection → mailed with "Send Rejection Mail" */}
+          {statuses[OVD_STEP_ID]?.status === "rejected" ? (
+            <button onClick={() => handleUnrejectStep(OVD_STEP_ID, "OVD request")} disabled={submitting} title={`OVD requested: ${statuses[OVD_STEP_ID]?.reason || ""}\nClick to withdraw the request.`} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "#b45309", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
+              <FileText size={16} /> OVD Requested ✕
+            </button>
+          ) : (
+            <button onClick={() => setOvdModal({ reason: OVD_DEFAULT_REASON })} disabled={submitting || !canReject} title={canReject ? "Ask the applicant for an extra Officially Valid Document" : isInProgress ? "An OVD can't be requested while the application is still in progress" : "This application is already approved"} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontWeight: 700, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: submitting || !canReject ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : canReject ? 1 : 0.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <FileText size={16} /> Request OVD
             </button>
           )}
 
@@ -2506,10 +2624,11 @@ export default function AgentReview() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         
         {/* Left Column: Modules */}
-        <div style={{ width: "22%", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column", boxShadow: "var(--card-shadow)" }}>
-          <div style={{ padding: "16px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-            <LayoutTemplate size={18} color="var(--text-primary)" />
-            <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Modules</span>
+        <div className="neu-detail-col" style={{ width: "22%", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column", boxShadow: "var(--card-shadow)" }}>
+          <div className="neu-panel-head">
+            <span className="neu-panel-icon"><LayoutTemplate size={16} /></span>
+            <span className="neu-panel-title">Modules</span>
+            <span className="neu-panel-count">{unlockedSteps.length}</span>
           </div>
           <div className="premium-sidebar-list" style={{ flex: 1, overflowY: "auto", paddingBottom: "60vh" }}>
             {unlockedSteps.map((step) => {
@@ -2529,17 +2648,21 @@ export default function AgentReview() {
                     style={{ padding: "8px 14px" }}
                   >
                     {/* Left: Checkbox / Visited Icon + Title + Badges */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: displayAsRejected ? "#dc2626" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", minWidth: 0, color: displayAsRejected ? "#dc2626" : "var(--text-primary)", fontWeight: 500, fontSize: "0.82rem" }}>
                       {isVisited && !displayAsRejected ? (
                         <CheckCircle2 size={16} color="#16a34a" style={{ flexShrink: 0 }} title="Visited" />
                       ) : (
                         <Circle size={16} color="var(--text-muted)" style={{ opacity: 0.35, flexShrink: 0 }} title="Not visited" />
                       )}
-                      <span>{step.title}</span>
-                      {isRejected && <RejectedByTag by={statuses[step.id]?.rejectedBy} />}
-                      {step.id === "financialProof" && app.financialProof?.type === "Skipped" && (
-                        <span style={{ padding: "2px 6px", background: "var(--bg-secondary)", borderRadius: 4, fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", marginLeft: 8 }}>SKIPPED</span>
-                      )}
+                      {/* The title is always shown in full; a tag that doesn't fit beside it moves just below,
+                          whole, starting where the title's text starts */}
+                      <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 8, rowGap: 3, minWidth: 0 }}>
+                        <span style={{ whiteSpace: "nowrap" }}>{step.title}</span>
+                        {isRejected && <RejectedByTag by={statuses[step.id]?.rejectedBy} />}
+                        {step.id === "financialProof" && app.financialProof?.type === "Skipped" && (
+                          <span className="neu-mod-tag" style={{ padding: "2px 6px", background: "var(--bg-secondary)", borderRadius: 4, fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>SKIPPED</span>
+                        )}
+                      </span>
                     </div>
 
                     {/* Right: Expand Chevron + Reject Block Button */}
@@ -2586,8 +2709,8 @@ export default function AgentReview() {
                   </div>
                   
                   {isExpanded && (
-                    <div style={{ 
-                      padding: "20px 16px 20px 24px", 
+                    <div className="neu-mod-body" style={{
+                      padding: "20px 16px 20px 24px",
                       background: "var(--bg-primary)", 
                       boxShadow: "inset 0 8px 16px rgba(0,0,0,0.03)", 
                       borderTop: "1px solid var(--border-color)",
@@ -2706,34 +2829,26 @@ export default function AgentReview() {
                                             <div style={{ fontSize: "0.65rem", color: isFieldRejected ? "#dc2626" : "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                                             {editingField === jsonPath && jsonPath ? (
                                               DROPDOWN_OPTIONS[jsonPath] ? (
-                                                <select
-                                                  autoFocus
-                                                  className="admin-input"
-                                                  style={{ fontSize: "0.8rem", width: "100%", padding: "4px 8px", marginTop: 4, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                                                <NeuSelect
                                                   value={currentValue || ""}
-                                                  onChange={e => {
-                                                    setEditValues({ ...editValues, [jsonPath]: e.target.value });
+                                                  options={DROPDOWN_OPTIONS[jsonPath]}
+                                                  onPick={(val) => {
+                                                    setEditValues({ ...editValues, [jsonPath]: val });
                                                     setEditingField(null);
                                                     if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                      const val = e.target.value;
                                                       setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
                                                       autoSaveField(jsonPath, val);
                                                     }
                                                   }}
-                                                  onBlur={(e) => {
+                                                  onDismiss={() => {
                                                     setEditingField(null);
                                                     if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                      const val = e.target.value;
+                                                      const val = currentValue || "";
                                                       setEditValues(prev => { const next = { ...prev }; delete next[jsonPath]; return next; });
                                                       autoSaveField(jsonPath, val);
                                                     }
                                                   }}
-                                                >
-                                                  <option value="">--Select--</option>
-                                                  {DROPDOWN_OPTIONS[jsonPath].map(opt => (
-                                                    <option key={opt} value={opt}>{opt}</option>
-                                                  ))}
-                                                </select>
+                                                />
                                               ) : (
                                                 <input 
                                                   autoFocus
@@ -2893,15 +3008,13 @@ export default function AgentReview() {
                               }
 
                               return (
-                                <div id={`accordion-${step.id}-${section.id}`} key={section.id} style={{ 
-                                  border: `1px solid ${section.isActive ? 'var(--wise-dark-green)' : 'var(--border-color)'}`, 
-                                  borderRadius: 8, 
-                                  overflow: "hidden",
-                                  background: "var(--bg-primary)",
-                                  boxShadow: section.isActive ? "0 2px 8px rgba(0,0,0,0.05)" : "none",
-                                  transition: "all 0.2s"
-                                }}>
-                                  <div 
+                                <div id={`accordion-${step.id}-${section.id}`} key={section.id} className={`neu-tab-acc${section.isActive ? " is-open" : ""}`}>
+                                  <div
+                                    className="neu-tab-acc-head"
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-expanded={section.isActive}
+                                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       const isCurrentlyActive = section.isActive;
@@ -2914,24 +3027,13 @@ export default function AgentReview() {
                                         }
                                       }
                                     }}
-                                    style={{ 
-                                      padding: "12px 16px", 
-                                      display: "flex", 
-                                      justifyContent: "space-between", 
-                                      alignItems: "center", 
-                                      cursor: "pointer",
-                                      background: section.isActive ? "var(--wise-dark-green)" : "var(--bg-secondary)",
-                                      color: section.isActive ? "white" : "var(--text-primary)",
-                                      fontWeight: 800,
-                                      fontSize: "0.85rem",
-                                      borderBottom: section.isActive ? "1px solid var(--border-color)" : "none"
-                                    }}
                                   >
-                                    <span>{section.label}</span>
-                                    {section.isActive ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    <span className="neu-tab-acc-dot" aria-hidden="true" />
+                                    <span className="neu-tab-acc-label">{section.label}</span>
+                                    <span className="neu-tab-acc-chev" aria-hidden="true"><ChevronRight size={15} /></span>
                                   </div>
-                                  
-                                  {section.isActive && renderFieldBlock()}
+
+                                  {section.isActive && <div className="neu-tab-acc-body">{renderFieldBlock()}</div>}
                                 </div>
                               );
                             })}
@@ -2947,10 +3049,11 @@ export default function AgentReview() {
         </div>
 
         {/* Middle Column: Documents */}
-        <div style={{ width: "22%", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column", boxShadow: "var(--card-shadow)" }}>
-          <div style={{ padding: "16px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-            <FileText size={18} color="var(--text-primary)" />
-            <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Documents</span>
+        <div className="neu-detail-col" style={{ width: "22%", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column", boxShadow: "var(--card-shadow)" }}>
+          <div className="neu-panel-head">
+            <span className="neu-panel-icon"><FileText size={16} /></span>
+            <span className="neu-panel-title">Documents</span>
+            <span className="neu-panel-count">{allDocuments.length}</span>
           </div>
           <div className="premium-sidebar-list" style={{ flex: 1, overflowY: "auto" }}>
             {allDocuments.length === 0 ? (
@@ -3032,15 +3135,13 @@ export default function AgentReview() {
         </div>
 
         {/* Right Column: Preview */}
-        <div style={{ flex: 1, background: "var(--bg-primary)", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "12px 24px", background: "var(--bg-card)", backdropFilter: "var(--glass-blur)", borderBottom: "1px solid var(--border-color)", borderTopColor: "rgba(255,255,255,0.4)", boxShadow: "var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Maximize2 size={18} color="var(--text-primary)" />
-              <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>Preview</span>
-            </div>
-            <button style={{ padding: "8px 16px", background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 8, fontSize: "0.75rem", fontWeight: 800, cursor: "pointer", boxShadow: "var(--card-shadow)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              Auto Match
-            </button>
+        <div className="neu-detail-preview" style={{ flex: 1, background: "var(--bg-primary)", display: "flex", flexDirection: "column" }}>
+          <div className="neu-detail-previewbar neu-panel-head neu-panel-head--preview">
+            <span className="neu-panel-icon"><Maximize2 size={16} /></span>
+            <span className="neu-panel-title">Preview</span>
+            {selectedDocument?.label && (
+              <span className="neu-panel-doc" title={selectedDocument.label}>{selectedDocument.label}</span>
+            )}
           </div>
           
           <div 
@@ -3057,7 +3158,8 @@ export default function AgentReview() {
               touchAction: "none"
             }}
             onWheel={(e) => {
-              if (selectedDocument) {
+              // Side-by-side view: each document zooms on its own with the wheel
+              if (selectedDocument && !e.target.closest?.("[data-compare-view]")) {
                 if (e.deltaY < 0) {
                   handleZoomChange(Math.min(5, previewZoom + 0.1));
                 } else {
@@ -3089,7 +3191,7 @@ export default function AgentReview() {
                  <span style={{ fontSize: "0.9rem" }}>uploaded</span>
               </div>
             ) : selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1 ? (
-              <div style={{ flex: 1, display: "flex", flexDirection: "row", gap: 16, padding: 16, overflow: "hidden" }}>
+              <div data-compare-view="true" style={{ flex: 1, display: "flex", flexDirection: "row", gap: 16, padding: 16, overflow: "hidden" }}>
                 {REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).map((doc, idx) => (
                   <div key={`${selectedDocument.stepKey}-${idx}`} ref={el => modulePreviewRefs.current[idx] = el} style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)", borderRadius: 8, border: "1px solid var(--border-color)", overflow: "hidden" }}>
                     <div style={{ padding: "8px", background: "var(--bg-secondary)", borderBottom: "1px solid var(--border-color)", fontSize: "0.75rem", fontWeight: 700, textAlign: "center", color: "var(--text-primary)" }}>
@@ -3139,9 +3241,10 @@ export default function AgentReview() {
               </div>
             )}
 
-            {selectedDocument && (
+            {/* Shared controls for the single-document preview; the side-by-side view has controls on each document */}
+            {selectedDocument && !(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
                <div style={{ position: "absolute", bottom: 24, right: 24, display: "flex", gap: 8, background: "var(--bg-primary)", padding: "8px 12px", borderRadius: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.02)", border: "1px solid var(--border-color)" }}>
-                  {!(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
+                  {(
                     <>
                       <button onClick={() => handleZoomChange(Math.max(0.5, previewZoom - 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom Out"><ZoomOut size={18} /></button>
                       <button onClick={() => handleZoomChange(Math.min(3, previewZoom + 0.25))} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Zoom In"><ZoomIn size={18} /></button>
@@ -3163,7 +3266,7 @@ export default function AgentReview() {
                       setTimeout(() => setIsDownloadingDoc(false), 1500);
                     }
                   }} style={{ background: "transparent", border: "none", cursor: isDownloadingDoc ? "wait" : "pointer", color: "var(--text-muted)", opacity: isDownloadingDoc ? 0.4 : 1 }} title={isDownloadingDoc ? "Preparing download…" : "Download"}><Download size={18} /></button>
-                  {!(selectedDocument.isModuleView === true && (selectedDocument.stepKey === "panUpload" || selectedDocument.stepKey === "panVerification" || selectedDocument.stepKey === "signature" || selectedDocument.stepKey === "ipv" || selectedDocument.stepKey === "digilocker" || selectedDocument.stepKey === "personalDetails" || selectedDocument.stepKey === "pricingSelection") && REVIEW_STEPS.find(s => s.id === selectedDocument.stepKey).evidence(app).length > 1) && (
+                  {(
                     <>
                       <div style={{ width: 1, background: "var(--border-color)", margin: "0 4px" }} />
                       <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{Math.round(previewZoom * 100)}%</span>
@@ -3231,6 +3334,37 @@ export default function AgentReview() {
                 style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: "#ffffff", fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer", boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)" }}
               >
                 Yes, Undo Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ovdModal && (
+        <div onClick={() => !submitting && setOvdModal(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 10005, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 440, maxWidth: "90%", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
+            <h3 style={{ margin: "0 0 6px 0", color: "var(--text-primary)" }}>Request OVD</h3>
+            <p style={{ margin: "0 0 14px 0", color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.5 }}>
+              The application will be marked as rejected. After you click <strong>Send Rejection Mail</strong>, the applicant gets an
+              OVD upload on the document page of the correction portal (PDF or any image) — everything else stays locked
+              unless it is rejected too. The OVD is added at the end of the KYC PDF.
+            </p>
+            <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+              What should the applicant upload?
+            </label>
+            <textarea
+              className="admin-input"
+              autoFocus
+              value={ovdModal.reason}
+              onChange={e => setOvdModal({ reason: e.target.value })}
+              style={{ width: "100%", minHeight: 90, marginBottom: 16, boxSizing: "border-box", resize: "vertical" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button onClick={() => setOvdModal(null)} disabled={submitting} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border-color)", background: "var(--bg-primary)", fontWeight: 600, cursor: "pointer", color: "var(--text-primary)" }}>
+                Cancel
+              </button>
+              <button onClick={handleRequestOvd} disabled={submitting} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "#ffffff", fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer" }}>
+                {submitting ? "Requesting..." : "Request OVD"}
               </button>
             </div>
           </div>
@@ -3488,11 +3622,12 @@ export default function AgentReview() {
                 .filter(([key, status]) => status?.status === "rejected")
                 .map(([key, status]) => {
                   const stepObj = REVIEW_STEPS.find(s => s.id === key);
+                  const isOvd = key === OVD_STEP_ID;
                   return (
                     <div key={key} style={{ background: "var(--bg-secondary)", padding: 16, borderRadius: 12, border: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <div style={{ fontWeight: 800, color: "var(--text-primary)", fontSize: "0.95rem", marginBottom: 4 }}>
-                          {stepObj?.label || key}
+                          {isOvd ? "OVD Requested" : (stepObj?.label || key)}
                         </div>
                         <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                           <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>Reason:</span> {status.reason || "No reason provided"}
@@ -3501,6 +3636,8 @@ export default function AgentReview() {
                       <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                         <button 
                           onClick={() => {
+                            // The OVD request has its own dialog (it isn't a module with fields)
+                            if (isOvd) { setShowRejectionConfirmModal(false); setOvdModal({ reason: status.reason || OVD_DEFAULT_REASON }); return; }
                             setStepRejectReason(status.reason || "");
                             setRejectStepModal({ id: key, title: stepObj?.label || key });
                           }}
@@ -3510,7 +3647,7 @@ export default function AgentReview() {
                           Edit
                         </button>
                         <button 
-                          onClick={() => handleUnrejectStep(key, stepObj?.label || key)}
+                          onClick={() => handleUnrejectStep(key, isOvd ? "OVD request" : (stepObj?.label || key))}
                           disabled={submitting}
                           style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", fontWeight: 600, fontSize: "0.85rem", cursor: submitting ? "not-allowed" : "pointer", color: "#ef4444", transition: "all 0.2s" }}
                         >

@@ -16,6 +16,18 @@ import BoidManagement from "./components/sections/BoidManagement";
 import APManagement from "./components/sections/APManagement";
 import TrashSection from "@/components/trash/TrashSection";
 
+// Page name shown in the top navbar (the sections' own headings are hidden in favour of this)
+const SECTION_META = {
+  overview: { title: "Dashboard", subtitle: "Real-time KYC intelligence & analytics" },
+  kyc: { title: "KYC Requests", subtitle: "Manage, review, and action all submitted KYC applications" },
+  audit: { title: "Audit Logs", subtitle: "Every admin action, Globe review, decision and submission" },
+  estamps: { title: "E-Stamps", subtitle: "Manage and assign digital e-stamps" },
+  boids: { title: "BOID Management", subtitle: "Manage and allocate Beneficiary Owner IDs" },
+  "pdf-builder": { title: "PDF Builder", subtitle: "Design and map the KYC form template" },
+  "api-integration": { title: "API Integration", subtitle: "Backoffice and third-party connections" },
+  "ap-management": { title: "AP Management", subtitle: "Create and manage Associate Partners and their clients" },
+  trash: { title: "Trash", subtitle: "Deleted applications — restore them or delete permanently" },
+};
 
 export default function AdminPage() {
   const [activeSection, setActiveSection] = useState("overview");
@@ -122,8 +134,12 @@ export default function AdminPage() {
           top: 0,
           zIndex: 20
         }}>
-          <div style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "0.95rem" }}>
-            Admin / <span style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>{activeSection.replace("_", " ")}</span>
+          <div className="neu-page-head">
+            <h1 className="neu-page-title">{(SECTION_META[activeSection] || SECTION_META.overview).title}</h1>
+            <p className="neu-page-sub">
+              {activeSection === "overview" && <span className="neu-live-dot" />}
+              {(SECTION_META[activeSection] || SECTION_META.overview).subtitle}
+            </p>
           </div>
           
           <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
@@ -174,7 +190,7 @@ export default function AdminPage() {
                 <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>Super Admin</div>
                 <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Role: Master Control</div>
               </div>
-              <div style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green-alpha)", border: "1px solid var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="neu-avatar" style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green-alpha)", border: "1px solid var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-green)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               </div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -183,7 +199,7 @@ export default function AdminPage() {
         </header>
 
         {/* Content Scroll Container */}
-        <main style={{ padding: "24px", flex: 1, width: "100%" }}>
+        <main className="neu-main" style={{ padding: "24px", flex: 1, width: "100%" }}>
           {renderSection()}
         </main>
       </div>

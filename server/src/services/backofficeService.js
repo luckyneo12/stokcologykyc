@@ -13,7 +13,14 @@ const BACKOFFICE_FINANCIAL_YEAR = Object.prototype.hasOwnProperty.call(process.e
   : "";
 const BACKOFFICE_MODIFY_PATH = process.env.BACKOFFICE_MODIFY_PATH || "Masters/OrionEKYCModifyService";
 const BACKOFFICE_BRANCH_ID = process.env.BACKOFFICE_BRANCH_ID || "HO";
-const BACKOFFICE_SUB_BRANCH_ID = process.env.BACKOFFICE_SUB_BRANCH_ID || "HO1";
+// Optional in the manual — only sent when configured (a default made the backup show a sub branch the BO doesn't have)
+const BACKOFFICE_SUB_BRANCH_ID = process.env.BACKOFFICE_SUB_BRANCH_ID || null;
+// Exchanges the client is registered on (comma separated). The BO uses NSE only — BSE showed up as extra.
+const BACKOFFICE_EXCHANGES = (process.env.BACKOFFICE_EXCHANGES || "NSE").split(",").map((e) => e.trim().toUpperCase()).filter(Boolean);
+// Brokerage slab IDs from the BO's brokerage master. The manual makes the slab mandatory when its flag is "Y",
+// so without them the backup can't map brokerage.
+const BACKOFFICE_CAPITAL_SLAB_ID = process.env.BACKOFFICE_CAPITAL_SLAB_ID || null;
+const BACKOFFICE_DERIVATIVE_SLAB_ID = process.env.BACKOFFICE_DERIVATIVE_SLAB_ID || null;
 
 let tokenCache = {
   accessToken: null,
@@ -61,10 +68,11 @@ function stripDataUri(value) {
     try {
       const rootPath = path.join(__dirname, "../../", raw.replace(/^\//, ""));
       const publicPath = path.join(__dirname, "../../public", raw.replace(/^\//, ""));
+      // Pure base64 (no "data:" prefix), as the manual requires for DocData
       if (fs.existsSync(rootPath)) {
-        return "data:image/jpeg;base64," + fs.readFileSync(rootPath, "base64");
+        return fs.readFileSync(rootPath, "base64");
       } else if (fs.existsSync(publicPath)) {
-        return "data:image/jpeg;base64," + fs.readFileSync(publicPath, "base64");
+        return fs.readFileSync(publicPath, "base64");
       }
     } catch (err) {
       console.warn("Could not read local file for base64 conversion:", raw, err.message);
@@ -76,6 +84,16 @@ function stripDataUri(value) {
   // Example: "DocData": "iVBORw0KGgo..."
   const commaIndex = raw.indexOf(",");
   return raw.startsWith("data:") && commaIndex >= 0 ? raw.slice(commaIndex + 1) : raw;
+}
+
+/** File extension from the first bytes of a base64 file (jpeg / png / pdf / xml), or null. */
+function guessDocExtension(base64) {
+  const head = String(base64 || "").slice(0, 8);
+  if (head.startsWith("/9j/")) return "jpeg";
+  if (head.startsWith("iVBOR")) return "png";
+  if (head.startsWith("JVBER")) return "pdf";
+  if (head.startsWith("P")) return "xml"; // text starting with "<" (XML)
+  return null;
 }
 
 function pickFirst(...values) {
@@ -108,6 +126,29 @@ function mapNomineeGender(value) {
   if (["F", "FEMALE"].includes(normalized)) return "F";
   if (normalized.includes("TRANS")) return "TG";
   return normalized.charAt(0);
+}
+
+// Nominee / guardian gender from the relation chosen in the nominee form (the form has no gender field).
+// Spouse → opposite of the applicant's gender; relations that don't imply a gender → null.
+function genderFromRelation(relation, applicantGender) {
+  const normalized = String(relation || "").trim().toLowerCase();
+  if (["mother", "daughter", "sister", "grand-mother", "grandmother", "aunty", "aunt", "wife"].includes(normalized)) return "F";
+  if (["father", "son", "brother", "grand-father", "grandfather", "nephew", "uncle", "husband"].includes(normalized)) return "M";
+  if (normalized === "spouse") {
+    const applicant = mapGender(applicantGender);
+    if (applicant === "M") return "F";
+    if (applicant === "F") return "M";
+  }
+  return null;
+}
+
+// Aadhaar–PAN seeding status from PAN verification → Y / N (null when unknown)
+function mapAadhaarSeeding(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (!normalized) return null;
+  if (["Y", "YES", "SEEDED", "SUCCESS", "SUCCESSFUL", "TRUE"].includes(normalized)) return "Y";
+  if (["N", "NO", "NOT SEEDED", "NOT_SEEDED", "FALSE"].includes(normalized)) return "N";
+  return null;
 }
 
 function mapMaritalStatus(value) {
@@ -345,25 +386,41 @@ class BackofficeService {
   }
 
   async submitClientModification(clientCode, payload) {
+    // UserManual.pdf: DocData (mandatory) = the file as pure base64, FilePath = null.
+    // Documents are collected as URLs / base64 in FilePath and converted here.
     if (payload && Array.isArray(payload.ClientDocumentDetail)) {
       const promises = payload.ClientDocumentDetail.map(async (doc) => {
         if (doc.FilePath && !doc.DocData) {
           if (doc.FilePath.startsWith("http")) {
-            try {
-              const res = await axios.get(doc.FilePath, { responseType: 'arraybuffer' });
-              doc.DocData = Buffer.from(res.data, 'binary').toString('base64');
-              doc.FilePath = null;
-            } catch (e) {
-              console.error(`Failed to fetch image for backoffice: ${doc.FilePath}`, e.message);
+            // Retry once: a single slow / failed download must not drop the document
+            for (let attempt = 1; attempt <= 2 && !doc.DocData; attempt++) {
+              try {
+                const res = await axios.get(doc.FilePath, { responseType: "arraybuffer", timeout: 30000 });
+                doc.DocData = Buffer.from(res.data, "binary").toString("base64");
+              } catch (e) {
+                console.error(`Failed to fetch document for backoffice (try ${attempt}): ${doc.FilePath}`, e.message);
+              }
             }
+            if (doc.DocData) doc.FilePath = null;
           } else {
-            // Bypass: If it's not a URL, assume it's already raw Base64/XML from Digilocker
-            doc.DocData = doc.FilePath;
+            // Not a URL: already base64 — or raw text (e.g. DigiLocker XML), which is base64-encoded
+            const value = doc.FilePath.trim();
+            doc.DocData = /^[A-Za-z0-9+/=\s]+$/.test(value) ? value.replace(/\s+/g, "") : Buffer.from(value, "utf8").toString("base64");
             doc.FilePath = null;
+          }
+        }
+        // File names need an extension (e.g. "financial-proof" → "financial-proof.pdf")
+        if (doc.DocData) {
+          const ext = guessDocExtension(doc.DocData);
+          if (ext) {
+            if (doc.DocumentName && !/\.[a-z0-9]{2,4}$/i.test(doc.DocumentName)) doc.DocumentName += `.${ext}`;
+            if (doc.DocumentFileName && !/\.[a-z0-9]{2,4}$/i.test(doc.DocumentFileName)) doc.DocumentFileName += `.${ext}`;
           }
         }
       });
       await Promise.all(promises);
+      const missing = payload.ClientDocumentDetail.filter((d) => !d.DocData).map((d) => `${d.DocumentID}:${d.DocumentName}`);
+      if (missing.length) console.error(`[Backoffice] ${clientCode}: documents sent without file data:`, missing.join(", "));
     }
 
     const url = `${BACKOFFICE_BASE_URL}/${BACKOFFICE_MODIFY_PATH}`;
@@ -407,6 +464,20 @@ class BackofficeService {
     const phoneValue = pickFirst(personalDetails.phone, application.user?.phone, existingContact.ContactNo, existingKyc.MobileNo);
     const emailValue = pickFirst(personalDetails.email, application.user?.email, existingContact.ContactEmail, existingKyc.Email);
     const aadhaar = pickFirst(identityDetails.aadhaar, identityDetails.aadhar, existingKyc.Aadhar, existingKyc.IDProofRef);
+    const ocrData = parseJsonField(application.ocrData, {});
+    // Same sources the admin list shows as "Aadhaar Seeding"
+    const aadhaarSeeded = mapAadhaarSeeding(pickFirst(
+      ocrData.pan_verification?.data?.aadhaar_seeding_status,
+      identityDetails.pan_verification?.aadhaar_seeding_status,
+      identityDetails.aadhaarSeedingStatus,
+      identityDetails.seedingStatus
+    ));
+    const netWorth = parseInt(existingKyc.NetWorth || personalDetails.networth, 10) || null;
+    const usedDigilocker = application.identityMethod === "digilocker" || Boolean(identityDetails.digilockerPan || ocrData.digio);
+    // BOID lives on the user (assigned from BOID Management), not on the application
+    const boid = pickFirst(application.user?.boid, application.user?.boidAssigned?.boidNumber, application.boid);
+    // Branch address saved by the bank step (IFSC lookup) as one text → BankAddress1/2/3 (100 chars each)
+    const bankAddressLines = buildAddressLines({ fullAddress: pickFirst(bankDetails.branchAddress, bankDetails.address1, bankDetails.address) });
 
     const mergedKyc = {
       FirmID: existingKyc.FirmID || BACKOFFICE_FIRM_ID,
@@ -433,12 +504,14 @@ class BackofficeService {
       Aadhar: aadhaar,
       AnnualIncome: mapAnnualIncome(personalDetails.annualIncome) || existingKyc.AnnualIncome || null,
       AnnualIncomeDate: formatDate(existingKyc.AnnualIncomeDate) || openDate,
-      NetWorth: parseInt(existingKyc.NetWorth || personalDetails.networth, 10) || null,
-      NetWorthDate: formatDate(existingKyc.NetWorthDate || personalDetails.networthDate) || openDate,
+      NetWorth: netWorth,
+      // Only with a net worth value — a date on its own showed up in the backup as an extra field
+      NetWorthDate: netWorth ? (formatDate(existingKyc.NetWorthDate || personalDetails.networthDate) || openDate) : null,
       Occupation: mapOccupation(personalDetails.occupation) || existingKyc.Occupation || null,
       PEP: mapPep(personalDetails.politicallyExposed || existingKyc.PEP),
       FamilyGroup: existingKyc.FamilyGroup || "Y",
-      AadharSeeded: existingKyc.AadharSeeded || "Y",
+      // Manual's name is AadharSeededFlag ("AadharSeeded" was ignored by the backup); real status, not a fixed "Y"
+      AadharSeededFlag: existingKyc.AadharSeededFlag || aadhaarSeeded,
       BranchID: existingKyc.BranchID || BACKOFFICE_BRANCH_ID,
       SubBranchID: existingKyc.SubBranchID || BACKOFFICE_SUB_BRANCH_ID,
       TypeOfDoc: existingKyc.TypeOfDoc || "04",
@@ -461,7 +534,8 @@ class BackofficeService {
       AddressPrimary: existingAddress.AddressPrimary || "Y",
       AddressProof: buildString(address.addressProof || existingAddress.AddressProof) || (aadhaar ? "01" : null),
       AddressProofOther: buildString(address.addressProofOther || existingAddress.AddressProofOther) || null,
-      AddressProofDate: formatDate(address.addressProofDate || existingAddress.AddressProofDate) || openDate,
+      // Only a real proof date (no opening-date fallback — the BO leaves it blank)
+      AddressProofDate: formatDate(address.addressProofDate || existingAddress.AddressProofDate) || null,
       AddressProofExpiry: formatDate(address.addressProofExpiry || existingAddress.AddressProofExpiry) || null,
       AddressProofRef: buildString(address.addressProofRef || existingAddress.AddressProofRef || aadhaar) || null,
       AddressStateOther: existingAddress.AddressStateOther || null,
@@ -530,15 +604,19 @@ class BackofficeService {
       ChequePrintName: buildString(bankDetails.accountHolderName || existingBank.ChequePrintName) || null,
       BankCode: buildString(bankDetails.bankCode || existingBank.BankCode) || "NA",
       BankName: buildString(bankDetails.bankName || existingBank.BankName) || null,
-      BankAddress1: buildString(bankDetails.branchAddress || bankDetails.address1 || existingBank.BankAddress1) || "NOT PROVIDED",
-      BankAddress2: buildString(bankDetails.address2 || existingBank.BankAddress2) || null,
-      BankAddress3: buildString(bankDetails.address3 || existingBank.BankAddress3) || null,
+      // Mandatory in the manual. The bank step stores the branch address as bankDetails.address
+      // (it was read from branchAddress / address1 only, so "NOT PROVIDED" was always sent).
+      BankAddress1: pickFirst(bankAddressLines.line1, existingBank.BankAddress1, bankDetails.branch) || "NOT PROVIDED",
+      BankAddress2: pickFirst(bankAddressLines.line2, bankDetails.address2, existingBank.BankAddress2),
+      BankAddress3: pickFirst(bankAddressLines.line3, bankDetails.address3, existingBank.BankAddress3),
       BankCity: buildString(bankDetails.city || existingBank.BankCity) || "NOT PROVIDED",
       BankPincode: buildString(bankDetails.pincode || existingBank.BankPincode || address.pincode || address.postalCode || existingAddress.AddressPincode) || "000000",
       BankState: mapState(bankDetails.state || existingBank.BankState) || mapState(address.state || existingAddress.AddressState) || "OT",
       BankSateOther: existingBank.BankSateOther || null,
       BankCountry: buildString(bankDetails.country || existingBank.BankCountry) || "IN",
-      PennyDropStatus: existingBank.PennyDropStatus || (bankDetails.verified === false ? "N" : "Y"),
+      // "Y" only when the penny drop actually passed (an unverified account was sent as "Y").
+      // NOTE: the manual has no penny-drop field — confirm the backup's field name with FinKORP.
+      PennyDropStatus: existingBank.PennyDropStatus || (bankDetails.verified === true ? "Y" : "N"),
       PaymentMode: existingBank.PaymentMode || null,
       ECSMandateDate: formatDate(existingBank.ECSMandateDate) || null,
       ECSFromDate: formatDate(existingBank.ECSFromDate) || null,
@@ -563,13 +641,13 @@ class BackofficeService {
       ...dep,
       FirmID: dep.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
-    })) : (application.boid ? [
+    })) : (boid ? [
       {
         FirmID: BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
-        DepositoryType: application.boid.startsWith('IN') ? 'NSDL' : 'CDSL',
-        DepositoryID: application.boid.substring(0, 8),
-        DepositoryClientID: application.boid.length > 16 ? application.boid.slice(-10, -2) : application.boid.substring(8),
+        DepositoryType: boid.startsWith('IN') ? 'NSDL' : 'CDSL',
+        DepositoryID: boid.substring(0, 8),
+        DepositoryClientID: boid.length > 16 ? boid.slice(-10, -2) : boid.substring(8),
         POAFlag: "N",
         POAMarginFlag: "N",
         PrimaryFlag: "Y",
@@ -580,9 +658,9 @@ class BackofficeService {
       FirmID: BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       CurrencySlabID: existing.BrokerageMappingDetail?.CurrencySlabID || null,
-      CapitalSlabID: existing.BrokerageMappingDetail?.CapitalSlabID || null,
+      CapitalSlabID: existing.BrokerageMappingDetail?.CapitalSlabID || BACKOFFICE_CAPITAL_SLAB_ID,
       CommoditySlabID: existing.BrokerageMappingDetail?.CommoditySlabID || null,
-      DerivativeSlabID: existing.BrokerageMappingDetail?.DerivativeSlabID || null,
+      DerivativeSlabID: existing.BrokerageMappingDetail?.DerivativeSlabID || (segments.derivatives ? BACKOFFICE_DERIVATIVE_SLAB_ID : null),
       CurrencyFlag: "N",
       CapitalFlag: "Y",
       CommodityFlag: "N",
@@ -593,7 +671,7 @@ class BackofficeService {
     const exchangeEntries = [
       { ExchangeID: "NSE", CategoryCode: "1" },
       { ExchangeID: "BSE", CategoryCode: "I" },
-    ].map((exchange) => ({
+    ].filter((exchange) => BACKOFFICE_EXCHANGES.includes(exchange.ExchangeID)).map((exchange) => ({
       FirmID: BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       ExchangeName: null,
@@ -608,7 +686,7 @@ class BackofficeService {
       { ExchangeID: "BSE", SegmentID: "CAP", enabled: segments.equity !== false },
       { ExchangeID: "NSE", SegmentID: "FNO", enabled: Boolean(segments.derivatives) },
     ]
-      .filter((segment) => segment.enabled)
+      .filter((segment) => segment.enabled && BACKOFFICE_EXCHANGES.includes(segment.ExchangeID))
       .map(({ enabled, ...segment }) => ({
         FirmID: BACKOFFICE_FIRM_ID,
         ClientCode: clientCode,
@@ -642,7 +720,8 @@ class BackofficeService {
         Relation: mapRelation(nominee.relation).substring(0, 5),
         PreFix: nominee.prefix || null,
         Name: buildString(nominee.name),
-        FatherSpouse: "F",
+        // No father / spouse name is collected for nominees, so no flag either (a lone "F" showed in the backup)
+        FatherSpouse: null,
         FatherPreFix: null,
         FatherName: null,
         MotherPreFix: null,
@@ -652,8 +731,8 @@ class BackofficeService {
         DOB: formatDate(nominee.dob),
         PANNO: nomineeProof === "03" ? buildString(nominee.proofNumber)?.toUpperCase() : null,
         UID: nomineeProof === "05" ? buildString(nominee.proofNumber) : null,
-        Gender: mapNomineeGender(nominee.gender),
-        NomineeGender: mapNomineeGender(nominee.gender),
+        // The nominee form has no gender field — fall back to the relation (NomineeGender isn't a manual field)
+        Gender: mapNomineeGender(nominee.gender) || genderFromRelation(nominee.relation, personalDetails.gender),
         MaritalStatus: mapMaritalStatus(nominee.maritalStatus),
         ResidentialStatus: "RI",
         Nationnality: "IN",
@@ -697,7 +776,7 @@ class BackofficeService {
           Relation: mapRelation(nominee.guardianRelation).substring(0, 5),
           PreFix: null,
           Name: buildString(nominee.guardianName),
-          FatherSpouse: "F",
+          FatherSpouse: null,
           FatherPreFix: null,
           FatherName: null,
           MotherPreFix: null,
@@ -707,7 +786,7 @@ class BackofficeService {
           DOB: formatDate(nominee.guardianDob) || null,
           PANNO: guardianProof === "03" ? buildString(nominee.guardianProofNumber)?.toUpperCase() : null,
           UID: guardianProof === "05" ? buildString(nominee.guardianProofNumber) : null,
-          Gender: null,
+          Gender: mapNomineeGender(nominee.guardianGender) || genderFromRelation(nominee.guardianRelation),
           MaritalStatus: null,
           ResidentialStatus: "RI",
           Nationnality: "IN",
@@ -773,10 +852,26 @@ class BackofficeService {
     addDocument("PHOTO", "photo.jpeg", application.selfie || selfieDetails.preview || selfieDetails.image);
     addDocument("BANK", "financial-proof", financialProof.filePreview || financialProof.preview);
     if (Array.isArray(documents)) {
+      // Our document types → the manual's DocumentIDs (AADHAAR / ESIGN_DOCUMENT aren't valid IDs there).
+      // The eSigned PDF is the signed account opening form → ACOPEN.
+      const DOC_TYPE_MAP = {
+        AADHAAR: { id: "UID", name: "aadhaar-card" },
+        PAN: { id: "PAN", name: "pan-digilocker" },
+        ESIGN_DOCUMENT: { id: "ACOPEN", name: "account-opening-form" },
+        PHOTO: { id: "OTHER", name: "aadhaar-photo-digilocker" }, // DigiLocker's Aadhaar photo — the live selfie stays PHOTO
+        OVD: { id: "OVD", name: "ovd" }, // extra Officially Valid Document requested by an admin
+      };
+      // A re-done eSign leaves several signed PDFs — only the latest is the final application
+      const lastEsignIndex = documents.map((d) => d?.type).lastIndexOf("ESIGN_DOCUMENT");
       documents.forEach((document, index) => {
-        let docId = document.documentId || document.type || "OTHER";
+        if (document?.type === "ESIGN_DOCUMENT" && index !== lastEsignIndex) return;
+        const mapped = DOC_TYPE_MAP[document?.type];
+        let docId = mapped?.id || document.documentId || document.type || "OTHER";
         if (docId.startsWith("DOC")) docId = "OTHER";
-        addDocument(docId, document.name || document.filename || `document-${index + 1}`, document.filePreview || document.preview || document.data);
+        const docName = document.name || document.filename || mapped?.name || `document-${index + 1}`;
+        // The file is stored in "path" (Cloudinary URL or /uploads/… on this server) — it was never read,
+        // so the DigiLocker Aadhaar / PAN and the eSigned PDF were never sent
+        addDocument(docId, docName, document.filePreview || document.preview || document.data || document.path || document.url);
       });
     } else {
       addDocument("UID", "aadhaar-front.jpeg", documents.frontPreview || documents.front);
@@ -805,17 +900,22 @@ class BackofficeService {
       FirmID: existingBackoffice.FirmID || BACKOFFICE_FIRM_ID,
       ClientCode: clientCode,
       ProtectedAccount: existingBackoffice.ProtectedAccount || "N",
-      ModifyRemark: existingBackoffice.ModifyRemark || `KYC push from ${application.applicationId}`,
+      // Optional — the BO leaves it empty (our "KYC push from …" text showed up as extra)
+      ModifyRemark: existingBackoffice.ModifyRemark || null,
       UIDEnrollmentNo: existingBackoffice.UIDEnrollmentNo || null,
-      PayoutFlag: existingBackoffice.PayoutFlag || "Y",
+      // P = As Per Policy (the BO's Security Payout Mode); "Y" meant Transfer Payout
+      PayoutFlag: existingBackoffice.PayoutFlag || "P",
       SettlementDay: existingBackoffice.SettlementDay || null,
       CKYCRefNo: existingBackoffice.CKYCRefNo || null,
-      KYCMode: existingBackoffice.KYCMode || (application.identityMethod === "digilocker" ? "DIG" : "ODE"),
+      // DIG when the applicant went through DigiLocker. identityMethod is never filled in, so the
+      // DigiLocker data itself decides (DigiLocker PAN / Digio record) — it was always "ODE" before.
+      KYCMode: existingBackoffice.KYCMode || (usedDigilocker ? "DIG" : "ODE"),
       CKYCExportUser: existingBackoffice.CKYCExportUser || null,
       KRAType: existingBackoffice.KRAType || null,
       RiskCategory: (application.riskCategory || existingBackoffice.RiskCategory || "LOW").toUpperCase(),
       RGESSFlag: existingBackoffice.RGESSFlag || "N",
-      TradingSoftwareType: existingBackoffice.TradingSoftwareType || "NONE",
+      // IBT = Internet Base Trading Software (what the BO uses; "NONE" before)
+      TradingSoftwareType: existingBackoffice.TradingSoftwareType || "IBT",
       CTCLExport: existingBackoffice.CTCLExport || "N",
       BuyBackPosting: existingBackoffice.BuyBackPosting || "EXP",
       KYCReferenceNo: existingBackoffice.KYCReferenceNo || nsdlResponse.clientId || application.applicationId,
@@ -824,6 +924,12 @@ class BackofficeService {
       GSTRegistrationNo: existingBackoffice.GSTRegistrationNo || null,
       UPIID: existingBackoffice.UPIID || bankDetails.upiId || null,
       FATCAFlag: existingBackoffice.FATCAFlag || mapYesNo(personalDetails.taxResidencyOutside, "N"),
+      // The BO fills country + declaration date even for an Indian-only tax resident; they were never sent
+      FATCACountry: existingBackoffice.FATCACountry || "IN",
+      FATCADate: formatDate(existingBackoffice.FATCADate) || openDate,
+      // Back Office fields per the manual (TypeOfDoc was sent inside KYCDetail, where the backup ignores it)
+      TypeOfDoc: existingBackoffice.TypeOfDoc || "04", // 04 = Digital KYC process
+      CKYCCategory: existingBackoffice.CKYCCategory || "01", // 01 = Individual
       MinorFlag: existingBackoffice.MinorFlag || "N",
       MTFStatus: existingBackoffice.MTFStatus || null,
       MTFRemarks: existingBackoffice.MTFRemarks || null,

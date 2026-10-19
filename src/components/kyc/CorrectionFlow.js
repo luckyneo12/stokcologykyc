@@ -38,6 +38,7 @@ const STEP_COMPONENT_MAP = {
   guardian1Proof: CorrectionNomineeStep,
   guardian2Proof: CorrectionNomineeStep,
   guardian3Proof: CorrectionNomineeStep,
+  ovdRequest: CorrectionDocumentStep, // OVD asked for by an admin — on the document page
 };
 
 // Document-type steps that should be grouped on a single document page
@@ -45,6 +46,7 @@ const DOCUMENT_STEP_IDS = new Set([
   "financialProof", "signature", "panUpload", "ipv",
   "pepProof", "nominee1Proof", "nominee2Proof", "nominee3Proof",
   "guardian1Proof", "guardian2Proof", "guardian3Proof",
+  "ovdRequest",
 ]);
 
 export default function CorrectionFlow() {

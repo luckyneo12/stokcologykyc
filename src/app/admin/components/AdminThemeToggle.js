@@ -18,7 +18,7 @@ export default function AdminThemeToggle() {
   };
 
   return (
-    <button onClick={toggle} title="Toggle theme" style={{
+    <button onClick={toggle} title="Toggle theme" className="neu-icon-btn" style={{
       width: 40, height: 40, borderRadius: "12px",
       display: "flex", alignItems: "center", justifyContent: "center",
       border: "1px solid var(--border-color)", background: "var(--bg-primary)",

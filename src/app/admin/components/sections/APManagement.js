@@ -280,8 +280,8 @@ export default function APManagement() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
         {!selectedAp ? (
           <div>
-            <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: "var(--text-primary)" }}>AP Management</h1>
-            <p style={{ marginTop: 6, fontSize: "0.9rem", color: "var(--text-muted)" }}>Create and manage Associate Partners and their clients.</p>
+            <h1 className="admin-section-title" style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: "var(--text-primary)" }}>AP Management</h1>
+            <p className="admin-section-subtitle" style={{ marginTop: 6, fontSize: "0.9rem", color: "var(--text-muted)" }}>Create and manage Associate Partners and their clients.</p>
           </div>
         ) : (
           <button onClick={() => setSelectedAp(null)} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontSize: "0.9rem", fontWeight: 500, padding: 0 }}>
@@ -539,7 +539,7 @@ export default function APManagement() {
                   const medalColors = ["#f59e0b", "#6b7280", "#b45309", "#9ca3af", "#9ca3af"];
                   const bgColors = ["#fffbeb", "#f3f4f6", "#fff7ed", "#f9fafb", "#f9fafb"];
                   return (
-                  <div key={top.id} onClick={() => setSelectedAp(top)} style={{ 
+                  <div key={top.id} className="neu-card" onClick={() => setSelectedAp(top)} style={{ 
                     minWidth: 240, flex: 1, 
                     background: "var(--bg-card)", 
                     padding: 20, borderRadius: 16, 

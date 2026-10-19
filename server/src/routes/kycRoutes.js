@@ -4,6 +4,7 @@ const {
   getMyApplication,
   saveStep,
   uploadDocument,
+  uploadOvdDocument,
   ocrExtract,
   faceMatch,
   submitKyc,
@@ -44,6 +45,8 @@ router.put("/save/signature", auth, saveStep);
 router.put("/save-step", auth, saveStep);
 
 router.post("/upload-document", auth, upload.single("document"), uploadDocument);
+// OVD requested by an admin (correction portal): PDF or any image
+router.post("/upload-ovd", auth, upload.ovd.single("document"), uploadOvdDocument);
 router.post("/upload-local", auth, localUpload.single("document"), uploadDocument);
 router.get("/document/:filename", auth, getSecureDocument);
 router.post("/ocr-extract", auth, ocrExtract);

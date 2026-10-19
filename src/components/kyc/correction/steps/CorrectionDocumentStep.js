@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
-import { uploadCorrectionDocument as uploadDocument } from "@/utils/correctionUpload";
+import { uploadCorrectionDocument as uploadDocument, uploadCorrectionOvd } from "@/utils/correctionUpload";
 import CorrectionSelfieStep from "./CorrectionSelfieStep";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -40,6 +40,11 @@ const NOMINEE_SECTIONS = [
   { id: "guardian3Proof", label: "Guardian 3 Document" },
 ];
 
+// Extra OVD (Officially Valid Document) requested by an admin
+const OVD_STEP_ID = "ovdRequest";
+const OVD_LABEL = "OVD (Officially Valid Document)";
+const isPdfFile = (path, mimeType) => mimeType === "application/pdf" || /\.pdf($|\?)/i.test(String(path || ""));
+
 export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
   const {
     applicationData,
@@ -52,9 +57,10 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     addToast,
   } = useCorrection();
 
-  // Find ALL document rejections (there may be multiple on this page)
+  // Find ALL document rejections (there may be multiple on this page). "ovdRequest" = an extra OVD the
+  // admin asked for — it only exists (and is only shown) when requested.
   const allDocRejections = rejectedSteps.filter(s =>
-    [...DOCUMENT_SECTIONS.map(d => d.id), ...NOMINEE_SECTIONS.map(n => n.id)].includes(s.stepId)
+    [...DOCUMENT_SECTIONS.map(d => d.id), ...NOMINEE_SECTIONS.map(n => n.id), OVD_STEP_ID].includes(s.stepId)
   );
   const rejectedDocIds = new Set(allDocRejections.map(r => r.stepId));
 
@@ -76,11 +82,23 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
   const [uploading, setUploading] = useState({});
   const [saving, setSaving] = useState(false);
   const fileRefs = useRef({});
+  // Uploaded OVD's file name / type (a PDF is shown as a file, an image as a thumbnail)
+  const [ovdMeta, setOvdMeta] = useState(() => ({
+    fileName: drafts[OVD_STEP_ID]?.fileName || null,
+    mimeType: drafts[OVD_STEP_ID]?.mimeType || null,
+  }));
 
   const handleUpload = async (docId, file) => {
     if (!file) return;
     setUploading(prev => ({ ...prev, [docId]: true }));
     try {
+      if (docId === OVD_STEP_ID) {
+        const result = await uploadCorrectionOvd(file);
+        setUploads(prev => ({ ...prev, [docId]: result.path }));
+        setOvdMeta({ fileName: result.originalName || file.name, mimeType: result.mimeType || file.type || null });
+        addToast("OVD uploaded successfully");
+        return;
+      }
       const result = await uploadDocument(file);
       if (result.success) {
         setUploads(prev => ({ ...prev, [docId]: result.path }));
@@ -105,7 +123,7 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
         continue;
       }
       if (!uploads[docId]) {
-        addToast(`Please upload a new ${docId} document`, "error");
+        addToast(docId === OVD_STEP_ID ? "Please upload the requested OVD document" : `Please upload a new ${docId} document`, "error");
         return;
       }
     }
@@ -121,6 +139,7 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
         preview: uploads[docId],
         path: uploads[docId],
         ...(uploadTypes[docId] ? { type: uploadTypes[docId] } : {}),
+        ...(docId === OVD_STEP_ID ? { fileName: ovdMeta.fileName, mimeType: ovdMeta.mimeType } : {}),
       };
 
       const success = await saveDraft(docId, draftData);
@@ -396,6 +415,101 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     );
   };
 
+  // OVD requested by an admin — only rendered when it was requested
+  const renderOvdSection = () => {
+    if (!rejectedDocIds.has(OVD_STEP_ID)) return null;
+    const rejInfo = allDocRejections.find(r => r.stepId === OVD_STEP_ID);
+    const uploaded = uploads[OVD_STEP_ID];
+    const uploadedIsPdf = isPdfFile(uploaded, ovdMeta.mimeType);
+    return (
+      <div key={OVD_STEP_ID} style={{
+        padding: 20, borderRadius: 14,
+        border: "1.5px solid rgba(239, 68, 68, 0.3)",
+        background: "rgba(239, 68, 68, 0.03)",
+        marginBottom: 16,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h4 style={{ color: "var(--text-primary)", fontSize: "0.95rem", fontWeight: 700, margin: 0 }}>
+            {OVD_LABEL}
+          </h4>
+          <span style={{
+            background: "rgba(239, 68, 68, 0.12)", color: "#ef4444",
+            padding: "4px 10px", borderRadius: 8, fontSize: "0.7rem", fontWeight: 800,
+            border: "1px solid rgba(239, 68, 68, 0.25)",
+          }}>
+            REQUESTED
+          </span>
+        </div>
+        <p style={{ color: "#ef4444", fontSize: "0.78rem", fontWeight: 600, margin: "0 0 6px 0" }}>
+          Reason: {rejInfo?.reason || "Please upload an Officially Valid Document"}
+        </p>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.75rem", fontWeight: 600, margin: "0 0 14px 0" }}>
+          Accepted: PDF or any image (JPG, PNG, HEIC, …)
+        </p>
+
+        {uploaded ? (
+          <div style={{
+            padding: 14, borderRadius: 10,
+            background: "rgba(159,232,112,0.06)", border: "1px solid rgba(159,232,112,0.2)",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+                border: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center",
+                background: "var(--bg-elevated)", color: "#ef4444", fontSize: "0.7rem", fontWeight: 800,
+              }}>
+                {uploadedIsPdf ? "PDF" : (
+                  <img src={getFullUrl(uploaded)} alt="OVD" style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => { e.target.style.display = "none"; }} />
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ color: "var(--wise-green)", fontWeight: 700, fontSize: "0.85rem" }}>✓ OVD uploaded</span>
+                {ovdMeta.fileName && (
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {ovdMeta.fileName}
+                  </div>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setUploads(prev => ({ ...prev, [OVD_STEP_ID]: null }));
+                setOvdMeta({ fileName: null, mimeType: null });
+                if (fileRefs.current[OVD_STEP_ID]) fileRefs.current[OVD_STEP_ID].value = "";
+              }}
+              style={{ background: "none", border: "none", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <label style={{
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+            padding: 28, borderRadius: 12, border: "2px dashed rgba(239, 68, 68, 0.3)",
+            cursor: uploading[OVD_STEP_ID] ? "wait" : "pointer",
+            background: "var(--input-bg)", transition: "all 0.2s",
+          }}>
+            <input
+              ref={el => fileRefs.current[OVD_STEP_ID] = el}
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => handleUpload(OVD_STEP_ID, e.target.files?.[0])}
+              style={{ display: "none" }}
+            />
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#ef4444", opacity: 0.6 }}>
+              <path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path d="M20 20H4" />
+            </svg>
+            <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-muted)" }}>
+              {uploading[OVD_STEP_ID] ? "Uploading..." : "Click to upload the OVD"}
+            </span>
+          </label>
+        )}
+      </div>
+    );
+  };
+
   // Determine which sections to show
   const hasMainDocRejections = allDocRejections.some(r => DOCUMENT_SECTIONS.some(d => d.id === r.stepId));
   const hasNomineeDocRejections = allDocRejections.some(r => NOMINEE_SECTIONS.some(n => n.id === r.stepId));
@@ -424,6 +538,14 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
             Nominee & Guardian Documents
           </h3>
           {NOMINEE_SECTIONS.map(section => renderNomineeSection(section))}
+        </>
+      )}
+
+      {/* Extra OVD — only when an admin requested it */}
+      {rejectedDocIds.has(OVD_STEP_ID) && (
+        <>
+          <div style={{ height: 1, background: "var(--border-color)", margin: "20px 0" }} />
+          {renderOvdSection()}
         </>
       )}
 

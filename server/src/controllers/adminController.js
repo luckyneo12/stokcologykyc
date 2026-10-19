@@ -329,7 +329,7 @@ const reviewApplication = async (req, res, next) => {
           if (!existingStamp && !user.eStamp) {
             const availableStamp = await tx.eStamp.findFirst({
               where: { status: "available" },
-              orderBy: { createdAt: "asc" }
+              orderBy: { createdAt: "desc" } // newest uploaded stamps first
             });
 
             if (availableStamp) {
@@ -1134,6 +1134,90 @@ const refreshFromDigio = async (req, res, next) => {
   }
 };
 
+// Builds the modification payload for one application, submits it to backoffice,
+// writes the audit log and marks the application as pushed.
+const pushApplicationToBackoffice = async (app, resolvedClientCode, clientType, req) => {
+  let existingData = {};
+  try {
+    existingData = await backofficeService.fetchExistingClientDetail(resolvedClientCode, clientType);
+  } catch (fetchError) {
+    const status = fetchError.response?.status;
+    if (status && status !== 404) {
+      throw fetchError;
+    }
+    existingData = {};
+  }
+
+  const payload = backofficeService.buildModificationPayload(app, existingData, resolvedClientCode, clientType);
+  const response = await backofficeService.submitClientModification(resolvedClientCode, payload);
+
+  await prisma.auditLog.create({
+    data: {
+      userId: req.user.id,
+      action: "backoffice_client_update",
+      details: JSON.stringify({
+        applicationId: app.applicationId,
+        clientCode: resolvedClientCode,
+        clientType,
+        response,
+      }),
+      ipAddress: req.ip,
+    },
+  });
+
+  await prisma.kycApplication.update({
+    where: { id: app.id },
+    data: {
+      pushedToBackoffice: true,
+      pushedToBackofficeAt: new Date(),
+    }
+  });
+
+  return { payload, response };
+};
+
+// Pushes every application that is verified by Admin, approved by Globe and not yet pushed.
+// Runs one at a time so the backoffice API is not flooded; one failure does not stop the rest.
+const bulkSendToBackoffice = async (req, res, next) => {
+  const { clientType = "A" } = req.body || {};
+
+  try {
+    const apps = await prisma.kycApplication.findMany({
+      where: statusFilterWhere("not_pushed_to_bo"),
+      include: { user: true },
+      orderBy: { id: "asc" },
+    });
+
+    const pushed = [];
+    const failed = [];
+
+    for (const app of apps) {
+      const resolvedClientCode = backofficeService.deriveClientCode(app);
+      if (!resolvedClientCode) {
+        failed.push({ applicationId: app.applicationId, error: "No generated client code" });
+        continue;
+      }
+      try {
+        await pushApplicationToBackoffice(app, resolvedClientCode, clientType, req);
+        pushed.push({ applicationId: app.applicationId, clientCode: resolvedClientCode });
+      } catch (error) {
+        console.error(`Bulk backoffice push failed for ${app.applicationId}:`, error.response?.data || error.message);
+        const message = error.response?.data?.error || error.response?.data?.message || error.message || "Failed to send data to backoffice";
+        failed.push({ applicationId: app.applicationId, clientCode: resolvedClientCode, error: message });
+      }
+    }
+
+    const io = req.app.get("io");
+    if (io && pushed.length > 0) {
+      io.to("staff_room").emit("applications_updated");
+    }
+
+    res.json({ success: true, total: apps.length, pushedCount: pushed.length, failedCount: failed.length, pushed, failed });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const sendToBackoffice = async (req, res, next) => {
   const rawId = String(req.params.id || "").trim();
   const numericId = Number(rawId);
@@ -1163,41 +1247,7 @@ const sendToBackoffice = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "clientCode is required because this application does not have a generated client id" });
     }
 
-    let existingData = {};
-    try {
-      existingData = await backofficeService.fetchExistingClientDetail(resolvedClientCode, clientType);
-    } catch (fetchError) {
-      const status = fetchError.response?.status;
-      if (status && status !== 404) {
-        throw fetchError;
-      }
-      existingData = {};
-    }
-
-    const payload = backofficeService.buildModificationPayload(app, existingData, resolvedClientCode, clientType);
-    const response = await backofficeService.submitClientModification(resolvedClientCode, payload);
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: "backoffice_client_update",
-        details: JSON.stringify({
-          applicationId: app.applicationId,
-          clientCode: resolvedClientCode,
-          clientType,
-          response,
-        }),
-        ipAddress: req.ip,
-      },
-    });
-
-    await prisma.kycApplication.update({
-      where: { id: app.id },
-      data: {
-        pushedToBackoffice: true,
-        pushedToBackofficeAt: new Date(),
-      }
-    });
+    const { payload, response } = await pushApplicationToBackoffice(app, resolvedClientCode, clientType, req);
 
     res.json({ success: true, clientCode: resolvedClientCode, payload, response });
   } catch (error) {
@@ -1403,6 +1453,7 @@ const updateApplicationDetails = async (req, res, next) => {
         if (!existingStamp) {
           const availableStamp = await prisma.eStamp.findFirst({
             where: { status: "available" },
+            orderBy: { createdAt: "desc" }, // newest uploaded stamps first
           });
           if (availableStamp) {
             await prisma.eStamp.update({
@@ -2013,6 +2064,7 @@ module.exports = {
   getUserKycDetails,
   refreshFromDigio,
   sendToBackoffice,
+  bulkSendToBackoffice,
   getCrmEmployees,
   generateUserToken,
   assignApplication,

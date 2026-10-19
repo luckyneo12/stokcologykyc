@@ -28,6 +28,7 @@ const STEP_TITLE_MAP = {
   guardian1Proof: "Guardian 1 Document",
   guardian2Proof: "Guardian 2 Document",
   guardian3Proof: "Guardian 3 Document",
+  ovdRequest: "OVD (Officially Valid Document)",
   esignPreview: "eSign Preview",
   aadhaarEsign: "Aadhaar eSign",
 };

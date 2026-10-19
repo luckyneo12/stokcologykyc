@@ -396,6 +396,8 @@ export default function PdfBuilder() {
   // Core state
   const [pdfDoc, setPdfDoc] = useState(null);
   const [pageNum, setPageNum] = useState(1);
+  // Text typed in the "go to page" box; null while the box shows the current page
+  const [pageInput, setPageInput] = useState(null);
   const [fields, setFields] = useState([]);
   const [pages, setPages] = useState([]);
   const [basePdfUrl, setBasePdfUrl] = useState('/official_form.pdf');
@@ -1055,8 +1057,30 @@ export default function PdfBuilder() {
             <button className="pdfb-tbtn" onClick={() => setPageNum(p => Math.max(1, p - 1))} disabled={pageNum <= 1} title="Previous page">
               {Icons.chevLeft}
             </button>
-            <span className="pdfb-page-indicator">
-              {pageNum} / {pages.length || '—'}
+            <span className="pdfb-page-indicator pdfb-page-jump">
+              <input
+                type="number"
+                min="1"
+                max={pages.length || 1}
+                value={pageInput ?? pageNum}
+                disabled={pages.length === 0}
+                title="Type a page number and press Enter"
+                aria-label="Go to page"
+                onFocus={e => e.target.select()}
+                onChange={e => setPageInput(e.target.value)}
+                onBlur={e => {
+                  const cancelled = e.target.dataset.cancel === '1';
+                  e.target.dataset.cancel = '';
+                  const n = parseInt(pageInput, 10);
+                  if (!cancelled && !Number.isNaN(n) && pages.length > 0) setPageNum(Math.min(pages.length, Math.max(1, n)));
+                  setPageInput(null);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  if (e.key === 'Escape') { e.currentTarget.dataset.cancel = '1'; e.currentTarget.blur(); }
+                }}
+              />
+              <span>/ {pages.length || '—'}</span>
             </span>
             <button className="pdfb-tbtn" onClick={() => setPageNum(p => Math.min(pages.length, p + 1))} disabled={pageNum >= pages.length} title="Next page">
               {Icons.chevRight}

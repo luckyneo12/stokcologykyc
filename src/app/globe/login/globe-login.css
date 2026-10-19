@@ -1,0 +1,257 @@
+/* ============================================================
+   Globe Portal — login page
+   Same layout as the Super Admin login (illustration left, form right, one open page, soft UI),
+   in the Globe portal's green. Scoped to .globe-login, so nothing else in the Globe portal changes.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+
+.globe-login {
+  --gl-base: #f3f8f5;                 /* the illustration's own light mint, so picture and form share one page */
+  --gl-hi: rgba(255, 255, 255, 0.95);
+  --gl-lo: rgba(150, 178, 160, 0.6);
+  --gl-raised-sm: 5px 5px 10px var(--gl-lo), -5px -5px 10px var(--gl-hi);
+  --gl-raised-xs: 3px 3px 6px var(--gl-lo), -3px -3px 6px var(--gl-hi);
+  --gl-inset: inset 5px 5px 10px var(--gl-lo), inset -5px -5px 10px var(--gl-hi);
+  --gl-inset-sm: inset 3px 3px 6px var(--gl-lo), inset -3px -3px 6px var(--gl-hi);
+  --gl-accent: #15803d;
+  --gl-accent-fill: linear-gradient(145deg, #22a654 0%, #15803d 100%);
+  --gl-ring: rgba(34, 166, 84, 0.16);
+  --gl-ink: #1c2b22;
+  --gl-ink-2: #3a4a40;
+  --gl-muted: #6f8076;
+
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  box-sizing: border-box;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--gl-ink);
+  background: radial-gradient(ellipse 70% 85% at 30% 50%, #f8fbfa 0%, #f3f8f5 55%, #eaf2ed 100%);
+}
+html:has(.globe-login), html:has(.globe-login) body { background: #f3f8f5 !important; }
+
+.globe-login-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(32px, 6vw, 110px);
+  width: min(1240px, 100%);
+}
+
+/* ---- Illustration: tilts and drifts with the mouse, floats gently ---- */
+.globe-login-hero {
+  --rx: 0deg; --ry: 0deg; --tx: 0px; --ty: 0px; --gx: 50%; --gy: 50%;
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  perspective: 1200px;
+  cursor: default;
+  user-select: none;
+}
+.globe-login-hero-glow {
+  position: absolute;
+  inset: -6% -4% 18%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side at var(--gx) var(--gy), rgba(34, 166, 84, 0.22), transparent 70%);
+  filter: blur(18px);
+  opacity: 0.55;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.globe-login-hero:hover .globe-login-hero-glow { opacity: 1; }
+.globe-login-hero-art {
+  width: 100%;
+  max-width: 800px;
+  transform: rotateX(var(--rx)) rotateY(var(--ry)) translate3d(var(--tx), var(--ty), 0);
+  transform-style: preserve-3d;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+.globe-login-hero-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* fade the picture's edges into the page */
+  -webkit-mask-image: radial-gradient(ellipse 70% 68% at 50% 50%, #000 52%, transparent 100%);
+          mask-image: radial-gradient(ellipse 70% 68% at 50% 50%, #000 52%, transparent 100%);
+  animation: globeHeroFloat 6s ease-in-out infinite;
+  transition: filter 0.4s ease;
+}
+.globe-login-hero:hover .globe-login-hero-art img { filter: saturate(1.1) brightness(1.03); }
+@keyframes globeHeroFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+.globe-login-hero-caption {
+  margin-top: -8px;
+  text-align: center;
+  max-width: 460px;
+  transform: translate3d(calc(var(--tx) * -0.4), calc(var(--ty) * -0.4), 0);
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.globe-login-hero-caption h2 {
+  margin: 12px 0 6px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--gl-ink);
+}
+.globe-login-hero-caption p { margin: 0; font-size: 0.95rem; line-height: 1.5; color: var(--gl-muted); }
+
+/* ---- Form (no card of its own) ---- */
+.globe-login-card {
+  flex: 0 0 400px;
+  max-width: 400px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 2;
+}
+.globe-login-head { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 28px; }
+.globe-login-brand { display: flex; align-items: center; gap: 12px; }
+.globe-login-eyebrow {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--gl-accent);
+  background: var(--gl-base);
+  box-shadow: var(--gl-raised-xs);
+}
+.globe-login-title {
+  margin: 20px 0 6px;
+  font-size: 2.3rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--gl-ink);
+}
+.globe-login-sub { margin: 0; font-size: 0.95rem; line-height: 1.5; color: var(--gl-muted); }
+.globe-login-error {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.08);
+  box-shadow: var(--gl-inset-sm);
+}
+.globe-login-form { display: flex; flex-direction: column; }
+.globe-login-label { margin-bottom: 8px; font-size: 0.82rem; font-weight: 600; color: var(--gl-ink-2); }
+.globe-login-field { position: relative; margin-bottom: 20px; }
+.globe-login-field input {
+  width: 100%;
+  height: 54px;
+  box-sizing: border-box;
+  padding: 0 48px;
+  border: none;
+  border-radius: 16px;
+  outline: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--gl-ink);
+  background: var(--gl-base);
+  box-shadow: var(--gl-inset-sm);
+  transition: box-shadow 0.2s ease;
+}
+.globe-login-field input::placeholder { color: #9aa8a0; }
+.globe-login-field input:focus { box-shadow: var(--gl-inset), 0 0 0 3px var(--gl-ring); }
+.globe-login-field-icon {
+  position: absolute;
+  left: 17px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gl-muted);
+  pointer-events: none;
+  transition: color 0.2s ease;
+}
+.globe-login-field:focus-within .globe-login-field-icon { color: var(--gl-accent); }
+.globe-login-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--gl-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, box-shadow 0.2s ease;
+}
+.globe-login-eye:hover { color: var(--gl-accent); box-shadow: var(--gl-raised-xs); }
+.globe-login-submit {
+  margin-top: 10px;
+  height: 56px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: none;
+  border-radius: 16px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gl-accent-fill);
+  box-shadow: var(--gl-raised-sm);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
+}
+.globe-login-submit:hover:not(:disabled) { filter: brightness(1.07); }
+.globe-login-submit:active:not(:disabled) {
+  box-shadow: inset 3px 3px 7px rgba(5, 60, 25, 0.5), inset -2px -2px 5px rgba(255, 255, 255, 0.15);
+}
+.globe-login-submit svg { transition: transform 0.2s ease; }
+.globe-login-submit:hover:not(:disabled) svg { transform: translateX(4px); }
+.globe-login-submit:disabled { cursor: not-allowed; opacity: 0.75; }
+.globe-login-submit:focus-visible, .globe-login-eye:focus-visible, .globe-login-forgot:focus-visible {
+  outline: 2px solid var(--gl-accent);
+  outline-offset: 3px;
+}
+.globe-login-foot {
+  margin-top: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--gl-muted);
+}
+.globe-login-foot svg { color: #10b981; flex-shrink: 0; }
+.globe-login-forgot {
+  display: inline-block;
+  margin: 8px 0 0 24px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--gl-accent);
+  text-decoration: none;
+  border-radius: 6px;
+}
+.globe-login-forgot:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .globe-login-hero-art img { animation: none; }
+  .globe-login-hero-art, .globe-login-hero-caption { transition: none; }
+}
+/* Narrow screens: just the form */
+@media (max-width: 1000px) {
+  .globe-login { padding: 24px 16px; }
+  .globe-login-hero { display: none; }
+  .globe-login-frame { width: auto; }
+  .globe-login-card { flex-basis: auto; width: min(440px, 100%); }
+}

@@ -473,6 +473,7 @@ const saveStep = async (req, res, next) => {
           if (!existingStamp) {
             const availableStamp = await prisma.eStamp.findFirst({
               where: { status: "available" },
+              orderBy: { createdAt: "desc" }, // newest uploaded stamps first
             });
             if (availableStamp) {
               await prisma.eStamp.update({
@@ -654,6 +655,36 @@ const uploadDocument = (req, res) => {
     success: true,
     path: finalPath,
     filename: req.file.filename,
+  });
+};
+
+// OVD upload (correction portal): PDF or any image. Images other than JPG / PNG are served as JPG by
+// Cloudinary (changing the extension converts the format), so they can be embedded in the KYC PDF and
+// sent to the back office. The path keeps Cloudinary's normal shape (/upload/v123/<id>.jpg).
+const uploadOvdDocument = (req, res) => {
+  if (!req.file) {
+    const error = req.ovdRejectedType
+      ? "Please upload a PDF or an image file (JPG, PNG, HEIC, …)."
+      : "No file uploaded";
+    return res.status(400).json({ success: false, error });
+  }
+
+  let finalPath =
+    req.file.path && req.file.path.startsWith("http")
+      ? req.file.path
+      : `/api/kyc/document/${req.file.filename}`;
+
+  const mime = String(req.file.mimetype || "");
+  if (mime.startsWith("image/") && !["image/jpeg", "image/png"].includes(mime) && finalPath.includes("cloudinary.com")) {
+    finalPath = /\.[a-z0-9]{2,5}$/i.test(finalPath) ? finalPath.replace(/\.[a-z0-9]{2,5}$/i, ".jpg") : `${finalPath}.jpg`;
+  }
+
+  res.json({
+    success: true,
+    path: finalPath,
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    mimeType: mime.startsWith("image/") && !["image/jpeg", "image/png"].includes(mime) ? "image/jpeg" : mime,
   });
 };
 
@@ -1652,6 +1683,26 @@ const completeCorrectionSession = async (req, res, next) => {
     for (const [stepId, draftData] of Object.entries(drafts)) {
       if (!draftData) continue;
 
+      // OVD requested by an admin → kept in the documents list as type "OVD" (only the latest one)
+      if (stepId === "ovdRequest") {
+        const ovdPath = draftData.path || draftData.filePreview || draftData.preview;
+        if (ovdPath) {
+          const docs = parseJsonField(updateData.documents || app.documents, []);
+          const list = (Array.isArray(docs) ? docs : []).filter((d) => d?.type !== "OVD");
+          list.push({
+            type: "OVD",
+            label: "OVD (Officially Valid Document)",
+            path: ovdPath,
+            fileName: draftData.fileName || null,
+            mimeType: draftData.mimeType || null,
+            uploadedAt: new Date().toISOString(),
+            source: "CORRECTION",
+          });
+          updateData.documents = serializeJsonField(list);
+        }
+        continue;
+      }
+
       if (stepId === "digilocker") {
         // DigiLocker: replace identity + address + name/dob fields
         if (draftData.identityDetails) {
@@ -1819,6 +1870,7 @@ module.exports = {
   getMyApplication,
   saveStep,
   uploadDocument,
+  uploadOvdDocument,
   ocrExtract,
   faceMatch,
   submitKyc,

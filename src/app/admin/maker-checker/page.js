@@ -8,6 +8,7 @@ import { io } from "socket.io-client";
 import AdminSidebar from "../components/AdminSidebar";
 import AdminThemeToggle from "../components/AdminThemeToggle";
 import { useDragScroll } from "@/utils/useDragScroll";
+import { ListFilter, ArrowUpDown, ArrowUp, ArrowDown, EyeOff } from "lucide-react";
 import "@/app/admin/admin.css";
 
 const STEP_LABELS = {
@@ -54,6 +55,7 @@ const FRONTEND_STEP_TITLE_MAP = {
   panUpload: "PAN Upload", ipv: "IPV/Selfie", pepProof: "PEP Proof",
   nominee1Proof: "Nominee 1", nominee2Proof: "Nominee 2", nominee3Proof: "Nominee 3",
   guardian1Proof: "Guardian 1", guardian2Proof: "Guardian 2", guardian3Proof: "Guardian 3",
+  ovdRequest: "OVD Requested",
   esignPreview: "eSign Preview", aadhaarEsign: "Aadhaar eSign", completion: "Completion"
 };
 
@@ -74,6 +76,8 @@ export default function MakerCheckerDashboard() {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
   const [openRejectionsId, setOpenRejectionsId] = useState(null);
+  const [rejectionsPopPos, setRejectionsPopPos] = useState(null); // where the open rejections popup sits on screen
+  const rejectionsAnchorRef = useRef(null); // the chip the open popup belongs to
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [changeStatusAppId, setChangeStatusAppId] = useState(null);
@@ -244,6 +248,37 @@ export default function MakerCheckerDashboard() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
+  // The rejections popup is drawn above the page (so the table never clips it). It opens below its chip,
+  // or above it when there is not enough room below, and stays on screen.
+  const getRejectionsPopPos = (chip) => {
+    const r = chip.getBoundingClientRect();
+    const W = 320, GAP = 8;
+    const spaceBelow = window.innerHeight - r.bottom - GAP;
+    const spaceAbove = r.top - GAP;
+    const above = spaceBelow < 260 && spaceAbove > spaceBelow;
+    const left = Math.min(Math.max(12, r.left), window.innerWidth - W - 12);
+    return above
+      ? { left, bottom: window.innerHeight - r.top + GAP, maxHeight: Math.min(380, spaceAbove - 12) }
+      : { left, top: r.bottom + GAP, maxHeight: Math.min(380, spaceBelow - 12) };
+  };
+  // While open, it follows its chip when the page or table scrolls; it closes once the chip leaves the screen
+  useEffect(() => {
+    if (!openRejectionsId) return;
+    const follow = (e) => {
+      if (e?.target?.closest?.(".mc-rej-pop")) return; // scrolling the popup's own list
+      const chip = rejectionsAnchorRef.current;
+      const r = chip?.isConnected ? chip.getBoundingClientRect() : null;
+      if (!r || r.bottom < 0 || r.top > window.innerHeight) { setOpenRejectionsId(null); return; }
+      setRejectionsPopPos(getRejectionsPopPos(chip));
+    };
+    window.addEventListener("scroll", follow, true);
+    window.addEventListener("resize", follow);
+    return () => {
+      window.removeEventListener("scroll", follow, true);
+      window.removeEventListener("resize", follow);
+    };
+  }, [openRejectionsId]);
+
   const handleContinueJourney = async (k) => {
     try {
       const adminToken = localStorage.getItem("adminToken");
@@ -305,6 +340,37 @@ export default function MakerCheckerDashboard() {
       }
     } catch (e) {
       alert("Error sending to Backoffice");
+    }
+  };
+
+  const [bulkPushing, setBulkPushing] = useState(false);
+
+  // Pushes every application approved by Admin + Globe that has not been pushed yet
+  const bulkSendToBackoffice = async () => {
+    if (!confirm("Push all applications that are Admin verified, Globe approved and not yet pushed to the Backoffice?")) return;
+    setBulkPushing(true);
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/api/admin/backoffice/bulk-send`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "Bulk push to Backoffice failed");
+      } else if (data.total === 0) {
+        alert("No pending applications to push");
+      } else if (data.failedCount === 0) {
+        alert(`Pushed ${data.pushedCount} application(s) to Backoffice`);
+      } else {
+        const failedLines = data.failed.map(f => `${f.applicationId}: ${f.error}`).join("\n");
+        alert(`Pushed ${data.pushedCount}, failed ${data.failedCount}:\n${failedLines}`);
+      }
+      fetchApplications(true);
+    } catch (e) {
+      alert("Error during bulk push to Backoffice");
+    } finally {
+      setBulkPushing(false);
     }
   };
 
@@ -527,17 +593,49 @@ export default function MakerCheckerDashboard() {
     };
   };
 
-  // List API URL with the current filter, stage, search and dates
+  // List API URL with the current filter, stage and dates (the search box is applied here, see matchesSearch)
   const buildListUrl = (pageNum, limit) => {
     const url = new URL(`${API_BASE_URL}/api/agent/applications`);
     if (filter !== "all") url.searchParams.append("status", filter);
     if (stageFilter !== "all") url.searchParams.append("stage", stageFilter);
-    if (search) url.searchParams.append("search", search);
     if (dateRange.start) url.searchParams.append("startDate", dateRange.start);
     if (dateRange.end) url.searchParams.append("endDate", dateRange.end);
     url.searchParams.append("page", pageNum);
     url.searchParams.append("limit", limit);
     return url;
+  };
+
+  // The search box looks only at the columns shown in the table — exactly the text in their cells
+  const matchesSearch = (k) => {
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
+    return displayColumns.some(col => String(getCellValue(k, col) ?? "").toLowerCase().includes(term));
+  };
+
+  // Every application of the current filter / stage / dates (all pages). Kept while the same filters stay
+  // selected, so typing in the search box or paging through the matches doesn't reload the whole list.
+  const allRowsCacheRef = useRef(null);
+  const loadAllRows = async (fresh = false) => {
+    const key = JSON.stringify([filter, stageFilter, dateRange.start, dateRange.end]);
+    if (!fresh && allRowsCacheRef.current?.key === key) return allRowsCacheRef.current.rows;
+    const token = localStorage.getItem("adminToken");
+    const all = [];
+    for (let p = 1; ; p++) {
+      const res = await fetch(buildListUrl(p, 200), { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 401) {
+        localStorage.removeItem("adminToken");
+        localStorage.removeItem("adminUser");
+        window.location.href = "/admin/login";
+        throw new Error("Unauthorized");
+      }
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || data.message || "Failed to load applications");
+      const apps = data.applications || [];
+      all.push(...apps.map(mapApplication));
+      if (apps.length < 200 || p >= (data.totalPages || 1)) break;
+    }
+    allRowsCacheRef.current = { key, rows: all };
+    return all;
   };
 
   // Only the latest request may update the list — an older, slower search response must not overwrite it
@@ -547,6 +645,17 @@ export default function MakerCheckerDashboard() {
     const seq = ++fetchSeqRef.current;
     if (!isSilent) setLoading(true);
     try {
+      if (search.trim()) {
+        // Searching: match the visible columns across every page, then show this page of the matches.
+        // A silent refresh (after a change / live update) reloads the list instead of using the kept one.
+        const rows = (await loadAllRows(isSilent)).filter(matchesSearch);
+        if (seq !== fetchSeqRef.current) return;
+        setTotal(rows.length);
+        setTotalPages(Math.max(1, Math.ceil(rows.length / 15)));
+        setKycs(rows.slice((page - 1) * 15, page * 15));
+        return;
+      }
+
       const url = buildListUrl(page, 15);
 
       const token = localStorage.getItem("adminToken");
@@ -590,6 +699,12 @@ export default function MakerCheckerDashboard() {
     }, 500);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Showing / hiding a column changes what the search looks at
+  useEffect(() => {
+    if (loadingAuth || !isAuthenticated || !search.trim()) return;
+    fetchApplications();
+  }, [visibleColumns]);
 
   useEffect(() => {
     if (loadingAuth || !isAuthenticated) return;
@@ -670,8 +785,15 @@ export default function MakerCheckerDashboard() {
     return (
       <div className="rejections-dropdown-container" style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={() => setOpenRejectionsId(openRejectionsId === menuId ? null : menuId)}
+          className="mc-rej-chip"
+          onClick={(e) => {
+            if (openRejectionsId === menuId) { setOpenRejectionsId(null); return; }
+            rejectionsAnchorRef.current = e.currentTarget;
+            setRejectionsPopPos(getRejectionsPopPos(e.currentTarget));
+            setOpenRejectionsId(menuId);
+          }}
           title={`${items.length} rejection(s) by ${side}. Click to see the reasons.`}
+          aria-expanded={openRejectionsId === menuId}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid #fecaca", background: "#fef2f2", color: "#dc2626", fontSize: "0.75rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
           {statusLabel && (
             <span style={{ paddingRight: 8, marginRight: 2, borderRight: "1px solid #fecaca", letterSpacing: "0.3px" }}>{statusLabel}</span>
@@ -679,20 +801,27 @@ export default function MakerCheckerDashboard() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           {items.length}
         </button>
-        {openRejectionsId === menuId && (
-          <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 8, background: "var(--bg-primary)", border: "1px solid var(--border-color)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 100, padding: "12px", width: "280px", maxHeight: "300px", overflowY: "auto", whiteSpace: "normal" }}>
-            <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", marginBottom: 8, borderBottom: "1px solid var(--border-color)", paddingBottom: 4 }}>{side.toUpperCase()} REJECTIONS</div>
-            {items.map((r, i) => (
-              <div key={i} style={{ marginBottom: i < items.length - 1 ? 12 : 0 }}>
-                <div style={{ fontWeight: 700, color: "#ef4444", fontSize: "0.82rem" }}>
-                  {r.label}
-                  {r.unknownSource && <span title="Saved before the portal recorded who made each rejection" style={{ marginLeft: 6, fontWeight: 600, fontSize: "0.7rem", color: "var(--text-muted)" }}>(source unknown)</span>}
+        {openRejectionsId === menuId && rejectionsPopPos && typeof document !== "undefined" && createPortal((
+          // Drawn above the page so the table never clips it; the container class keeps clicks inside from closing it
+          <div className="rejections-dropdown-container mc-rej-pop" role="dialog" aria-label={`${side} rejections`}
+            style={{ position: "fixed", ...rejectionsPopPos }} onClick={(e) => e.stopPropagation()}>
+            <div className="mc-rej-pop-head">
+              <span>{side} rejections</span>
+              <span className="mc-rej-pop-count">{items.length}</span>
+            </div>
+            <div className="mc-rej-pop-list">
+              {items.map((r, i) => (
+                <div key={i} className="mc-rej-pop-item">
+                  <div className="mc-rej-pop-label">
+                    {r.label}
+                    {r.unknownSource && <span className="mc-rej-pop-note" title="Saved before the portal recorded who made each rejection">(source unknown)</span>}
+                  </div>
+                  <div className="mc-rej-pop-reason">{r.reason}</div>
                 </div>
-                <div style={{ color: "var(--text-primary)", marginTop: 2, lineHeight: 1.4, fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>{r.reason}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        )}
+        ), document.body)}
       </div>
     );
   };
@@ -778,17 +907,7 @@ export default function MakerCheckerDashboard() {
   // Every application matching the current filter / stage / search / dates — all pages, not just the
   // one on screen — with the table's column filters and sort applied
   const fetchAllForExport = async () => {
-    const token = localStorage.getItem("adminToken");
-    const all = [];
-    for (let p = 1; ; p++) {
-      const res = await fetch(buildListUrl(p, 200), { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || data.message || "Failed to load applications");
-      const apps = data.applications || [];
-      all.push(...apps.map(mapApplication));
-      if (apps.length < 200 || p >= (data.totalPages || 1)) break;
-    }
-    return applyTableFilters(all);
+    return applyTableFilters((await loadAllRows(true)).filter(matchesSearch));
   };
 
   // "all": every stored detail of the same rows, as columns grouped by topic (bank together, each nominee
@@ -876,8 +995,9 @@ export default function MakerCheckerDashboard() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflowY: "auto" }}>
           {/* Top Header */}
           <header className="admin-header">
-            <div style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "0.9rem" }}>
-              Admin / <span style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>Maker / Checker</span>
+            <div className="neu-page-head">
+              <h1 className="neu-page-title">Maker / Checker Queue</h1>
+              <p className="neu-page-sub">Review applications step-by-step</p>
             </div>
             
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
@@ -887,7 +1007,7 @@ export default function MakerCheckerDashboard() {
                   <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>Super Admin</div>
                   <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Role: Master Control</div>
                 </div>
-                <div style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div className="neu-avatar" style={{ width: 40, height: 40, borderRadius: "12px", background: "var(--wise-green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--wise-dark-green)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
               </div>
@@ -895,14 +1015,12 @@ export default function MakerCheckerDashboard() {
           </header>
 
           {/* Same background as the table, so the list reads as a plain table (no card) */}
-          <main style={{ padding: "24px", flex: 1, width: "100%", background: "var(--bg-sticky)" }}>
+          <main className="neu-main" style={{ padding: "24px", flex: 1, width: "100%", background: "var(--bg-sticky)" }}>
             <div className="admin-animate">
-              <h1 className="admin-section-title">Maker / Checker Queue</h1>
-              <p className="admin-section-subtitle">Review applications step-by-step.</p>
 
               {/* Controls — kept above the table so their dropdowns are never covered by its sticky header */}
-              <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "nowrap", alignItems: "center", position: "relative", zIndex: 30 }}>
-                <input className="admin-input" placeholder="Search by name, ID, phone, PAN, bank, eStamp..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: "1 1 320px", minWidth: 180, maxWidth: 320 }} />
+              <div className="mc-toolbar" style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "nowrap", alignItems: "center", position: "relative", zIndex: 30 }}>
+                <input className="admin-input" placeholder="Search in the shown columns..." title="Searches only the columns currently shown in the table" value={search} onChange={e => setSearch(e.target.value)} style={{ flex: "1 1 320px", minWidth: 180, maxWidth: 320 }} />
                 <div className="filter-dropdown-container" style={{ position: "relative", flex: "0 1 220px", minWidth: 180 }}>
                   <button 
                     onClick={() => setFilterOpen(!filterOpen)}
@@ -942,6 +1060,16 @@ export default function MakerCheckerDashboard() {
                     </div>
                   )}
                 </div>
+
+                <button
+                  className="neu-btn-primary"
+                  onClick={bulkSendToBackoffice}
+                  disabled={bulkPushing}
+                  title="Push all Admin-verified, Globe-approved applications not yet sent to Backoffice"
+                  style={{ flex: "0 0 auto", padding: "10px 16px", borderRadius: 8, border: "none", background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 800, fontSize: "0.85rem", whiteSpace: "nowrap", cursor: bulkPushing ? "not-allowed" : "pointer", opacity: bulkPushing ? 0.6 : 1 }}
+                >
+                  {bulkPushing ? "Pushing…" : "Bulk Push to Backoffice"}
+                </button>
 
                 <div className="date-filter-dropdown-container" style={{ position: "relative", flex: "0 1 220px", minWidth: 160 }}>
                   <button 
@@ -1108,6 +1236,7 @@ export default function MakerCheckerDashboard() {
                 </div>
 
                 <button
+                  className="neu-btn-outline mc-export-btn"
                   onClick={() => exportToExcel("table")}
                   disabled={kycs.length === 0 || !!exporting}
                   title="Excel with the columns shown in the table"
@@ -1131,6 +1260,7 @@ export default function MakerCheckerDashboard() {
                   {exporting === "table" ? "Exporting…" : "Export Table"}
                 </button>
                 <button
+                  className="neu-btn-outline mc-export-btn"
                   onClick={() => exportToExcel("all")}
                   disabled={kycs.length === 0 || !!exporting}
                   title="Excel with every column"
@@ -1179,7 +1309,7 @@ export default function MakerCheckerDashboard() {
                             <div style={{ display: "flex", gap: 4 }}>
                               {!NO_FILTER_SORT_COLUMNS.includes(h) && (<>
                               <button 
-                                className="column-filter-container"
+                                className={`column-filter-container mc-th-btn${(columnFilters[h] || columnValueFilters[h]?.length) ? " is-active" : ""}`}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (activeFilterCol === h) { setActiveFilterCol(null); return; }
@@ -1190,11 +1320,12 @@ export default function MakerCheckerDashboard() {
                                 style={{ background: "transparent", border: "none", cursor: "pointer", color: (columnFilters[h] || columnValueFilters[h]?.length) ? "var(--wise-green)" : "var(--text-muted)", padding: 2 }}
                                 title="Filter"
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                                <ListFilter size={13} strokeWidth={2.4} />
                               </button>
 
-                              <button 
-                                onClick={(e) => { 
+                              <button
+                                className={`mc-th-btn${sortConfig.key === h ? " is-active" : ""}`}
+                                onClick={(e) => {
                                   e.stopPropagation();
                                   setSortConfig(prev => {
                                     if (prev.key === h) {
@@ -1208,16 +1339,17 @@ export default function MakerCheckerDashboard() {
                                 title="Sort"
                               >
                                 {sortConfig.key === h ? (
-                                  sortConfig.direction === 'asc' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"></polyline></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                  sortConfig.direction === 'asc' ? <ArrowUp size={13} strokeWidth={2.4} /> : <ArrowDown size={13} strokeWidth={2.4} />
                                 ) : (
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                                  <ArrowUpDown size={13} strokeWidth={2.4} />
                                 )}
                               </button>
                               </>)}
 
                               {!PERMANENT_COLUMNS.includes(h) && (
-                                <button 
-                                  onClick={(e) => { 
+                                <button
+                                  className="mc-th-btn"
+                                  onClick={(e) => {
                                     e.stopPropagation();
                                     setVisibleColumns(prev => {
                                       const next = prev.filter(c => c !== h);
@@ -1228,7 +1360,7 @@ export default function MakerCheckerDashboard() {
                                   style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2 }}
                                   title="Hide Column"
                                 >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                  <EyeOff size={13} strokeWidth={2.4} />
                                 </button>
                               )}
                             </div>
@@ -1553,7 +1685,7 @@ export default function MakerCheckerDashboard() {
                     </tbody>
                   </table>
                 </div>
-                <div style={{ padding: "14px 24px", borderTop: "1px solid var(--border-color)", fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div className="mc-pager" style={{ padding: "14px 24px", borderTop: "1px solid var(--border-color)", fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <button 
                       disabled={page <= 1 || loading} 
@@ -1577,7 +1709,7 @@ export default function MakerCheckerDashboard() {
 
               {changeStatusAppId && (
                 <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 320, border: "1px solid var(--border-color)", boxShadow: "0 10px 30px rgba(0,0,0,0.3)" }}>
+                  <div className="neu-modal" style={{ background: "var(--bg-primary)", padding: 24, borderRadius: 12, width: 320, border: "1px solid var(--border-color)", boxShadow: "0 10px 30px rgba(0,0,0,0.3)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                       <h3 style={{ margin: 0 }}>Change Progress</h3>
                       <button onClick={() => { setChangeStatusAppId(null); setPendingStep(null); }} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)" }}>×</button>
@@ -1610,7 +1742,8 @@ export default function MakerCheckerDashboard() {
                             ))}
                           </select>
                           {pendingStep !== null && pendingStep !== currentAppStep && (
-                            <button 
+                            <button
+                              className="neu-btn-primary"
                               onClick={() => {
                                 updateStatus(changeStatusAppId, appForStatus?.status || "pending", { currentStep: pendingStep });
                                 setChangeStatusAppId(null);

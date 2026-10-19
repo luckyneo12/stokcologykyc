@@ -12,6 +12,7 @@ const {
   getUserKycDetails,
   refreshFromDigio,
   sendToBackoffice,
+  bulkSendToBackoffice,
   getCrmEmployees,
   assignApplication,
   updateUserEstamp,
@@ -50,6 +51,7 @@ router.get("/documents", adminAuth, getDocuments);
 router.get("/facematch", adminAuth, getFaceMatchLogs);
 router.post("/application/:id/refresh-digio", adminAuth, refreshFromDigio);
 router.post("/application/:id/send-backoffice", adminAuth, sendToBackoffice);
+router.post("/backoffice/bulk-send", adminAuth, bulkSendToBackoffice);
 router.get("/crm-employees", adminAuth, getCrmEmployees);
 router.post("/application/:id/assign", adminAuth, assignApplication);
 router.put("/users/:id/estamp", adminAuth, updateUserEstamp);

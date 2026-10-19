@@ -349,6 +349,7 @@ const REVIEW_STEP_ORDER = [
   { id: "panUpload", kycIndex: 13 },
   { id: "ipv", kycIndex: 14 },
   { id: "documentUpload", kycIndex: 11 }, // Fallback for general document rejections
+  { id: "ovdRequest", kycIndex: 11 }, // Admin asks for an extra OVD (Officially Valid Document) — uploaded on the document page
   { id: "esignPreview", kycIndex: 15 },
   { id: "aadhaarEsign", kycIndex: 16 },
   { id: "completion", kycIndex: 17 },
@@ -400,6 +401,10 @@ const reviewStep = async (req, res, next) => {
     const configuredStep = REVIEW_STEP_ORDER.find((step) => step.id === stepName);
     if (!configuredStep) {
       return res.status(400).json({ success: false, error: "Unknown review step" });
+    }
+    // Requesting (or withdrawing) an extra OVD is an admin-portal action only
+    if (stepName === "ovdRequest" && req.user.role !== "admin") {
+      return res.status(403).json({ success: false, error: "Only an admin can request an OVD" });
     }
 
     const hasCompletedJourneyOnce = !!app.submittedAt || !!app.isResubmitted || !!app.rejectionReason;
@@ -594,6 +599,7 @@ const STEP_TITLE_MAP = {
   guardian1Proof: "Guardian 1 Proof",
   guardian2Proof: "Guardian 2 Proof",
   guardian3Proof: "Guardian 3 Proof",
+  ovdRequest: "OVD (Officially Valid Document)",
   esignPreview: "eSign Preview",
   aadhaarEsign: "Aadhaar eSign",
   completion: "Completion",
@@ -622,6 +628,7 @@ const REVIEW_STEP_TO_KYC_INDEX = {
   signature: 11,
   panUpload: 11,
   ipv: 11,
+  ovdRequest: 11, // uploaded on the document page
   esignPreview: 12,
   aadhaarEsign: 13,
   completion: 14,
@@ -632,7 +639,8 @@ const REVIEW_STEP_TO_KYC_INDEX = {
 const DOCUMENT_REVIEW_STEPS = [
   "financialProof", "signature", "panUpload", "ipv",
   "pepProof", "nominee1Proof", "nominee2Proof", "nominee3Proof",
-  "guardian1Proof", "guardian2Proof", "guardian3Proof"
+  "guardian1Proof", "guardian2Proof", "guardian3Proof",
+  "ovdRequest",
 ];
 
 /**

@@ -160,14 +160,15 @@ export default function BoidManagement() {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>BOID Management</h2>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: 4 }}>Manage and allocate Beneficiary Owner Identification (BOID) numbers.</p>
+          <h2 className="admin-section-title" style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>BOID Management</h2>
+          <p className="admin-section-subtitle" style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: 4 }}>Manage and allocate Beneficiary Owner Identification (BOID) numbers.</p>
         </div>
       </div>
 
       {/* KPI Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
         <div 
+          className={`neu-stat${statusFilter === "all" ? " active" : ""}`}
           onClick={() => setStatusFilter("all")}
           style={{ 
             background: statusFilter === "all" ? "var(--bg-secondary)" : "var(--bg-primary)", 
@@ -180,6 +181,7 @@ export default function BoidManagement() {
           <span style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--text-primary)" }}>{stats.total.toLocaleString()}</span>
         </div>
         <div 
+          className={`neu-stat${statusFilter === "available" ? " active" : ""}`}
           onClick={() => setStatusFilter("available")}
           style={{ 
             background: statusFilter === "available" ? "rgba(48,164,108,0.05)" : "var(--bg-primary)", 
@@ -192,6 +194,7 @@ export default function BoidManagement() {
           <span style={{ fontSize: "1.6rem", fontWeight: 700, color: "#30a46c" }}>{stats.available.toLocaleString()}</span>
         </div>
         <div 
+          className={`neu-stat${statusFilter === "assigned" ? " active" : ""}`}
           onClick={() => setStatusFilter("assigned")}
           style={{ 
             background: statusFilter === "assigned" ? "rgba(0,145,255,0.05)" : "var(--bg-primary)", 
@@ -204,6 +207,7 @@ export default function BoidManagement() {
           <span style={{ fontSize: "1.6rem", fontWeight: 700, color: "#0091ff" }}>{stats.assigned.toLocaleString()}</span>
         </div>
         <div 
+          className={`neu-stat${statusFilter === "cooling_period" ? " active" : ""}`}
           onClick={() => setStatusFilter("cooling_period")}
           style={{ 
             background: statusFilter === "cooling_period" ? "rgba(245,166,35,0.05)" : "var(--bg-primary)", 

@@ -1,0 +1,1756 @@
+/* ============================================================
+   Admin Portal — Soft UI (neumorphism) theme layer
+   Loaded by admin/layout.js; scoped to pages wrapped in .admin-neu.
+   Visual only: colours, surfaces, shadows, typography, spacing.
+
+   Rules of the system:
+   - one font (DM Sans), one surface colour, one accent (violet)
+   - controls are either RAISED (resting) or PRESSED (active / input)
+   - only the main call-to-action is filled with the accent
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+
+/* ---------- Tokens (on :root so portaled popups get them too) ---------- */
+:root:has(.admin-neu) {
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: var(--font-sans);
+
+  /* Light: classic grey soft UI — page, surfaces and wells share one grey */
+  --neu-page: #e4e9f0;          /* page background */
+  --neu-base: #e4e9f0;          /* raised surfaces: cards, bars, buttons, table */
+  --neu-well: #e4e9f0;          /* pressed-in: inputs, active items, badges */
+  --neu-hi: rgba(255, 255, 255, 0.95);
+  --neu-lo: rgba(158, 172, 194, 0.7);
+
+  --neu-raised: 9px 9px 18px var(--neu-lo), -9px -9px 18px var(--neu-hi);
+  --neu-raised-sm: 5px 5px 10px var(--neu-lo), -5px -5px 10px var(--neu-hi);
+  --neu-raised-xs: 3px 3px 6px var(--neu-lo), -3px -3px 6px var(--neu-hi);
+  --neu-inset: inset 5px 5px 10px var(--neu-lo), inset -5px -5px 10px var(--neu-hi);
+  --neu-inset-sm: inset 3px 3px 6px var(--neu-lo), inset -3px -3px 6px var(--neu-hi);
+  --neu-pop: 16px 16px 36px rgba(140, 155, 180, 0.55), -12px -12px 30px rgba(255, 255, 255, 0.9);
+
+  --neu-accent: #6d3fe0;
+  --neu-accent-fill: linear-gradient(145deg, #7c4dff 0%, #5b2fd0 100%);
+  --neu-stripe: #ecf0f5;
+  --neu-row-hover: #f6f3ff;
+  --neu-row-shadow: rgba(91, 47, 208, 0.38);
+  --neu-head-bg: linear-gradient(180deg, #edf1f7 0%, #dfe5ee 100%);
+  --neu-head-ink: #4c34b8;
+  --neu-head-edge: rgba(150, 165, 190, 0.55);
+  --neu-line: rgba(140, 155, 180, 0.35);
+
+  --wise-green: var(--neu-accent);
+  --wise-green-hover: #5b2fd0;
+  --wise-green-alpha: rgba(109, 63, 224, 0.12);
+
+  --bg-primary: var(--neu-base);
+  --bg-secondary: var(--neu-base);
+  --bg-sticky: var(--neu-base);
+  --bg-card: var(--neu-base);
+  --bg-elevated: var(--neu-base);
+
+  --text-primary: #232838;
+  --text-secondary: #3a4155;
+  --text-muted: #7d8499;
+
+  --border-color: rgba(140, 155, 180, 0.3);
+  --border-hover: rgba(140, 155, 180, 0.5);
+
+  --card-shadow: var(--neu-raised);
+  --card-shadow-hover: var(--neu-raised);
+}
+
+:root[data-theme="dark"]:has(.admin-neu) {
+  --neu-page: #22252c;
+  --neu-base: #22252c;
+  --neu-well: #22252c;
+  --neu-hi: rgba(255, 255, 255, 0.05);
+  --neu-lo: rgba(0, 0, 0, 0.6);
+  --neu-raised: 9px 9px 18px var(--neu-lo), -9px -9px 18px var(--neu-hi);
+  --neu-raised-sm: 5px 5px 10px var(--neu-lo), -5px -5px 10px var(--neu-hi);
+  --neu-raised-xs: 3px 3px 6px var(--neu-lo), -3px -3px 6px var(--neu-hi);
+  --neu-inset: inset 5px 5px 10px var(--neu-lo), inset -5px -5px 10px var(--neu-hi);
+  --neu-inset-sm: inset 3px 3px 6px var(--neu-lo), inset -3px -3px 6px var(--neu-hi);
+  --neu-pop: 16px 16px 36px rgba(0, 0, 0, 0.7), -10px -10px 26px rgba(255, 255, 255, 0.035);
+
+  --neu-accent: #a07bff;
+  --neu-accent-fill: linear-gradient(145deg, #8b5cf6 0%, #6d28d9 100%);
+  --neu-stripe: #262930;
+  --neu-row-hover: #2f2b44;
+  --neu-row-shadow: rgba(0, 0, 0, 0.55);
+  --neu-head-bg: linear-gradient(180deg, #282c35 0%, #1f2229 100%);
+  --neu-head-ink: #c4b0ff;
+  --neu-head-edge: rgba(0, 0, 0, 0.45);
+  --neu-line: rgba(255, 255, 255, 0.08);
+
+  --wise-green-hover: #b79bff;
+  --wise-dark-green: #c4b5fd;
+  --wise-green-alpha: rgba(160, 123, 255, 0.16);
+
+  --text-primary: #e8eaf0;
+  --text-secondary: #c0c5d2;
+  --text-muted: #838a9c;
+
+  --border-color: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.13);
+}
+
+/* ---------- Base ---------- */
+html:has(.admin-neu),
+html:has(.admin-neu) body {
+  background: var(--neu-page) !important;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.admin-neu, .admin-neu * { font-family: var(--font-sans) !important; }
+.admin-neu > div { background: var(--neu-page) !important; }
+/* Inner page shells that paint the old secondary background */
+.admin-neu > div div[style*="background: var(--bg-secondary)"][style*="height: 100%"] { background: var(--neu-page) !important; }
+.admin-neu main { background: transparent !important; }
+.admin-neu ::-webkit-scrollbar-thumb { background: var(--border-hover); }
+
+/* ---------- Navbar ---------- */
+/* Floating raised bar, inset to line up with the page content (main has 24px padding) */
+.admin-neu .admin-header {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 76px !important;
+  margin: 18px 24px 6px !important;
+  padding: 0 14px 0 26px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 24px;
+  border-radius: 24px !important;
+  background: var(--neu-base) !important;
+  border: none !important;
+  box-shadow: var(--neu-raised-sm) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  top: 12px !important;
+}
+/* Right side: theme toggle · name · avatar, evenly spaced */
+.admin-neu .admin-header > div:last-child { gap: 14px !important; }
+.admin-neu .admin-header > div:last-child > div { gap: 12px !important; }
+.admin-neu .admin-header [style*="text-align: right"],
+.admin-neu .admin-header [style*="text-align:right"] { line-height: 1.25; }
+.admin-neu .admin-header [style*="text-align: right"] > div:last-child,
+.admin-neu .admin-header [style*="text-align:right"] > div:last-child { font-size: 0.75rem !important; font-weight: 500; margin-top: 2px; }
+
+.admin-neu .neu-page-head { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.admin-neu .neu-page-title {
+  margin: 0;
+  font-size: 1.22rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.admin-neu .neu-page-sub {
+  margin: 3px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-neu .neu-live-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: neuPulse 1.8s ease-in-out infinite;
+}
+@keyframes neuPulse { 50% { opacity: 0.35; } }
+
+/* Duplicate headings inside the page body are hidden (the navbar shows the name) */
+.admin-neu .neu-main .admin-section-title,
+.admin-neu .neu-main .admin-section-subtitle,
+.admin-neu .neu-main .trs-head > div:first-child { display: none !important; }
+.admin-neu .neu-main .trs-head { justify-content: flex-end; }
+
+.admin-neu .admin-header [style*="border-left"] { border-left: none !important; padding-left: 0 !important; }
+.admin-neu .admin-header [style*="text-align: right"] > div:first-child,
+.admin-neu .admin-header [style*="text-align:right"] > div:first-child { font-weight: 600 !important; font-size: 0.9rem !important; }
+
+.admin-neu .neu-avatar,
+.admin-neu .neu-icon-btn {
+  width: 44px !important;
+  height: 44px !important;
+  flex-shrink: 0;
+  border: none !important;
+  border-radius: 50% !important;
+  background: var(--neu-base) !important;
+  box-shadow: var(--neu-raised-sm) !important;
+  transition: box-shadow 0.2s ease !important;
+}
+.admin-neu .neu-avatar svg { stroke: var(--neu-accent) !important; }
+.admin-neu .neu-icon-btn:hover { box-shadow: var(--neu-raised-xs) !important; }
+.admin-neu .neu-icon-btn:active { box-shadow: var(--neu-inset-sm) !important; }
+
+.admin-neu .global-search-input {
+  border: none !important;
+  background: var(--neu-well) !important;
+  box-shadow: var(--neu-inset-sm) !important;
+  border-radius: 999px !important;
+  font-weight: 500 !important;
+}
+.admin-neu .global-search-input:focus { box-shadow: var(--neu-inset) !important; }
+
+/* ---------- Surfaces ---------- */
+.admin-neu .card,
+.admin-neu .metric-card,
+.admin-neu .premium-metric-card,
+.admin-neu .document-preview-card,
+.admin-neu .kyc-evidence-card {
+  background: var(--neu-base) !important;
+  border: none !important;
+  box-shadow: var(--neu-raised) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: 26px !important;
+}
+.admin-neu .metric-card:hover { transform: none; }
+.admin-neu .metric-card::before { display: none; }
+.admin-neu .document-preview-frame {
+  border: none;
+  border-radius: 18px;
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset);
+}
+
+/* ---------- Inputs (always pressed in) ---------- */
+.admin-neu .admin-input,
+.admin-neu .admin-select {
+  border: none !important;
+  background: var(--neu-well) !important;
+  box-shadow: var(--neu-inset-sm) !important;
+  border-radius: 16px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+}
+.admin-neu .admin-input:focus,
+.admin-neu .admin-select:focus { box-shadow: var(--neu-inset) !important; }
+
+/* ---------- Buttons ---------- */
+/* Filled — reserved for the main action */
+.admin-neu .admin-btn-primary,
+.admin-neu .neu-btn-primary {
+  background: var(--neu-accent-fill) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 16px !important;
+  font-weight: 600 !important;
+  box-shadow: var(--neu-raised-sm) !important;
+  transition: box-shadow 0.2s ease, filter 0.2s ease !important;
+}
+.admin-neu .admin-btn-primary:hover:not(:disabled),
+.admin-neu .neu-btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.admin-neu .admin-btn-primary:active:not(:disabled),
+.admin-neu .neu-btn-primary:active:not(:disabled) {
+  box-shadow: inset 3px 3px 7px rgba(30, 10, 80, 0.5), inset -2px -2px 5px rgba(255, 255, 255, 0.15) !important;
+}
+/* Soft — everything else */
+.admin-neu .admin-btn-secondary,
+.admin-neu .neu-btn-outline,
+.admin-neu .mc-toolbar .filter-dropdown-container > button,
+.admin-neu .mc-toolbar .date-filter-dropdown-container > button,
+.admin-neu .mc-toolbar .stage-dropdown-container > button,
+.admin-neu .mc-toolbar .columns-dropdown-container > button {
+  background: var(--neu-base) !important;
+  color: var(--text-primary) !important;
+  border: none !important;
+  border-radius: 16px !important;
+  font-weight: 600 !important;
+  box-shadow: var(--neu-raised-sm) !important;
+  transition: box-shadow 0.2s ease, color 0.2s ease !important;
+}
+.admin-neu .admin-btn-secondary:hover,
+.admin-neu .neu-btn-outline:hover:not(:disabled),
+.admin-neu .mc-toolbar .filter-dropdown-container > button:hover,
+.admin-neu .mc-toolbar .date-filter-dropdown-container > button:hover,
+.admin-neu .mc-toolbar .stage-dropdown-container > button:hover,
+.admin-neu .mc-toolbar .columns-dropdown-container > button:hover {
+  color: var(--neu-accent) !important;
+  box-shadow: var(--neu-raised-xs) !important;
+}
+.admin-neu .admin-btn-secondary:active,
+.admin-neu .neu-btn-outline:active:not(:disabled),
+.admin-neu .mc-toolbar .filter-dropdown-container > button:active,
+.admin-neu .mc-toolbar .date-filter-dropdown-container > button:active,
+.admin-neu .mc-toolbar .stage-dropdown-container > button:active,
+.admin-neu .mc-toolbar .columns-dropdown-container > button:active {
+  box-shadow: var(--neu-inset-sm) !important;
+}
+.admin-neu .mc-toolbar button svg { stroke: var(--neu-accent); }
+.admin-neu .mc-toolbar .neu-btn-primary svg { stroke: currentColor; }
+
+/* ---------- Maker / Checker toolbar ---------- */
+.admin-neu .mc-toolbar {
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+  margin-bottom: 30px !important;
+  padding: 6px 4px;
+}
+.admin-neu .mc-toolbar > .admin-input {
+  flex: 1 1 200px !important;
+  min-width: 160px !important;
+  max-width: 240px !important;
+  height: 48px;
+  padding: 0 20px !important;
+  font-size: 0.9rem !important;
+  border-radius: 999px !important;
+}
+.admin-neu .mc-toolbar .filter-dropdown-container,
+.admin-neu .mc-toolbar .date-filter-dropdown-container,
+.admin-neu .mc-toolbar .stage-dropdown-container,
+.admin-neu .mc-toolbar .columns-dropdown-container {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+}
+.admin-neu .mc-toolbar .columns-dropdown-container { margin-left: auto !important; }
+.admin-neu .mc-toolbar .filter-dropdown-container > button,
+.admin-neu .mc-toolbar .date-filter-dropdown-container > button,
+.admin-neu .mc-toolbar .stage-dropdown-container > button,
+.admin-neu .mc-toolbar .columns-dropdown-container > button,
+.admin-neu .mc-toolbar > .neu-btn-primary {
+  width: auto !important;
+  height: 48px;
+  gap: 10px !important;
+  padding: 0 14px !important;
+  font-size: 0.9rem !important;
+  white-space: nowrap;
+}
+.admin-neu .mc-toolbar .filter-dropdown-container > button > span,
+.admin-neu .mc-toolbar .stage-dropdown-container > button > span { text-transform: capitalize; }
+
+/* Export Table / Export All: two separate soft buttons */
+.admin-neu .mc-toolbar > .mc-export-btn {
+  height: 48px;
+  gap: 9px !important;
+  padding: 0 14px !important;
+  font-size: 0.9rem !important;
+}
+
+/* Dropdown panels */
+.admin-neu .mc-toolbar .filter-dropdown-container > div,
+.admin-neu .mc-toolbar .date-filter-dropdown-container > div,
+.admin-neu .mc-toolbar .stage-dropdown-container > div,
+.admin-neu .mc-toolbar .columns-dropdown-container > div {
+  min-width: 240px;
+  background: var(--neu-base) !important;
+  border: none !important;
+  border-radius: 20px !important;
+  box-shadow: var(--neu-pop) !important;
+  margin-top: 14px !important;
+  padding: 10px !important;
+}
+.admin-neu .mc-toolbar .filter-dropdown-container > div > div,
+.admin-neu .mc-toolbar .stage-dropdown-container > div > div {
+  border-radius: 12px;
+  font-size: 0.88rem !important;
+  text-transform: capitalize;
+}
+.admin-neu .mc-toolbar .filter-dropdown-container > div > div:hover,
+.admin-neu .mc-toolbar .stage-dropdown-container > div > div:hover { box-shadow: var(--neu-inset-sm); }
+.admin-neu .mc-toolbar .date-filter-dropdown-container > div button {
+  border: none !important;
+  border-radius: 12px !important;
+  background: var(--neu-base) !important;
+  box-shadow: var(--neu-raised-xs) !important;
+  color: var(--text-primary) !important;
+}
+.admin-neu .mc-toolbar .date-filter-dropdown-container > div > div:last-child > button {
+  background: var(--neu-accent-fill) !important;
+  color: #fff !important;
+}
+.admin-neu .mc-toolbar input[type="date"],
+.admin-neu .mc-toolbar .columns-dropdown-container input[type="text"] {
+  border: none !important;
+  border-radius: 12px !important;
+  background: var(--neu-well) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--neu-inset-sm) !important;
+}
+
+/* ---------- Tables: simple striped rows ---------- */
+.admin-neu .admin-table-container {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: visible;
+}
+/* Header: one raised soft bar with rounded ends, violet lettering, floating just above the rows */
+.admin-neu .admin-table th {
+  padding: 16px 18px;
+  font-size: 0.74rem !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--neu-head-ink) !important;
+  background: var(--neu-head-bg) !important;
+  border-bottom: none;
+  /* hard (unblurred) edge lines only, so neighbouring header cells join into one seamless bar */
+  box-shadow: inset 0 1px 0 var(--neu-hi), inset 0 -2px 0 var(--neu-head-edge) !important;
+}
+.admin-neu .admin-table thead th:first-child { border-radius: 16px 0 0 16px; }
+.admin-neu .admin-table thead th:last-child { border-radius: 0 16px 16px 0; }
+/* gap between the header bar and the first row */
+.admin-neu .admin-table tbody tr:first-child td { border-top: 10px solid var(--neu-page) !important; }
+
+/* Tables inside a card (Dashboard, E-Stamps, BOID, AP, …): a flat, quiet header row instead of the raised
+   bar — the bar is kept only for the open Maker / Checker table */
+html .admin-neu .admin-table:not(.mc-readable .admin-table) th {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid var(--neu-line) !important;
+  color: var(--text-muted) !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.08em;
+  padding-top: 18px !important;
+  padding-bottom: 14px !important;
+}
+html .admin-neu .admin-table:not(.mc-readable .admin-table) tbody tr:first-child td { border-top: none !important; }
+
+/* Section heading above a card (title + action) */
+.admin-neu .neu-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 4px 14px;
+}
+.admin-neu .neu-section-heading { display: flex; align-items: center; gap: 14px; }
+.admin-neu .neu-section-icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: #ffffff;
+  background: var(--neu-accent-fill);
+  box-shadow: var(--neu-raised-sm), 0 6px 14px -6px rgba(109, 63, 224, 0.55);
+}
+.admin-neu .neu-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+.admin-neu .neu-section-count {
+  min-width: 26px;
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--neu-accent);
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm);
+}
+.admin-neu .neu-section-sub {
+  margin-top: 2px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.admin-neu .admin-table td {
+  padding: 15px 18px;
+  font-size: 0.93rem !important;
+  font-weight: 500 !important;
+  color: var(--text-secondary);
+  border-bottom: none;
+  background-color: var(--neu-base) !important;
+}
+.admin-neu .admin-table tbody tr:nth-child(even) td { background-color: var(--neu-stripe) !important; }
+/* (html prefix: outranks admin.css's dark-mode green hover, which loads later) */
+/* Hover: the row lifts into a bright, rounded floating strip */
+
+.admin-neu .admin-table tbody td { transition: background-color 0.18s ease, color 0.18s ease; }
+/* Solid brand violet (a per-cell gradient would show bands between cells) */
+html .admin-neu .admin-table tbody tr:hover td,
+html .admin-neu .mc-readable .admin-table tbody tr:hover td {
+  background: #6a3fe3 !important;
+  color: #ffffff !important;
+}
+/* Text inside the hovered row turns white; badges, the ⋮ button and open menus keep their own colours */
+html .admin-neu .admin-table tbody tr:hover td > div > span:not(.badge),
+html .admin-neu .admin-table tbody tr:hover td.mc-client-code,
+html .admin-neu .mc-readable .admin-table tbody tr:hover td.mc-client-code,
+html .admin-neu .admin-table tbody tr:hover td button[title^="Copy"] { color: #ffffff !important; }
+html .admin-neu .admin-table tbody tr:hover td button[title^="Copy"] svg { stroke: #ffffff; }
+/* Tinted status pills (inline-styled, e.g. Dashboard "Recent Applications") would vanish on the violet:
+   make them solid white pills, keeping their own coloured text */
+html .admin-neu .admin-table tbody tr:hover td span[style*="border-radius"]:not(.badge) {
+  background: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(30, 10, 80, 0.25);
+}
+/* Grey secondary text (phone numbers, dates…) → soft white on the violet.
+   Matches the `color` property only — not `border-color: var(--text-muted)`, which buttons set on hover */
+html .admin-neu .admin-table tbody tr:hover td :is([style^="color: var(--text-muted)"], [style*="; color: var(--text-muted)"]),
+html .admin-neu .admin-table tbody tr:hover td:is([style^="color: var(--text-muted)"], [style*="; color: var(--text-muted)"]) { color: rgba(255, 255, 255, 0.82) !important; }
+/* Pop-out: the hovered row lifts with a violet glow. It is layered above every other row (z-index 30 >
+   the frozen columns' 10–20), so its shadow falls evenly over the neighbours instead of under their
+   frozen cells. */
+.admin-neu .admin-table tbody tr { transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.2s ease; }
+.admin-neu .admin-table tbody tr:hover {
+  position: relative;
+  z-index: 30;
+  transform: translateY(-3px);
+  filter: drop-shadow(0 12px 16px var(--neu-row-shadow)) drop-shadow(0 3px 4px var(--neu-row-shadow));
+}
+/* Controls on the violet hovered row: the soft-UI shadow (white highlight + grey shade) shows as a blurry
+   halo on violet, so they get a crisp, dark shadow there instead */
+html .admin-neu .admin-table tbody tr:hover td :is(.action-menu-container > button, .neu-btn-soft, .mc-rej-chip, .badge, button[style*="border: 1px solid var(--border-color)"]) {
+  box-shadow: 0 1px 2px rgba(25, 8, 70, 0.28), 0 4px 10px -3px rgba(25, 8, 70, 0.45) !important;
+}
+html .admin-neu .admin-table tbody tr:hover td .mc-rej-chip { border-color: transparent !important; }
+html .admin-neu .admin-table tbody tr:hover td :is(.action-menu-container > button, .neu-btn-soft):active { box-shadow: inset 0 2px 5px rgba(25, 8, 70, 0.35) !important; }
+/* Review (Dashboard): a white pill on the violet row; hovering it fills it with the accent */
+html .admin-neu .admin-table tbody tr:hover td .neu-btn-soft {
+  background: #ffffff !important;
+  color: var(--neu-accent) !important;
+  border-color: transparent !important;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+html .admin-neu .admin-table tbody tr:hover td .neu-btn-soft:hover {
+  background: var(--neu-accent-fill) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 6px 14px -4px rgba(25, 8, 70, 0.55) !important;
+}
+.admin-neu .admin-table tbody tr:hover td:first-child { border-top-left-radius: 14px; border-bottom-left-radius: 14px; }
+.admin-neu .admin-table tbody tr:hover td:last-child { border-top-right-radius: 14px; border-bottom-right-radius: 14px; }
+.admin-neu .mc-readable { --text-secondary: var(--text-primary); }
+.admin-neu .admin-table tr td.mc-client-code,
+.admin-neu .mc-readable .admin-table tbody tr:hover td.mc-client-code {
+  font-weight: 700 !important;
+  letter-spacing: 0.03em;
+  color: var(--neu-accent);
+}
+
+/* Header icons (filter / sort / hide) — quiet until the header is hovered */
+/* Column header actions (filter / sort / hide): small soft chips that appear when the header is hovered */
+.admin-neu .admin-table thead th > div > div { gap: 6px !important; }
+.admin-neu .admin-table thead .mc-th-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none !important;
+  border-radius: 8px;
+  background: var(--neu-base) !important;
+  color: var(--neu-head-ink) !important;
+  box-shadow: var(--neu-raised-xs);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+.admin-neu .admin-table thead .mc-th-btn:hover { color: var(--neu-accent) !important; box-shadow: var(--neu-raised-sm); transform: translateY(-1px) scale(1.05); }
+.admin-neu .admin-table thead .mc-th-btn:active { box-shadow: var(--neu-inset-sm); transform: scale(0.95); }
+/* A filter / sort in use stays visible as a filled violet chip */
+.admin-neu .admin-table thead .mc-th-btn.is-active {
+  opacity: 1;
+  transform: scale(1);
+  background: var(--neu-accent-fill) !important;
+  color: #ffffff !important;
+  box-shadow: var(--neu-raised-xs), 0 4px 10px -4px rgba(109, 63, 224, 0.6);
+}
+/* Rejections popup (STK / Globe status): drawn on <body>, above the table, so it is never clipped */
+:root:has(.admin-neu) .mc-rej-pop {
+  z-index: 1000;
+  width: 320px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--neu-base);
+  box-shadow: var(--neu-pop);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  text-align: left;
+  white-space: normal;
+  animation: mcRejPopIn 0.16s ease-out;
+}
+@keyframes mcRejPopIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+:root:has(.admin-neu) .mc-rej-pop-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--neu-line);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+:root:has(.admin-neu) .mc-rej-pop-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  color: #dc2626;
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm);
+}
+:root:has(.admin-neu) .mc-rej-pop-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:root:has(.admin-neu) .mc-rej-pop-item {
+  padding: 10px 12px 10px 14px;
+  border-radius: 12px;
+  border-left: 3px solid #ef4444;
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm);
+}
+:root:has(.admin-neu) .mc-rej-pop-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #dc2626;
+}
+:root:has(.admin-neu) .mc-rej-pop-note {
+  margin-left: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+:root:has(.admin-neu) .mc-rej-pop-reason {
+  margin-top: 3px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+:root[data-theme="dark"]:has(.admin-neu) .mc-rej-pop-label,
+:root[data-theme="dark"]:has(.admin-neu) .mc-rej-pop-count { color: #f87171; }
+@media (prefers-reduced-motion: reduce) { :root:has(.admin-neu) .mc-rej-pop { animation: none; } }
+
+/* Copy icons — only on the hovered row */
+.admin-neu .admin-table tbody td button[title^="Copy"] { opacity: 0; transition: opacity 0.15s ease; }
+.admin-neu .admin-table tbody tr:hover td button[title^="Copy"] { opacity: 1; }
+
+/* Row action trigger (⋮) */
+.admin-neu .action-menu-container > button {
+  width: 34px;
+  height: 34px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none !important;
+  border-radius: 50% !important;
+  background: var(--neu-base) !important;
+  box-shadow: var(--neu-raised-xs) !important;
+  font-size: 1rem !important;
+  color: var(--text-secondary) !important;
+}
+.admin-neu .action-menu-container > button:active { box-shadow: var(--neu-inset-sm) !important; }
+
+/* Pager */
+.admin-neu .mc-pager { border-top: none !important; padding: 22px 4px 8px !important; font-size: 0.88rem !important; }
+.admin-neu .mc-pager button {
+  border: none !important;
+  border-radius: 12px !important;
+  padding: 8px 16px !important;
+  background: var(--neu-base) !important;
+  box-shadow: var(--neu-raised-xs) !important;
+  color: var(--text-primary) !important;
+  font-weight: 600;
+}
+.admin-neu .mc-pager button:active:not(:disabled) { box-shadow: var(--neu-inset-sm) !important; }
+
+/* Column filter popup (portaled to <body>) */
+body:has(.admin-neu) > .column-filter-container {
+  background: var(--neu-base) !important;
+  border: none !important;
+  border-radius: 18px !important;
+  box-shadow: var(--neu-pop) !important;
+  padding: 12px !important;
+}
+body:has(.admin-neu) > .column-filter-container input[type="text"] {
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  background: var(--neu-well) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--neu-inset-sm) !important;
+}
+
+/* ---------- Badges: pressed pills with coloured text ---------- */
+.admin-neu .badge {
+  border-radius: 999px;
+  border: none;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: var(--neu-well) !important;
+  box-shadow: var(--neu-inset-sm);
+}
+.admin-neu .badge-verified { color: #059669; }
+.admin-neu .badge-pending { color: #c2700a; }
+.admin-neu .badge-rejected { color: #dc2626; }
+.admin-neu .badge-review { color: #2563eb; }
+.admin-neu .badge-suspended { color: var(--text-muted); }
+[data-theme="dark"] .admin-neu .badge-verified { color: #34d399; }
+[data-theme="dark"] .admin-neu .badge-pending { color: #fbbf24; }
+[data-theme="dark"] .admin-neu .badge-rejected { color: #f87171; }
+[data-theme="dark"] .admin-neu .badge-review { color: #60a5fa; }
+
+/* ---------- Menus & modals ---------- */
+.admin-neu .premium-action-menu {
+  background: var(--neu-base) !important;
+  border: none;
+  border-radius: 20px;
+  box-shadow: var(--neu-pop) !important;
+  padding: 10px;
+  backdrop-filter: none !important;
+}
+.admin-neu .premium-action-item { font-size: 0.9rem; font-weight: 500; border-radius: 12px; }
+.admin-neu .premium-action-item:hover {
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm);
+  transform: none;
+}
+.admin-neu .premium-action-item.success { color: var(--neu-accent); font-weight: 600; }
+
+.admin-neu .neu-modal {
+  background: var(--neu-base) !important;
+  border: none !important;
+  border-radius: 26px !important;
+  box-shadow: var(--neu-pop) !important;
+}
+.admin-neu .neu-modal > div:last-child {
+  border-radius: 18px !important;
+  background: var(--neu-well) !important;
+  box-shadow: var(--neu-inset-sm);
+}
+
+/* ---------- Misc ---------- */
+.admin-neu .loader,
+.admin-neu .loader-sm { border-color: var(--border-hover); border-top-color: var(--neu-accent); }
+.admin-neu .toggle-switch { background: var(--neu-well); box-shadow: var(--neu-inset-sm); }
+.admin-neu .toggle-switch.active { background: var(--neu-accent-fill); box-shadow: none; }
+.admin-neu .toggle-switch::after { background: #fff; box-shadow: var(--neu-raised-xs); }
+.admin-neu .toggle-switch.active::after { background: #fff; }
+
+/* ============================================================
+   All other modules (Dashboard, Audit Logs, E-Stamps, BOID, PDF Builder,
+   API Integration, AP Management, Trash, application detail, login).
+   They are styled inline, so these rules match the inline patterns they share.
+   Wrapped in :where() → zero specificity, so any rule above still wins.
+   ============================================================ */
+
+/* ---- Cards: bordered panels on a card/primary surface → raised ---- */
+.admin-neu :where(div[style*="border: 1px solid var(--border-color)"][style*="border-radius"]:is(
+  [style*="background: var(--bg-card)"],
+  [style*="background: var(--bg-primary)"],
+  [style*="background: var(--bg-elevated)"])) {
+  background: var(--neu-base) !important;
+  border-color: transparent !important;
+  box-shadow: var(--neu-raised) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Wells: bordered boxes on the secondary surface → pressed */
+.admin-neu :where(div[style*="border: 1px solid var(--border-color)"][style*="border-radius"][style*="background: var(--bg-secondary)"]) {
+  background: var(--neu-well) !important;
+  border-color: transparent !important;
+  box-shadow: var(--neu-inset-sm) !important;
+}
+/* Card header strips: drop the grey band, keep a soft divider */
+.admin-neu :where(div[style*="border-bottom: 1px solid var(--border-color)"]:is(
+  [style*="background: var(--bg-secondary)"],
+  [style*="background: var(--bg-elevated)"],
+  [style*="background: var(--bg-card)"])) {
+  background: transparent !important;
+  border-bottom-color: var(--neu-line) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ---- Buttons ---- */
+/* Filled (black or violet) → the accent fill */
+.admin-neu :where(button:is([style*="background: var(--text-primary)"], [style*="background: var(--wise-green)"]), .api-btn.btn-save, .pdfb-tbtn.primary) {
+  background: var(--neu-accent-fill) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 14px !important;
+  box-shadow: var(--neu-raised-sm) !important;
+  transition: box-shadow 0.2s ease, filter 0.2s ease !important;
+}
+.admin-neu :where(button:is([style*="background: var(--text-primary)"], [style*="background: var(--wise-green)"]), .api-btn.btn-save, .pdfb-tbtn.primary):hover:not(:disabled) { filter: brightness(1.08); transform: none !important; }
+.admin-neu :where(button:is([style*="background: var(--text-primary)"], [style*="background: var(--wise-green)"]), .api-btn.btn-save, .pdfb-tbtn.primary):active:not(:disabled) {
+  box-shadow: inset 3px 3px 7px rgba(30, 10, 80, 0.5) !important;
+}
+
+/* Solid coloured buttons (green / red / amber …) keep their colour, get the soft shape */
+.admin-neu :where(button[style*="background: rgb("], .api-btn.btn-test) {
+  border: none !important;
+  border-radius: 14px !important;
+  box-shadow: var(--neu-raised-sm) !important;
+}
+.admin-neu :where(button[style*="background: rgb("], .api-btn.btn-test):active:not(:disabled) { box-shadow: inset 3px 3px 7px rgba(0, 0, 0, 0.3) !important; }
+
+/* Bordered / neutral buttons → soft raised */
+.admin-neu :where(button[style*="border: 1px solid var(--border-color)"], button[style*="border: 2px solid var(--border-color)"], .admin-btn-outline, .api-btn.btn-close, .api-btn.btn-delete, .trs-btn) {
+  background: var(--neu-base) !important;
+  border-color: transparent !important;
+  border-radius: 12px !important;
+  box-shadow: var(--neu-raised-xs) !important;
+  transition: box-shadow 0.2s ease, color 0.2s ease !important;
+}
+.admin-neu :where(button[style*="border: 1px solid var(--border-color)"], .admin-btn-outline, .api-btn.btn-close, .trs-btn-ghost) { color: var(--text-primary) !important; }
+.admin-neu :where(button[style*="border: 1px solid var(--border-color)"], .admin-btn-outline, .api-btn.btn-close, .trs-btn-ghost):hover:not(:disabled) { color: var(--neu-accent) !important; }
+.admin-neu :where(button[style*="border: 1px solid var(--border-color)"], .admin-btn-outline, .api-btn.btn-close, .api-btn.btn-delete, .trs-btn):active:not(:disabled) { box-shadow: var(--neu-inset-sm) !important; }
+.admin-neu :where(.api-btn.btn-delete, .trs-btn-danger) { color: #dc2626 !important; }
+.admin-neu :where(.trs-btn-restore) { color: #15803d !important; }
+
+/* ---- Form fields → pressed in ---- */
+.admin-neu :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([style*="background: transparent"]):not([style*="background: none"]),
+  textarea:not([style*="background: transparent"]),
+  select,
+  .api-input) {
+  background-color: var(--neu-well) !important;
+  border-color: transparent !important;
+  border-radius: 12px !important;
+  box-shadow: var(--neu-inset-sm) !important;
+  color: var(--text-primary) !important;
+  outline: none;
+}
+.admin-neu :where(input:not([type="checkbox"]):not([type="radio"]), textarea, select, .api-input):focus {
+  box-shadow: var(--neu-inset), 0 0 0 2px var(--wise-green-alpha) !important;
+}
+.admin-neu :where(input[type="checkbox"], input[type="radio"]) { accent-color: var(--neu-accent); }
+.admin-neu .trs-search {
+  border: none !important;
+  border-radius: 999px !important;
+  background: var(--neu-well) !important;
+  box-shadow: var(--neu-inset-sm) !important;
+  height: 44px;
+}
+.admin-neu .trs-search input { box-shadow: none !important; background: transparent !important; }
+
+/* ---- Tables (every table, same as the Maker / Checker list) ---- */
+.admin-neu :where(table) { border-collapse: separate !important; border-spacing: 0; }
+.admin-neu :where(table thead tr) { background: transparent !important; }
+.admin-neu :where(table th) {
+  background: var(--neu-base) !important;
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+  border-bottom: 2px solid var(--neu-line) !important;
+}
+.admin-neu :where(table tbody tr) { border-bottom: none !important; background: transparent !important; }
+.admin-neu :where(table td) {
+  background-color: var(--neu-base) !important;
+  border-bottom: none !important;
+  font-weight: 500;
+}
+.admin-neu :where(table tbody tr:nth-child(even) td) { background-color: var(--neu-stripe) !important; }
+.admin-neu :where(table tbody tr:hover td) { background-color: var(--neu-row-hover) !important; }
+
+/* ---- Modal backdrops: softer, slightly blurred ---- */
+.admin-neu :where(div[style*="position: fixed"][style*="rgba(0, 0, 0, 0.5)"]) {
+  background: rgba(30, 35, 50, 0.38) !important;
+  backdrop-filter: blur(4px);
+}
+
+/* ---- Trash ---- */
+.admin-neu .trs-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.admin-neu .trs-chip { background: var(--neu-well) !important; border: none !important; box-shadow: var(--neu-inset-sm); }
+
+/* ---- API Integration ---- */
+.admin-neu .api-btn { border-radius: 14px !important; }
+
+/* ---- Application detail (/admin/maker-checker/[id]) ---- */
+.admin-neu .neu-detail-bar {
+  background: var(--neu-base) !important;
+  border-bottom: none !important;
+  box-shadow: 0 8px 18px -12px var(--neu-lo) !important;
+  backdrop-filter: none !important;
+  position: relative;
+  z-index: 2;
+}
+.admin-neu .neu-detail-bar > div:first-child > div:first-child {
+  background: var(--neu-base) !important;
+  color: var(--neu-accent) !important;
+  box-shadow: var(--neu-raised-xs);
+}
+.admin-neu .neu-detail-col {
+  background: var(--neu-base) !important;
+  border-right: none !important;
+  box-shadow: inset -1px 0 0 var(--neu-line) !important;
+  backdrop-filter: none !important;
+}
+.admin-neu .neu-detail-col > div:first-child { border-bottom-color: var(--neu-line) !important; }
+.admin-neu .neu-detail-preview { background: var(--neu-base) !important; }
+.admin-neu .neu-detail-previewbar {
+  background: var(--neu-base) !important;
+  border-bottom: 1px solid var(--neu-line) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+/* Column headers (Modules / Documents / Preview): one height, so their bottom lines meet.
+   The header of the column under the mouse lights up: icon chip fills, count pops, accent line grows. */
+.admin-neu .neu-panel-head {
+  position: relative;
+  height: 60px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--neu-line);
+  background: var(--neu-base);
+  cursor: default;
+  user-select: none;
+  transition: background 0.25s ease;
+}
+.admin-neu .neu-panel-head--preview { padding: 0 20px; }
+.admin-neu .neu-panel-head::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--neu-accent-fill);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.admin-neu .neu-panel-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--neu-accent);
+  background: var(--neu-base);
+  box-shadow: var(--neu-raised-xs);
+  transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.admin-neu .neu-panel-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  transition: color 0.25s ease, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.admin-neu .neu-panel-count {
+  margin-left: auto;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--neu-accent);
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm);
+  transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* Name of the document being previewed */
+.admin-neu .neu-panel-doc {
+  min-width: 0;
+  max-width: 45%;
+  padding: 4px 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm);
+  animation: neuDocIn 0.25s ease-out;
+}
+@keyframes neuDocIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+/* Lit state: hovering the header, or working anywhere in that column */
+.admin-neu :is(.neu-detail-col:hover, .neu-detail-preview:hover) > .neu-panel-head::after,
+.admin-neu .neu-panel-head:hover::after { transform: scaleX(1); }
+.admin-neu :is(.neu-detail-col:hover, .neu-detail-preview:hover) > .neu-panel-head .neu-panel-icon {
+  color: #ffffff;
+  background: var(--neu-accent-fill);
+  box-shadow: var(--neu-raised-xs), 0 6px 14px -6px rgba(109, 63, 224, 0.7);
+}
+.admin-neu .neu-panel-head:hover .neu-panel-icon { transform: rotate(-8deg) scale(1.08); }
+.admin-neu :is(.neu-detail-col:hover, .neu-detail-preview:hover) > .neu-panel-head .neu-panel-title { color: var(--neu-accent); }
+.admin-neu .neu-panel-head:hover .neu-panel-title { transform: translateX(2px); }
+.admin-neu :is(.neu-detail-col:hover) > .neu-panel-head .neu-panel-count {
+  color: #ffffff;
+  background: var(--neu-accent-fill);
+  box-shadow: 0 4px 10px -4px rgba(109, 63, 224, 0.7);
+  transform: scale(1.06);
+}
+
+/* Expanded module: soft pressed-in panel with an accent edge (was a hard black line) */
+.admin-neu .neu-mod-body {
+  background: var(--neu-well) !important;
+  border-top: 1px solid var(--neu-line) !important;
+  border-left: 3px solid var(--neu-accent) !important;
+  box-shadow: var(--neu-inset-sm) !important;
+}
+
+/* Tabs inside a module (e.g. Aadhaar Details): raised soft rows; the open one lifts with an accent header */
+.admin-neu .neu-tab-acc {
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--neu-base);
+  box-shadow: var(--neu-raised-xs);
+  transition: box-shadow 0.25s ease, transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.admin-neu .neu-tab-acc:hover { box-shadow: var(--neu-raised-sm); transform: translateY(-1px); }
+.admin-neu .neu-tab-acc.is-open { box-shadow: var(--neu-raised-sm), 0 0 0 1px rgba(109, 63, 224, 0.18); transform: none; }
+.admin-neu .neu-tab-acc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px 11px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.admin-neu .neu-tab-acc-head:hover { color: var(--neu-accent); }
+.admin-neu .neu-tab-acc-head:focus-visible { outline: 2px solid var(--neu-accent); outline-offset: -2px; border-radius: 14px; }
+.admin-neu .neu-tab-acc.is-open .neu-tab-acc-head {
+  color: var(--neu-accent);
+  background: linear-gradient(90deg, var(--wise-green-alpha), transparent 85%);
+  border-bottom: 1px solid var(--neu-line);
+}
+.admin-neu .neu-tab-acc-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.45;
+  transition: background 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+}
+.admin-neu .neu-tab-acc-head:hover .neu-tab-acc-dot { background: var(--neu-accent); opacity: 0.8; }
+.admin-neu .neu-tab-acc.is-open .neu-tab-acc-dot { background: var(--neu-accent); opacity: 1; box-shadow: 0 0 0 4px var(--wise-green-alpha); }
+.admin-neu .neu-tab-acc-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-neu .neu-tab-acc-chev {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: var(--neu-base);
+  box-shadow: var(--neu-raised-xs);
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.2s ease, box-shadow 0.2s ease;
+}
+.admin-neu .neu-tab-acc-head:hover .neu-tab-acc-chev { color: var(--neu-accent); transform: translateX(2px); }
+.admin-neu .neu-tab-acc.is-open .neu-tab-acc-chev { color: var(--neu-accent); transform: rotate(90deg); box-shadow: var(--neu-inset-sm); }
+.admin-neu .neu-tab-acc-body { padding: 6px 4px 8px; animation: neuTabIn 0.22s ease-out; }
+@keyframes neuTabIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-neu :is(.neu-panel-head, .neu-panel-head::after, .neu-panel-icon, .neu-panel-title, .neu-panel-count, .neu-tab-acc, .neu-tab-acc-chev) { transition: none; }
+  .admin-neu :is(.neu-panel-doc, .neu-tab-acc-body) { animation: none; }
+}
+/* globals.css zeroes .card padding (!important); now that cards are raised they need it back */
+.admin-neu .card { padding: 24px !important; }
+.admin-neu .card[style*="padding: 14px"] { padding: 14px !important; }
+.admin-neu .card[style*="padding: 16px"] { padding: 18px !important; }
+.admin-neu .card[style*="padding: 20px"] { padding: 20px !important; }
+.admin-neu .card[style*="padding: 40px"],
+.admin-neu .card.neu-login-card { padding: 40px !important; }
+.admin-neu .neu-login-card > div:first-child { display: flex; flex-direction: column; align-items: center; }
+
+/* ---- Login: one open page — illustration (left) + form (right) on the same surface, no card ---- */
+/* The whole page takes the illustration's own light tone, so picture and form share one background */
+.admin-neu .neu-login-shell {
+  --neu-base: #eef0f7;
+  --bg-secondary: #eef0f7;
+  padding: 32px;
+  box-sizing: border-box;
+  background: radial-gradient(ellipse 70% 80% at 30% 50%, #f5f6fb 0%, #eef0f7 60%, #e9ecf4 100%) !important;
+}
+html:has(.neu-login-shell), html:has(.neu-login-shell) body { background: #eef0f7 !important; }
+.admin-neu .neu-login-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(32px, 6vw, 110px);
+  width: min(1240px, 100%);
+}
+/* The form has no card of its own */
+.admin-neu .neu-login-frame .card.neu-login-card {
+  flex: 0 0 400px;
+  max-width: 400px !important;
+  box-sizing: border-box;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  position: relative;
+  z-index: 2;
+}
+.admin-neu .neu-login-hero {
+  --rx: 0deg; --ry: 0deg; --tx: 0px; --ty: 0px; --gx: 50%; --gy: 50%;
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  perspective: 1200px;
+  cursor: default;
+  user-select: none;
+}
+:root[data-theme="dark"] .admin-neu .neu-login-shell { --neu-base: #22252c; --bg-secondary: #22252c; background: #22252c !important; }
+:root[data-theme="dark"]:has(.neu-login-shell), :root[data-theme="dark"]:has(.neu-login-shell) body { background: #22252c !important; }
+/* Soft light that follows the mouse */
+.admin-neu .neu-login-hero-glow {
+  position: absolute;
+  inset: -6% -4% 18%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side at var(--gx) var(--gy), rgba(124, 77, 255, 0.22), transparent 70%);
+  filter: blur(18px);
+  opacity: 0.55;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.admin-neu .neu-login-hero:hover .neu-login-hero-glow { opacity: 1; }
+.admin-neu .neu-login-hero-art {
+  width: 100%;
+  max-width: 780px;
+  transform: rotateX(var(--rx)) rotateY(var(--ry)) translate3d(var(--tx), var(--ty), 0);
+  transform-style: preserve-3d;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+.admin-neu .neu-login-hero-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Fade the picture's dark edges into the page so it blends in */
+  -webkit-mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, #000 55%, transparent 100%);
+          mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, #000 55%, transparent 100%);
+  animation: neuHeroFloat 6s ease-in-out infinite;
+  transition: filter 0.4s ease;
+}
+.admin-neu .neu-login-hero:hover .neu-login-hero-art img { filter: saturate(1.12) brightness(1.03); }
+@keyframes neuHeroFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+.admin-neu .neu-login-hero-caption {
+  margin-top: -8px;
+  text-align: center;
+  max-width: 440px;
+  transform: translate3d(calc(var(--tx) * -0.4), calc(var(--ty) * -0.4), 0);
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.admin-neu .neu-login-hero-chip {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--neu-accent);
+  background: var(--neu-base);
+  box-shadow: var(--neu-raised-xs);
+}
+.admin-neu .neu-login-hero-caption h2 {
+  margin: 12px 0 6px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.admin-neu .neu-login-hero-caption p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-neu .neu-login-hero-art img { animation: none; }
+  .admin-neu .neu-login-hero-art, .admin-neu .neu-login-hero-caption { transition: none; }
+}
+/* ---- Login form ---- */
+.admin-neu .neu-login-card > div.neu-login-head:first-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  margin-bottom: 28px;
+}
+.admin-neu .neu-login-eyebrow {
+  margin-top: 18px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--neu-accent);
+  background: var(--neu-base);
+  box-shadow: var(--neu-raised-xs);
+}
+.admin-neu .neu-login-title {
+  margin: 14px 0 6px;
+  font-size: 2.3rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+.admin-neu .neu-login-sub {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.admin-neu .neu-login-error {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.08);
+  box-shadow: var(--neu-inset-sm);
+}
+.admin-neu .neu-login-form { display: flex; flex-direction: column; }
+.admin-neu .neu-login-label {
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.admin-neu .neu-login-field { position: relative; margin-bottom: 20px; }
+.admin-neu .neu-login-field input {
+  width: 100%;
+  height: 54px;
+  box-sizing: border-box;
+  padding: 0 48px 0 48px !important;
+  border-radius: 16px !important;
+  font-size: 0.95rem;
+  transition: box-shadow 0.2s ease;
+}
+.admin-neu .neu-login-field-icon {
+  position: absolute;
+  left: 17px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: color 0.2s ease;
+}
+.admin-neu .neu-login-field:focus-within .neu-login-field-icon { color: var(--neu-accent); }
+.admin-neu .neu-login-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, box-shadow 0.2s ease;
+}
+.admin-neu .neu-login-eye:hover { color: var(--neu-accent); box-shadow: var(--neu-raised-xs); }
+.admin-neu .neu-login-submit {
+  margin-top: 10px;
+  height: 56px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 1rem !important;
+  border-radius: 16px !important;
+  cursor: pointer;
+}
+.admin-neu .neu-login-submit svg { transition: transform 0.2s ease; }
+.admin-neu .neu-login-submit:hover:not(:disabled) svg { transform: translateX(4px); }
+.admin-neu .neu-login-submit:disabled { cursor: not-allowed; opacity: 0.75; }
+.admin-neu .neu-login-foot {
+  margin-top: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.admin-neu .neu-login-foot svg { color: #10b981; flex-shrink: 0; }
+.admin-neu .neu-login-help { margin: 6px 0 0 24px; font-size: 0.8rem; color: var(--text-muted); }
+
+/* Login header: logo first, then the portal chip — one line */
+.admin-neu .neu-login-brand { display: flex; align-items: center; gap: 12px; }
+.admin-neu .neu-login-brand .neu-login-eyebrow { margin-top: 0; }
+.admin-neu .neu-login-title { margin-top: 20px; }
+
+/* Narrow screens: just the login form (as a single card) */
+@media (max-width: 1000px) {
+  .admin-neu .neu-login-hero { display: none; }
+  .admin-neu .neu-login-frame { width: auto; }
+  .admin-neu .neu-login-frame .card.neu-login-card { flex-basis: auto; width: min(440px, 100%) !important; }
+}
+.admin-neu .card[style*="border-radius: 8px"],
+.admin-neu .card[style*="border-radius: 12px"] { border-radius: 18px !important; }
+.admin-neu .inspection-value { border-bottom-color: var(--neu-line); }
+
+/* Module / document lists in the detail sidebars */
+.admin-neu .premium-sidebar-list { gap: 10px; padding: 14px; }
+.admin-neu .premium-sidebar-module,
+.admin-neu .premium-sidebar-item {
+  border: none !important;
+  border-radius: 14px;
+  background: transparent;
+}
+.admin-neu .premium-sidebar-module.active,
+.admin-neu .premium-sidebar-item.active,
+.admin-neu .premium-sidebar-item.active:hover {
+  background: var(--neu-base) !important;
+  box-shadow: var(--neu-raised-sm) !important;
+}
+.admin-neu .premium-sidebar-module:not(.active) .premium-sidebar-module-header:hover,
+.admin-neu .premium-sidebar-item:not(.active):hover {
+  background: var(--neu-well) !important;
+  box-shadow: var(--neu-inset-sm);
+  border-radius: 14px;
+}
+
+/* ---- PDF Builder ---- */
+.admin-neu .pdfb,
+.admin-neu .pdfb-canvas-wrapper { background: var(--neu-base) !important; }
+.admin-neu .pdfb-left,
+.admin-neu .pdfb-right,
+.admin-neu .pdfb-toolbar,
+.admin-neu .pdfb-analysis-panel {
+  background: var(--neu-base) !important;
+  border-color: var(--neu-line) !important;
+}
+.admin-neu .pdfb-left-header,
+.admin-neu .pdfb-right-header,
+.admin-neu .pdfb-page-actions { border-bottom-color: var(--neu-line) !important; }
+.admin-neu .pdfb-tbtn:not(.primary):hover,
+.admin-neu .pdfb-var-item:hover,
+.admin-neu .pdfb-ctx-item:hover { background: var(--neu-well) !important; box-shadow: var(--neu-inset-sm); border-color: transparent; }
+.admin-neu .pdfb-tbtn.active { background: var(--neu-well) !important; box-shadow: var(--neu-inset-sm); color: var(--neu-accent) !important; border-color: transparent; }
+.admin-neu .pdfb-custom-form,
+.admin-neu .pdfb-normalize-input-group,
+.admin-neu .pdfb-align-pick-list { background: var(--neu-well) !important; border-color: transparent !important; box-shadow: var(--neu-inset-sm); }
+.admin-neu .pdfb-page-action-btn { border-color: transparent !important; box-shadow: var(--neu-raised-xs); border-radius: 12px !important; }
+.admin-neu .pdfb-context-menu { background: var(--neu-base) !important; border: none; border-radius: 16px; box-shadow: var(--neu-pop) !important; }
+.admin-neu .pdfb-canvas-container { box-shadow: var(--neu-raised) !important; border-radius: 6px; }
+
+/* Slimmer side panels so the page canvas gets the room (collapsed panels stay at 0) */
+.admin-neu .pdfb-left:not(.collapsed) { width: 210px; }
+.admin-neu .pdfb-right:not(.collapsed) { width: 220px; }
+.admin-neu .pdfb-left-header { padding: 14px 14px 10px; }
+.admin-neu .pdfb-left-header h3 { font-size: 0.88rem; }
+.admin-neu .pdfb-left-header p { font-size: 0.7rem; }
+.admin-neu .pdfb-search { margin: 10px 12px 0; width: calc(100% - 24px); font-size: 0.76rem; }
+.admin-neu .pdfb-var-list { padding: 8px; }
+.admin-neu .pdfb-var-group-title { padding: 10px 6px 4px; }
+.admin-neu .pdfb-var-item { gap: 8px; padding: 7px 8px; font-size: 0.74rem; }
+.admin-neu .pdfb-var-item .pdfb-var-icon { width: 24px; height: 24px; border-radius: 7px; font-size: 0.65rem; }
+.admin-neu .pdfb-var-item .pdfb-var-key { display: none; }
+.admin-neu .pdfb-custom-form { margin: 6px 8px 10px; padding: 10px; }
+.admin-neu .pdfb-right-header { padding: 12px 14px 10px; }
+.admin-neu .pdfb-props { padding: 12px 14px; }
+.admin-neu .pdfb-prop-label { width: 42px; font-size: 0.62rem; }
+.admin-neu .pdfb-page-actions { padding: 10px 12px; }
+
+/* Go-to-page box in the toolbar */
+.admin-neu .pdfb-page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.admin-neu .pdfb-page-jump input {
+  width: 52px;
+  height: 30px;
+  padding: 0 6px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  -moz-appearance: textfield;
+}
+.admin-neu .pdfb-page-jump input::-webkit-outer-spin-button,
+.admin-neu .pdfb-page-jump input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* ---- Stable hooks for elements whose inline border changes on hover ---- */
+.admin-neu .neu-card {
+  background: var(--neu-base) !important;
+  border-color: transparent !important;
+  box-shadow: var(--neu-raised) !important;
+  border-radius: 22px !important;
+}
+.admin-neu .neu-card:hover { box-shadow: var(--neu-raised-sm) !important; transform: none !important; }
+.admin-neu .neu-btn-soft {
+  background: var(--neu-base) !important;
+  border-color: transparent !important;
+  border-radius: 12px !important;
+  box-shadow: var(--neu-raised-xs) !important;
+  transition: box-shadow 0.2s ease, color 0.2s ease !important;
+}
+.admin-neu .neu-btn-soft:hover { color: var(--neu-accent) !important; }
+.admin-neu .neu-btn-soft:active { box-shadow: var(--neu-inset-sm) !important; }
+
+/* ---- Stat / filter cards (E-Stamps, BOID): raised; the selected one is pressed in ---- */
+.admin-neu .neu-stat {
+  background: var(--neu-base) !important;
+  border-color: transparent !important;
+  border-radius: 22px !important;
+  box-shadow: var(--neu-raised) !important;
+  transform: none !important;
+  transition: box-shadow 0.25s ease !important;
+}
+.admin-neu .neu-stat:hover { box-shadow: var(--neu-raised-sm) !important; }
+.admin-neu .neu-stat.active { box-shadow: var(--neu-inset) !important; }
+.admin-neu .neu-stat > div:last-child[style*="border-radius: 20px"] {
+  border-radius: 50% !important;
+  background: var(--neu-base) !important;
+  box-shadow: var(--neu-raised-sm);
+}
+
+/* ---- Rows that held a now-hidden page title: keep just the actions, tight to the top ---- */
+.admin-neu .neu-main div:has(> div > .admin-section-title) {
+  justify-content: flex-end !important;
+  align-items: center !important;
+  margin-bottom: 20px !important;
+}
+
+/* …and when that row had nothing but the title, drop it entirely */
+.admin-neu .neu-main div:has(> div > .admin-section-title):not(:has(button, input, select)) { display: none !important; }
+/* BOID: its own 24px padding doubled the page padding */
+.admin-neu .neu-main > .section-container { padding: 0 !important; }
+
+/* ---- AP Management: use the full content width like every other page ---- */
+.admin-neu .neu-main div[style*="max-width: 1200px"] { max-width: none !important; padding: 0 !important; }
+/* Horizontal card rows: room for the soft shadows so they aren't clipped */
+.admin-neu .neu-main div[style*="overflow-x: auto"][style*="padding-bottom: 16px"] {
+  padding: 14px 14px 24px !important;
+  margin: -14px -14px -8px !important;
+}
+
+/* ---- Trash empty state: a soft panel instead of bare text ---- */
+.admin-neu .trs-empty {
+  margin-top: 8px;
+  padding: 64px 20px !important;
+  border-radius: 26px;
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset);
+  font-size: 0.95rem;
+}
+.admin-neu .trs-empty svg { color: var(--neu-accent); opacity: 0.8; }
+
+/* ---- Dashboard charts ---- */
+.admin-neu .recharts-cartesian-grid line { stroke: var(--neu-line); }
+
+/* ---- Field dropdown (maker-checker detail: fields with fixed choices, e.g. opt-in / opt-out) ---- */
+.admin-neu .neu-select {
+  position: relative;
+  margin-top: 6px;
+  outline: none;
+  font-family: inherit;
+  z-index: 40;
+}
+.admin-neu .neu-select-trigger {
+  height: 36px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm), 0 0 0 2px var(--wise-green-alpha);
+  cursor: pointer;
+}
+.admin-neu .neu-select-trigger .is-placeholder { color: var(--text-muted); font-weight: 500; }
+.admin-neu .neu-select-trigger svg { color: var(--neu-accent); transform: rotate(180deg); transition: transform 0.2s ease; }
+.admin-neu .neu-select:focus-visible .neu-select-trigger { box-shadow: var(--neu-inset-sm), 0 0 0 2px var(--neu-accent); }
+.admin-neu .neu-select-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  border-radius: 14px;
+  background: var(--neu-base);
+  box-shadow: var(--neu-pop);
+  animation: neuSelectIn 0.16s ease-out;
+}
+@keyframes neuSelectIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.admin-neu .neu-select-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
+}
+.admin-neu .neu-select-opt + .neu-select-opt { margin-top: 2px; }
+.admin-neu .neu-select-opt.is-none { color: var(--text-muted); font-style: italic; }
+.admin-neu .neu-select-opt.is-active { background: var(--wise-green-alpha); color: var(--neu-accent); padding-left: 16px; }
+.admin-neu .neu-select-opt.is-selected { font-weight: 700; color: var(--neu-accent); }
+.admin-neu .neu-select-opt.is-selected.is-active,
+.admin-neu .neu-select-opt.is-selected:hover { background: var(--neu-accent-fill); color: #ffffff; }
+.admin-neu .neu-select-opt svg { flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .admin-neu .neu-select-list { animation: none; }
+  .admin-neu .neu-select-opt { transition: none; }
+}
+
+/* Each side-by-side document's own zoom / rotate / download bar */
+.admin-neu .neu-viewer-tools {
+  align-items: center;
+  padding: 5px 10px !important;
+  border: none !important;
+  border-radius: 999px !important;
+  background: var(--neu-base) !important;
+  /* plain shadow, no white highlight: it sits on dark PDF viewers too, where a highlight looks like a glow */
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18), 0 4px 12px -4px rgba(15, 23, 42, 0.28) !important;
+}
+.admin-neu .neu-viewer-tools button { display: flex; align-items: center; padding: 3px; border-radius: 8px; transition: color 0.15s ease, background 0.15s ease; }
+.admin-neu .neu-viewer-tools button:hover { color: var(--neu-accent) !important; background: var(--wise-green-alpha) !important; }
+
+/* ---- Application detail header: applicant + dates (actions keep their own styles) ---- */
+.admin-neu .neu-dh-applicant { display: flex; align-items: center; gap: 12px; flex: 1 0 auto; min-width: 0; }
+/* a little tighter between applicant, dates and actions so all three fit on one row */
+.admin-neu .neu-detail-bar { column-gap: 14px !important; }
+.admin-neu .neu-detail-bar .neu-dh-applicant > .neu-dh-avatar.neu-dh-avatar {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff !important;
+  background: var(--neu-accent-fill) !important;
+  box-shadow: var(--neu-raised-xs), 0 8px 18px -8px rgba(109, 63, 224, 0.75) !important;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease;
+}
+.admin-neu .neu-detail-bar .neu-dh-applicant:hover > .neu-dh-avatar.neu-dh-avatar {
+  transform: rotate(-6deg) scale(1.05);
+  box-shadow: var(--neu-raised-sm), 0 12px 24px -8px rgba(109, 63, 224, 0.85) !important;
+}
+.admin-neu .neu-dh-id { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.admin-neu .neu-dh-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.admin-neu .neu-dh-name {
+  margin: 0;
+  max-width: 380px;
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.admin-neu .neu-dh-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--neu-well);
+  box-shadow: var(--neu-inset-sm);
+}
+.admin-neu .neu-dh-status.is-pending { color: #b45309; }
+.admin-neu .neu-dh-status.is-trash { color: #b91c1c; }
+.admin-neu .neu-dh-status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: neuDhPulse 1.8s ease-out infinite; }
+@keyframes neuDhPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent); }
+  80%, 100% { box-shadow: 0 0 0 6px transparent; }
+}
+.admin-neu .neu-dh-meta { gap: 6px; }
+.admin-neu .neu-dh-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 3px;
+  border-radius: 10px;
+  white-space: nowrap;
+  background: var(--neu-base);
+  box-shadow: var(--neu-raised-xs);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.admin-neu .neu-dh-chip:hover { box-shadow: var(--neu-raised-sm); transform: translateY(-1px); }
+.admin-neu .neu-dh-chip-k {
+  padding: 2px 5px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+  background: var(--neu-accent-fill);
+}
+.admin-neu .neu-dh-chip.is-ucc .neu-dh-chip-k { background: linear-gradient(145deg, #10b981, #059669); }
+.admin-neu .neu-dh-chip-v {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.admin-neu .neu-dh-chip.is-pan .neu-dh-chip-v { color: var(--neu-accent); }
+.admin-neu .neu-dh-copy {
+  width: 19px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.admin-neu .neu-dh-chip:hover .neu-dh-copy { opacity: 1; }
+.admin-neu .neu-dh-copy:hover { color: var(--neu-accent); background: var(--wise-green-alpha); }
+.admin-neu .neu-dh-copy.is-done { opacity: 1; color: #16a34a; }
+.admin-neu .neu-dh-copy:focus-visible { outline: 2px solid var(--neu-accent); outline-offset: 1px; opacity: 1; }
+
+/* Both dates side by side in one compact soft card; each half lights up on hover */
+.admin-neu .neu-dh-dates {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  padding: 3px;
+  border-radius: 13px;
+  background: var(--neu-base);
+  box-shadow: var(--neu-raised-xs);
+}
+.admin-neu .neu-dh-dates-sep { width: 1px; margin: 6px 2px; background: var(--neu-line); }
+.admin-neu .neu-dh-date {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  cursor: default;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.admin-neu .neu-dh-date:hover { background: var(--neu-well); box-shadow: var(--neu-inset-sm); }
+.admin-neu .neu-dh-date-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+.admin-neu .neu-dh-date-k svg { flex-shrink: 0; color: var(--neu-accent); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.admin-neu .neu-dh-date:hover .neu-dh-date-k { color: var(--neu-accent); }
+.admin-neu .neu-dh-date:hover .neu-dh-date-k svg { transform: rotate(-12deg) scale(1.15); }
+.admin-neu .neu-dh-date-v { font-size: 0.76rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .admin-neu .neu-dh-status-dot { animation: none; }
+  .admin-neu :is(.neu-dh-avatar, .neu-dh-chip, .neu-dh-date, .neu-dh-date-k svg) { transition: none; }
+}

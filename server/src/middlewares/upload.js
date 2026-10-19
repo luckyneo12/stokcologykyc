@@ -32,3 +32,15 @@ const upload = multer({
 });
 
 module.exports = upload;
+
+// OVD (Officially Valid Document) requested by an admin: PDF or any image format (HEIC, GIF, BMP, TIFF…).
+// Non-JPG/PNG images are delivered as JPG (see uploadOvdDocument) so they can go into the KYC PDF and back office.
+module.exports.ovd = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = file.mimetype === "application/pdf" || String(file.mimetype || "").startsWith("image/");
+    if (!ok) req.ovdRejectedType = file.mimetype || "unknown";
+    cb(null, ok);
+  },
+});

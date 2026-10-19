@@ -1,4 +1,5 @@
 import "../globals.css";
+import "./admin-neu.css";
 
 export const metadata = {
   title: "SecureKYC Admin - Dashboard",
@@ -24,7 +25,7 @@ export default function AdminLayout({ children }) {
           `,
         }}
       />
-      {children}
+      <div className="admin-neu">{children}</div>
     </>
   );
 }

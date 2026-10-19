@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { 
   ShieldAlert, Users, FileText, CheckCircle, AlertTriangle, 
-  ArrowUpRight, ArrowDownRight, Activity, ChevronRight 
+  ArrowUpRight, ArrowDownRight, Activity, ChevronRight, Clock3
 } from 'lucide-react';
 
 const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'];
@@ -44,12 +44,6 @@ const StatCard = ({ label, value, trend, trendValue, icon: Icon, color, onClick 
       }}>
         <Icon size={22} strokeWidth={2} />
       </div>
-      {trend && (
-        <div style={{ display: "flex", alignItems: "center", gap: 4, background: trend === 'up' ? '#10b98115' : '#ef444415', color: trend === 'up' ? '#10b981' : '#ef4444', padding: "4px 10px", borderRadius: 999, fontSize: "0.75rem", fontWeight: 700 }}>
-          {trend === 'up' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-          {trendValue}
-        </div>
-      )}
     </div>
     <div style={{ fontSize: "2.5rem", fontWeight: 900, marginBottom: 4, letterSpacing: "-1px", color: "var(--text-primary)" }}>{value}</div>
     <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>{label}</div>
@@ -263,13 +257,23 @@ export default function DashboardOverview({ onNavigate }) {
       </div>
 
       {/* Recent KYC Requests Table */}
-      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", marginBottom: 32 }}>
-        <div style={{ padding: "24px 32px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-secondary)" }}>
-          <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>Recent Applications</div>
-          <button onClick={() => window.location.href = "/admin/maker-checker"} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", fontWeight: 800, color: "var(--text-primary)", background: "transparent", border: "1px solid var(--border-color)", padding: "8px 16px", borderRadius: 999, cursor: "pointer", transition: "0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="transparent"}>
-            View All <ChevronRight size={16} />
-          </button>
+      {/* Section heading sits above the card; the card holds only the table */}
+      <div className="neu-section-head">
+        <div className="neu-section-heading">
+          <div className="neu-section-icon"><Clock3 size={20} strokeWidth={2.2} /></div>
+          <div>
+            <div className="neu-section-title">
+              Recent Applications
+              <span className="neu-section-count">{Math.min((liveStats?.recent || []).length, 6)}</span>
+            </div>
+            <div className="neu-section-sub">Latest KYC submissions waiting for action</div>
+          </div>
         </div>
+        <button className="neu-btn-soft" onClick={() => window.location.href = "/admin/maker-checker"} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)", padding: "8px 16px", cursor: "pointer" }}>
+          View All <ChevronRight size={16} />
+        </button>
+      </div>
+      <div className="neu-table-card" style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, overflow: "hidden", boxShadow: "0 4px 24px rgba(0,0,0,0.02)", marginBottom: 32 }}>
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -301,7 +305,7 @@ export default function DashboardOverview({ onNavigate }) {
                     </td>
 
                     <td style={{ padding: "18px 32px" }}>
-                      <button onClick={() => window.location.href = "/admin/maker-checker"} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-card)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
+                      <button className="neu-btn-soft" onClick={() => window.location.href = "/admin/maker-checker"} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-card)", color: "var(--text-primary)", fontWeight: 800, fontSize: "0.75rem", cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} onMouseOver={e => e.currentTarget.style.borderColor="var(--text-muted)"} onMouseOut={e => e.currentTarget.style.borderColor="var(--border-color)"}>Review</button>
                     </td>
                   </tr>
                   );
@@ -316,9 +320,10 @@ export default function DashboardOverview({ onNavigate }) {
       <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr", gap: 24, marginBottom: 24 }}>
         {/* Weekly Trend Area Chart */}
         <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 24, padding: 32, boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30 }}>
-            <div>
-              <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px" }}>Submission Volume Trend</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 28, marginBottom: 30 }}>
+            {/* Title keeps its width (one line); the range selector takes the rest */}
+            <div style={{ flexShrink: 0 }}>
+              <div style={{ fontWeight: 900, fontSize: "1.2rem", letterSpacing: "-0.5px", whiteSpace: "nowrap" }}>Submission Volume Trend</div>
               <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontWeight: 600 }}>{chartDays}-day trailing analysis</div>
             </div>
             <select className="admin-select" value={chartDays} onChange={e => setChartDays(Number(e.target.value))} style={{ padding: "8px 16px", borderRadius: 12, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", fontWeight: 700, fontSize: "0.85rem", color: "var(--text-primary)" }}>

@@ -57,6 +57,7 @@ const FRONTEND_STEP_TITLE_MAP = {
   panUpload: "PAN Upload", ipv: "IPV/Selfie", pepProof: "PEP Proof",
   nominee1Proof: "Nominee 1", nominee2Proof: "Nominee 2", nominee3Proof: "Nominee 3",
   guardian1Proof: "Guardian 1", guardian2Proof: "Guardian 2", guardian3Proof: "Guardian 3",
+  ovdRequest: "OVD Requested",
   esignPreview: "eSign Preview", aadhaarEsign: "Aadhaar eSign", completion: "Completion"
 };
 
