@@ -82,9 +82,15 @@ export const THRESHOLDS = {
 
   // Phones — CLEAR glasses: same rule as the desktop, with a slightly lower bridge-line threshold
   // (the face is analysed at a smaller size on phones, so a thin frame gives a weaker line).
-  // Real phone selfies: with glasses bridge line 3.46 / bridge edge 2.43 (missed by the old stricter
-  // phone rule); without glasses 2.69 / 1.56, 1.44 / 0.90, 2.17 / 1.61.
-  mobileGlassesBridgeLine: 3.3,
+  // Real phone selfies: with glasses bridge line 3.46 / bridge edge 2.43; without glasses 2.69 / 1.56,
+  // 1.44 / 0.90, 2.17 / 1.61. The 3.3 / 2.2 rule still flagged phones without glasses (overhead light:
+  // brow-ridge shadow + camera sharpening across the nose bridge), so on phones the bridge must be
+  // clearly strong AND a second part of the frame (lower rim) must show — unless the bridge alone is
+  // unmistakable. Only real frames pass; a faint thin frame may be missed (the photo is still reviewed).
+  mobileGlassesBridgeLine: 3.8,
+  mobileGlassesBridgeEdge: 2.6,
+  mobileGlassesRimLine: 3.5,
+  mobileGlassesBridgeLineAlone: 5.0,
   // Phones — GOGGLES / sunglasses stay strict (dim rooms + dark eyes gave false "goggles" alerts):
   mobileSunglassDarkRatio: 0.4,
   mobileSunglassMaxTexture: 0.12,
@@ -681,15 +687,19 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
       (templeLine > THRESHOLDS.glassesTempleLine ? 1 : 0);
     metrics.glassesLines = frameLines;
     // A frame across the nose bridge (strong line) confirmed by its edge energy or by an arm line.
-    // Phones: the bridge line must be confirmed by the bridge's own edge energy. The arm (temple)
-    // line is not accepted there — on phone selfies without glasses, hair, ears and background give
-    // it 4.5–13 (above its 4.4 limit), so with it a sharpened / noisy bridge line alone was enough.
-    // Real phone selfie with glasses: bridge line 3.46, bridge edge 2.43 → still detected.
-    const bridgeLineMin = mobile ? THRESHOLDS.mobileGlassesBridgeLine : THRESHOLDS.glassesBridgeLine;
-    const confirmed = mobile
-      ? bridgeEdge > THRESHOLDS.glassesBridgeEdge
-      : bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine;
-    if (bridgeLine > bridgeLineMin && confirmed) {
+    // Phones: the arm (temple) line is not accepted — on phone selfies without glasses, hair, ears and
+    // background give it 4.5–13 (above its 4.4 limit). The bridge must be strong on both line and edge
+    // energy, and also be backed by a lower-rim line unless the bridge line alone is unmistakable.
+    if (mobile) {
+      const bridgeStrong =
+        bridgeLine > THRESHOLDS.mobileGlassesBridgeLine && bridgeEdge > THRESHOLDS.mobileGlassesBridgeEdge;
+      const corroborated =
+        rimLine > THRESHOLDS.mobileGlassesRimLine || bridgeLine > THRESHOLDS.mobileGlassesBridgeLineAlone;
+      if (bridgeStrong && corroborated) flags.glasses = true;
+    } else if (
+      bridgeLine > THRESHOLDS.glassesBridgeLine &&
+      (bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine)
+    ) {
       flags.glasses = true;
     }
   }
