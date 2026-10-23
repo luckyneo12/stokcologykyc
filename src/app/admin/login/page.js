@@ -1,4 +1,5 @@
 "use client";
+import { useForceLightTheme } from "@/hooks/useForceLightTheme";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/kyc/Logo";
@@ -6,6 +7,7 @@ import { Mail, Lock, Eye, EyeOff, ArrowRight, ShieldCheck } from "lucide-react";
 import { API_BASE_URL } from "@/utils/apiConfig";
 
 export default function AdminLogin() {
+  useForceLightTheme("adminTheme");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

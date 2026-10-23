@@ -1,9 +1,11 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import CalendarPopover from "@/components/ui/CalendarPopover";
 
 export default function DateInput({ value, onChange, style, className, max }) {
   const [textValue, setTextValue] = useState("");
-  const hiddenDateRef = useRef(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const wrapperRef = useRef(null);
 
   useEffect(() => {
     if (value && typeof value === 'string' && value.includes("-")) {
@@ -110,8 +112,7 @@ export default function DateInput({ value, onChange, style, className, max }) {
     });
   };
 
-  const handleDateSelect = (e) => {
-    const dateStr = e.target.value; 
+  const handleDateSelect = (dateStr) => {
     if (dateStr) {
       onChange({ target: { value: dateStr } });
       const parts = dateStr.split("-");
@@ -120,7 +121,7 @@ export default function DateInput({ value, onChange, style, className, max }) {
   };
 
   return (
-    <div style={{ position: "relative", width: "100%" }}>
+    <div ref={wrapperRef} style={{ position: "relative", width: "100%" }}>
       <input
         type="text"
         placeholder="DD/MM/YYYY"
@@ -136,38 +137,15 @@ export default function DateInput({ value, onChange, style, className, max }) {
         maxLength={10}
       />
       
-      <input 
-        ref={hiddenDateRef}
-        type="date"
-        max={max}
-        onChange={handleDateSelect}
-        value={value || ""}
-        style={{
-           position: 'absolute',
-           width: 1,
-           height: 1,
-           opacity: 0,
-           padding: 0,
-           margin: 0,
-           border: 'none',
-           zIndex: -1
-        }}
-        tabIndex="-1"
-      />
-
       <div 
-        onClick={() => {
-          if (hiddenDateRef.current && hiddenDateRef.current.showPicker) {
-            hiddenDateRef.current.showPicker();
-          }
-        }}
+        onClick={() => setPickerOpen(o => !o)}
         style={{ 
           position: "absolute", 
           right: 16, 
           top: "50%", 
           transform: "translateY(-50%)", 
           cursor: "pointer", 
-          color: "var(--text-muted)", 
+          color: pickerOpen ? "var(--wise-green)" : "var(--text-muted)", 
           zIndex: 2,
           background: "var(--input-bg)",
           display: "flex",
@@ -176,6 +154,17 @@ export default function DateInput({ value, onChange, style, className, max }) {
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       </div>
+
+      {pickerOpen && (
+        <CalendarPopover
+          anchorRef={wrapperRef}
+          value={value}
+          max={max}
+          onSelect={handleDateSelect}
+          onClear={() => { setTextValue(""); onChange({ target: { value: "" } }); }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

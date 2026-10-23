@@ -514,6 +514,8 @@ html .admin-neu .admin-table tbody tr:hover td span[style*="border-radius"]:not(
    Matches the `color` property only — not `border-color: var(--text-muted)`, which buttons set on hover */
 html .admin-neu .admin-table tbody tr:hover td :is([style^="color: var(--text-muted)"], [style*="; color: var(--text-muted)"]),
 html .admin-neu .admin-table tbody tr:hover td:is([style^="color: var(--text-muted)"], [style*="; color: var(--text-muted)"]) { color: rgba(255, 255, 255, 0.82) !important; }
+/* Audit Logs ID chip: it becomes a white pill on hover (rule above), so its muted text must not turn white too */
+html .admin-neu .admin-table tbody tr:hover td .audit-log-id { color: var(--neu-accent) !important; }
 /* Pop-out: the hovered row lifts with a violet glow. It is layered above every other row (z-index 30 >
    the frozen columns' 10–20), so its shadow falls evenly over the neighbours instead of under their
    frozen cells. */

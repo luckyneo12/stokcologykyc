@@ -853,7 +853,8 @@ export function AuditLogs() {
         >
           {/* Log ID with copy */}
           <td style={{ padding: "12px 16px" }}>
-            <span 
+            <span
+              className="audit-log-id"
               onClick={(e) => handleCopy(e, l.id, `log-${l.id}`)}
               style={{ 
                 fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 700, color: "var(--text-muted)", 

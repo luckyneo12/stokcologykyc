@@ -1,4 +1,5 @@
 "use client";
+import { useForceLightTheme } from "@/hooks/useForceLightTheme";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -8,6 +9,7 @@ import { API_BASE_URL } from "@/utils/apiConfig";
 import "./globe-login.css";
 
 export default function AdminLogin() {
+  useForceLightTheme("globeTheme");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

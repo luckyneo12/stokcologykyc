@@ -16,6 +16,7 @@ const crmRoutes = require("./src/routes/crmRoutes");
 const globeRoutes = require("./src/routes/globeRoutes");
 const pdfTemplateRoutes = require("./src/routes/pdfTemplateRoutes");
 const apRoutes = require("./src/routes/apRoutes");
+const rekycRoutes = require("./src/rekyc/routes");
 const errorHandler = require("./src/middlewares/errorHandler");
 
 const app = express();
@@ -121,6 +122,9 @@ app.use("/api/crm", crmRoutes);
 app.use("/api/globe", globeRoutes);
 app.use("/api/admin/pdf-templates", pdfTemplateRoutes);
 app.use("/api/ap", apRoutes);
+// ReKYC (separate client portal + separate admin portal, own tables and accounts)
+app.use("/api/rekyc", rekycRoutes.clientRouter);
+app.use("/api/rekyc-admin", rekycRoutes.adminRouter);
 
 // Root route
 app.get("/", (req, res) => {

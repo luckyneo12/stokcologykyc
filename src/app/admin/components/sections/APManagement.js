@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/utils/apiConfig";
+import DatePickerField from "@/components/ui/DatePickerField";
 
 // SVG Icons
 const UsersIcon = () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
@@ -291,22 +292,12 @@ export default function APManagement() {
         
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           {/* Calendar Filter */}
-          <div style={{ position: "relative", display: "flex", alignItems: "center", background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 8, padding: selectedDate ? "6px 12px" : "8px 10px" }}>
-            {!selectedDate && (
-               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" style={{ color: "var(--text-muted)" }}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            )}
-            <input 
-              type="date" 
-              value={selectedDate} 
-              onChange={e => setSelectedDate(e.target.value)} 
-              style={{ 
-                border: "none", background: "transparent", outline: "none", color: "var(--text-primary)", fontWeight: 500, fontSize: "0.85rem",
-                position: selectedDate ? "static" : "absolute",
-                opacity: selectedDate ? 1 : 0,
-                width: selectedDate ? "auto" : "100%",
-                height: selectedDate ? "auto" : "100%",
-                left: 0, top: 0, cursor: "pointer"
-              }} 
+          <div style={{ display: "flex", alignItems: "center", background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: 8, padding: selectedDate ? "0 12px 0 0" : 0 }}>
+            <DatePickerField
+              value={selectedDate}
+              onChange={setSelectedDate}
+              placeholder="Filter by date"
+              style={{ border: "none", background: "transparent", padding: "8px 10px", fontWeight: 500, width: "auto", flexDirection: "row-reverse" }}
             />
             {selectedDate && (
               <button onClick={() => setSelectedDate("")} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px 0 4px 8px", fontSize: "0.75rem", fontWeight: 600, zIndex: 2 }}>Clear</button>

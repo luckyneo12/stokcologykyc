@@ -250,6 +250,8 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
     "Nsdl3 pledge instruction": "acceptPledgeInstructions",
     "Dis booklet": "dis",
     "Clientcode": "clientCode",
+    "Past actions": "pastActions",
+    "Past actions reason": "pastActionsReason",
   };
 
   // Compute which form field keys are rejected
@@ -336,6 +338,8 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
             taxId2: "",
             placeOfBirth: "",
             taxExemptReason: "",
+            pastActions: "",
+            pastActionsReason: "",
           }));
           }
         }
@@ -428,7 +432,9 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
     if (!form.experience) errs.experience = "Req";
     if (!form.politicallyExposed) errs.politicallyExposed = "Req";
     if (!form.taxResidencyOutside) errs.taxResidencyOutside = "Req";
-    
+    // Only when the user can change it (older applications may not have an answer saved)
+    if (isFieldRejected("pastActions") && !form.pastActions) errs.pastActions = "Req";
+
     if (form.politicallyExposed === "Yes") {
       if (!form.pepType) errs.pepType = "Req";
       if (!form.pepProof) errs.pepProof = "Req";
@@ -842,11 +848,46 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
                     className="input-field" placeholder="Tax Exempt Reason" 
                     value={form.taxExemptReason || ""} 
                     onChange={e => update("taxExemptReason", e.target.value)} 
-                  style={{ ...COMMON_INPUT_STYLE, borderColor: errors.taxExemptReason ? "var(--wise-danger)" : "var(--border-color)" }} 
+                  style={{ ...COMMON_INPUT_STYLE, borderColor: errors.taxExemptReason ? "var(--wise-danger)" : "var(--border-color)" }}
                   />
                 </InputGroup>
               )}
             </>
+          )}
+
+          <InputGroup label="Details of any action/proceedings initiated/pending/taken by SEBI/Stock exchange/any other authority against the applicant/constituent or its authorized persons in charge of dealing in securities/commodities during the last 3 years" mandatory style={{ gridColumn: "1 / -1" }}>
+            <CustomSelect
+              value={form.pastActions}
+              options={["No", "Yes"]}
+              placeholder="--Select--"
+              onChange={val => {
+                update("pastActions", val);
+                if (val === "No") {
+                  setForm(prev => ({ ...prev, pastActionsReason: "" }));
+                }
+              }}
+              error={errors.pastActions}
+              disabled={!isFieldRejected("pastActions")}
+            />
+          </InputGroup>
+
+          {form.pastActions === "Yes" && (
+            <InputGroup label="Reason" style={{ gridColumn: "1 / -1" }}>
+              <input
+                className="input-field"
+                placeholder="Please provide details..."
+                value={form.pastActionsReason || ""}
+                onChange={e => update("pastActionsReason", e.target.value)}
+                disabled={!isFieldRejected("pastActions") && !isFieldRejected("pastActionsReason")}
+                style={{
+                  ...COMMON_INPUT_STYLE,
+                  background: (!isFieldRejected("pastActions") && !isFieldRejected("pastActionsReason")) ? "var(--bg-secondary)" : "var(--input-bg)",
+                  borderColor: (isFieldRejected("pastActionsReason") && hasFieldLevelRejection) ? "#ef4444" : "var(--border-color)",
+                  opacity: (!isFieldRejected("pastActions") && !isFieldRejected("pastActionsReason")) ? 0.7 : 1,
+                  cursor: (!isFieldRejected("pastActions") && !isFieldRejected("pastActionsReason")) ? "not-allowed" : "text"
+                }}
+              />
+            </InputGroup>
           )}
 
           {!showMore && (

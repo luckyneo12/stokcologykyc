@@ -1,0 +1,185 @@
+/* ============================================================
+   Aadhaar eSign — waiting screen shown while the Digio signing window opens / is open,
+   and while the signature is verified. Visual only. Uses the portal's theme tokens.
+   ============================================================ */
+
+.esl-card {
+  position: relative;
+  overflow: hidden;
+  padding: 44px 36px 36px;
+  border-radius: 32px;
+  text-align: center;
+  border: 1.5px solid var(--border-color);
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 0%, color-mix(in srgb, var(--wise-green, #9fe870) 22%, transparent), transparent 70%),
+    var(--bg-card, #fff);
+  box-shadow: 0 20px 40px -18px rgba(22, 51, 0, 0.25);
+}
+
+/* ---------- Icon: document with a pen, pulsing rings around it ---------- */
+.esl-visual { position: relative; width: 112px; height: 112px; margin: 0 auto 26px; }
+.esl-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--wise-green, #9fe870);
+  opacity: 0;
+  animation: eslRing 2.4s ease-out infinite;
+}
+.esl-ring.r2 { animation-delay: 1.2s; }
+@keyframes eslRing {
+  0% { transform: scale(0.7); opacity: 0.7; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+.esl-badge {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wise-dark-green, #163300);
+  background: var(--wise-green, #9fe870);
+  box-shadow: 0 12px 26px -8px rgba(22, 51, 0, 0.45);
+}
+.esl-badge svg { animation: eslWrite 1.8s ease-in-out infinite; }
+@keyframes eslWrite {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(2px, -1px) rotate(-6deg); }
+  50% { transform: translate(-1px, 1px) rotate(3deg); }
+  75% { transform: translate(1px, 0) rotate(-3deg); }
+}
+
+.esl-title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.esl-sub {
+  max-width: 440px;
+  margin: 10px auto 0;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  font-weight: 600;
+  color: var(--text-secondary);
+  animation: eslIn 0.4s ease-out;
+}
+@keyframes eslIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Progress: the four stages of signing ---------- */
+.esl-steps {
+  list-style: none;
+  margin: 30px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+.esl-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  transition: background 0.3s ease;
+}
+/* Connector line between the step dots */
+.esl-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 25px;
+  top: 40px;
+  bottom: -8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--border-color);
+}
+.esl-step.done:not(:last-child)::after { background: var(--wise-green, #9fe870); }
+.esl-step.active { background: color-mix(in srgb, var(--wise-green, #9fe870) 14%, transparent); }
+
+.esl-dot {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: var(--text-muted);
+  background: var(--bg-card, #fff);
+  border: 2px solid var(--border-color);
+  transition: all 0.3s ease;
+}
+.esl-step.done .esl-dot {
+  color: var(--wise-dark-green, #163300);
+  background: var(--wise-green, #9fe870);
+  border-color: var(--wise-green, #9fe870);
+}
+.esl-step.active .esl-dot {
+  color: var(--text-primary);
+  border-color: var(--wise-green, #9fe870);
+}
+/* Spinning arc on the step that is in progress */
+.esl-step.active .esl-dot::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--wise-green, #9fe870);
+  animation: eslSpin 0.9s linear infinite;
+}
+@keyframes eslSpin { to { transform: rotate(360deg); } }
+
+.esl-step-text { display: flex; flex-direction: column; gap: 2px; padding-top: 3px; min-width: 0; }
+.esl-step-label { font-size: 0.95rem; font-weight: 800; color: var(--text-primary); }
+.esl-step.pending .esl-step-label { color: var(--text-secondary); opacity: 0.75; }
+.esl-step-note { font-size: 0.8rem; font-weight: 600; line-height: 1.4; color: var(--text-secondary); }
+
+/* ---------- Footer notes ---------- */
+.esl-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  text-align: left;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-color);
+}
+.esl-hint svg { flex: 0 0 auto; margin-top: 1px; color: var(--text-primary); }
+.esl-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.esl-secure svg { color: var(--wise-positive, #054d28); }
+
+@media (max-width: 520px) {
+  .esl-card { padding: 34px 18px 26px; border-radius: 24px; }
+  .esl-title { font-size: 1.25rem; }
+  .esl-visual { width: 96px; height: 96px; margin-bottom: 20px; }
+  .esl-badge { inset: 15px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .esl-ring, .esl-badge svg, .esl-step.active .esl-dot::before, .esl-sub { animation: none; }
+  .esl-ring { opacity: 0.35; }
+  .esl-step, .esl-dot { transition: none; }
+}

@@ -369,7 +369,8 @@ export default function DetailsStep() {
     if (!form.experience) errs.experience = "Req";
     if (!form.politicallyExposed) errs.politicallyExposed = "Req";
     if (!form.taxResidencyOutside) errs.taxResidencyOutside = "Req";
-    
+    if (!form.pastActions) errs.pastActions = "Req";
+
     if (form.politicallyExposed === "Yes") {
       if (!form.pepType) errs.pepType = "Req";
       if (!form.pepProof) errs.pepProof = "Req";
@@ -743,6 +744,33 @@ export default function DetailsStep() {
                 </InputGroup>
               )}
             </>
+          )}
+
+          <InputGroup label="Details of any action/proceedings initiated/pending/taken by SEBI/Stock exchange/any other authority against the applicant/constituent or its authorized persons in charge of dealing in securities/commodities during the last 3 years" mandatory style={{ gridColumn: "1 / -1" }}>
+            <CustomSelect
+              value={form.pastActions}
+              options={["No", "Yes"]}
+              placeholder="--Select--"
+              onChange={val => {
+                update("pastActions", val);
+                if (val === "No") {
+                  setForm(prev => ({ ...prev, pastActionsReason: "" }));
+                }
+              }}
+              error={errors.pastActions}
+            />
+          </InputGroup>
+
+          {form.pastActions === "Yes" && (
+            <InputGroup label="Reason" style={{ gridColumn: "1 / -1" }}>
+              <input
+                className="input-field"
+                placeholder="Please provide details..."
+                value={form.pastActionsReason || ""}
+                onChange={e => update("pastActionsReason", e.target.value)}
+                style={COMMON_INPUT_STYLE}
+              />
+            </InputGroup>
           )}
 
           {!showMore && (

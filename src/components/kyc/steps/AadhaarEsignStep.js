@@ -6,6 +6,68 @@ import Logo from "../Logo";
 
 import { initializeDigio, createDigioRequest, fetchDigioRequestResponse } from "@/utils/digio";
 import { submitKyc } from "@/utils/kycApi";
+import { PenLine, Check, AppWindow, ShieldCheck } from "lucide-react";
+import "../esign-launch.css";
+
+// Waiting screen for the "processing" (Digio window opening / open) and "verifying" phases
+function SigningProgress({ phase, launchStage }) {
+  const verifying = phase === "verifying";
+  const windowOpen = !verifying && launchStage === "open";
+  // 0: form ready, 1: connecting to Digio, 2: signing in Digio, 3: verifying & submitting
+  const current = verifying ? 3 : windowOpen ? 2 : 1;
+  const steps = [
+    { label: "Application form ready", note: "Your filled form has been prepared for signing." },
+    { label: "Opening the secure Digio window", note: "Digio is the registered eSign service we use." },
+    { label: "Sign with Aadhaar OTP", note: "Done by you, in the Digio window." },
+    { label: "Verify & submit application", note: "We check the signature and submit your application." },
+  ];
+
+  const title = verifying ? "Verifying your signature" : windowOpen ? "Sign in the Digio window" : "Preparing your signing window";
+  const sub = verifying
+    ? "Almost done! We are securely downloading your signed form and submitting your application. Please don't close this page."
+    : windowOpen
+    ? "Complete your signature in the Digio window. This page updates by itself once you're done."
+    : "Setting up a secure session with Digio. The signing window will open in a moment.";
+
+  return (
+    <div className="esl-card animate-fade-in">
+      <div className="esl-visual" aria-hidden="true">
+        <span className="esl-ring" />
+        <span className="esl-ring r2" />
+        <span className="esl-badge">{verifying ? <ShieldCheck size={34} strokeWidth={2.2} /> : <PenLine size={32} strokeWidth={2.2} />}</span>
+      </div>
+
+      <div role="status" aria-live="polite">
+        <p className="esl-title">{title}</p>
+        <p key={title} className="esl-sub">{sub}</p>
+      </div>
+
+      <ol className="esl-steps">
+        {steps.map((s, i) => {
+          const state = i < current ? "done" : i === current ? "active" : "pending";
+          return (
+            <li key={s.label} className={`esl-step ${state}`} aria-current={state === "active" ? "step" : undefined}>
+              <span className="esl-dot">{state === "done" ? <Check size={15} strokeWidth={3.2} /> : i + 1}</span>
+              <span className="esl-step-text">
+                <span className="esl-step-label">{s.label}</span>
+                {state !== "pending" && <span className="esl-step-note">{s.note}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      {windowOpen && (
+        <p className="esl-hint">
+          <AppWindow size={16} strokeWidth={2.2} aria-hidden="true" />
+          <span>Keep this page open. Can&apos;t see the Digio window? It may have opened behind this page, or your browser may have blocked the pop-up.</span>
+        </p>
+      )}
+
+      <span className="esl-secure"><ShieldCheck size={15} strokeWidth={2.4} aria-hidden="true" /> Secured by Digio &middot; Aadhaar eSign</span>
+    </div>
+  );
+}
 
 export default function AadhaarEsignStep() {
   const {
@@ -31,6 +93,7 @@ export default function AadhaarEsignStep() {
   const [loading, setLoading] = useState(false);
   const [phase, setPhase] = useState("intro"); // intro, processing, done, failed
   const [aadhaarMismatch, setAadhaarMismatch] = useState(null); // message when eSign used another Aadhaar
+  const [launchStage, setLaunchStage] = useState("connecting"); // display only: "connecting" → "open" (Digio window)
 
 
   const handleDigioSuccess = async (requestId) => {
@@ -149,8 +212,9 @@ export default function AadhaarEsignStep() {
       digio.init();
     }
     setLoading(true);
+    setLaunchStage("connecting");
     setPhase("processing");
-    
+
     try {
       const { requestId, customerIdentifier, accessToken, applicationId: requestApplicationId } = await createDigioRequest("ESIGN", {
         customerIdentifier: identifier,
@@ -162,6 +226,7 @@ export default function AadhaarEsignStep() {
       } else {
         digio.submit(requestId, customerIdentifier);
       }
+      setLaunchStage("open");
     } catch (error) {
       console.error("eSign Request Error:", error);
       digio.cancel();
@@ -206,24 +271,8 @@ export default function AadhaarEsignStep() {
         </div>
       )}
 
-      {phase === "processing" && (
-        <div className="card animate-fade-in" style={{ padding: "64px 40px", textAlign: "center", borderRadius: "32px", background: "var(--bg-card)", border: "1.5px solid var(--border-color)" }}>
-          <div className="loader" style={{ margin: '0 auto 32px', width: "56px", height: "56px", border: "4px solid var(--border-color)", borderTop: "4px solid var(--wise-green)" }}></div>
-          <p style={{ fontSize: "1.3rem", fontWeight: 900, color: "var(--text-primary)" }}>Launching Signing Portal</p>
-          <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginTop: 12, fontWeight: 600 }}>
-            Please wait while we establish a secure connection.
-          </p>
-        </div>
-      )}
-
-      {phase === "verifying" && (
-        <div className="card animate-fade-in" style={{ padding: "64px 40px", textAlign: "center", borderRadius: "32px", background: "var(--bg-card)", border: "1.5px solid var(--border-color)" }}>
-          <div className="loader" style={{ margin: '0 auto 32px', width: "56px", height: "56px", border: "4px solid var(--border-color)", borderTop: "4px solid var(--wise-green)" }}></div>
-          <p style={{ fontSize: "1.3rem", fontWeight: 900, color: "var(--text-primary)" }}>Verifying Signature & Finalizing</p>
-          <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginTop: 12, fontWeight: 600 }}>
-            Almost done! We are securely downloading your signed document.
-          </p>
-        </div>
+      {(phase === "processing" || phase === "verifying") && (
+        <SigningProgress phase={phase} launchStage={launchStage} />
       )}
 
     </div>

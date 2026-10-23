@@ -1,4 +1,5 @@
 "use client";
+import { useForceLightTheme } from "@/hooks/useForceLightTheme";
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -141,6 +142,7 @@ function ResetPasswordForm() {
 }
 
 export default function GlobeResetPassword() {
+  useForceLightTheme("globeTheme");
   return (
     <Suspense fallback={<div style={{ minHeight: "100vh", background: "var(--bg-secondary)" }} />}>
       <ResetPasswordForm />

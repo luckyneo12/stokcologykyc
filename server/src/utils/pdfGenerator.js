@@ -245,8 +245,10 @@ function getVariableValue(variableName, appData) {
     }
     
     case 'plan': return safeJsonParse(appData.pricingPlan)?.name || 'Standard';
-    case 'isNewKyc': return !appData.isResubmitted;
-    case 'isModificationKyc': return !!appData.isResubmitted;
+    // This form is only for onboarding (incl. resubmission after rejection / correction portal), so it is
+    // always a New KYC. Modifications go through ReKYC, which builds its own form (server/src/rekyc/pdf.js).
+    case 'isNewKyc': return true;
+    case 'isModificationKyc': return false;
     case 'isPoiAadhaar': return appData.identityMethod === 'aadhaar' || !!iDetails.aadhaar;
     case 'isPoiPassport': return appData.identityMethod === 'passport' || !!iDetails.passportNo;
     case 'isPoiDrivingLicense': return appData.identityMethod === 'dl' || !!iDetails.dlNo;
@@ -1089,6 +1091,71 @@ async function generateKycPdf(applicationData, options = {}) {
             }
           }
         }
+      }
+
+      // Page 12 "PAST ACTIONS": the form prints "NO" in the answer cell. If the applicant answered "Yes",
+      // cover it with "YES"; a reason (if given) goes in the blank strip between the table and the outer border.
+      try {
+        const pastActions = String(parsedPersonalDetails?.pastActions || '').toLowerCase();
+        if (pastActions === 'yes' && pages.length >= 12) {
+          const pastPage = pages[11];
+          const { height: pH } = pastPage.getSize();
+          // Answer cell inner area (between its borders) and the printed "NO" baseline, from the top of the page
+          pastPage.drawRectangle({ x: 544.5, y: pH - 633, width: 15.6, height: 21, color: rgb(1, 1, 1) });
+          const yesSize = 7;
+          const yesWidth = font.widthOfTextAtSize('YES', yesSize);
+          pastPage.drawText('YES', { x: 552.3 - yesWidth / 2, y: pH - 620.5, size: yesSize, font, color: rgb(0, 0, 0) });
+
+          // Helvetica can only draw WinAnsi characters
+          const reason = String(parsedPersonalDetails?.pastActionsReason || '')
+            .replace(/\s+/g, ' ')
+            .replace(/[^\x20-\x7E\xA0-\xFF]/g, '')
+            .trim();
+          if (reason) {
+            // "Reason:" is bold, the applicant's text regular
+            const label = 'Reason:';
+            const text = `${label} ${reason}`;
+            // Table bottom is at 634 and the outer border at ~651.7 (from the top of the page)
+            const boxX = 43.6, boxTop = 636, boxWidth = 516, boxHeight = 14;
+            const lineWidth = (l, size, isFirst) => isFirst
+              ? boldFont.widthOfTextAtSize(label, size) + font.widthOfTextAtSize(l.slice(label.length), size)
+              : font.widthOfTextAtSize(l, size);
+            const wrap = (size) => {
+              const words = text.split(' ');
+              const lines = [];
+              let line = '';
+              for (const word of words) {
+                const test = line ? `${line} ${word}` : word;
+                if (line && lineWidth(test, size, lines.length === 0) > boxWidth) {
+                  lines.push(line);
+                  line = word;
+                } else {
+                  line = test;
+                }
+              }
+              if (line) lines.push(line);
+              return lines;
+            };
+            let size = 7;
+            let lines = wrap(size);
+            while ((lines.length * size * 1.2 > boxHeight || lines.some((l, i) => lineWidth(l, size, i === 0) > boxWidth)) && size > 4) {
+              size -= 0.5;
+              lines = wrap(size);
+            }
+            let lineY = pH - boxTop - size;
+            lines.forEach((l, i) => {
+              if (i === 0) {
+                pastPage.drawText(label, { x: boxX, y: lineY, size, font: boldFont, color: rgb(0, 0, 0) });
+                pastPage.drawText(l.slice(label.length), { x: boxX + boldFont.widthOfTextAtSize(label, size), y: lineY, size, font, color: rgb(0, 0, 0) });
+              } else {
+                pastPage.drawText(l, { x: boxX, y: lineY, size, font, color: rgb(0, 0, 0) });
+              }
+              lineY -= size * 1.2;
+            });
+          }
+        }
+      } catch (e) {
+        console.error('[PDF Gen] Could not fill the past actions section:', e.message);
       }
     } else {
       // FALLBACK TO ANNEXURE PAGE (OLD BEHAVIOR)

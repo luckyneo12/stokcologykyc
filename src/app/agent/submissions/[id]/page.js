@@ -186,6 +186,8 @@ const REVIEW_STEPS = [
       ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
       ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
       ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
+      ["Past actions", app.personalDetails?.pastActions || "N/A", "personalDetails.pastActions"],
+      ["Past actions reason", app.personalDetails?.pastActionsReason || "N/A", "personalDetails.pastActionsReason"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["Operate ddpi", app.personalDetails?.operatedThroughDDPI || "Yes", "personalDetails.operatedThroughDDPI"],

@@ -19,6 +19,8 @@ export default function GlobeLayout({ children }) {
               try {
                 // Globe keeps its own light / dark choice (theme button in the header)
                 var theme = localStorage.getItem('globeTheme');
+                // The sign-in pages are always light
+                if (/^\\/globe\\/(login|forgot-password|reset-password)/.test(location.pathname)) theme = 'light';
                 document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
               } catch (e) {}
             })();

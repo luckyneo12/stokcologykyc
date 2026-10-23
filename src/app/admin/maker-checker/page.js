@@ -10,6 +10,7 @@ import AdminThemeToggle from "../components/AdminThemeToggle";
 import { useDragScroll } from "@/utils/useDragScroll";
 import { ListFilter, ArrowUpDown, ArrowUp, ArrowDown, EyeOff } from "lucide-react";
 import "@/app/admin/admin.css";
+import DatePickerField from "@/components/ui/DatePickerField";
 
 const STEP_LABELS = {
   0: "Step 0: Welcome", 
@@ -241,7 +242,7 @@ export default function MakerCheckerDashboard() {
       if (!e.target.closest('.column-filter-container')) {
         setActiveFilterCol(null);
       }
-      if (!e.target.closest('.date-filter-dropdown-container')) {
+      if (!e.target.closest('.date-filter-dropdown-container') && !e.target.closest('.calendar-popover')) {
         setDateFilterOpen(false);
       }
     };
@@ -1133,11 +1134,11 @@ export default function MakerCheckerDashboard() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                         <div>
                           <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>From</label>
-                          <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))} style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid var(--border-color)", fontSize: "0.85rem" }} />
+                          <DatePickerField value={dateRange.start} max={dateRange.end || undefined} onChange={v => setDateRange(prev => ({ ...prev, start: v }))} />
                         </div>
                         <div>
                           <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>To</label>
-                          <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid var(--border-color)", fontSize: "0.85rem" }} />
+                          <DatePickerField value={dateRange.end} min={dateRange.start || undefined} onChange={v => setDateRange(prev => ({ ...prev, end: v }))} />
                         </div>
                         <button onClick={() => setDateFilterOpen(false)} style={{ width: "100%", padding: "8px", marginTop: 4, borderRadius: 6, background: "var(--wise-green)", color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}>Apply Filters</button>
                       </div>

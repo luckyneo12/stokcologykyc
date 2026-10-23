@@ -15,7 +15,8 @@ export default function AdminLayout({ children }) {
             (function() {
               try {
                 var theme = localStorage.getItem('adminTheme');
-                if (theme === 'dark') {
+                // The sign-in page is always light
+                if (theme === 'dark' && location.pathname.indexOf('/admin/login') !== 0) {
                   document.documentElement.setAttribute('data-theme', 'dark');
                 } else {
                   document.documentElement.setAttribute('data-theme', 'light');

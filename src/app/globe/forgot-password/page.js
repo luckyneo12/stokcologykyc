@@ -1,10 +1,12 @@
 "use client";
+import { useForceLightTheme } from "@/hooks/useForceLightTheme";
 import { useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/kyc/Logo";
 import { API_BASE_URL } from "@/utils/apiConfig";
 
 export default function GlobeForgotPassword() {
+  useForceLightTheme("globeTheme");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
