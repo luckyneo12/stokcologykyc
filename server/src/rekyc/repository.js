@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { query, queryOne, parseJson, toJson, getPool } = require("./db");
+const { toProfile } = require("./clientProfile");
 
 const JSON_FIELDS = ["changes", "verifications", "documents", "selfie", "esign", "backoffice_response"];
 const UPDATABLE = new Set([
@@ -20,10 +21,25 @@ const STATUS = {
   TRASHED: "trashed",
 };
 
+// The nominees on record are always read from the stored back office record, so requests opened before
+// the full nominee form also get every nominee detail (address, mobile, ID, guardian)
+function nomineeOnRecord(raw, clientCode, fallback) {
+  try {
+    return raw && Object.keys(raw).length ? toProfile(raw, clientCode).nominee : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
 function hydrate(row) {
   if (!row) return null;
   const original = parseJson(row.original_data, {});
-  const request = { ...row, original_data: original.raw || {}, original_profile: original.profile || {} };
+  const profile = original.profile || {};
+  const request = {
+    ...row,
+    original_data: original.raw || {},
+    original_profile: { ...profile, nominee: nomineeOnRecord(original.raw, row.client_code, profile.nominee) },
+  };
   for (const field of JSON_FIELDS) request[field] = parseJson(row[field], field === "backoffice_response" ? null : {});
   return request;
 }

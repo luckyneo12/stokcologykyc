@@ -1929,7 +1929,12 @@ export default function AgentReview() {
         setEditingField(null);
         fetchDetail();
       } else {
-        showToast(data.error || "Failed to update details.", "error");
+        const errorMsg = data.error || "Failed to update details.";
+        if (Object.keys(editValues).some(k => k.includes("eStamp")) || errorMsg.includes("certificate") || errorMsg.includes("serial")) {
+          alert(errorMsg);
+        }
+        showToast(errorMsg, "error");
+        fetchDetail();
       }
     } catch (error) {
       console.error(error);
@@ -1953,7 +1958,12 @@ export default function AgentReview() {
         showToast("Field updated automatically.");
         fetchDetail();
       } else {
-        showToast(data.error || "Failed to update field.", "error");
+        const errorMsg = data.error || "Failed to update field.";
+        if (key.includes("eStamp") || errorMsg.includes("certificate") || errorMsg.includes("serial")) {
+          alert(errorMsg);
+        }
+        showToast(errorMsg, "error");
+        fetchDetail();
       }
     } catch (error) {
       console.error(error);
@@ -2871,18 +2881,9 @@ export default function AgentReview() {
                                                       autoSaveField(jsonPath, val);
                                                     }
                                                   }}
-                                                  onKeyDown={e => { 
+                                                  onKeyDown={e => {
                                                     if (e.key === "Enter") {
-                                                      setEditingField(null);
-                                                      if (jsonPath.startsWith("user.eStampAssigned")) {
-                                                        const val = e.currentTarget.value;
-                                                        setEditValues(prev => {
-                                                          const next = { ...prev };
-                                                          delete next[jsonPath];
-                                                          return next;
-                                                        });
-                                                        autoSaveField(jsonPath, val);
-                                                      }
+                                                      e.currentTarget.blur();
                                                     }
                                                   }}
                                                 />

@@ -131,6 +131,66 @@ function ddpiStatus(data) {
   return "";
 }
 
+// Back office relation codes (see mapRelation in the onboarding push) → the labels the nominee form uses
+const RELATION_CODES = { B: "Brother", G: "Daughter", F: "Father", M: "Mother", SI: "Sister", SO: "Son", SP: "Spouse" };
+const NOMINEE_RELATIONS = ["Brother", "Daughter", "Father", "Nephew", "Grand-father", "Grand-mother", "Cousin", "Mother", "Son", "Sister", "Spouse", "Friend", "Uncle", "Aunty"];
+
+function relationLabel(value) {
+  const v = str(value);
+  if (RELATION_CODES[v.toUpperCase()]) return RELATION_CODES[v.toUpperCase()];
+  // Other relations are stored as the first 5 letters of the label ("Nephe", "Frien")
+  const matches = NOMINEE_RELATIONS.filter((r) => v && r.toUpperCase().startsWith(v.toUpperCase()));
+  return matches.length === 1 ? matches[0] : "";
+}
+
+function toIsoDate(value) {
+  const m = formatDob(value).match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
+/** One nominee or guardian entry → the fields the nominee form edits ("" when the back office has none). */
+function nomineePerson(n) {
+  const proofCode = str(n.IDProof);
+  const pan = str(n.PANNO).toUpperCase();
+  const uid = str(n.UID).replace(/\D/g, "");
+  const proofType = proofCode === "05" || (!pan && uid) ? "AADHAAR CARD" : "PAN CARD";
+  const proofNumber = proofType === "PAN CARD" ? pan || (proofCode === "03" ? str(n.IDProofRefNo).toUpperCase() : "") : (uid || str(n.IDProofRefNo).replace(/\D/g, "")).slice(-4);
+  return {
+    name: str(n.Name).toUpperCase(),
+    relation: relationLabel(n.Relation),
+    dob: toIsoDate(n.DOB),
+    mobile: str(n.Mobile || n.MobileNo).replace(/\D/g, "").slice(-10),
+    email: str(n.EmailID || n.Email).toLowerCase(),
+    address: [n.Address1, n.Address2, n.Address3].map(str).filter(Boolean).join(", "),
+    city: str(n.City),
+    state: stateName(n.State),
+    pincode: str(n.Pincode),
+    country: "India",
+    proofType,
+    proofNumber,
+  };
+}
+
+// The back office lists each nominee ("N") followed by its guardian ("NG") when the nominee is a minor
+function nomineeList(entries) {
+  const nominees = [];
+  for (const entry of entries) {
+    const type = str(entry.NomineeType || "N").toUpperCase();
+    if (str(entry.Delete).toUpperCase() === "Y") continue;
+    if (type === "N") {
+      nominees.push({ ...nomineePerson(entry), share: Number(entry.SharePercentage) || 0 });
+    } else if (type === "NG" && nominees.length) {
+      const g = nomineePerson(entry);
+      Object.assign(nominees[nominees.length - 1], {
+        guardianName: g.name, guardianRelation: g.relation, guardianDob: g.dob, guardianMobile: g.mobile, guardianEmail: g.email,
+        guardianAddress: g.address, guardianCity: g.city, guardianState: g.state, guardianPincode: g.pincode, guardianCountry: g.country,
+        guardianProofType: g.proofType, guardianProofNumber: g.proofNumber,
+      });
+    }
+  }
+  return nominees;
+}
+
 function toProfile(rawRecord, clientCode) {
   const data = unwrap(rawRecord);
   const kyc = list(data.KYCDetail, "KYCDetail")[0] || {};
@@ -143,8 +203,7 @@ function toProfile(rawRecord, clientCode) {
   const backoffice = list(data.BackOfficeDetail, "BackOfficeDetail")[0] || {};
   const segments = list(data.SegmentDetail, "SegmentDetail");
   const nomineeBlock = data.NomineeDetail && !Array.isArray(data.NomineeDetail) ? data.NomineeDetail : {};
-  const nominees = list(nomineeBlock.NomineeDetail || (Array.isArray(data.NomineeDetail) ? data.NomineeDetail : []), "NomineeDetail")
-    .filter((n) => str(n.NomineeType || "N").toUpperCase() === "N");
+  const nominees = nomineeList(list(nomineeBlock.NomineeDetail || (Array.isArray(data.NomineeDetail) ? data.NomineeDetail : []), "NomineeDetail"));
 
   const aadhaarDigits = str(kyc.Aadhar || kyc.IDProofRef).replace(/\D/g, "");
   const clientStatus = str(kyc.ClientStatus || kyc.Status);
@@ -197,12 +256,7 @@ function toProfile(rawRecord, clientCode) {
     ),
     nominee: {
       opted: str(nomineeBlock.NomineeOptFlag || backoffice.NomineeOptFlag).toUpperCase() === "Y" || nominees.length > 0 ? "yes" : "no",
-      nominees: nominees.map((n) => ({
-        name: str(n.Name),
-        relation: str(n.Relation),
-        dob: formatDob(n.DOB),
-        share: Number(n.SharePercentage) || 0,
-      })),
+      nominees,
     },
     annualIncome: incomeLabel(kyc.AnnualIncome),
     netWorth: str(kyc.NetWorth),
@@ -266,4 +320,4 @@ async function fetchClient(clientCode) {
   return { raw, profile };
 }
 
-module.exports = { fetchClient, toProfile, unwrap, ANNUAL_INCOME, DEPENDENCY, SEGMENTS, STATE_NAMES, isMock };
+module.exports = { fetchClient, toProfile, unwrap, ANNUAL_INCOME, DEPENDENCY, SEGMENTS, STATE_NAMES, NOMINEE_RELATIONS, isMock };

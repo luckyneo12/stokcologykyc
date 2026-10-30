@@ -34,11 +34,15 @@ function listChanges(changes = {}) {
   for (const key of ["name", "fatherName", "motherName"]) {
     if (personal[key]) rows.push({ section: "Personal", field: labels[key], oldValue: personal[key].old, newValue: personal[key].new });
   }
+  if (personal.maritalStatus) {
+    rows.push({ section: "Personal", field: "Marital status", oldValue: personal.maritalStatus.old, newValue: personal.maritalStatus.new });
+  }
+  // The dependency is not shown to the client; the signed form (pdf.js) prints it next to the new value
   if (personal.email) {
-    rows.push({ section: "Personal", field: "E-mail", oldValue: personal.email.old, newValue: `${personal.email.new} (Dependency: ${personal.email.dependency || "Self"})` });
+    rows.push({ section: "Personal", field: "E-mail", oldValue: personal.email.old, newValue: personal.email.new, dependency: personal.email.dependency || "Self" });
   }
   if (personal.mobile) {
-    rows.push({ section: "Personal", field: "Mobile", oldValue: personal.mobile.old, newValue: `${personal.mobile.new} (Dependency: ${personal.mobile.dependency || "Self"})` });
+    rows.push({ section: "Personal", field: "Mobile", oldValue: personal.mobile.old, newValue: personal.mobile.new, dependency: personal.mobile.dependency || "Self" });
   }
   if (personal.address) {
     rows.push({ section: "Personal", field: "Address (Aadhaar via DigiLocker)", oldValue: addressText(personal.address.old), newValue: addressText(personal.address.new) });
@@ -69,7 +73,7 @@ function listChanges(changes = {}) {
 
 /**
  * The checks a request must pass before it can be eSigned (same checks as the onboarding portal).
- * Returns { ok, missing: [{ step, message }], needs: { selfie, financialProof, nameProof } }.
+ * Returns { ok, missing: [{ step, message }], needs: { digilocker, selfie, financialProof, nameProof } }.
  */
 function requirements(request) {
   const changes = request.changes || {};
@@ -80,6 +84,9 @@ function requirements(request) {
   const missing = [];
 
   const needs = {
+    // Any change on the Personal page is confirmed with an Aadhaar check (DigiLocker) on the Document step
+    // (an address change already goes through DigiLocker on the Personal page)
+    digilocker: Object.keys(personal).length > 0,
     selfie: Boolean(verifications.digilocker?.completedAt),
     nameProof: Boolean(personal.name || personal.fatherName || personal.motherName),
     financialProof: Boolean(changes.segment && changes.segment.new?.NSE_FNO && !changes.segment.old?.NSE_FNO),
@@ -98,6 +105,9 @@ function requirements(request) {
   }
   if (needs.financialProof && !documents.financialProof?.url) {
     missing.push({ step: "document", message: "Upload a financial proof to activate the FNO segment." });
+  }
+  if (needs.digilocker && !verifications.digilocker?.completedAt) {
+    missing.push({ step: "document", message: "Verify your Aadhaar with DigiLocker (required when personal details are changed)." });
   }
   if (needs.selfie && selfie.status !== "passed") {
     missing.push({ step: "document", message: "Complete the live selfie (required after DigiLocker)." });

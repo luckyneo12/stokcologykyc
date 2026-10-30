@@ -1,7 +1,7 @@
 const repo = require("./repository");
 const otp = require("./otp");
 const { signClientToken } = require("./auth");
-const { fetchClient, ANNUAL_INCOME, DEPENDENCY, STATE_NAMES } = require("./clientProfile");
+const { fetchClient, ANNUAL_INCOME, DEPENDENCY, STATE_NAMES, NOMINEE_RELATIONS } = require("./clientProfile");
 const { requirements, listChanges } = require("./changes");
 const { uploadBuffer, fetchBuffer } = require("./storage");
 const { buildModificationPdf } = require("./pdf");
@@ -83,7 +83,7 @@ function view(request) {
     selfie: request.selfie?.status ? { status: request.selfie.status, faceMatchScore: request.selfie.faceMatchScore, capturedAt: request.selfie.capturedAt } : null,
     esign: request.esign?.status ? { status: request.esign.status, signedAt: request.esign.signedAt } : null,
     requirements: req,
-    options: { annualIncome: ANNUAL_INCOME.map((i) => i.label), dependency: DEPENDENCY.map((d) => d.label), states: Object.values(STATE_NAMES) },
+    options: { annualIncome: ANNUAL_INCOME.map((i) => i.label), dependency: DEPENDENCY.map((d) => d.label), maritalStatus: MARITAL_STATUSES, states: Object.values(STATE_NAMES) },
   };
 }
 
@@ -230,6 +230,18 @@ exports.changeRelative = wrap(async (req, res) => {
   const old = request.original_profile[field];
   const change = value === String(old).toUpperCase() ? undefined : { old, new: value };
   const saved = await save(request, { changes: setChange(request.changes, `personal.${field}`, change) }, `${field}_changed`, req, { value });
+  res.json({ success: true, request: view(saved) });
+});
+
+const MARITAL_STATUSES = ["Married", "Unmarried", "Divorced", "Widowed"];
+
+exports.changeMaritalStatus = wrap(async (req, res) => {
+  const request = await loadRequest(req, { editable: true });
+  const value = MARITAL_STATUSES.find((s) => s === req.body?.value);
+  if (!value) throw new ClientError("Select your marital status.");
+  const old = request.original_profile.maritalStatus;
+  const change = value === old ? undefined : { old, new: value };
+  const saved = await save(request, { changes: setChange(request.changes, "personal.maritalStatus", change) }, "marital_status_changed", req, { value });
   res.json({ success: true, request: view(saved) });
 });
 
@@ -387,12 +399,14 @@ exports.completeDigilocker = wrap(async (req, res) => {
       photoUrl,
     },
   };
+  // purpose "contact": the Document step's identity check for a mobile / e-mail change — the address stays as it is
+  const forContact = req.body?.purpose === "contact";
   const change = { old: profile.address, new: data.address, source: "digilocker", verifiedAt: new Date().toISOString() };
   // A new DigiLocker check needs a new selfie
   const saved = await save(
     request,
-    { verifications, selfie: {}, changes: setChange(request.changes, "personal.address", change) },
-    "address_changed_digilocker",
+    { verifications, selfie: {}, ...(forContact ? {} : { changes: setChange(request.changes, "personal.address", change) }) },
+    forContact ? "digilocker_verified_contact" : "address_changed_digilocker",
     req,
     { nameMatch, dobMatch }
   );
@@ -401,7 +415,7 @@ exports.completeDigilocker = wrap(async (req, res) => {
 
 exports.undoChange = wrap(async (req, res) => {
   const request = await loadRequest(req, { editable: true });
-  const allowed = ["personal.name", "personal.fatherName", "personal.motherName", "personal.email", "personal.mobile", "personal.address", "segment", "nominee", "others"];
+  const allowed = ["personal.name", "personal.fatherName", "personal.motherName", "personal.maritalStatus", "personal.email", "personal.mobile", "personal.address", "segment", "nominee", "others"];
   const path = req.body?.path;
   if (!allowed.includes(path)) throw new ClientError("Invalid change.");
   const changes = path.includes(".") ? setChange(request.changes, path, undefined) : { ...request.changes };
@@ -545,8 +559,8 @@ exports.saveSegment = wrap(async (req, res) => {
   const request = await loadRequest(req, { editable: true });
   if (req.body?.fatca !== true) throw new ClientError("Please accept the FATCA / tax residency declaration.");
   const old = request.original_profile.segments || {};
-  const next = { NSE_CAP: Boolean(req.body?.segments?.NSE_CAP), NSE_FNO: Boolean(req.body?.segments?.NSE_FNO) };
-  if (!next.NSE_CAP && !next.NSE_FNO) throw new ClientError("Keep at least one segment active.");
+  // CASH is always active and an active FNO cannot be switched off here — only FNO can be added
+  const next = { NSE_CAP: true, NSE_FNO: Boolean(old.NSE_FNO) || Boolean(req.body?.segments?.NSE_FNO) };
   const changed = next.NSE_CAP !== Boolean(old.NSE_CAP) || next.NSE_FNO !== Boolean(old.NSE_FNO);
   const changes = { ...request.changes, declarations: { ...(request.changes.declarations || {}), fatca: true } };
   if (changed) changes.segment = { old, new: next };
@@ -555,45 +569,189 @@ exports.saveSegment = wrap(async (req, res) => {
   res.json({ success: true, request: view(saved) });
 });
 
-const RELATIONS = ["Spouse", "Father", "Mother", "Son", "Daughter", "Brother", "Sister", "Other"];
-const ID_TYPES = ["PAN", "Aadhaar (last 4 digits)", "Driving Licence", "Passport"];
+// Same nominee rules as the onboarding portal's nominee step
+const PROOF_TYPES = ["PAN CARD", "AADHAAR CARD"];
+// Only one nominee can be the client's mother, father, grandfather or grandmother
+const UNIQUE_RELATIONS = ["Mother", "Father", "Grand-father", "Grand-mother"];
+const PROOF_URL_PREFIX = "https://res.cloudinary.com/";
+
+function ageOn(dob) {
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+/** The client's address as it will be after this request (a DigiLocker address change wins). */
+function clientAddress(request) {
+  const a = request.changes.personal?.address?.new || request.original_profile.address || {};
+  return {
+    address: [a.line1, a.line2, a.line3].map((v) => String(v || "").trim()).filter(Boolean).join(", "),
+    city: String(a.city || a.district || "").trim(),
+    state: String(a.state || "").trim(),
+    pincode: String(a.pincode || "").trim(),
+    country: "India",
+  };
+}
+
+function cleanPerson(n, prefix, mine) {
+  const field = (key) => n[prefix ? `${prefix}${key.charAt(0).toUpperCase()}${key.slice(1)}` : key];
+  const sameAddress = field("sameAddress") === true;
+  const proofType = PROOF_TYPES.includes(field("proofType")) ? field("proofType") : "PAN CARD";
+  const proofNumber = String(field("proofNumber") || "").trim().toUpperCase();
+  const proofUrl = String(field("proofUrl") || "").trim();
+  const person = {
+    name: String(field("name") || "").trim().replace(/\s+/g, " ").toUpperCase(),
+    relation: NOMINEE_RELATIONS.includes(field("relation")) ? field("relation") : "",
+    dob: String(field("dob") || "").trim(),
+    mobile: String(field("mobile") || "").replace(/\D/g, "").slice(-10),
+    email: String(field("email") || "").trim().toLowerCase(),
+    sameAddress,
+    ...(sameAddress
+      ? mine
+      : {
+          address: String(field("address") || "").trim().replace(/\s+/g, " ").slice(0, 300),
+          city: String(field("city") || "").trim(),
+          state: String(field("state") || "").trim(),
+          pincode: String(field("pincode") || "").replace(/\D/g, "").slice(0, 6),
+          country: String(field("country") || "India").trim() || "India",
+        }),
+    proofType,
+    proofNumber: proofType === "PAN CARD" ? proofNumber.replace(/[^A-Z0-9]/g, "") : proofNumber.replace(/\D/g, ""),
+    proofUrl: proofUrl.startsWith(PROOF_URL_PREFIX) ? proofUrl : "",
+    proofName: String(field("proofName") || "").slice(0, 200),
+  };
+  if (!prefix) return person;
+  return Object.fromEntries(Object.entries(person).map(([k, v]) => [`${prefix}${k.charAt(0).toUpperCase()}${k.slice(1)}`, v]));
+}
+
+function checkPerson(p, label, { requireEmail }) {
+  if (!/^[A-Z][A-Z .']{1,99}$/.test(p.name)) throw new ClientError(`${label}: enter a valid name (letters only).`);
+  if (!p.relation) throw new ClientError(`${label}: select the relation.`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.dob) || Number.isNaN(new Date(p.dob).getTime()) || new Date(p.dob) > new Date()) {
+    throw new ClientError(`${label}: enter a valid date of birth.`);
+  }
+  if (!/^[6-9]\d{9}$/.test(p.mobile)) throw new ClientError(`${label}: enter a 10-digit mobile number starting with 6, 7, 8 or 9.`);
+  if ((requireEmail || p.email) && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(p.email)) throw new ClientError(`${label}: enter a valid e-mail address.`);
+  if (!p.address) throw new ClientError(`${label}: enter the address.`);
+  if (!/^\d{6}$/.test(p.pincode)) throw new ClientError(`${label}: enter a valid 6-digit pincode.`);
+  if (!p.city || !p.state) throw new ClientError(`${label}: enter the city and state.`);
+  if (p.proofType === "PAN CARD" && !/^[A-Z]{5}\d{4}[A-Z]$/.test(p.proofNumber)) throw new ClientError(`${label}: enter a valid PAN.`);
+  if (p.proofType === "AADHAAR CARD" && !/^\d{4}$/.test(p.proofNumber)) throw new ClientError(`${label}: enter only the last 4 digits of the Aadhaar.`);
+}
+
+const personFrom = (n, prefix) => Object.fromEntries(Object.entries(n).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.charAt(prefix.length).toLowerCase() + k.slice(prefix.length + 1), v]));
+
+// Fields that decide whether a nominee was really changed (the form also sends display-only values)
+const NOMINEE_COMPARE = ["name", "relation", "dob", "share", "mobile", "email", "address", "city", "state", "pincode", "proofType", "proofNumber", "guardianName", "guardianRelation", "guardianDob", "guardianProofType", "guardianProofNumber"];
+const sameNominees = (a = [], b = []) =>
+  a.length === b.length && a.every((n, i) => NOMINEE_COMPARE.every((k) => String(n[k] ?? "").toUpperCase() === String(b[i][k] ?? "").toUpperCase()));
 
 exports.saveNominee = wrap(async (req, res) => {
   const request = await loadRequest(req, { editable: true });
-  const old = request.original_profile.nominee || { opted: "no", nominees: [] };
+  const profile = request.original_profile;
+  const old = profile.nominee || { opted: "no", nominees: [] };
   const opted = req.body?.opted === "yes" ? "yes" : "no";
+  const mine = clientAddress(request);
   let nominees = [];
   if (opted === "yes") {
-    nominees = (Array.isArray(req.body?.nominees) ? req.body.nominees : []).map((n) => ({
-      name: String(n.name || "").trim().toUpperCase(),
-      relation: RELATIONS.includes(n.relation) ? n.relation : "",
-      dob: String(n.dob || "").trim(),
-      share: Number(n.share) || 0,
-      idType: ID_TYPES.includes(n.idType) ? n.idType : "",
-      idNumber: String(n.idNumber || "").trim().toUpperCase(),
-      mobile: String(n.mobile || "").replace(/\D/g, "").slice(-10),
-      email: String(n.email || "").trim().toLowerCase(),
-      address: String(n.address || "").trim(),
-    }));
-    if (!nominees.length || nominees.length > 3) throw new ClientError("Add between 1 and 3 nominees.");
+    const input = Array.isArray(req.body?.nominees) ? req.body.nominees : [];
+    if (!input.length || input.length > 3) throw new ClientError("Add between 1 and 3 nominees.");
+    // An ID that the back office already holds for a nominee needs no new proof document
+    const knownIds = new Set((old.nominees || []).flatMap((n) => [n.proofNumber, n.guardianProofNumber]).filter(Boolean).map((v) => String(v).toUpperCase()));
+    const myIds = [String(profile.pan || "").toUpperCase(), String(request.verifications?.digilocker?.aadhaarLast4 || profile.aadhaarLast4 || "")].filter(Boolean);
+    const usedIds = [];
+
+    nominees = input.map((n, i) => {
+      const label = `Nominee ${i + 1}`;
+      const nominee = { ...cleanPerson(n, "", mine), share: Number(n.share) };
+      checkPerson(nominee, label, { requireEmail: false });
+      if (!Number.isInteger(nominee.share) || nominee.share < 1 || nominee.share > 100) throw new ClientError(`${label}: share must be between 1 and 100%.`);
+      if (nominee.name === String(profile.name || "").toUpperCase() && nominee.dob === dobToIso(profile.dob)) throw new ClientError(`${label}: you cannot be your own nominee.`);
+      if (!nominee.proofUrl && !knownIds.has(nominee.proofNumber)) throw new ClientError(`${label}: upload the ${nominee.proofType === "PAN CARD" ? "PAN card" : "Aadhaar card"}.`);
+      usedIds.push(nominee.proofNumber);
+
+      if (ageOn(nominee.dob) < 18) {
+        const guardian = cleanPerson(n, "guardian", mine);
+        const g = personFrom(guardian, "guardian");
+        checkPerson(g, `${label} (minor) guardian`, { requireEmail: true });
+        if (!g.proofUrl && !knownIds.has(g.proofNumber)) throw new ClientError(`${label} guardian: upload the ${g.proofType === "PAN CARD" ? "PAN card" : "Aadhaar card"}.`);
+        if (g.proofNumber === nominee.proofNumber) throw new ClientError(`${label}: the guardian's ID cannot be the same as the nominee's ID.`);
+        usedIds.push(g.proofNumber);
+        Object.assign(nominee, guardian);
+      }
+      return nominee;
+    });
+
     for (const [i, n] of nominees.entries()) {
-      if (!/^[A-Z][A-Z .']{1,99}$/.test(n.name)) throw new ClientError(`Nominee ${i + 1}: enter a valid name.`);
-      if (!n.relation) throw new ClientError(`Nominee ${i + 1}: select the relationship.`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(n.dob) || new Date(n.dob) > new Date()) throw new ClientError(`Nominee ${i + 1}: enter a valid date of birth.`);
-      if (!n.idType || !n.idNumber) throw new ClientError(`Nominee ${i + 1}: enter an ID proof.`);
-      if (n.idType === "PAN" && !/^[A-Z]{5}\d{4}[A-Z]$/.test(n.idNumber)) throw new ClientError(`Nominee ${i + 1}: enter a valid PAN.`);
-      if (n.idType.startsWith("Aadhaar") && !/^\d{4}$/.test(n.idNumber)) throw new ClientError(`Nominee ${i + 1}: enter only the last 4 digits of Aadhaar.`);
-      if (n.share <= 0 || n.share > 100) throw new ClientError(`Nominee ${i + 1}: share must be between 1 and 100%.`);
+      if (myIds.includes(n.proofNumber) || (n.guardianProofNumber && myIds.includes(n.guardianProofNumber))) {
+        throw new ClientError(`Nominee ${i + 1}: the nominee's or guardian's ID cannot be the same as yours.`);
+      }
+      if (UNIQUE_RELATIONS.includes(n.relation) && nominees.some((o, j) => j !== i && o.relation === n.relation)) {
+        throw new ClientError(`Only one nominee can be your ${n.relation.toLowerCase()}.`);
+      }
     }
+    if (new Set(usedIds).size !== usedIds.length) throw new ClientError("Each nominee and guardian needs a different ID number.");
     const total = nominees.reduce((s, n) => s + n.share, 0);
     if (total !== 100) throw new ClientError(`Nominee shares must add up to 100% (now ${total}%).`);
   }
-  const unchanged = opted === old.opted && opted === "no";
+  const unchanged = opted === old.opted && (opted === "no" || sameNominees(nominees, old.nominees));
   const changes = { ...request.changes };
   if (unchanged) delete changes.nominee;
   else changes.nominee = { old, new: { opted, nominees }, declaredAt: new Date().toISOString() };
   const saved = await save(request, { changes }, unchanged ? null : "nominee_changed", req, { opted, count: nominees.length });
   res.json({ success: true, request: view(saved) });
+});
+
+// Nominee / guardian ID proof (PAN or Aadhaar card). An Aadhaar card is masked before it is stored,
+// like the onboarding portal does. The URL goes back to the form and is saved with the nominee.
+exports.uploadNomineeProof = wrap(async (req, res) => {
+  const request = await loadRequest(req, { editable: true });
+  const file = req.file;
+  if (!file) throw new ClientError("Choose a file to upload.");
+  if (file.size > 5 * 1024 * 1024) throw new ClientError("File should be less than 5MB.");
+  const detected = fileKind(file);
+  if (!["pdf", "jpg", "png"].includes(detected)) throw new ClientError("Upload a PDF, JPG or PNG file.");
+  let buffer = file.buffer;
+  if (req.body?.proofType === "AADHAAR CARD") {
+    let masked;
+    try {
+      const result = await digioClient.maskAadhaarImage({
+        reference_id: `REKYC_MASK_${request.id}_${Date.now()}`,
+        unique_request_id: `REKYC_MASKREQ_${request.id}_${Date.now()}`,
+        data: buffer.toString("base64"),
+        file_name: file.originalname || `aadhaar.${detected}`,
+        data_content_type: detected === "pdf" ? "PDF" : detected === "png" ? "PNG" : "JPEG",
+        is_validate: false,
+        consent: "Y",
+        mask_qr: false,
+      });
+      masked = result?.masked_output;
+    } catch (error) {
+      console.error("[ReKYC] Aadhaar masking failed:", error.response?.data || error.message);
+    }
+    if (!masked) throw new ClientError("Could not mask the Aadhaar card. Please upload a clearer copy, or use the PAN card instead.", 422);
+    buffer = Buffer.from(masked, "base64");
+  }
+  const uploaded = await uploadBuffer(buffer, `rekyc_nominee_proof_${request.id}`);
+  await save(request, {}, "nominee_proof_uploaded", req, { proofType: req.body?.proofType });
+  res.json({ success: true, url: uploaded.secure_url, name: file.originalname });
+});
+
+exports.lookupPincode = wrap(async (req, res) => {
+  const pin = String(req.params.pin || "").replace(/\D/g, "");
+  if (pin.length !== 6) throw new ClientError("Enter a valid 6-digit pincode.");
+  try {
+    const response = await fetch(`https://api.postalpincode.in/pincode/${pin}`, { signal: AbortSignal.timeout(8000) });
+    const data = await response.json();
+    const office = data?.[0]?.Status === "Success" ? data[0].PostOffice?.[0] : null;
+    if (office) return res.json({ success: true, city: office.District, state: office.State });
+  } catch (error) {
+    console.error("[ReKYC] Pincode lookup failed:", error.message);
+  }
+  res.json({ success: false });
 });
 
 exports.saveOthers = wrap(async (req, res) => {
@@ -627,27 +785,40 @@ const NAME_PROOF_TYPES = ["Marriage certificate", "Gazette notification", "Passp
 
 exports.documentOptions = (req, res) => res.json({ success: true, financialProofTypes: FINANCIAL_PROOF_TYPES, nameProofTypes: NAME_PROOF_TYPES });
 
+/** What an uploaded file really is, from its first bytes (the browser's file type can be faked). */
+function fileKind(file) {
+  const b = file.buffer;
+  const name = String(file.originalname || "").toLowerCase();
+  if (b.slice(0, 4).toString() === "%PDF") return "pdf";
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpg";
+  if (b.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
+  if (b.slice(0, 4).toString() === "RIFF" && b.slice(8, 12).toString() === "WEBP") return "webp";
+  if (b.slice(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) && name.endsWith(".doc")) return "doc";
+  if (b.slice(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) && name.endsWith(".docx") && b.includes("word/")) return "docx";
+  return null;
+}
+
 exports.uploadDocument = wrap(async (req, res) => {
   const request = await loadRequest(req, { editable: true });
   const kind = req.body?.kind;
   const file = req.file;
   if (!file) throw new ClientError("Choose a file to upload.");
   if (file.size > 5 * 1024 * 1024) throw new ClientError("File should be less than 5MB.");
-  const isPdf = file.mimetype === "application/pdf" && file.buffer.slice(0, 4).toString() === "%PDF";
+  const detected = fileKind(file);
   let type;
   if (kind === "financialProof") {
     type = FINANCIAL_PROOF_TYPES.find((t) => t === req.body?.type);
-    if (!isPdf) throw new ClientError("Financial proof must be a PDF.");
+    if (!detected) throw new ClientError("Upload a PDF, Word (DOC / DOCX) or image (JPG, JPEG, PNG, WEBP) file.");
   } else if (kind === "nameProof") {
     type = NAME_PROOF_TYPES.find((t) => t === req.body?.type);
-    const isImage = ["image/jpeg", "image/png"].includes(file.mimetype);
-    if (!isPdf && !isImage) throw new ClientError("Upload a PDF, JPG or PNG file.");
+    if (!["pdf", "jpg", "png"].includes(detected)) throw new ClientError("Upload a PDF, JPG or PNG file.");
   } else {
     throw new ClientError("Invalid document.");
   }
   if (!type) throw new ClientError("Select the document type.");
 
-  const uploaded = await uploadBuffer(file.buffer, `rekyc_${kind}_${request.id}`);
+  const isWord = detected === "doc" || detected === "docx";
+  const uploaded = await uploadBuffer(file.buffer, `rekyc_${kind}_${request.id}`, isWord ? { rawExtension: detected } : {});
   const documents = { ...request.documents, [kind]: { type, url: uploaded.secure_url, name: file.originalname, size: file.size, uploadedAt: new Date().toISOString() } };
   const saved = await save(request, { documents }, "document_uploaded", req, { kind, type });
   res.json({ success: true, request: view(saved) });

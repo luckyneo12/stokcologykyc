@@ -58,19 +58,25 @@ export default function PersonalStep() {
             <b>Your request was sent back for correction:</b> {request.rejectionReason}
           </div>
         )}
-        <div className="rk-alert rk-alert-info">Updating e-mail and phone number will take up to 48 hours to reflect in your account post verification.</div>
+        <div className="rk-alert rk-alert-info">Updating e-mail and phone number will take up to 48 hours to reflect in your account post verification. Any change on this page needs an Aadhaar check (DigiLocker) and a live selfie in the Document step.</div>
         <div className="rk-details-grid" style={{ marginTop: 22 }}>
           <Detail label="Name" value={personal.name?.new || profile.name} old={profile.name} changed={!!personal.name} onEdit={() => setModal("name")} onUndo={() => undo("personal.name")} />
           <Detail label="Father's Name / Spouse Name" value={personal.fatherName?.new || profile.fatherName} old={profile.fatherName} changed={!!personal.fatherName} onEdit={() => setModal("fatherName")} onUndo={() => undo("personal.fatherName")} />
           <Detail label="Mother's Name" value={personal.motherName?.new || profile.motherName} old={profile.motherName} changed={!!personal.motherName} onEdit={() => setModal("motherName")} onUndo={() => undo("personal.motherName")} />
           <Detail label="Date of Birth" value={profile.dob} />
           <Detail label="Gender" value={profile.gender} />
-          <Detail label="Marital Status" value={profile.maritalStatus} />
+          <Detail
+            label="Marital Status"
+            value={personal.maritalStatus?.new || profile.maritalStatus}
+            old={profile.maritalStatus}
+            changed={!!personal.maritalStatus}
+            onEdit={() => setModal("maritalStatus")}
+            onUndo={() => undo("personal.maritalStatus")}
+          />
           <Detail
             label="E-mail"
             value={personal.email?.new || profile.email}
             old={profile.email}
-            sub={`Dependency: ${personal.email?.dependency || profile.emailDependency || "Self"}`}
             changed={!!personal.email}
             onEdit={() => setModal("email")}
             onUndo={() => undo("personal.email")}
@@ -79,7 +85,6 @@ export default function PersonalStep() {
             label="Mobile"
             value={personal.mobile?.new ? `+91${personal.mobile.new}` : profile.mobile ? `+91${profile.mobile}` : ""}
             old={profile.mobile ? `+91${profile.mobile}` : ""}
-            sub={`Dependency: ${personal.mobile?.dependency || profile.mobileDependency || "Self"}`}
             changed={!!personal.mobile}
             onEdit={() => setModal("mobile")}
             onUndo={() => undo("personal.mobile")}
@@ -101,6 +106,7 @@ export default function PersonalStep() {
       {(modal === "fatherName" || modal === "motherName") && (
         <RelativeModal field={modal} current={personal[modal]?.new || profile[modal]} onClose={() => setModal(null)} />
       )}
+      {modal === "maritalStatus" && <MaritalModal current={personal.maritalStatus?.new || profile.maritalStatus} onClose={() => setModal(null)} />}
       {(modal === "email" || modal === "mobile") && <ContactModal type={modal} onClose={() => setModal(null)} />}
       {modal === "address" && <AddressModal onClose={() => setModal(null)} />}
     </section>
@@ -165,6 +171,42 @@ function RelativeModal({ field, current, onClose }) {
       <ErrorText>{error}</ErrorText>
       <Field label={label} id="rk-relative">
         <input id="rk-relative" className="rk-input" value={value} onChange={(e) => setValue(e.target.value.toUpperCase().replace(/[^A-Z .']/g, ""))} maxLength={100} />
+      </Field>
+    </Modal>
+  );
+}
+
+const MARITAL_STATUSES = ["Married", "Unmarried", "Divorced", "Widowed"];
+
+function MaritalModal({ current, onClose }) {
+  const { run } = usePortal();
+  const options = MARITAL_STATUSES;
+  const [value, setValue] = useState(options.includes(current) ? current : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const save = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await run("/personal/marital-status", { value }, { success: "Marital status updated." });
+      onClose();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title="Update Marital Status"
+      onClose={onClose}
+      footer={<><button className="rk-btn rk-btn-ghost" onClick={onClose}>Cancel</button><button className="rk-btn" onClick={save} disabled={busy || !value}>{busy && <Spinner />} Save</button></>}
+    >
+      <ErrorText>{error}</ErrorText>
+      <Field label="Marital status" id="rk-marital">
+        <select id="rk-marital" className="rk-select" value={value} onChange={(e) => setValue(e.target.value)}>
+          <option value="">Select</option>
+          {options.map((s) => <option key={s}>{s}</option>)}
+        </select>
       </Field>
     </Modal>
   );

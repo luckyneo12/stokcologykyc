@@ -191,11 +191,30 @@ export default function RekycRequestDetail() {
               <div style={{ marginTop: 14 }}>
                 <h2 style={{ fontSize: "1em" }}>New nominees</h2>
                 <div className="ra-table-wrap">
-                  <table className="ra-table" style={{ minWidth: 640 }}>
-                    <thead><tr><th>Name</th><th>Relation</th><th>DOB</th><th>ID</th><th>Share</th><th>Mobile / E-mail</th></tr></thead>
+                  <table className="ra-table" style={{ minWidth: 900 }}>
+                    <thead><tr><th>Name</th><th>Relation</th><th>DOB</th><th>ID</th><th>Share</th><th>Mobile / E-mail</th><th>Address</th><th>Guardian (minor)</th></tr></thead>
                     <tbody>
                       {r.changes.nominee.new.nominees.map((n, i) => (
-                        <tr key={i}><td>{n.name}</td><td>{n.relation}</td><td>{n.dob}</td><td>{n.idType}: {n.idNumber}</td><td>{n.share}%</td><td>{[n.mobile, n.email].filter(Boolean).join(" / ") || "-"}</td></tr>
+                        <tr key={i}>
+                          <td>{n.name}</td>
+                          <td>{n.relation}</td>
+                          <td>{n.dob}</td>
+                          <td>
+                            {n.proofType || n.idType}: {n.proofNumber || n.idNumber}
+                            {n.proofUrl && <> <button className="ra-link-btn" onClick={() => openFile(`nominee${i + 1}Proof`)}>View</button></>}
+                          </td>
+                          <td>{n.share}%</td>
+                          <td>{[n.mobile, n.email].filter(Boolean).join(" / ") || "-"}</td>
+                          <td>{[n.address, n.city, n.state, n.pincode].filter(Boolean).join(", ") || "-"}</td>
+                          <td>
+                            {n.guardianName ? (
+                              <>
+                                {n.guardianName} ({n.guardianRelation}), {n.guardianProofType}: {n.guardianProofNumber}
+                                {n.guardianProofUrl && <> <button className="ra-link-btn" onClick={() => openFile(`nominee${i + 1}GuardianProof`)}>View</button></>}
+                              </>
+                            ) : "-"}
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>

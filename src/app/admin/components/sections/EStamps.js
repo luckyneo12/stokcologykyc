@@ -108,8 +108,9 @@ export default function EStamps({ searchQuery, onSearchChange }) {
     setIsUploading(true);
     try {
       const Tesseract = (await import('tesseract.js')).default;
-      const pdfjs = await import('pdfjs-dist/build/pdf');
-      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+      const pdfjs = await import('pdfjs-dist');
+      const version = pdfjs.version || '5.7.284';
+      pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
       const { extractEStampEntries } = await import('@/utils/estampParser');
 
       const localResults = [];
@@ -119,34 +120,57 @@ export default function EStamps({ searchQuery, onSearchChange }) {
         const imageUrlsToOcr = [];
 
         if (isPdf) {
-          const arrayBuffer = await file.arrayBuffer();
-          const pdfDoc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-            const page = await pdfDoc.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 1.5 });
-            const canvas = document.createElement("canvas");
-            const context = canvas.getContext("2d");
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            await page.render({ canvasContext: context, viewport }).promise;
-            imageUrlsToOcr.push(canvas.toDataURL("image/png"));
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjs.getDocument({
+              data: new Uint8Array(arrayBuffer),
+              cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/cmaps/`,
+              cMapPacked: true,
+            });
+            const pdfDoc = await loadingTask.promise;
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+              const page = await pdfDoc.getPage(pageNum);
+              const viewport = page.getViewport({ scale: 1.5 });
+              const canvas = document.createElement("canvas");
+              const context = canvas.getContext("2d");
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              await page.render({ canvasContext: context, viewport }).promise;
+              imageUrlsToOcr.push(canvas.toDataURL("image/png"));
+            }
+          } catch (pdfErr) {
+            console.error(`[PDF] Failed to render PDF ${file.name}:`, pdfErr);
           }
         } else {
           imageUrlsToOcr.push(URL.createObjectURL(file));
         }
 
         for (const imgUrl of imageUrlsToOcr) {
-          console.log(`[OCR] Processing image for file: ${file.name}`);
-          const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng');
-          const entries = extractEStampEntries(text);
-          for (const entry of entries) {
-            localResults.push({
-              fileName: file.name,
-              certificateNo: entry.certificateNo,
-              serialNo: entry.serialNo,
-              status: "pending_verification"
-            });
+          try {
+            console.log(`[OCR] Processing image for file: ${file.name}`);
+            const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng');
+            const entries = extractEStampEntries(text);
+            for (const entry of entries) {
+              localResults.push({
+                fileName: file.name,
+                certificateNo: entry.certificateNo,
+                serialNo: entry.serialNo,
+                status: "pending_verification"
+              });
+            }
+          } catch (ocrErr) {
+            console.warn(`[OCR] OCR recognition failed for ${file.name}:`, ocrErr);
           }
+        }
+
+        // Ensure at least one entry exists for this file
+        if (!localResults.some(r => r.fileName === file.name)) {
+          localResults.push({
+            fileName: file.name,
+            certificateNo: "",
+            serialNo: "",
+            status: "pending_verification"
+          });
         }
       }
 
@@ -164,10 +188,10 @@ export default function EStamps({ searchQuery, onSearchChange }) {
       });
       const data = await res.json();
       
-      if (data.success) {
+      if (data.success && data.files && data.files.length > 0) {
         // Map backend cloudinary URLs to our local OCR results based on filename
-        const finalData = localResults.map(res => {
-          const uploadedFile = data.files.find(f => f.originalName === res.fileName);
+        const finalData = localResults.map((res, idx) => {
+          const uploadedFile = data.files.find(f => f.originalName === res.fileName) || data.files[idx] || data.files[0];
           return {
             ...res,
             fileUrl: uploadedFile ? uploadedFile.fileUrl : ""
@@ -177,11 +201,11 @@ export default function EStamps({ searchQuery, onSearchChange }) {
         setExtractedData(finalData);
         await checkDuplicates(finalData);
       } else {
-        alert("Upload failed: " + data.error);
+        alert("Upload failed: " + (data.error || "No files uploaded to storage."));
       }
     } catch (error) {
       console.error(error);
-      alert("Error processing files.");
+      alert("Error processing files: " + (error.message || "Unknown error"));
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

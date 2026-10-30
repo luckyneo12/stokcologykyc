@@ -1,0 +1,88 @@
+{
+	"info": {
+		"_postman_id": "49427175-28d4-4614-8eff-75c6350764eb",
+		"name": "Filetransfer_INT_PROD",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "33705126"
+	},
+	"item": [
+		{
+			"name": "FileTransfer",
+			"item": [
+				{
+					"name": "GetToken",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "api_key",
+								"value": "ENTER VALID API KEY",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "\"9-QZjRS7P1qarcjlk8RfKw:j2CD3W2BDGKoEg_KN1CcivB1Ih3RQDiEgwXu9xk-1mHmH_3_Zs6sZAhB7F3x1eozcI46rvgPibeDINfX8hqtMOZPYjq5VDrAfMispZ7lOKwx5uJ0jVAA1YMu4Jq4cm9tETuM2tAKFdYcVX42sP2WdumaKSN6k-p7Xmi5xpO_5ss\"",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://api.kracvl.com/int/api/GetToken",
+							"protocol": "https",
+							"host": [
+								"api",
+								"kracvl",
+								"com"
+							],
+							"path": [
+								"int",
+								"api",
+								"GetToken"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "FileTransfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Token",
+								"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiI3MTgyOTMyMzFjY2I0YTgxYjkzOGQwMzg0Y2JkNmI0YyIsInVuaXF1ZV9uYW1lIjoiVUFURUNTSU1BR0UiLCJuYmYiOjE3MjgwMjQ0MDYsImV4cCI6MTcyODExMDgwNiwiaWF0IjoxNzI4MDI0NDA2LCJpc3MiOiJodHRwOi8vbG9jYWxob3N0IiwiYXVkIjoiaHR0cDovL2xvY2FsaG9zdCJ9.IorfIQKWdBeZ5bdN40b2156zUtrrAq8AK7rCFETvet4"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "\"vRraWil8Dgw4QkHIV5gpIA:L4jOM8tBNoI9Pj5d19rNXWDeL9nIjIK0bBjV2cfCo95IYgx0WXWBPY4O09S_DfTGu1Ke9Fid-3tZ1kWYcJI07qcu3hcNXrpJHhhhJocY93yPVG15uA5HqOqvZfqEqavWyrdrE2ffAysGBskrB9xOG2tb860T-jdorX29ms9bHiEm_AohIquwpK2KIJoTI6FEvFfK3eE48nc2WOWdSdKekiEYBw9TtnTwprkr9O3C8gyTu1Fllo11cA9ZkKx9VByB2I4iylZo2jF36Dvc0-Jb2qk0xmRnGu5KLCrfCNFvBy4BxX6jqxy76DGGp8eyfrJ_8lVTSHzsQUKWbslbtPSqfZB28jvK89NP1y3eitKJVL1NSo-vYUKClWKVi86enBQYTkzUsMXaaXeL7vjUaP2GGKbuaj7sFsDzrUEw0wiAoil4tXVVIgcstAjFx95IxgAK2A4mvT64fsCdNAEgamOhnxyFT-ROfAz0Z41_fuflNrx2drsC9n2rDT-4emXkpLXPDUspLF9R-Q7D1zQ_lrtGSrDVHM7JA2RUI-1EZkjRReyjoRy4dH4ixme-xCFnZf5-zToqo93EqxbgnbShyIAmPbhWfUDzNpokE96qoHAhcCTXNsXN0n_JNRc23k14r-ml\"",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://api.kracvl.com/int/api/FileTransfer",
+							"protocol": "https",
+							"host": [
+								"api",
+								"kracvl",
+								"com"
+							],
+							"path": [
+								"int",
+								"api",
+								"FileTransfer"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

@@ -3,6 +3,12 @@ const { NOT_TRASHED } = require("../utils/trashStatus");
 const cloudinary = require('cloudinary').v2;
 const fs = require('fs');
 
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 
 // ─── Controller Methods ────────────────────────────────────────────────────────
 
@@ -20,15 +26,27 @@ exports.uploadEStamp = async (req, res) => {
 
     // Check for duplicates at application level
     if (certificateNo) {
-      const existingCert = await prisma.eStamp.findFirst({ where: { certificateNo } });
-      if (existingCert) {
-        return res.status(400).json({ success: false, error: `Certificate No ${certificateNo} already exists.` });
+      const trimmedCert = certificateNo.trim();
+      const existingCert = await prisma.eStamp.findFirst({
+        where: {
+          OR: [{ certificateNo: trimmedCert }, { serialNo: trimmedCert }]
+        }
+      });
+      const existingUser = await prisma.user.findFirst({ where: { eStamp: trimmedCert } });
+      if (existingCert || existingUser) {
+        return res.status(400).json({ success: false, error: "This certificate number or serial number is taken by someone else." });
       }
     }
     if (serialNo) {
-      const existingSerial = await prisma.eStamp.findFirst({ where: { serialNo } });
-      if (existingSerial) {
-        return res.status(400).json({ success: false, error: `Serial No ${serialNo} already exists.` });
+      const trimmedSerial = serialNo.trim();
+      const existingSerial = await prisma.eStamp.findFirst({
+        where: {
+          OR: [{ serialNo: trimmedSerial }, { certificateNo: trimmedSerial }]
+        }
+      });
+      const existingUser = await prisma.user.findFirst({ where: { eStamp: trimmedSerial } });
+      if (existingSerial || existingUser) {
+        return res.status(400).json({ success: false, error: "This certificate number or serial number is taken by someone else." });
       }
     }
 
@@ -160,6 +178,7 @@ exports.bulkUploadEStamps = async (req, res) => {
     }
 
     const files = [];
+    const errors = [];
 
     for (const file of req.files) {
       try {
@@ -173,7 +192,8 @@ exports.bulkUploadEStamps = async (req, res) => {
           fileUrl: uploadResult.secure_url
         });
       } catch (err) {
-        console.error("[E-Stamp] Failed to upload to Cloudinary:", err.message);
+        console.error(`[E-Stamp] Failed to upload ${file.originalname} to Cloudinary:`, err.message);
+        errors.push({ originalName: file.originalname, error: err.message });
       }
       
       // Clean up local file after processing
@@ -184,7 +204,15 @@ exports.bulkUploadEStamps = async (req, res) => {
       }
     }
 
-    res.json({ success: true, files });
+    if (files.length === 0 && errors.length > 0) {
+      return res.status(500).json({
+        success: false,
+        error: `Cloudinary upload failed: ${errors[0].error}`,
+        errors
+      });
+    }
+
+    res.json({ success: true, files, errors });
   } catch (error) {
     console.error("Error during bulk upload:", error);
     res.status(500).json({ success: false, error: "Server error during bulk upload." });
@@ -213,7 +241,7 @@ exports.checkDuplicates = async (req, res) => {
       .filter(s => s && s.trim() !== "");
 
     // Query DB for existing matches
-    const [existingCerts, existingSerials] = await Promise.all([
+    const [existingCerts, existingSerials, existingUsers] = await Promise.all([
       certNos.length > 0
         ? prisma.eStamp.findMany({
             where: { certificateNo: { in: certNos } },
@@ -225,11 +253,20 @@ exports.checkDuplicates = async (req, res) => {
             where: { serialNo: { in: serialNos } },
             select: { certificateNo: true, serialNo: true, status: true, id: true }
           })
+        : [],
+      certNos.length > 0
+        ? prisma.user.findMany({
+            where: { eStamp: { in: certNos } },
+            select: { eStamp: true, id: true }
+          })
         : []
     ]);
 
     // Build lookup maps
-    const duplicateCerts = new Set(existingCerts.map(e => e.certificateNo));
+    const duplicateCerts = new Set([
+      ...existingCerts.map(e => e.certificateNo),
+      ...existingUsers.map(u => u.eStamp)
+    ]);
     const duplicateSerials = new Set(existingSerials.map(e => e.serialNo));
 
     // Also check for duplicates within the uploaded batch itself
@@ -309,10 +346,14 @@ exports.bulkSaveEStamps = async (req, res) => {
         let dupReason = "";
 
         if (hasCert) {
+          const trimmedCert = stamp.certificateNo.trim();
           const existingCert = await prisma.eStamp.findFirst({
-            where: { certificateNo: stamp.certificateNo.trim() }
+            where: { certificateNo: trimmedCert }
           });
-          if (existingCert) {
+          const existingUser = await prisma.user.findFirst({
+            where: { eStamp: trimmedCert }
+          });
+          if (existingCert || existingUser) {
             isDuplicate = true;
             dupReason = `Duplicate Certificate No: ${stamp.certificateNo}`;
           }
@@ -377,24 +418,32 @@ exports.updateEStamp = async (req, res) => {
     }
 
     // Application-level duplicate check for updated values
-    const newCert = certificateNo || existing.certificateNo;
-    const newSerial = serialNo || existing.serialNo;
+    const newCert = certificateNo !== undefined ? certificateNo.trim() : existing.certificateNo;
+    const newSerial = serialNo !== undefined ? serialNo.trim() : existing.serialNo;
 
     if (newCert && newCert !== existing.certificateNo) {
       const dupCert = await prisma.eStamp.findFirst({
-        where: { certificateNo: newCert, id: { not: parseInt(id) } }
+        where: {
+          OR: [{ certificateNo: newCert }, { serialNo: newCert }],
+          id: { not: parseInt(id) }
+        }
       });
-      if (dupCert) {
-        return res.status(400).json({ success: false, error: `Certificate No ${newCert} already exists.` });
+      const dupUser = await prisma.user.findFirst({ where: { eStamp: newCert } });
+      if (dupCert || dupUser) {
+        return res.status(400).json({ success: false, error: "This certificate number or serial number is taken by someone else." });
       }
     }
 
     if (newSerial && newSerial !== existing.serialNo) {
       const dupSerial = await prisma.eStamp.findFirst({
-        where: { serialNo: newSerial, id: { not: parseInt(id) } }
+        where: {
+          OR: [{ serialNo: newSerial }, { certificateNo: newSerial }],
+          id: { not: parseInt(id) }
+        }
       });
-      if (dupSerial) {
-        return res.status(400).json({ success: false, error: `Serial No ${newSerial} already exists.` });
+      const dupUser = await prisma.user.findFirst({ where: { eStamp: newSerial } });
+      if (dupSerial || dupUser) {
+        return res.status(400).json({ success: false, error: "This certificate number or serial number is taken by someone else." });
       }
     }
 

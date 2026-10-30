@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePortal } from "@/components/rekyc/PortalShell";
@@ -15,6 +15,14 @@ export default function ReviewStep() {
   const [error, setError] = useState("");
   const { ok, missing } = request.requirements;
   const changes = request.changeList || [];
+  const documentPending = missing.find((m) => m.step === "document");
+
+  // Review & eSign opens only after the Document step is complete (also when opened from the step list)
+  useEffect(() => {
+    if (!documentPending || busy) return;
+    notify(documentPending.message, "error");
+    router.replace("/rekyc/document");
+  }, [documentPending, busy, notify, router]);
 
   const esign = async () => {
     setBusy(true);
@@ -37,6 +45,8 @@ export default function ReviewStep() {
       setBusy(false);
     }
   };
+
+  if (documentPending && !busy) return null;
 
   return (
     <section className="rk-card">

@@ -6,11 +6,14 @@ import { ErrorText } from "@/components/rekyc/ui";
 export default function SegmentStep() {
   const { request, run } = usePortal();
   const initial = request.changes.segment?.new || request.profile.segments || {};
-  const [segments, setSegments] = useState({ NSE_CAP: !!initial.NSE_CAP, NSE_FNO: !!initial.NSE_FNO });
-  const [fatca, setFatca] = useState(request.changes.declarations?.fatca ?? true);
+  const original = request.profile.segments || {};
+  // CASH (equity) is always on. FNO can only be added: once active on the account it stays on.
+  const fnoLocked = Boolean(original.NSE_FNO);
+  const [segments, setSegments] = useState({ NSE_CAP: true, NSE_FNO: fnoLocked || !!initial.NSE_FNO });
+  // The declaration starts unticked; it stays ticked once the client has accepted it
+  const [fatca, setFatca] = useState(request.changes.declarations?.fatca === true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const original = request.profile.segments || {};
   const activatingFno = segments.NSE_FNO && !original.NSE_FNO;
 
   const save = async () => {
@@ -27,7 +30,7 @@ export default function SegmentStep() {
     }
   };
 
-  const toggle = (key) => setSegments((s) => ({ ...s, [key]: !s[key] }));
+  const toggleFno = () => setSegments((s) => ({ ...s, NSE_FNO: fnoLocked || !s.NSE_FNO }));
 
   return (
     <section className="rk-card">
@@ -39,17 +42,19 @@ export default function SegmentStep() {
         <div className="rk-segment-box">
           <div className="rk-segment-ex">NSE</div>
           <div className="rk-segment-opts">
-            <label className="rk-check"><input type="checkbox" checked={segments.NSE_CAP} onChange={() => toggle("NSE_CAP")} /> CASH</label>
-            <label className="rk-check"><input type="checkbox" checked={segments.NSE_FNO} onChange={() => toggle("NSE_FNO")} /> FNO</label>
+            <label className="rk-check" title="CASH is always active"><input type="checkbox" checked disabled /> CASH</label>
+            <label className="rk-check" title={fnoLocked ? "FNO is already active on your account" : undefined}>
+              <input type="checkbox" checked={segments.NSE_FNO} disabled={fnoLocked} onChange={toggleFno} /> FNO
+            </label>
           </div>
         </div>
+        <p className="rk-hint" style={{ marginTop: 8 }}>
+          {fnoLocked ? "CASH and FNO are both active on your account." : "CASH is always active. Tick FNO if you want to trade in derivatives."}
+        </p>
         {activatingFno && (
           <div className="rk-alert rk-alert-warn" style={{ marginTop: 14 }}>
             To activate FNO (derivatives) you need to upload a financial proof in the Document step.
           </div>
-        )}
-        {original.NSE_FNO && !segments.NSE_FNO && (
-          <div className="rk-alert rk-alert-warn" style={{ marginTop: 14 }}>FNO will be deactivated. Close any open derivative positions first.</div>
         )}
 
         <h3 style={{ fontSize: "1em", margin: "26px 0 8px" }}>My sole country of tax residency India</h3>
@@ -60,7 +65,7 @@ export default function SegmentStep() {
           </span>
         </label>
       </div>
-      <StepFooter step="segment" onNext={save} busy={busy} disabled={!fatca || (!segments.NSE_CAP && !segments.NSE_FNO)} />
+      <StepFooter step="segment" onNext={save} busy={busy} disabled={!fatca} />
     </section>
   );
 }

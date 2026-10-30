@@ -10,11 +10,13 @@ cloudinary.config({
 
 const FOLDER = "rekyc_uploads";
 
-function uploadBuffer(buffer, baseName, { format } = {}) {
-  const publicId = `${String(baseName).replace(/[^a-zA-Z0-9_-]/g, "_")}_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+// rawExtension: files Cloudinary keeps as "raw" (Word documents) carry their extension in the id,
+// so the stored file downloads as .doc / .docx
+function uploadBuffer(buffer, baseName, { format, rawExtension } = {}) {
+  const publicId = `${String(baseName).replace(/[^a-zA-Z0-9_-]/g, "_")}_${Date.now()}_${crypto.randomBytes(3).toString("hex")}${rawExtension ? `.${rawExtension}` : ""}`;
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder: FOLDER, public_id: publicId, resource_type: "auto", ...(format ? { format } : {}) },
+      { folder: FOLDER, public_id: publicId, resource_type: rawExtension ? "raw" : "auto", ...(format ? { format } : {}) },
       (error, result) => (error ? reject(error) : resolve(result))
     );
     stream.end(buffer);
@@ -26,7 +28,8 @@ function signedDownloadUrl(url) {
   const match = parsed.pathname.match(/\/(image|video|raw)\/upload\/(?:v\d+\/)?(.+)$/);
   if (!match) return null;
   const ext = match[2].match(/\.([^.]+)$/)?.[1] || "pdf";
-  const publicId = match[2].replace(/\.[^.]+$/, "");
+  // A raw file's extension is part of its id; images and PDFs keep the id without it
+  const publicId = match[1] === "raw" ? match[2] : match[2].replace(/\.[^.]+$/, "");
   return cloudinary.utils.private_download_url(publicId, ext, { resource_type: match[1], type: "upload", attachment: false });
 }
 

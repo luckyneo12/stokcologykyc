@@ -110,7 +110,6 @@ function AccountCard({ profile }) {
     ["Client ID", profile?.clientCode],
     ["Account Status", profile?.accountStatus],
     ["PAN", profile?.pan],
-    ["CKYC No.", profile?.ckycNo || "-"],
   ];
   return (
     <section className="rk-card">

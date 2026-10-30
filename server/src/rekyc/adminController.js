@@ -261,6 +261,18 @@ exports.getRequest = wrap(async (req, res) => {
   });
 });
 
+/** [content type, extension] of a stored file, from its first bytes (Word files keep their extension in the URL). */
+function fileType(buffer, url, contentType) {
+  if (buffer.slice(0, 4).toString() === "%PDF") return ["application/pdf", "pdf"];
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) return ["image/jpeg", "jpg"];
+  if (buffer[0] === 0x89 && buffer.slice(1, 4).toString() === "PNG") return ["image/png", "png"];
+  if (buffer.slice(8, 12).toString() === "WEBP") return ["image/webp", "webp"];
+  const ext = String(url).match(/\.(docx?)(?:$|\?)/i)?.[1]?.toLowerCase();
+  if (ext === "docx") return ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"];
+  if (ext === "doc") return ["application/msword", "doc"];
+  return [contentType || "application/octet-stream", "bin"];
+}
+
 exports.getFile = wrap(async (req, res) => {
   const request = await getRequestOr404(req.params.id);
   const urls = {
@@ -271,12 +283,17 @@ exports.getFile = wrap(async (req, res) => {
     selfie: request.selfie?.url,
     aadhaarPhoto: request.verifications?.digilocker?.photoUrl,
   };
+  // Nominee / guardian ID proofs: nominee1Proof, nominee1GuardianProof, …
+  (request.changes?.nominee?.new?.nominees || []).forEach((n, i) => {
+    urls[`nominee${i + 1}Proof`] = n.proofUrl;
+    urls[`nominee${i + 1}GuardianProof`] = n.guardianProofUrl;
+  });
   const url = urls[req.params.kind];
   if (!url) throw new AdminError("File not found.", 404);
   const { buffer, contentType } = await fetchBuffer(url);
-  const isPdf = buffer.slice(0, 4).toString() === "%PDF";
-  res.setHeader("Content-Type", isPdf ? "application/pdf" : contentType || "application/octet-stream");
-  res.setHeader("Content-Disposition", `${req.query.download === "1" ? "attachment" : "inline"}; filename="${request.client_code}_${req.params.kind}${isPdf ? ".pdf" : ".jpg"}"`);
+  const [type, ext] = fileType(buffer, url, contentType);
+  res.setHeader("Content-Type", type);
+  res.setHeader("Content-Disposition", `${req.query.download === "1" ? "attachment" : "inline"}; filename="${request.client_code}_${req.params.kind}.${ext}"`);
   res.setHeader("Cache-Control", "private, no-store");
   res.send(buffer);
 });

@@ -121,7 +121,8 @@ async function buildModificationPdf({ request, estamp }) {
   header();
 
   for (const row of listChanges(request.changes)) {
-    const cells = [row.section, row.field, row.oldValue, row.newValue].map((v, i) => wrap(v, font, 8.5, cols[i].w - 10));
+    const newValue = row.dependency ? `${row.newValue} (Dependency: ${row.dependency})` : row.newValue;
+    const cells = [row.section, row.field, row.oldValue, newValue].map((v, i) => wrap(v, font, 8.5, cols[i].w - 10));
     const height = Math.max(...cells.map((c) => c.length)) * 11 + 6;
     if (y - height < MARGIN + 60) {
       newPage();

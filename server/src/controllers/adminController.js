@@ -1370,27 +1370,53 @@ const updateUserEstamp = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "Valid eStamp is required" });
     }
 
-    // Check if duplicate eStamp exists
-    const existing = await prisma.user.findUnique({ where: { eStamp } });
-    if (existing && existing.id !== Number(id)) {
-      return res.status(400).json({ success: false, error: "This E-Stamp is already assigned to another user" });
+    const targetUserId = Number(id);
+    const trimmedStamp = eStamp.trim();
+
+    // Check if duplicate eStamp exists in User
+    const existing = await prisma.user.findUnique({ where: { eStamp: trimmedStamp } });
+    if (existing && existing.id !== targetUserId) {
+      return res.status(400).json({ success: false, error: "This certificate number or serial number is taken by someone else." });
+    }
+
+    // Check if exists in EStamp table assigned to someone else
+    const existingStamp = await prisma.eStamp.findFirst({
+      where: {
+        OR: [
+          { certificateNo: trimmedStamp },
+          { serialNo: trimmedStamp }
+        ]
+      }
+    });
+    if (existingStamp && existingStamp.assignedTo && existingStamp.assignedTo !== targetUserId) {
+      return res.status(400).json({ success: false, error: "This certificate number or serial number is taken by someone else." });
     }
 
     await prisma.user.update({
-      where: { id: Number(id) },
-      data: { eStamp }
+      where: { id: targetUserId },
+      data: { eStamp: trimmedStamp }
     });
+
+    const userStamp = await prisma.eStamp.findUnique({
+      where: { assignedTo: targetUserId }
+    });
+    if (userStamp) {
+      await prisma.eStamp.update({
+        where: { id: userStamp.id },
+        data: { certificateNo: trimmedStamp }
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
         userId: req.user.id,
         action: "updated_estamp",
-        details: JSON.stringify({ targetUserId: id, eStamp }),
+        details: JSON.stringify({ targetUserId: id, eStamp: trimmedStamp }),
         ipAddress: req.ip,
       },
     });
 
-    res.json({ success: true, message: "E-Stamp updated successfully", eStamp });
+    res.json({ success: true, message: "E-Stamp updated successfully", eStamp: trimmedStamp });
   } catch (error) {
     next(error);
   }
@@ -1452,6 +1478,16 @@ const updateApplicationDetails = async (req, res, next) => {
         nextData.eStampAssigned[parts[2]] = value;
         continue;
       }
+      if (topKey === "eStampAssigned" && parts[1]) {
+        nextData.eStampAssigned = nextData.eStampAssigned || {};
+        nextData.eStampAssigned[parts[1]] = value;
+        continue;
+      }
+      if (topKey === "user" && parts[1] === "eStamp") {
+        nextData.eStampAssigned = nextData.eStampAssigned || {};
+        nextData.eStampAssigned.certificateNo = value;
+        continue;
+      }
 
       if (!JSON_FIELD_KEYS.includes(topKey)) continue;
 
@@ -1484,14 +1520,149 @@ const updateApplicationDetails = async (req, res, next) => {
       updatePayload[topKey] = JSON.stringify(value);
     }
 
-    if (nextData.eStampAssigned && app.user?.eStampAssigned?.id) {
-       await prisma.eStamp.update({
-         where: { id: app.user.eStampAssigned.id },
-         data: {
-           certificateNo: nextData.eStampAssigned.certificateNo,
-           serialNo: nextData.eStampAssigned.serialNo
-         }
-       });
+    if (nextData.eStampAssigned) {
+      const currentStampId = app.user?.eStampAssigned?.id || null;
+      const targetUserId = app.userId;
+
+      const certVal = nextData.eStampAssigned.certificateNo !== undefined
+        ? String(nextData.eStampAssigned.certificateNo).trim()
+        : null;
+      const serialVal = nextData.eStampAssigned.serialNo !== undefined
+        ? String(nextData.eStampAssigned.serialNo).trim()
+        : null;
+
+      // 1. Check certificate number uniqueness
+      if (certVal && certVal !== "Pending" && certVal !== "N/A" && certVal !== "—") {
+        const dupStamp = await prisma.eStamp.findFirst({
+          where: {
+            OR: [
+              { certificateNo: certVal },
+              { serialNo: certVal }
+            ],
+            ...(currentStampId ? { id: { not: currentStampId } } : {})
+          }
+        });
+
+        const dupUser = await prisma.user.findFirst({
+          where: {
+            eStamp: certVal,
+            id: { not: targetUserId }
+          }
+        });
+
+        if (dupUser || (dupStamp && dupStamp.assignedTo && dupStamp.assignedTo !== targetUserId)) {
+          return res.status(400).json({
+            success: false,
+            error: "This certificate number or serial number is taken by someone else."
+          });
+        }
+
+        if (dupStamp && currentStampId && dupStamp.id !== currentStampId) {
+          return res.status(400).json({
+            success: false,
+            error: "This certificate number or serial number is taken by someone else."
+          });
+        }
+      }
+
+      // 2. Check serial number uniqueness
+      if (serialVal && serialVal !== "Pending" && serialVal !== "N/A" && serialVal !== "—") {
+        const dupSerialStamp = await prisma.eStamp.findFirst({
+          where: {
+            OR: [
+              { serialNo: serialVal },
+              { certificateNo: serialVal }
+            ],
+            ...(currentStampId ? { id: { not: currentStampId } } : {})
+          }
+        });
+
+        const dupSerialUser = await prisma.user.findFirst({
+          where: {
+            eStamp: serialVal,
+            id: { not: targetUserId }
+          }
+        });
+
+        if (dupSerialUser || (dupSerialStamp && dupSerialStamp.assignedTo && dupSerialStamp.assignedTo !== targetUserId)) {
+          return res.status(400).json({
+            success: false,
+            error: "This certificate number or serial number is taken by someone else."
+          });
+        }
+
+        if (dupSerialStamp && currentStampId && dupSerialStamp.id !== currentStampId) {
+          return res.status(400).json({
+            success: false,
+            error: "This certificate number or serial number is taken by someone else."
+          });
+        }
+      }
+
+      // Apply update or assignment
+      if (currentStampId) {
+        const updateData = {};
+        if (certVal !== null) updateData.certificateNo = certVal;
+        if (serialVal !== null) updateData.serialNo = serialVal;
+
+        if (Object.keys(updateData).length > 0) {
+          await prisma.eStamp.update({
+            where: { id: currentStampId },
+            data: updateData
+          });
+        }
+
+        if (certVal !== null) {
+          await prisma.user.update({
+            where: { id: targetUserId },
+            data: { eStamp: certVal || null }
+          });
+        }
+      } else {
+        let existingAvailable = null;
+        if (certVal && certVal !== "Pending" && certVal !== "N/A" && certVal !== "—") {
+          existingAvailable = await prisma.eStamp.findFirst({
+            where: { certificateNo: certVal, status: "available" }
+          });
+        }
+        if (!existingAvailable && serialVal && serialVal !== "Pending" && serialVal !== "N/A" && serialVal !== "—") {
+          existingAvailable = await prisma.eStamp.findFirst({
+            where: { serialNo: serialVal, status: "available" }
+          });
+        }
+
+        if (existingAvailable) {
+          await prisma.eStamp.update({
+            where: { id: existingAvailable.id },
+            data: {
+              status: "assigned",
+              assignedTo: targetUserId,
+              ...(certVal !== null ? { certificateNo: certVal } : {}),
+              ...(serialVal !== null ? { serialNo: serialVal } : {})
+            }
+          });
+          await prisma.user.update({
+            where: { id: targetUserId },
+            data: { eStamp: certVal || existingAvailable.certificateNo || null }
+          });
+        } else {
+          await prisma.eStamp.create({
+            data: {
+              certificateNo: certVal || "",
+              serialNo: serialVal || "",
+              status: "assigned",
+              assignedTo: targetUserId,
+              fileUrl: ""
+            }
+          });
+          if (certVal) {
+            await prisma.user.update({
+              where: { id: targetUserId },
+              data: { eStamp: certVal }
+            });
+          }
+        }
+      }
     }
 
     if (nextData.personalDetails && app.userId) {

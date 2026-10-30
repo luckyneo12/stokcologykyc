@@ -38,6 +38,8 @@ function buildApplication(request) {
       fullName: personal.name?.new || profile.name,
       fatherName: personal.fatherName?.new || profile.fatherName,
       motherName: personal.motherName?.new || profile.motherName,
+      // Unchanged → the back office's own value is kept (the shared builder falls back to it)
+      ...(personal.maritalStatus ? { maritalStatus: personal.maritalStatus.new } : {}),
       email: personal.email?.new || profile.email,
       phone: personal.mobile?.new || profile.mobile,
       networth: others.netWorth?.new || profile.netWorth,
@@ -65,9 +67,11 @@ function buildApplication(request) {
     nomineeDetails: changes.nominee
       ? {
           opted: changes.nominee.new.opted === "yes" ? "yes" : "NO",
+          // Same nominee fields as the onboarding portal (idType / idNumber: requests saved before the full nominee form)
           nominees: (changes.nominee.new.nominees || []).map((n) => ({
-            name: n.name, relation: n.relation, dob: n.dob, proofType: n.idType, proofNumber: n.idNumber,
-            mobile: n.mobile, email: n.email, address: n.address,
+            ...n,
+            proofType: n.proofType || n.idType,
+            proofNumber: n.proofNumber || n.idNumber,
           })),
         }
       : {},

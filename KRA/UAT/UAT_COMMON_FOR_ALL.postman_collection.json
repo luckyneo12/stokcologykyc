@@ -1,0 +1,160 @@
+{
+	"info": {
+		"_postman_id": "80da9e0e-f498-48fc-8a8a-01df4e6ed4ac",
+		"name": "UAT_COMMON_FOR_ALL",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "33705126"
+	},
+	"item": [
+		{
+			"name": "COMMON_FOR_ALL",
+			"item": [
+				{
+					"name": "GetToken",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "api_key",
+								"value": "enter valid api key"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "\"cZp9EQ-uIb5ISWXeRGBM3w:miwmTyTUuFzdR_clroYDYvYaPoE61Sn-XR_n1gnpACTemOg9AGhUs_ysiCqeYlYljvI5qdniLdQc1hAsj-Nrnurs80Un-hAIHc80SPxmC8ji5PukW4vQHERXCAdvvH4__PbUnzGUS5nHdVFvvNhOBMvhN8LmNwlgcGmyHnjD4qg\"",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://krapancheck.cvlindia.com/V3/api/GetToken",
+							"protocol": "https",
+							"host": [
+								"krapancheck",
+								"cvlindia",
+								"com"
+							],
+							"path": [
+								"V3",
+								"api",
+								"GetToken"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetPanStatus",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Token",
+								"value": "add valid token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "\"y0mEzLwR7jwK5ZdLPreEbg:L05tf-9szBhS9qLYKshA-ld5JueDPbieB5veqvq0ExOb0obTfierfm-wcJizDNns95hDWqIt6FDA2f5LVAgRBA\"",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://krapancheck.cvlindia.com/V3/api/GetPanStatus",
+							"protocol": "https",
+							"host": [
+								"krapancheck",
+								"cvlindia",
+								"com"
+							],
+							"path": [
+								"V3",
+								"api",
+								"GetPanStatus"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SolicitPANDetailsFetchALLKRA_Json_InputData",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Token",
+								"value": "add valid token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "\"retZAtKE8rJCuGumfARLNA:m8wVIgLS8hd44wQzIdIT9vl9pv37KTLPiQL21u2MGSrXJIsw5u3naF3bV96UOf9U6pdiz1mELaMcB4OAnJQkNj-iZbABldawe-WxzFM35unoeZZNSVg1Q1fj9gIqHqV3WNpNf56A-0U2qP8oDO9gbQKJJ8pHOSUh9DFFFmrlLa5KftNRLlPshvpEe1TwHaKJuBbc43647CEaiAZ72uHe2xOyH8RqhRPM_JZ4JobMXTRoRN-F6dTwoq1Mmwl65gakcnYH_0eNdTn1O4Y9DrhO-w\"",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://krapancheck.cvlindia.com/V3/api/SolicitPANDetailsFetchALLKRA",
+							"protocol": "https",
+							"host": [
+								"krapancheck",
+								"cvlindia",
+								"com"
+							],
+							"path": [
+								"V3",
+								"api",
+								"SolicitPANDetailsFetchALLKRA"
+							]
+						},
+						"description": "SolicitPANDetailsFetchALLKRA "
+					},
+					"response": []
+				},
+				{
+					"name": "InsertUpdateKYCRecord_XML_InputData",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Token",
+								"value": "add valid token"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "\"ztayOjf2T2YonIkcQaxbig:FIsXq_QSDCR8oEOP3yz2qXgpXKJNfcIUTWF_SDOVthYQ_y9FX9O08SWhOCxthY7PvWN79tiCReoSuFNyOl9YhIWJhdMrVY2Sa8mpFA5PHqztQIOG6w7SaSt2L3MhHhB1f9yERrU6TwKVVSJr2uAQiKEiF7GnGAub_uUC7A4P_Y-DztbBQBaXRTJEjnpRifhvxvgaQIc1oZAW76HqxHVNLASbOiZRlUaKo814AW4pNuYZzhzXCc-nN6_YDGKSBeiX5MztpYzMJrTZmT2WNj7XLIQWZW8IUXZ2eJU1BUQhaEKrTKdORerfT0woHxRKfQjxhEkhOnTm9CmWpt0g3FtXtGWXPKLL9QwTYYb60p9Wxz4g8G2uy2GO_LmLOgqDjPkTmB9j2R1p60g76SvvRy3qReDH6u7b6HmDYLK1sV7iscDDrO9hQzFVib4vFVv-1Sx-LQgtIdQa1zjFoNwlHgkAAcv_hvWikqXWlKpSikm84iaHStE-muu8tF5g8IsA1gtbp6ZI8FYXl-u7VtVtw0R8zWtJn5_V-jEAeMk8WU4JxOLiKQ5P0R73_MLHaB05AXtUmZLOdA1D3LXiKWmIsTehqJAZ6i74yVz4rE2x3i_pwk41HSxJR-vJTn029mm6-WwewnFVCYd6rJLHkwUu9lfEAtzGuuos_1ZGFhjq4Kwbnx-vQcvQQi9zJ-XZ7tpygLYQq3FtKt0XCeSQtfIbWSPR76fxrlAnMgnxweF943zhpVKOBf6WXQcFoqNJk6O0k16Lev4HIiqOtRELe4QNYxP4XOo-5qdtV5GDpU4SxaJ1Io4etvzt-Q9TLt4gydzu7Igv2WXG4amn_X5s7nuuA25NQ_5fY3fJ-NWZolyvNvFNqkICqTpm6WCprIXl_Fi83nvHFU6Z61ajlNdT1SjoTIpDqU7n8JNFZj3pGn1GbRUxti4Y-NeXKVsBY96dcu7nzoWtK7PhZqYi2VGn1tL5JcLbiFoRTPg-juYNf7gnAO-OVawy86kZrum5qIPDFbLtZP40CVe3khIlgPpdc9us5cImmAw_1lN7LSMmB0Kzu0tuqrNsUg3-CUqoCujVyfUog4ZBK4g6c4zQhN_z1qSp75lrkb-dZw1IpQ3pPv5zH9S8LSub_sJDL0OajFsitK3pVBNRpsPNO03ul3GATTq4s_DAVO5qOGKHOFjTHeMD6EOc3Ko9mIggBKMmDOFOqIWv9kJYAeCNgBw3h_GW4dLtBEP-5uJlgHtl867L0xmkQmNKWPk2N0WGSi1njpTFNvV9Akv9WtscjLgaPnm1Jh0L-k8l9FcyjfrBgGpd7TWu2YiXWUXVFlybtsLPHKGOYvZeQOGhJ9s0EI7qVm1osMAXBtTP-4aPMhhIUIY8GnR1HiImytB5W9h4wwAJYH3tszbfKFACy1yLhD4RGdEOtdD95_agTGr4fFsT3tVrCA6-tVs1MH4sdurx00LKHP9IANy94pt8aitbTRhcfGhIPNkkczZ_9yf0I2YmGfwQ6iP2FTgfuAbVKRPELIZCj-Gorqw_TTm-QszVtBZt-zFJgzKDrB3vlnwTbdMqfRwyCY4eI5ZMTh7HGoKOOMx6hDIpHzwCcVTQLXa5OgQDAIYzaAFk0ZL5ONITgp7rFyS0Ohzh5BnBV2UxikQJXgm2oVykKP4aJOXXzjxu3z9tZpyy33iUEUABpHUvBf05733sWhmIPqXn25ZCfabcGhL5sgqWJQJ8DPb9Gsv_2PLGpJmeQN4w6AiuhUSmrtpTetY2lzbp4-hoEL63mSCALqbdAWmTqiaACyQCOTUhqiBa22beTJ1-eS_TEFjcROwuO8unFKsGnGtwIHrsiFxCsGpvaCkJQJ2O8WWznfNUb3-cCQVMPyuM69mZQluoapx05Qe5ANfwWj-XByIl5C2FELtj3J-Ctt5Zj-fWO2bNAbNsA90RUMGWzOeaNUTEP5B0WAKQZ8TPJ5qLB3H41Tlx6Kgsrybtnogib0fGBJHs4FcZnwgwdFbUg6Ejjrk499AmDzXxMTjI3Rckj2ntkMV02UOyAYhGoDfdaWoBi-c12sg_VjizHtwCub_HC0xnaSOvPXrxOgj5EfqXtchvKUwJsR7RLgiyHBIogMwcPR_70YqPXRKkB2CdXlLI-E1A7vJRXGuP1ixKInNCzGqCuES2CS1Tnn9lbvp-2E8laHzpLnL_1mxH75W3Do5KSykKbBz0vxjNsGOKpNR5CnDQY-9xrKZ4ZykoZdcVjYggM4add6JJCR9p5dIP4rnsdo_KmUy96fUF9s_cFwTCRU8YttavfT01E0TeS8VLrW_t_eKKW9j53IgCIQ0kuFI430QGdXAPa4FYnd03yqoFrvGRBLjfM01-RnhBgla3JTG0kS2yPO4T398cj43R5pvaCfk_JgBdiSs-SfFjBwUX0e75PVHIlnmeWiC6whHpgpDpfKxZTUVNb1uTGTM4tDfWJG7O7Y8eayWCdydbcggOMpVvQn7fqinAjOEn9cf6RDRIuk_c_Gr4wSvIiK2EwM3TMS3LQZgX_QRY88vCA_YJY8EW9vk2aT3iQkSVU57IemVLteQTVnvDYjG10i6TLJGQtOe2M8PqH4VQrvdK1MWpNINY4WLt8nfQlbJQ6A9ugm4_wn1QH1zQJ5QLQ9G53UcscyyyD-Vl8vGaezOCFHTRUJmlx3rJbscnzMWlCggNID5odI53FY4aGlMaQbuRs66-_rciwDl9T50_4aKlBFKFfeI-Cjlh8TguTfjGg7YjaZfvY7rkertgJEm00e0_wH-VcXAkm4MYvith08dr7Hm1wfZMmdMwQ8mU2eh1gui5yjDMbEIr5YnpvJle6AFvaK3eDn2W7qcs_c6IMEN_W0Jqb5uUPdgdWnhcdavvPh3o1HpX-cYg7qpO7bHCF1fNUDK4Ar_uIXC4AJtK52xwDDtC5pg6PyNTi8QqeQQtrrHCCkMO0ws-t7RRkwf0lW69Ry6DjCZ9etmUpruO4RTRqhF38RnHNcq7WzuIjDCRi7wd0i7syIsdUG-LTRHalEKgalLbUl0HxEqcrp6ESoqElBYZWTFDnEGeNqd0bs87B_zja3DdhOZOTZh7pPLj79WE6SNug6GlBQUSKBtki_jD6i8a9g7QOszsMYCfctUF5FKis5b4z2qBNfWmTKnRL9M6uAYMfxzF1P3puR_F2UxnOmLjVjsBksi92FaFc8TZ5kGf43PTcR1pw6eH3NNDOmvImoBLo-hVV_Bt0gvAO3GtvLBHGcPZjDQwk7KUiZbkVDEpt8cPTVG7U8uPaVyLLRK74C1s_nSTOswzyBPQfoOroIDKxpXQdX7u5P5Ool-F-thoz-mTgWoE8swZkemd6fQe5bgmBXV3tLbxvIrX2TYAWRTnZgu-jSef9rlJ6J9F79eR8LWUNHO5Gny8WcGufSCwwy3dabVt9dgsqX3OqpYcvAjXvQvJKHOStyRzphg16IucnVUEqO0Mp3Mq-fjsaA7ZHTJLrU29li1507ZmqjxSPhRFtc1I3hoUk5USOoZCsOjTbcXgwvb1B3EPzg2LM-4usVZOQWKP7CsIHWOAdY8q6lL5OOOHV8OcQrFc8-FBzBp8P4dRYHSbUAFO0dHUnfwBsjieSX_pAtgsT71DLo91OtICunArnjO-_DN-iGUWyhwRCrtW1zx_s0MVvWCz2D9qQyHMa1HS1TS7MzVP-LBYOl_9n8jo6oPm1w5WaPdSt_J0XxcHHgY054WTlO50tfTKF0uCQvWphhUpy6WA9g5hErLSHzmQT0BrmnIxiDXIHSXU14-JheEwrdPFD_NKz38A54EZR-In92FxoeCK1yhcBukTqQgMb2VibQu3ZHr5rOCvn7JB103H7vXttlhm-ej-7mrRx6-MZ8UDmdf18cRFLFbJDSVeeg21r3Cwd52mxZuZzuWHl8NE2fknXe-wEzzqbK7uNDzRl4yUqkVotScuX0EcQUY8PWxqhc1WQfTTlW4veoiQXQYHgZxqmVrkM2yRRa5mV6INWVTKyZRmQ9LLXeT1qhbB2FnYz0rvXab4A592R48C2J5Tdn-_2pBXhUQcH6OdvR5N1N5w6Jldv2UcOYB0Y33VE0ry6xjUZfbk-H3xsxVuiK2VRToU-lbTkJaZZKeEcLqjVloQGFTjEVwTg0jGKfn2kJaduGHC_MF0RgjXZEDGAEXubxhuqaM2CdLAHhoqtJCk1ScnDR0SdJctXJopXpq6UWykTuYc8pn2AOH25G5B_364jGcQ8MacqU86NiJbUCLCxqIfDSdYab97cSfFwOKTFOJfT_Q6UcpFavasD_88WPWDBPOrgJ7pLpPEukZYAWyBAN0p3-sHgi358_RO_UZm7kYZhIrd8VX3WyYRgNrlHK_7Wu5hE0alX3x-cCp3SoKTVcRIHN1fd95wLf4kNdtFqUUqd-EEPvyF5xeKfUt5ZyYcuOUyS1Y4SaHLNi_m2ZZLTJIYRbYIKmnD8KCYZLtx1FgltIs_8aHHRG8FBr15EWoSJlAibO4_JvZ5C0ejNjXcoh2xLGVStN9f5TuanOrh9AOfCaOee2twVzpl8b43zKF_Z_FmRCrytHl_nTJAQmEqZEj3iUmoz0ZW9BLj-4lSri3d0P-sbmPwgaQ6oDT6YZm-gssUKSfYgCZqz6ay_qj527zjF547wgcRhVb6pE3lf_2Y1sSGUC5wvH9NWTFV_9x7RPMGrl18l-CWqV2HDPNSLafR_iYh_bWc3dd-4LFthQGkjkD-9ai3hDAikyyuncnMzt8ZcpHxO4bDBHjuHwiLb3v7PWR9yePiafaMn6U5ZAHMbMuttF5GSx3wGMWl7PyJJT5PhV1Y72ABejZYNJ_xGvMyxow0rtyMZNdgHxCMjO2-LImWEpMqRFaQs_KydjWOoowj_PjBfQGAu8aetEJ4OqINLiW_D0PyX-7fanwnGJ4Mo0TCjIy18dAbb3ahDBiI_-HmPoOInQbYyR_7IsKAy3beiNpVAX8--8WzuLPjO8fYfcQLmMeFqGVwReo8-oimrGqDpSOPE3cYVQjAr0xG3FKzEmw__WpzXoHOCeoC5XQpGDrSvQkHzwRMwtRMgtk-bskahkIjH_Rg2xt6XjxGO2QP1-3dAYefGNkoQNZZGaVr95LbGeqU1urVqwjUciFrYME3hvUf-O-WfcWJsObp7vhv2IXoYTav2ZcqcdsWuXOJ2ZSaUDrCyCSQVjE9KvDj8hnzCACja4dqaUJMnteYoVrOvrXttHGztnoWOHvkeCYB02O-2_uViSS8XYYXqrYvGto7H15N5_m2xVhwUmJXWFOgajrF5tTvHNerTP7BPG7ASeBkZFXpK5wqfOadsQunpVdrjjraEbLsy4Rut7TxaesitXVp_5akbhN_AaEii88nKpdmByc_0AQO6pRX3si86Qxdppm7WeoM58omhzLYEpWqz4YisTUYCAKKd9nP2Isu4ZcPE7wAWYYBjN0BiJUtLZbGKtC5SgR1VBNPiN95T7IWZCNpqqOs9JLPS0HDgqFjvhohW2AofUpLdYgEwL8ZVRDylCB66IQJnj8T-BDzxX5O-QLBg-3UXcLmF_uK4h3IAUit1sgNe9jnvhktHbaz1h6u5cOWxTUtRrWjc6c8SPxoOC8G5ylrVCU4jJ8ioxLdgnuY7VPJqfYrdjygE2pO2uFVGA7_9ZDgt5gEG9iR-cxhYbEOjq52fDJRVYfbHfVyzYyfsDusKrIcLY5amFwCv18oTrEbQF8BVApHjwi9Z1mmgfjskq1Odq0iMx4XvWjbX3FCpB4D2A4RTyxO3DInTbP4Cx0LaeoUL5sTOK3PakBIm7PwQUyDIf7r-RfyyVTQmyW7TmtsvXRTAVE3_L19YcYgfDNLhbuUO6vs6quJVt0xIjCW36BXhP7WQb-UdG9B6aK5kUeVBTqcAcCFJAnY1GnVWj-nFcrHmDNn_E-aAN6hZvm83N5lfrloowoa-uXuMlOO8CV3DMrl5myFierqmvvJhLw6JEP6RaM-6KLrQXF3okxuOc4aQmmo0BXYnmMxEz-IiS2c6DOH7JckRdkbl5KaQIM5H3QMLJ8IpsljRV8-GzkUK4vaiq-2JBE_R7pOHO56cH6prxfc3-sFcbg9zT_YIIQkrHQCYbL1TaMU_TCM1y3iC1YaWUL7bbkJ_dazy7Vzu19F629Tt1KOU-FuaNnHe3-6RKRACDG4fsqVaEaJ1N3ofP6AqTvBxmv-kxeUB-b5TXLOYxNs-2TJqibka7Mt2uvJMxcIty_tO3HFSpX_J-5oax6KkJSl43VEesM9g-b0UXL_GlPuv6MAipDSr3NHd7XDQ2UgpLY7msZ9B96FeNXkFSf-QVz9QiqL9DfVjU8307t0zwi05c8Y5CCs7bPno-rqDhLS9vefV2O5GfoimFpidD7RZTCQpbtBUI5Z4sWqyQcqJv3Qcade0F3OfT4lBxswA9mB83UzKDvnPKv3KL2g1hmBKdFfB7TWapFrCV_nM05G_obk2OGVt9UmEis-XzFX5tj_qWIyng\"",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://krapancheck.cvlindia.com/V3/api/InsertUpdateKYCRecord",
+							"protocol": "https",
+							"host": [
+								"krapancheck",
+								"cvlindia",
+								"com"
+							],
+							"path": [
+								"V3",
+								"api",
+								"InsertUpdateKYCRecord"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
