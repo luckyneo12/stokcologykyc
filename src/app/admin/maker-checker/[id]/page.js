@@ -130,7 +130,7 @@ const DROPDOWN_OPTIONS = {
   "personalDetails.taxResidencyOutside": ["Yes", "No"],
   "personalDetails.pepType": ["--select--", "PEP", "Related to PEP"],
   "personalDetails.taxExempt": ["--select--", "Yes", "No"],
-  "personalDetails.pastActions": ["Yes", "No"],
+  "personalDetails.pastActions": ["Select", "No", "Yes"],
   "nomineeDetails.relation": ["Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Grandson", "Granddaughter", "Others"],
   "nomineeDetails.guardianRelation": ["Spouse", "Father", "Mother", "Brother", "Sister", "Grandfather", "Grandmother", "Others"],
   "financialProof.type": ["Bank Statement", "Salary Slip", "ITR", "Net Worth Certificate", "Demat Holding Statement", "Others"],

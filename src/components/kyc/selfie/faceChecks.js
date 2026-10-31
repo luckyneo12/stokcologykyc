@@ -633,7 +633,7 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
   metrics.eyeDarkL = round(lEye.ratio);
   metrics.eyeTextureR = round(rEye.texture);
   metrics.eyeTextureL = round(lEye.texture);
-  if (rEye.dark && lEye.dark) flags.sunglasses = true;
+  // if (rEye.dark && lEye.dark) flags.sunglasses = true; // bypassed
 
   // ── Clear glasses / spectacles: continuous frame lines across the nose bridge, under the eyes
   //    (lower rims) and from the eyes towards the ears (arms). Needs two of the three lines. ──
@@ -695,12 +695,12 @@ export function analyzeFrame(result, img, frameW, frameH, prevNose, opts = {}) {
         bridgeLine > THRESHOLDS.mobileGlassesBridgeLine && bridgeEdge > THRESHOLDS.mobileGlassesBridgeEdge;
       const corroborated =
         rimLine > THRESHOLDS.mobileGlassesRimLine || bridgeLine > THRESHOLDS.mobileGlassesBridgeLineAlone;
-      if (bridgeStrong && corroborated) flags.glasses = true;
+      // if (bridgeStrong && corroborated) flags.glasses = true; // bypassed
     } else if (
       bridgeLine > THRESHOLDS.glassesBridgeLine &&
       (bridgeEdge > THRESHOLDS.glassesBridgeEdge || templeLine > THRESHOLDS.glassesTempleLine)
     ) {
-      flags.glasses = true;
+      // flags.glasses = true; // bypassed
     }
   }
 
@@ -731,8 +731,6 @@ function round(v) {
 const HYSTERESIS = {
   noFace: { on: 300, off: 0 },
   multipleFaces: { on: 350, off: 450 },
-  sunglasses: { on: 900, off: 1500, appearance: true, latch: true },
-  glasses: { on: 1500, off: 1500, appearance: true, latch: true },
   uneven: { on: 1000, off: 500 },
 };
 const SHOW_FRACTION = 0.75;
@@ -862,7 +860,6 @@ export const DETECTED_LABELS = {
 
 export const CHECKLIST = [
   { key: "single", label: "Only you in frame", issues: ["noFace", "multipleFaces"] },
-  { key: "eyewear", label: "No glasses / goggles", issues: ["sunglasses", "glasses"] },
   { key: "straight", label: "Looking straight", issues: ["turned"] },
 ];
 

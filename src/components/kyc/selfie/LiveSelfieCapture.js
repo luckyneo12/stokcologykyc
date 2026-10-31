@@ -97,7 +97,7 @@ function sessionExpiredError(serverCode) {
 }
 const LOOP_STAGES = ["live", "challenge", "ready"];
 // Only these disable the "Click Selfie" button: one face, no goggles / glasses.
-const BLOCKING_ISSUES = ["noFace", "multipleFaces", "sunglasses", "glasses"];
+const BLOCKING_ISSUES = ["noFace", "multipleFaces"];
 // After the liveness actions the head must also face the camera (no left/right selfies).
 // "needBlink": a natural blink is required shortly before clicking (a printed photo can't blink).
 const READY_BLOCKING_ISSUES = [...BLOCKING_ISSUES, "turned", "needBlink"];
@@ -140,7 +140,7 @@ const AUTO_CAPTURE_MS = 1000;
 // it appears (so noise never flashes it), which would let glasses put on just before clicking slip
 // through. So the photo also needs: this exact frame clean, and the item seen in under
 // RECENT_APPEARANCE_MAX of the frames of the last RECENT_APPEARANCE_MS.
-const APPEARANCE_PHOTO_CHECKS = ["sunglasses", "glasses"];
+const APPEARANCE_PHOTO_CHECKS = [];
 const RECENT_APPEARANCE_MS = 1200;
 const RECENT_APPEARANCE_MAX = 0.3;
 // …judged over at least this many frames: a slow phone has only ~2 in 1.2 s, so one noisy frame (50%)

@@ -380,7 +380,7 @@ export default function SelfieStep() {
       {phase === "intro" && (
         <div className="card" style={{ padding: 48, textAlign: "center" }}>
           <p className="text-body" style={{ marginBottom: locationDenied ? 16 : 32, fontWeight: 600, color: "var(--text-secondary)" }}>
-            We need to capture a live selfie video to verify your identity. Please ensure you are in a well-lit area and not wearing glasses or a hat.
+            We need to capture a live selfie video to verify your identity. Please ensure you are in a well-lit area and not wearing a hat.
           </p>
 
           {locationDenied && (

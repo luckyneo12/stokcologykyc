@@ -64,7 +64,7 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
           transition: "all 0.2s"
         }}
       >
-        <span style={{ color: value ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.95rem", fontWeight: 700 }}>
+        <span style={{ color: (value && value !== "Select" && value !== "--Select--") ? "var(--text-primary)" : "var(--text-muted)", fontSize: "0.95rem", fontWeight: 700 }}>
           {value || placeholder}
         </span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", opacity: 0.5 }}>
@@ -245,6 +245,7 @@ export default function DetailsStep() {
             taxResidencyOutside: "No",
             taxExempt: "No",
             ddpiOptIn: "Yes",
+            pastActions: "Select",
             
             // Blank purely user-editable fields
             prefix: "",
@@ -369,7 +370,7 @@ export default function DetailsStep() {
     if (!form.experience) errs.experience = "Req";
     if (!form.politicallyExposed) errs.politicallyExposed = "Req";
     if (!form.taxResidencyOutside) errs.taxResidencyOutside = "Req";
-    if (!form.pastActions) errs.pastActions = "Req";
+    if (!form.pastActions || form.pastActions === "Select" || form.pastActions === "--Select--") errs.pastActions = "Req";
 
     if (form.politicallyExposed === "Yes") {
       if (!form.pepType) errs.pepType = "Req";
@@ -748,12 +749,12 @@ export default function DetailsStep() {
 
           <InputGroup label="Details of any action/proceedings initiated/pending/taken by SEBI/Stock exchange/any other authority against the applicant/constituent or its authorized persons in charge of dealing in securities/commodities during the last 3 years" mandatory style={{ gridColumn: "1 / -1" }}>
             <CustomSelect
-              value={form.pastActions}
-              options={["No", "Yes"]}
-              placeholder="--Select--"
+              value={form.pastActions || "Select"}
+              options={["Select", "No", "Yes"]}
+              placeholder="Select"
               onChange={val => {
                 update("pastActions", val);
-                if (val === "No") {
+                if (val !== "Yes") {
                   setForm(prev => ({ ...prev, pastActionsReason: "" }));
                 }
               }}

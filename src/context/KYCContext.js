@@ -55,6 +55,8 @@ const INITIAL_STATE = {
     placeOfBirth: "",
     taxExempt: "No",
     taxExemptReason: "",
+    pastActions: "Select",
+    pastActionsReason: "",
     ddpi: "Yes",
     transferSecurities: true,
     pledgeSecurities: true,
