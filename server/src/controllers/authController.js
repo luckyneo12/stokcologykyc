@@ -5,6 +5,35 @@ const { z } = require("zod");
 const emailService = require("../services/emailService");
 const smsService = require("../services/smsService");
 const crmService = require("../services/crmService");
+const dns = require("dns").promises;
+const { getEmailTypoSuggestion } = require("../utils/emailTypo");
+
+/**
+ * Can this email's domain receive mail at all? Looks up the domain's MX (mail server) records.
+ * - false: domain doesn't exist (ENOTFOUND), has no mail setup (ENODATA), or publishes a "null MX"
+ *   (RFC 7505 — explicitly accepts no email, e.g. gmail.co, example.com)
+ * - true: real mail servers found — or the lookup itself failed/timed out (a DNS glitch must not block real users)
+ */
+const emailDomainCanReceiveMail = async (email) => {
+  const domain = String(email).split("@").pop().trim().toLowerCase();
+  let timer;
+  try {
+    const records = await Promise.race([
+      dns.resolveMx(domain),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error("MX lookup timed out"), { code: "ETIMEOUT" })), 5000);
+      }),
+    ]);
+    const usable = (records || []).filter((r) => r && r.exchange && r.exchange !== ".");
+    return usable.length > 0;
+  } catch (err) {
+    if (err.code === "ENOTFOUND" || err.code === "ENODATA") return false;
+    console.warn(`[OTP] MX lookup for ${domain} failed (${err.code || err.message}) — allowing email`);
+    return true;
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 const JWT_SECRET = process.env.JWT_SECRET || "kyc-secret-key-change-in-production";
 const otpStore = new Map();
@@ -26,6 +55,26 @@ const verifyOtpSchema = z.object({
 const sendOtp = async (req, res, next) => {
   try {
     const { phone, email } = sendOtpSchema.parse(req.body);
+
+    // Email checks before any OTP is created/sent: domain typo ("gmail.co"), then "can this domain receive mail"
+    if (email) {
+      // Blocked without proposing a corrected address — the applicant must enter their own email
+      if (getEmailTypoSuggestion(email)) {
+        return res.status(400).json({
+          success: false,
+          error: "Please check and enter your correct email address.",
+          code: "EMAIL_TYPO",
+        });
+      }
+      if (!(await emailDomainCanReceiveMail(email))) {
+        return res.status(400).json({
+          success: false,
+          error: "This email domain cannot receive emails. Please check your email address.",
+          code: "EMAIL_DOMAIN_INVALID",
+        });
+      }
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const key = email || phone;
     

@@ -76,35 +76,57 @@ class PanService {
         errors.push("DOB mismatch");
       }
       
-      // FALLBACK: Digio's name match is notoriously strict and fails on double-spaces in NSDL database.
-      // If there's a name mismatch but DOB matches, let's fetch the actual name from Digio and compare normalized strings.
-      if (errors.includes("Name mismatch") && !errors.includes("DOB mismatch")) {
+      // DOB wrong: report it (with Digio's own name verdict) — no point checking the name further
+      if (errors.includes("DOB mismatch")) {
+        return {
+          success: false,
+          message: `${errors.join(" & ")}: The provided details do not match the PAN records.`,
+          data: data
+        };
+      }
+
+      // STRICT NAME CHECK. Digio's name match ignores word order ("KUMAR VIVEK" passes for "VIVEK KUMAR"),
+      // so we compare the typed name with the official PAN name ourselves: exact, in order — a dot, comma,
+      // double space or any other difference is a mismatch. Only letter case and spaces at the very start/end
+      // are ignored. The official name's own spacing is tidied first (NSDL records sometimes carry double
+      // spaces the applicant can't see on the card).
+      let officialName = data.full_name || "";
+      if (!officialName) {
         try {
-          console.log('[Digio] Name mismatch detected. Attempting robust fallback fetch...');
-          const fallbackPayload = {
+          const nameFetch = await digioClient.post(endpoint, {
             id_no: panNumber.toUpperCase(),
             dob: formattedDob,
             unique_request_id: `PAN_FB_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`
-          };
-          const fallbackData = await digioClient.post(endpoint, fallbackPayload);
-          
-          if (fallbackData && fallbackData.full_name) {
-            const normalize = (str) => String(str).toUpperCase().replace(/[^A-Z]/g, '');
-            if (normalize(fallbackData.full_name) === normalize(fullName)) {
-               console.log(`[Digio] Fallback match successful! Overriding mismatch. Digio: '${fallbackData.full_name}', User: '${fullName}'`);
-               data.name_as_per_pan_match = true;
-               data.name_at_pan = fallbackData.full_name; // Store the exact NSDL name
-               
-               const index = errors.indexOf("Name mismatch");
-               if (index > -1) errors.splice(index, 1);
-            } else {
-               console.log(`[Digio] Fallback match failed. Normalized Digio: '${normalize(fallbackData.full_name)}', Normalized User: '${normalize(fullName)}'`);
-            }
-          }
-        } catch (fallbackError) {
-          console.warn('[Digio] Robust fallback fetch failed:', fallbackError.message);
+          });
+          officialName = nameFetch?.full_name || "";
+        } catch (nameFetchError) {
+          console.warn('[Digio] Official PAN name fetch failed:', nameFetchError.message);
         }
       }
+
+      if (!officialName) {
+        return {
+          success: false,
+          message: "Could not verify your name with PAN records. Please try again.",
+          data: data
+        };
+      }
+
+      const typedName = String(fullName || "").toUpperCase().trim();
+      const panRecordName = String(officialName).toUpperCase().replace(/\s+/g, " ").trim();
+      if (typedName !== panRecordName) {
+        console.log(`[Digio] Strict name check failed. PAN record: '${panRecordName}', Entered: '${typedName}'`);
+        return {
+          success: false,
+          message: "Name mismatch: Please enter your name exactly as printed on your PAN card.",
+          data: data
+        };
+      }
+
+      data.name_as_per_pan_match = true;
+      data.name_at_pan = officialName; // saved as pan_name (digioRoutes /verify-pan)
+      const nameErrorIndex = errors.indexOf("Name mismatch");
+      if (nameErrorIndex > -1) errors.splice(nameErrorIndex, 1);
 
       if (errors.length > 0) {
         return {

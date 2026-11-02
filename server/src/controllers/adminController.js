@@ -236,50 +236,13 @@ const getApplicationById = async (req, res, next) => {
  * Furthest step an application has reached: its current step, every step the user saved (audit
  * "stepIndex" = the step they were on after that save) and every step a reviewer set. Moving an
  * application back keeps this, so it can be moved forward again up to here (undo), never beyond.
+ *
+ * Only steps actually reached count. It deliberately does NOT guess from saved data: data saved early
+ * would otherwise unlock steps never reached (e.g. DigiLocker at Step 5 stores the Aadhaar/PAN PDFs in
+ * `documents`, the mobile step stores phoneDependency in `personalDetails`).
  */
 async function getFurthestStep(app) {
   let furthest = Number(app.currentStep || 0);
-
-  // Inspect actual populated application fields for completed steps
-  try {
-    const parseObj = (val) => {
-      if (!val) return {};
-      if (typeof val === "object") return val;
-      try { return JSON.parse(val); } catch (e) { return {}; }
-    };
-    const docs = parseObj(app.documents);
-    const hasDocs = Boolean(
-      (docs && (Array.isArray(docs) ? docs.length > 0 : Object.keys(docs).length > 0)) ||
-      app.selfieDetails || app.signature || app.financialProof || app.panUpload
-    );
-    const bank = parseObj(app.bankDetails);
-    const hasBank = Boolean(bank && (bank.accountNumber || bank.bankName || Object.keys(bank).length > 0));
-    const nom = parseObj(app.nomineeDetails);
-    const nomAlloc = parseObj(app.nomineeAllocation);
-    const hasNom = Boolean(
-      (nom && (nom.opted || (nom.nominees && nom.nominees.length > 0) || Object.keys(nom).length > 0)) ||
-      (nomAlloc && Object.keys(nomAlloc).length > 0)
-    );
-    const personal = parseObj(app.personalDetails);
-    const hasPersonal = Boolean(personal && (personal.fatherName || personal.gender || Object.keys(personal).length > 0));
-    const addr = parseObj(app.address);
-    const hasAddress = Boolean(addr && (addr.line1 || addr.pincode || Object.keys(addr).length > 0));
-    const ident = parseObj(app.identityDetails);
-    const hasIdentity = Boolean(ident && (ident.pan || Object.keys(ident).length > 0));
-    const hasPricing = Boolean(app.segments || app.pricing);
-    const hasEsign = Boolean(app.esignDoc || app.esignDetails || app.submittedAt);
-
-    if (hasEsign) furthest = Math.max(furthest, 12);
-    if (hasDocs) furthest = Math.max(furthest, 11);
-    if (hasBank) furthest = Math.max(furthest, 10);
-    if (hasNom) furthest = Math.max(furthest, 8);
-    if (hasPersonal) furthest = Math.max(furthest, 6);
-    if (hasAddress) furthest = Math.max(furthest, 5);
-    if (hasIdentity) furthest = Math.max(furthest, 4);
-    if (hasPricing) furthest = Math.max(furthest, 3);
-  } catch (err) {
-    // ignore
-  }
 
   const id = app.applicationId;
   const logs = await prisma.auditLog.findMany({

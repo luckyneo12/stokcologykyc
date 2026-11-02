@@ -1206,9 +1206,9 @@ export default function ApplicationDetail() {
                 <div><span className="inspection-label">Tax Resident Outside India</span><div className="inspection-value">{hasCompletedDetails ? app.personalDetails?.taxResidencyOutside || "N/A" : "N/A"}</div></div>
                 <div><span className="inspection-label">DDPI Choice</span><div className="inspection-value">{hasCompletedDetails ? app.personalDetails?.ddpi || "N/A" : "N/A"}</div></div>
 
-                <div><span className="inspection-label">Past Actions (Last 3 Years)</span><div className="inspection-value">{hasCompletedDetails ? app.personalDetails?.pastActions || "N/A" : "N/A"}</div></div>
-                {hasCompletedDetails && app.personalDetails?.pastActions === "Yes" && (
-                  <div style={{ gridColumn: "span 2" }}><span className="inspection-label">Past Actions Reason</span><div className="inspection-value">{app.personalDetails?.pastActionsReason || "N/A"}</div></div>
+                <div><span className="inspection-label">Past Actions (Last 3 Years)</span><div className="inspection-value">{hasCompletedDetails ? ((app.personalDetails?.pastActions === "Yes" || app.personalDetails?.pastActions === "yes" || app.personalDetails?.pastActions === true) ? "Yes" : "No") : "N/A"}</div></div>
+                {hasCompletedDetails && (app.personalDetails?.pastActions === "Yes" || app.personalDetails?.pastActions === "yes" || app.personalDetails?.pastActions === true) && app.personalDetails?.pastActionsReason && (
+                  <div style={{ gridColumn: "span 2" }}><span className="inspection-label">Past Actions Reason</span><div className="inspection-value">{app.personalDetails?.pastActionsReason}</div></div>
                 )}
 
                 {app.personalDetails?.taxResidencyOutside === "Yes" && (

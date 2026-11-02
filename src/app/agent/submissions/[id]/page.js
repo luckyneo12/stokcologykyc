@@ -185,9 +185,6 @@ const REVIEW_STEPS = [
       ["Clientcode", app.clientCode || "N/A"],
       ["Politically exposed", app.personalDetails?.politicallyExposed, "personalDetails.politicallyExposed"],
       ["Politically exposed category", app.personalDetails?.pepType || "--select--", "personalDetails.pepType"],
-      ["Comment", app.personalDetails?.pepComment || "N/A", "personalDetails.pepComment"],
-      ["Past actions", app.personalDetails?.pastActions || "N/A", "personalDetails.pastActions"],
-      ["Past actions reason", app.personalDetails?.pastActionsReason || "N/A", "personalDetails.pastActionsReason"],
       ["Occupation", app.personalDetails?.occupation, "personalDetails.occupation"],
       ["Ddpi", app.personalDetails?.ddpi || "Yes", "personalDetails.ddpi"],
       ["Operate ddpi", app.personalDetails?.operatedThroughDDPI || "Yes", "personalDetails.operatedThroughDDPI"],
@@ -218,6 +215,21 @@ const REVIEW_STEPS = [
       ["Nsdl2 e statement", app.personalDetails?.eStatement || "Yes", "personalDetails.eStatement"],
       ["Nsdl3 pledge instruction", app.personalDetails?.acceptPledgeInstructions || "No", "personalDetails.acceptPledgeInstructions"],
       ["Dis booklet", app.personalDetails?.dis || "No", "personalDetails.dis"],
+      ["Past actions", (() => {
+        const pa = app.personalDetails?.pastActions;
+        if (typeof pa === "string" && pa.toLowerCase() === "yes") return "Yes";
+        if (typeof pa === "string" && pa.toLowerCase() === "no") return "No";
+        if (pa === true) return "Yes";
+        if (pa === false) return "No";
+        return pa || "No";
+      })(), "personalDetails.pastActions"],
+      ...((() => {
+        const commentVal = app.personalDetails?.pastActionsReason || app.personalDetails?.pepComment;
+        if (commentVal && String(commentVal).trim() !== "" && String(commentVal).trim().toLowerCase() !== "n/a") {
+          return [["Past action(comment)", commentVal, app.personalDetails?.pastActionsReason ? "personalDetails.pastActionsReason" : "personalDetails.pepComment"]];
+        }
+        return [];
+      })()),
     ],
     evidence: (app) => [
       findDocument(app, ["aadhaar", "digilocker", "uidai"], "Aadhaar Document", ["pan", "photo", "image"]),

@@ -3,7 +3,11 @@ import { useState, useEffect } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { MailIcon, ArrowRightIcon, ArrowLeftIcon, CheckCircleIcon, EditIcon } from "../Icons";
 import { sendEmailOtp, verifyEmailOtp } from "@/utils/kycApi";
+import { getEmailTypoSuggestion } from "@/utils/emailTypo";
 import Logo from "../Logo";
+
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+const EMAIL_DOMAIN_ERROR = "Please check and enter your correct email address.";
 
 const CheckIcon = ({ size = 12 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--bg-primary)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
@@ -14,7 +18,11 @@ const CheckIcon = ({ size = 12 }) => (
 export default function EmailStep() {
   const { personalDetails, updateState, updateNested, nextStep, prevStep, addToast } = useKYC();
   const [email, setEmail] = useState(personalDetails.email || "");
-  const [emailDependency, setEmailDependency] = useState(personalDetails.emailDependency || "");
+  // Defaults to "--Select--" (nothing chosen). "Child Dependent 2" / "Parent Dependent 2" are no longer offered — a saved one must be re-selected
+  const [emailDependency, setEmailDependency] = useState(
+    ["Child Dependent 2", "Parent Dependent 2"].includes(personalDetails.emailDependency) ? "" : (personalDetails.emailDependency || "")
+  );
+  const [emailError, setEmailError] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [timer, setTimer] = useState(30);
@@ -41,9 +49,14 @@ export default function EmailStep() {
       addToast("Please enter email address", "error");
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!EMAIL_REGEX.test(email)) {
       addToast("Please enter a valid email address", "error");
+      return;
+    }
+    // Blocked until a mistyped domain is fixed (also covers an email pre-filled from saved data)
+    if (getEmailTypoSuggestion(email)) {
+      setEmailError(EMAIL_DOMAIN_ERROR);
+      addToast(EMAIL_DOMAIN_ERROR, "error");
       return;
     }
     if (!emailDependency) {
@@ -58,14 +71,43 @@ export default function EmailStep() {
     setLoading(true);
     try {
       await sendEmailOtp(email);
+      setOtp(["", "", "", "", "", ""]); // new OTP sent (incl. resend) — clear the old digits
       setIsOtpMode(true);
       setTimer(30);
-      addToast("Verification code sent to your email!", "success");
+      setTimeout(() => document.getElementById("otp-0")?.focus(), 0);
+      addToast("OTP sent to your email!", "success");
     } catch (error) {
       addToast(error.message || "Failed to send OTP", "error");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Real-time checks: format alert + mistyped domain ("gmail.co"). No corrected address is suggested —
+  // the applicant must type their own email themselves.
+  const validateEmail = (val, hadBadChars = false) => {
+    const isValidFormat = !!val && EMAIL_REGEX.test(val);
+    if (hadBadChars) {
+      setEmailError("Only letters, numbers and . _ % + - @ are allowed in an email address");
+    } else if (val && !isValidFormat) {
+      setEmailError("Enter a valid email address (e.g. name@example.com)");
+    } else if (isValidFormat && getEmailTypoSuggestion(val)) {
+      setEmailError(EMAIL_DOMAIN_ERROR);
+    } else {
+      setEmailError("");
+    }
+  };
+
+  // Email field accepts only email characters
+  const handleEmailChange = (e) => {
+    if (isOtpMode) return;
+    const raw = e.target.value;
+    let val = raw.replace(/[^A-Za-z0-9._%+\-@]/g, "");
+    // Only one "@" allowed
+    const at = val.indexOf("@");
+    if (at !== -1) val = val.slice(0, at + 1) + val.slice(at + 1).replace(/@/g, "");
+    setEmail(val);
+    validateEmail(val, val !== raw);
   };
 
   const handleOtpChange = (index, value) => {
@@ -128,7 +170,7 @@ export default function EmailStep() {
     <div className="container-sm">
       <div className="text-center animate-slide-up" style={{ marginBottom: 40 }}>
         <h2 className="text-section" style={{ marginBottom: 16 }}>Email Identity</h2>
-        <p className="text-body" style={{ fontWeight: 600 }}>We'll send a verification code to your email address.</p>
+        <p className="text-body" style={{ fontWeight: 600 }}>We'll send an OTP to your email address.</p>
       </div>
 
       <div className="card animate-slide-up">
@@ -139,8 +181,9 @@ export default function EmailStep() {
           <div style={{ position: "relative" }}>
             <input 
               type="email" className="input-field" placeholder="name@example.com" 
-              style={{ fontWeight: 700, paddingRight: isOtpMode ? "60px" : "24px" }}
-              value={email} onChange={e => !isOtpMode && setEmail(e.target.value)}
+              style={{ fontWeight: 700, paddingRight: isOtpMode ? "60px" : "24px", borderColor: emailError ? "var(--wise-danger)" : undefined }}
+              inputMode="email" autoComplete="email"
+              value={email} onChange={handleEmailChange}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -167,6 +210,9 @@ export default function EmailStep() {
               </button>
             )}
           </div>
+          {emailError && (
+            <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>{emailError}</p>
+          )}
         </div>
 
         {/* Email Dependency Section */}
@@ -188,8 +234,6 @@ export default function EmailStep() {
             <option value="Spouse">Spouse</option>
             <option value="Child Dependent">Child Dependent</option>
             <option value="Parents Dependent">Parents Dependent</option>
-            <option value="Child Dependent 2">Child Dependent 2</option>
-            <option value="Parent Dependent 2">Parent Dependent 2</option>
           </select>
         </div>
 
@@ -229,7 +273,6 @@ export default function EmailStep() {
                     }}>
                       <ul style={{ margin: 0, paddingLeft: 16, fontSize: "0.85rem", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 10, lineHeight: 1.5 }}>
                         <li>I voluntarily provide my Email Id for communication related to my Trading Account and Demat Account.</li>
-                        <li>I confirm that the Email Id provided belongs exclusively to me.</li>
                         <li>I give my explicit consent to receive transactional, regulatory, service-related, and promotional communications through Email or other electronic modes on this email address.</li>
                         <li>I understand that my Trading Account will be opened and maintained with Stockology Securities Private Limited.</li>
                         <li>I further understand that my Demat Account will be opened and maintained with Globe Capital Market Limited, in accordance with applicable SEBI and Depository regulations.</li>
@@ -247,7 +290,7 @@ export default function EmailStep() {
             Back
           </button>
           <button type="button" className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ flex: 1.5 }}>
-            {loading ? "Sending..." : "Send Code"}
+            {loading ? "Sending..." : "Send OTP"}
           </button>
         </div>
 
@@ -266,7 +309,7 @@ export default function EmailStep() {
               marginBottom: 12, flexWrap: "wrap", lineHeight: 1.3
             }}>
               <CheckCircleIcon size={18} /> 
-              <span>CODE SENT TO {email}</span>
+              <span>OTP SENT TO {email}</span>
             </div>
             <div>
               <button type="button" className="btn-pill" onClick={() => setIsOtpMode(false)}>Edit Email</button>
@@ -302,7 +345,7 @@ export default function EmailStep() {
           
           <div className="text-center" style={{ marginTop: 28 }}>
             {timer > 0 ? (
-              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend code in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
+              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
             ) : (
               <button className="btn btn-ghost btn-sm" onClick={handleSendOtp} style={{ color: "var(--wise-green)", fontWeight: 800 }}>Resend Verification Email</button>
             )}

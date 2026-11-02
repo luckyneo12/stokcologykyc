@@ -252,6 +252,7 @@ export default function CorrectionDetailsStep({ stepId, rejectedStep }) {
     "Clientcode": "clientCode",
     "Past actions": "pastActions",
     "Past actions reason": "pastActionsReason",
+    "Past action(comment)": "pastActionsReason",
   };
 
   // Compute which form field keys are rejected

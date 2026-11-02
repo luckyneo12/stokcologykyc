@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useKYC } from "@/context/KYCContext";
 import { SmartphoneIcon, ArrowRightIcon, ArrowLeftIcon, CheckCircleIcon, EditIcon } from "../Icons";
 import Logo from "../Logo";
@@ -14,7 +14,10 @@ const CheckIcon = ({ size = 12 }) => (
 export default function PhoneStep() {
   const { phone, personalDetails = {}, updateState, nextStep, prevStep, goToStep, refreshProgress, addToast, setApplicationId, resetKYC } = useKYC();
   const [phoneNumber, setPhoneNumber] = useState(phone || "");
-  const [phoneDependency, setPhoneDependency] = useState(personalDetails.phoneDependency || "");
+  // Defaults to "--Select--" (nothing chosen). "Child Dependent 2" / "Parent Dependent 2" are no longer offered — a saved one must be re-selected
+  const [phoneDependency, setPhoneDependency] = useState(
+    ["Child Dependent 2", "Parent Dependent 2"].includes(personalDetails.phoneDependency) ? "" : (personalDetails.phoneDependency || "")
+  );
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [timer, setTimer] = useState(30);
@@ -24,6 +27,8 @@ export default function PhoneStep() {
   const [showTooltip, setShowTooltip] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [phoneError, setPhoneError] = useState("");
+  const phoneErrorTimer = useRef(null);
+  useEffect(() => () => clearTimeout(phoneErrorTimer.current), []);
 
   const [showPreAgreement, setShowPreAgreement] = useState(() => {
     if (typeof window !== "undefined") {
@@ -55,6 +60,10 @@ export default function PhoneStep() {
       addToast("Enter 10 digits", "error");
       return;
     }
+    if (!/^[6-9]\d{9}$/.test(phoneNumber)) {
+      addToast("Mobile number must start with 6, 7, 8 or 9", "error");
+      return;
+    }
     if (!phoneDependency) {
       addToast("Please select dependency", "error");
       return;
@@ -67,9 +76,11 @@ export default function PhoneStep() {
       setLoading(true);
       const apCode = sessionStorage.getItem('apCode') || undefined;
       await sendOtp(phoneNumber, apCode);
+      setOtp(["", "", "", "", "", ""]); // new OTP sent (incl. resend) — clear the old digits
       setIsOtpMode(true);
       setTimer(30);
-      addToast("Verification code sent!", "success");
+      setTimeout(() => document.getElementById("otp-0")?.focus(), 0);
+      addToast("OTP sent!", "success");
     } catch (error) {
       console.error("[PhoneStep] Send OTP error:", error);
       if (error.code === "ALREADY_EXISTS" || error.message?.includes("already exists")) {
@@ -90,16 +101,31 @@ export default function PhoneStep() {
       addToast("Enter digit only", "error");
     }
     const numericVal = val.replace(/\D/g, "");
-    setPhoneNumber(numericVal);
-    
-    if (numericVal.length > 10) {
-      setPhoneError("Mobile number should not be more than 10 digits");
-    } else {
-      setPhoneError("");
+
+    // Real-time rules: must start with 6/7/8/9 and can't go beyond 10 digits — invalid input is not accepted.
+    // The input is rejected (field keeps its valid value), so the alert is temporary and clears itself.
+    if (numericVal && !/^[6-9]/.test(numericVal)) {
+      showPhoneError("Mobile number must start with 6, 7, 8 or 9");
+      return;
     }
+    if (numericVal.length > 10) {
+      showPhoneError("Mobile number cannot be more than 10 digits");
+      return;
+    }
+    setPhoneNumber(numericVal);
+    clearTimeout(phoneErrorTimer.current);
+    setPhoneError("");
+  };
+
+  const showPhoneError = (msg) => {
+    setPhoneError(msg);
+    clearTimeout(phoneErrorTimer.current);
+    phoneErrorTimer.current = setTimeout(() => setPhoneError(""), 3000);
   };
 
   const handlePhoneBlur = () => {
+    clearTimeout(phoneErrorTimer.current);
+    setPhoneError("");
     if (phoneNumber.length > 0 && phoneNumber.length < 10) {
       addToast("Enter 10 digits", "error");
     }
@@ -224,7 +250,7 @@ export default function PhoneStep() {
           <div className="input-field" style={{ position: "relative", display: "flex", alignItems: "baseline", paddingLeft: "16px", paddingRight: isOtpMode ? "60px" : "24px", cursor: isOtpMode ? "default" : "text", borderColor: phoneError ? "var(--wise-danger)" : "var(--border-color)" }}>
             <span style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "1.1rem", marginRight: "8px", pointerEvents: "none" }}>+91</span>
             <input 
-              type="tel" placeholder="00000 00000" 
+              type="tel" inputMode="numeric" placeholder="00000 00000"
               style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontWeight: 700, fontSize: "1.1rem", color: "var(--text-primary)", padding: 0, height: "100%" }}
               value={phoneNumber} onChange={handlePhoneChange} onBlur={handlePhoneBlur}
               onKeyDown={(e) => e.key === "Enter" && phoneNumber.length === 10 && !isOtpMode && handleSendOtp()}
@@ -271,8 +297,6 @@ export default function PhoneStep() {
             <option value="Spouse">Spouse</option>
             <option value="Child Dependent">Child Dependent</option>
             <option value="Parents Dependent">Parents Dependent</option>
-            <option value="Child Dependent 2">Child Dependent 2</option>
-            <option value="Parent Dependent 2">Parent Dependent 2</option>
           </select>
         </div>
 
@@ -311,7 +335,6 @@ export default function PhoneStep() {
                     }}>
                       <ul style={{ margin: 0, paddingLeft: 16, fontSize: "0.85rem", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 10, lineHeight: 1.5 }}>
                         <li>I voluntarily provide my mobile number for communication related to my Trading Account and Demat Account.</li>
-                        <li>I confirm that the mobile number provided belongs exclusively to me.</li>
                         <li>I give my explicit consent to receive transactional, regulatory, service-related, and promotional communications through call, SMS, WhatsApp, or other electronic modes on this number.</li>
                         <li>I understand that my Trading Account will be opened and maintained with Stockology Securities Private Limited.</li>
                         <li>I further understand that my Demat Account will be opened and maintained with Globe Capital Market Limited, in accordance with applicable SEBI and Depository regulations.</li>
@@ -335,7 +358,7 @@ export default function PhoneStep() {
 
         <div style={{ display: isOtpMode ? "none" : "flex" }}>
           <button className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ width: "100%" }}>
-            {loading ? "Sending..." : "Send Code"}
+            {loading ? "Sending..." : "Send OTP"}
           </button>
         </div>
 
@@ -354,7 +377,7 @@ export default function PhoneStep() {
               marginBottom: 12, flexWrap: "wrap", lineHeight: 1.3
             }}>
               <CheckCircleIcon size={18} /> 
-              <span>CODE SENT TO +91 {phoneNumber}</span>
+              <span>OTP SENT TO +91 {phoneNumber}</span>
             </div>
             <div>
               <button className="btn-pill" onClick={() => setIsOtpMode(false)}>Edit Number</button>
@@ -390,7 +413,7 @@ export default function PhoneStep() {
           
           <div className="text-center" style={{ marginTop: 28 }}>
             {timer > 0 ? (
-              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend code in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
+              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
             ) : (
               <button className="btn btn-ghost btn-sm" onClick={handleSendOtp} disabled={loading} style={{ color: "var(--wise-green)", fontWeight: 800 }}>Resend Verification SMS</button>
             )}
