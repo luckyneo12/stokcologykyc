@@ -128,7 +128,7 @@ async function getOrCreateDraftApplication({ userId, applicationId }) {
   const existing = await prisma.kycApplication.findFirst({
     where: {
       userId,
-      status: { in: ["pending", "under_review", "on_hold"] },
+      status: { in: ["pending", "under_review", "on_hold", "rejected"] },
     },
     orderBy: { createdAt: "desc" },
     include: { user: true },
@@ -1989,7 +1989,9 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                   currentDocs.push({
                     path: finalUrl,
                     type: "ESIGN_DOCUMENT",
-                    label: "eSigned PDF"
+                    label: "eSigned PDF",
+                    uploadedAt: new Date().toISOString(),
+                    timestamp: new Date().toISOString()
                   });
                   await prisma.kycApplication.update({
                     where: { applicationId: application.applicationId },
@@ -2031,7 +2033,7 @@ router.post("/request-response/:requestId", auth, async (req, res) => {
                 const appToUpdate = await prisma.kycApplication.findUnique({ where: { applicationId: application.applicationId } });
                 if (appToUpdate) {
                   const currentDocs = parseJsonField(appToUpdate.documents, []);
-                  currentDocs.push({ path: `/uploads/${filename}`, type: "ESIGN_DOCUMENT", label: "eSigned PDF" });
+                  currentDocs.push({ path: `/uploads/${filename}`, type: "ESIGN_DOCUMENT", label: "eSigned PDF", uploadedAt: new Date().toISOString(), timestamp: new Date().toISOString() });
                   await prisma.kycApplication.update({
                     where: { applicationId: application.applicationId },
                     data: { documents: JSON.stringify(currentDocs) }
@@ -2700,6 +2702,61 @@ router.post("/verify-bank", auth, async (req, res) => {
         console.warn("IFSC lookup failed during bank verification:", e.message);
       }
 
+      // Post-penny drop branch verification
+      const enteredIfsc = String(ifsc || "").trim().toUpperCase();
+      const returnedIfsc = String(
+        result.registered_ifsc ||
+        result.branch_ifsc ||
+        result.actual_ifsc ||
+        result.destination_ifsc ||
+        result.details?.registered_ifsc ||
+        result.details?.branch_ifsc ||
+        result.details?.ifsc ||
+        ""
+      ).trim().toUpperCase();
+
+      const enteredMicr = String(branchDetails.micr || branchDetails.MICR || branchDetails.micr_code || "").trim();
+      const returnedMicr = String(result.micr || result.data?.micr || result.details?.micr || "").trim();
+
+      let isBranchMismatch = false;
+      let branchMismatchMsg = "";
+
+      if (returnedIfsc && returnedIfsc.length === 11 && returnedIfsc !== enteredIfsc) {
+        isBranchMismatch = true;
+        branchMismatchMsg = `IFSC branch mismatch: Your bank account is registered under branch IFSC ${returnedIfsc}, but you entered ${enteredIfsc}. Please enter your registered branch IFSC.`;
+      } else if (
+        returnedMicr &&
+        enteredMicr &&
+        returnedMicr.length === 9 &&
+        enteredMicr.length === 9 &&
+        returnedMicr !== enteredMicr
+      ) {
+        isBranchMismatch = true;
+        branchMismatchMsg = `IFSC branch mismatch: The IFSC entered (${enteredIfsc}) belongs to a different branch than your account's registered branch. Please enter your correct registered branch IFSC.`;
+      }
+
+      if (isBranchMismatch) {
+        await writeAuditLog({
+          userId: req.user.id,
+          action: "bank_branch_mismatch",
+          details: {
+            applicationId: application.applicationId,
+            enteredIfsc,
+            returnedIfsc: returnedIfsc || null,
+            enteredMicr: enteredMicr || null,
+            returnedMicr: returnedMicr || null,
+            accountNumber,
+          },
+          ipAddress: req.ip,
+        });
+
+        return res.json({
+          success: false,
+          branchMismatch: true,
+          error: branchMismatchMsg,
+        });
+      }
+
       const panName = personalDetails.fullName || beneficiaryName || "";
       const bankNameFromDigio = result.beneficiary_name_with_bank || result.beneficiary_name || "";
       const localMatchScore = getStringSimilarity(panName, bankNameFromDigio) * 100;
@@ -2759,12 +2816,39 @@ router.post("/verify-bank", auth, async (req, res) => {
         });
       }
 
+      // If name does not match: do NOT overwrite the database yet!
+      // Return the mismatch result and bankDetails patch so the client can prompt (Modify vs Proceed).
+      // Only when the user explicitly clicks Proceed will nextStep commit these bank details to the database.
+      if (!isNameMatched) {
+        await writeAuditLog({
+          userId: req.user.id,
+          action: "bank_name_mismatch",
+          details: {
+            applicationId: application.applicationId,
+            panName,
+            bankNameFromDigio,
+            matchScore: finalScore,
+            accountNumber,
+            ifsc
+          },
+          ipAddress: req.ip,
+        });
+
+        return res.json({
+          success: true,
+          verified: false,
+          nameMismatch: true,
+          data: result,
+          bankDetails: bankPatch,
+        });
+      }
+
       await prisma.kycApplication.update({
         where: { id: application.id },
         data: serializeJsonFields(
           {
             bankDetails: nextBankDetails,
-            currentStep: isNameMatched ? Math.max(application.currentStep || 0, 11) : application.currentStep, // Advance only if verified
+            currentStep: Math.max(application.currentStep || 0, 11),
           },
           ["bankDetails"],
         ),

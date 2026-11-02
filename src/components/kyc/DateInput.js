@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import CalendarPopover from "@/components/ui/CalendarPopover";
 
-export default function DateInput({ value, onChange, style, className, max }) {
+export default function DateInput({ value, onChange, style, className, max, disabled }) {
   const [textValue, setTextValue] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -124,6 +124,7 @@ export default function DateInput({ value, onChange, style, className, max }) {
     <div ref={wrapperRef} style={{ position: "relative", width: "100%" }}>
       <input
         type="text"
+        disabled={disabled}
         placeholder="DD/MM/YYYY"
         className={className}
         style={{
@@ -138,13 +139,13 @@ export default function DateInput({ value, onChange, style, className, max }) {
       />
       
       <div 
-        onClick={() => setPickerOpen(o => !o)}
+        onClick={() => { if (!disabled) setPickerOpen(o => !o); }}
         style={{ 
           position: "absolute", 
           right: 16, 
           top: "50%", 
           transform: "translateY(-50%)", 
-          cursor: "pointer", 
+          cursor: disabled ? "not-allowed" : "pointer", 
           color: pickerOpen ? "var(--wise-green)" : "var(--text-muted)", 
           zIndex: 2,
           background: "var(--input-bg)",

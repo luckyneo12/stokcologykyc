@@ -4,7 +4,7 @@ import { X as CloseIcon, ExternalLink } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, documentType }) {
+export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, documentType, uploadedAt, timestamp }) {
   const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
@@ -14,13 +14,13 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
 
   if (!isOpen || !documentUrl || !mounted) return null;
 
-  const isPdf = documentUrl.toLowerCase().endsWith(".pdf") || documentType === "application/pdf" || documentUrl.startsWith("data:application/pdf");
+  const isPdf = documentUrl.toLowerCase().endsWith(".pdf") || documentType === "application/pdf" || documentUrl.startsWith("data:application/pdf") || /\.pdf($|\?)/i.test(documentUrl);
 
   let safeDocumentUrl = documentUrl;
   if (typeof documentUrl === "string" && documentUrl.includes("/api/kyc/document/")) {
     try {
       const token = typeof window !== "undefined"
-        ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
+        ? (sessionStorage.getItem("correctionToken") || sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
         : null;
       if (token && !documentUrl.includes("token=")) {
         const separator = documentUrl.includes("?") ? "&" : "?";
@@ -33,7 +33,7 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
   let iframeSrc = safeDocumentUrl;
   if (isPdf && safeDocumentUrl.startsWith("https://res.cloudinary.com/")) {
     const token = typeof window !== "undefined"
-      ? (sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
+      ? (sessionStorage.getItem("correctionToken") || sessionStorage.getItem("kycToken") || sessionStorage.getItem("adminToken") || sessionStorage.getItem("token") || localStorage.getItem("adminToken"))
       : null;
     iframeSrc = `${API_BASE}/api/kyc/proxy-pdf?url=${encodeURIComponent(safeDocumentUrl)}&token=${encodeURIComponent(token || "")}`;
   }
@@ -72,6 +72,11 @@ export default function DocumentPreviewModal({ isOpen, onClose, documentUrl, doc
         }}>
           <div>
             <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "var(--text-primary)" }}>Document Preview</h3>
+            {(uploadedAt || timestamp) && (
+              <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 500 }}>
+                Uploaded: {new Date(uploadedAt || timestamp).toLocaleString("en-IN")}
+              </p>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             {isPdf && (

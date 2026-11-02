@@ -9,6 +9,38 @@ import DateInput from "../../DateInput";
 import ImageCropper from "@/components/ui/ImageCropper";
 import { Eye } from "lucide-react";
 import DocumentPreviewModal from "../../DocumentPreviewModal";
+import Tesseract from "tesseract.js";
+
+const extractLast4FromDetails = (details) => {
+  if (!details) return null;
+  const raw = details.aadhaar_number || details.id_number || details.aadhaar || details.uid || details.masked_aadhaar || "";
+  const digits = String(raw).replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : null;
+};
+
+const extractDocumentId = async (imageSrc, type) => {
+  try {
+    const { data: { text } } = await Tesseract.recognize(imageSrc, 'eng');
+    if (type === "PAN CARD") {
+      const panMatch = text.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
+      return panMatch ? panMatch[0] : null;
+    } else if (type === "AADHAAR CARD") {
+      const fullAadhaarMatch = text.match(/\b\d{4}\s?\d{4}\s?(\d{4})\b/);
+      if (fullAadhaarMatch && fullAadhaarMatch[1]) {
+        return fullAadhaarMatch[1];
+      }
+      const maskedMatch = text.match(/[xX]{4}\s?[xX]{4}\s?(\d{4})/i) || text.match(/[xX]{8}\s?(\d{4})/i);
+      if (maskedMatch && maskedMatch[1]) {
+        return maskedMatch[1];
+      }
+      const matches = text.match(/\b\d{4}\b/g);
+      return matches ? matches[matches.length - 1] : null;
+    }
+  } catch (err) {
+    console.error("OCR Error:", err);
+  }
+  return null;
+};
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", 
@@ -322,6 +354,13 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
                 newErrors[errKey] = "Please enter the last 4 digits of Aadhaar";
               } else {
                 delete newErrors[errKey];
+                const extracted = isGuardianField ? updated[idx].extractedGuardianProofNumber : updated[idx].extractedProofNumber;
+                if (extracted && val.length === 4 && val !== extracted) {
+                  newErrors[errKey] = `Mismatch: Document shows ${extracted}`;
+                  setTimeout(() => {
+                    alert(`Aadhaar number does not match! Entered last 4 digits: ${val}, but uploaded document shows: ${extracted}.`);
+                  }, 50);
+                }
               }
             }
           }
@@ -459,12 +498,21 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
         if (file.type === "application/pdf") {
           if (isAadhaar) addToast("Masking Aadhaar... Please wait", "info");
           let finalImage = reader.result;
+          let extractedId = null;
           if (isAadhaar) {
             try {
               const result = await maskAadhaarImage(reader.result, "PDF", file.name);
               if (result && result.masked_output) {
                 finalImage = `data:application/pdf;base64,${result.masked_output}`;
                 addToast("Aadhaar masked securely!", "success");
+                extractedId = extractLast4FromDetails(result.details);
+
+                const enteredDigits = String(nominees[idx].proofNumber || "").trim();
+                if (extractedId && enteredDigits && enteredDigits.length === 4 && enteredDigits !== extractedId) {
+                  alert(`Aadhaar number does not match! Entered last 4 digits: ${enteredDigits}, but document shows: ${extractedId}. Please upload the correct document.`);
+                  e.target.value = null;
+                  return;
+                }
               }
             } catch (err) {
               console.error("Masking error:", err);
@@ -476,8 +524,9 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
             addToast("Uploading document... Please wait", "info");
             const fileToUpload = isAadhaar ? base64ToFile(finalImage, file.name) : file;
             const uploadResult = await uploadDocument(fileToUpload);
+            const uploadTime = uploadResult.uploadedAt || new Date().toISOString();
             const updated = [...nominees];
-            updated[idx] = { ...updated[idx], proofPath: uploadResult.path };
+            updated[idx] = { ...updated[idx], proofPath: uploadResult.path, uploadedAt: uploadTime, timestamp: uploadTime, ...(extractedId ? { extractedProofNumber: extractedId } : {}) };
             setNominees(updated);
             addToast("Proof uploaded successfully", "success");
           } catch (err) {
@@ -503,12 +552,21 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
         if (file.type === "application/pdf") {
           if (isAadhaar) addToast("Masking Guardian Aadhaar... Please wait", "info");
           let finalImage = reader.result;
+          let extractedId = null;
           if (isAadhaar) {
             try {
               const result = await maskAadhaarImage(reader.result, "PDF", file.name);
               if (result && result.masked_output) {
                 finalImage = `data:application/pdf;base64,${result.masked_output}`;
                 addToast("Guardian Aadhaar masked securely!", "success");
+                extractedId = extractLast4FromDetails(result.details);
+
+                const enteredDigits = String(nominees[idx].guardianProofNumber || "").trim();
+                if (extractedId && enteredDigits && enteredDigits.length === 4 && enteredDigits !== extractedId) {
+                  alert(`Guardian Aadhaar number does not match! Entered last 4 digits: ${enteredDigits}, but document shows: ${extractedId}. Please upload the correct document.`);
+                  e.target.value = null;
+                  return;
+                }
               }
             } catch (err) {
               console.error("Masking error:", err);
@@ -520,8 +578,9 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
             addToast("Uploading guardian document... Please wait", "info");
             const fileToUpload = isAadhaar ? base64ToFile(finalImage, file.name) : file;
             const uploadResult = await uploadDocument(fileToUpload);
+            const uploadTime = uploadResult.uploadedAt || new Date().toISOString();
             const updated = [...nominees];
-            updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path };
+            updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path, guardianUploadedAt: uploadTime, guardianTimestamp: uploadTime, ...(extractedId ? { extractedGuardianProofNumber: extractedId } : {}) };
             setNominees(updated);
             addToast("Guardian proof uploaded successfully", "success");
           } catch (err) {
@@ -542,6 +601,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
     const { idx, isGuardian, isAadhaar, fileName } = cropModalData;
     
     let finalImage = croppedBase64;
+    let extractedId = null;
     
     if (isAadhaar) {
       addToast(`Masking ${isGuardian ? "Guardian " : ""}Aadhaar... Please wait`, "info");
@@ -550,6 +610,7 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
         if (result && result.masked_output) {
           finalImage = `data:image/png;base64,${result.masked_output}`;
           addToast(`${isGuardian ? "Guardian " : ""}Aadhaar masked securely!`, "success");
+          extractedId = extractLast4FromDetails(result.details);
         }
       } catch (err) {
         console.error("Masking error:", err);
@@ -559,15 +620,33 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
       }
     }
 
+    addToast("Extracting document details...", "info");
+    const docType = isGuardian ? (nominees[idx].guardianProofType || "PAN CARD") : (nominees[idx].proofType || "PAN CARD");
+    
+    if (!extractedId) {
+      extractedId = await extractDocumentId(isAadhaar ? croppedBase64 : finalImage, docType);
+    }
+
+    // Real-time mismatch check on upload
+    if (isAadhaar && extractedId) {
+      const enteredDigits = isGuardian ? String(nominees[idx].guardianProofNumber || "").trim() : String(nominees[idx].proofNumber || "").trim();
+      if (enteredDigits && enteredDigits.length === 4 && enteredDigits !== extractedId) {
+        setCropModalData(null);
+        alert(`${isGuardian ? "Guardian " : ""}Aadhaar number does not match! Entered last 4 digits: ${enteredDigits}, but document shows: ${extractedId}. Please upload the correct document.`);
+        return;
+      }
+    }
+
     try {
       addToast("Uploading document... Please wait", "info");
       const fileToUpload = base64ToFile(finalImage, fileName || "document.png");
       const uploadResult = await uploadDocument(fileToUpload);
+      const docUploadTime = uploadResult.uploadedAt || new Date().toISOString();
       const updated = [...nominees];
       if (isGuardian) {
-        updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path };
+        updated[idx] = { ...updated[idx], guardianProofPath: uploadResult.path, extractedGuardianProofNumber: extractedId, guardianUploadedAt: docUploadTime, guardianTimestamp: docUploadTime };
       } else {
-        updated[idx] = { ...updated[idx], proofPath: uploadResult.path };
+        updated[idx] = { ...updated[idx], proofPath: uploadResult.path, extractedProofNumber: extractedId, uploadedAt: docUploadTime, timestamp: docUploadTime };
       }
       setNominees(updated);
       setCropModalData(null);
@@ -618,6 +697,11 @@ export default function CorrectionNomineeStep({ stepId, rejectedStep }) {
             newErrors[`${idx}-proofNumber`] = "Please enter the last 4 digits";
             isValid = false;
           }
+        }
+        
+        if (nom.extractedProofNumber && nom.extractedProofNumber !== val) {
+          newErrors[`${idx}-proofNumber`] = `Mismatch: Document shows ${nom.extractedProofNumber}`;
+          isValid = false;
         }
       }
       if (!nom.proofPath) { newErrors[`${idx}-proofPath`] = true; isValid = false; }

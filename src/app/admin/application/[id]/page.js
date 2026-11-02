@@ -899,7 +899,23 @@ export default function ApplicationDetail() {
         {/* Title Section */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 32 }}>
           <div>
-            <h1 style={{ fontSize: "1.4rem", fontWeight: 900, marginBottom: 4 }}>{app.personalDetails?.fullName || "Unnamed Applicant"}</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+              <h1 style={{ fontSize: "1.4rem", fontWeight: 900, margin: 0 }}>{app.personalDetails?.fullName || "Unnamed Applicant"}</h1>
+              {(() => {
+                const p = app.personalDetails || {};
+                const isPolExp = String(p.politicallyExposed || "").trim().toLowerCase() === "yes";
+                const pepTypeNorm = String(p.pepType || "").trim().toUpperCase();
+                const isPep = isPolExp || ["PEP", "RPEP", "RELATED TO PEP"].includes(pepTypeNorm) || pepTypeNorm.includes("PEP");
+                if (!isPep) return null;
+                const label = (pepTypeNorm === "RPEP" || pepTypeNorm.includes("RELATED")) ? "RPEP" : "PEP";
+                return (
+                  <span className="neu-dh-pep-badge" title={`Applicant is Politically Exposed (${label})`}>
+                    <span className="neu-dh-pep-dot" />
+                    {label}
+                  </span>
+                );
+              })()}
+            </div>
             <p style={{ color: "var(--text-muted)", fontSize: "0.75rem", margin: 0 }}>ID: <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{app.applicationId}</span></p>
             
             <div style={{ display: "flex", gap: "24px", marginTop: "12px" }}>

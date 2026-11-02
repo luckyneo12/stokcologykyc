@@ -10,7 +10,7 @@ router.param("id", require("../controllers/trashController").rejectIfTrashed);
 // Ensure only kyc_team agents can access these routes
 const agentAuth = (req, res, next) => {
   auth(req, res, () => {
-    if (req.user.role !== "kyc_team" && req.user.role !== "admin") {
+    if (req.user.role !== "kyc_team" && req.user.role !== "admin" && req.user.role !== "globe") {
       return res.status(403).json({ error: "KYC team access required" });
     }
     next();

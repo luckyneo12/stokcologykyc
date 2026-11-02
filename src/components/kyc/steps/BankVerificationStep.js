@@ -195,6 +195,16 @@ export default function BankVerificationStep() {
   }, [isBankRejected, correctionDraft]);
 
   useEffect(() => {
+    return () => {
+      // If leaving this step while the form has unproceeded inputs and bankDetails was verified,
+      // clear the unsubmitted draft so returning to Step 10 reloads the verified bank details
+      if (bankDetails?.verified) {
+        clearFormDraft();
+      }
+    };
+  }, [bankDetails?.verified, clearFormDraft]);
+
+  useEffect(() => {
     const fetchBankDetails = async () => {
       const ifsc = form.ifsc?.trim().toUpperCase();
       
@@ -354,7 +364,8 @@ export default function BankVerificationStep() {
           setShowMismatchModal({
              kycName,
              bankName: hashName(accountHolder),
-             accountHolder
+             accountHolder,
+             bankPatch: result.bankDetails
           });
         } else {
           addToast("Name matched. Penny drop verified.", "success");
@@ -371,6 +382,9 @@ export default function BankVerificationStep() {
         }
       } else {
         setVerificationState("idle");
+        if (result.branchMismatch) {
+          alert(result.error);
+        }
         addToast(result.error || "Bank verification failed", "error");
       }
     } catch (error) {
@@ -639,7 +653,10 @@ export default function BankVerificationStep() {
             </h3>
             
             <button 
-              onClick={() => setShowMismatchModal(null)} 
+              onClick={() => {
+                setShowMismatchModal(null);
+                setVerificationState("idle");
+              }} 
               className="btn-secondary"
               style={{ 
                 width: "100%", marginBottom: "12px", height: "56px", borderRadius: "16px",
@@ -652,12 +669,24 @@ export default function BankVerificationStep() {
             <button 
               onClick={() => {
                 const accountHolder = showMismatchModal.accountHolder;
+                const bankPatch = showMismatchModal.bankPatch || {};
                 setShowMismatchModal(null);
                 addToast("Name not matched penny drop not verified. Proceeding to upload bank proof.", "warning");
                 update("accountHolderName", accountHolder);
                 markStepVerified(10, `${form.accountNumber}|${form.ifsc}`);
                 clearFormDraft();
-                nextStep({ bankDetails: { ...form, method: "Manual Data Entry", accountHolderName: accountHolder, verified: false } });
+                const payloadData = {
+                  ...form,
+                  ...bankPatch,
+                  method: "Manual Data Entry",
+                  accountHolderName: accountHolder,
+                  verified: false
+                };
+                if (isBankRejected) {
+                  nextStep({ correctionDraft: { ...(correctionDraft || {}), bankDetails: payloadData } });
+                } else {
+                  nextStep({ bankDetails: payloadData });
+                }
               }}
               className="btn-primary"
               style={{ 

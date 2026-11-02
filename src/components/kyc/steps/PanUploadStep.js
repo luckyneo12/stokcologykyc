@@ -244,7 +244,8 @@ export default function PanUploadStep() {
     
     setSubmitting(true);
     try {
-      const payloadData = { filePreview };
+      const panUploadTime = new Date().toISOString();
+      const payloadData = { filePreview, uploadedAt: panUploadTime, timestamp: panUploadTime };
       if (isPanRejected) {
         updateNested("correctionDraft", { panUpload: payloadData });
       } else {

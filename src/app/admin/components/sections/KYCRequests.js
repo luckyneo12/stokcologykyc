@@ -211,8 +211,16 @@ export default function KYCRequests({ searchQuery, onSearchChange, defaultFilter
             let parsedPersonal = {};
             try { parsedPersonal = typeof app.personalDetails === "string" ? JSON.parse(app.personalDetails) : (app.personalDetails || {}); } catch(e) {}
             
+            const rawPep = String(parsedPersonal.politicallyExposed || "").trim().toLowerCase();
+            const rawType = String(parsedPersonal.pepType || "").trim();
+            const rawTypeNorm = rawType.toUpperCase();
+            const isPep = rawPep === "yes" || ["PEP", "RPEP", "RELATED TO PEP"].includes(rawTypeNorm) || rawTypeNorm.includes("PEP");
+            const pepType = (rawTypeNorm === "RPEP" || rawTypeNorm.includes("RELATED")) ? "RPEP" : "PEP";
+
             return {
               id: app.applicationId,
+              isPep,
+              pepType,
               dbId: app.id,
               clientCode: app.clientCode,
               number: app.user?.phone || "N/A",

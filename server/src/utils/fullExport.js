@@ -271,7 +271,8 @@ function nomineeGroup(i) {
       [`${N} PROOF TYPE`, (c) => first(n(c).proofType)],
       [`${N} PAN`, (c) => proof(c, "PAN", false)],
       [`${N} AADHAR`, (c) => proof(c, "AADHAAR", false)],
-      [`${N} UPLOAD`, (c) => first(n(c).proofPath)],
+      [`${N} PROOF UPLOAD TIMESTAMP`, (c) => (n(c).name ? dateTime(first(n(c).uploadedAt, n(c).timestamp, findDoc(c, (d) => d.label?.includes(`Nominee ${i + 1}`) || d.type === `NOMINEE_PROOF_${i + 1}`).uploadedAt, n(c).proofPath ? stepSaved(c, "USER_SAVED_NOMINEE") : "")) : "")],
+      [`${N} DETAILS TIMESTAMP`, (c) => (n(c).name ? dateTime(first(n(c).timestamp, n(c).savedAt, stepSaved(c, "USER_SAVED_NOMINEE"))) : "")],
       [`${G} NAME`, (c) => first(n(c).guardianName)],
       [`${G} RELATION`, (c) => first(n(c).guardianRelation)],
       [`${G} DOB`, (c) => first(n(c).guardianDob)],
@@ -286,7 +287,7 @@ function nomineeGroup(i) {
       [`${G} PROOF TYPE`, (c) => (n(c).guardianName ? first(n(c).guardianProofType) : "")],
       [`${G} PAN`, (c) => proof(c, "PAN", true)],
       [`${G} AADHAR`, (c) => proof(c, "AADHAAR", true)],
-      [`${G} UPLOAD`, (c) => first(n(c).guardianProofPath)],
+      [`${G} PROOF UPLOAD TIMESTAMP`, (c) => (n(c).guardianName ? dateTime(first(n(c).guardianUploadedAt, n(c).guardianTimestamp, findDoc(c, (d) => d.label?.includes(`Guardian ${i + 1}`) || d.type === `GUARDIAN_PROOF_${i + 1}`).uploadedAt, n(c).guardianProofPath ? stepSaved(c, "USER_SAVED_NOMINEE") : "")) : "")],
     ],
   };
 }
@@ -305,11 +306,14 @@ const GROUPS = [
       // only while the approval stands (an approval that was later reversed is not shown, like its time)
       ["VERIFIED BY (STK)", (c) => (c.app.stkApprovedAt ? first(c.extra.stkApprovedBy) : "")],
       ["REJECTED BY STOCKOLOGY TIMESTAMP", (c) => dateTime(c.app.stkRejectedAt)],
+      ["STK REVIEW TIMESTAMP", (c) => dateTime(first(c.app.stkApprovedAt, c.app.stkRejectedAt, c.app.reviewedAt))],
       ["VERIFY BY GLOBE TIMESTAMP", (c) => dateTime(c.app.globeApprovedAt)],
       ["VERIFIED BY (GLOBE)", (c) => (c.app.globeApprovedAt ? first(c.extra.globeApprovedBy) : "")],
       ["REJECTED BY GLOBE TIMESTAMP", (c) => dateTime(c.app.globeRejectedAt)],
+      ["GLOBE REVIEW TIMESTAMP", (c) => dateTime(first(c.app.globeApprovedAt, c.app.globeRejectedAt, c.app.globeReviewedAt))],
       ["KYC STATUS DATE (LAST STATUS CHANGE)", (c) => dateTime(c.extra.statusDate)],
       ["RESUBMITTED", (c) => yesNo(c.app.isResubmitted)],
+      ["RESUBMITTED TIMESTAMP", (c) => (c.app.isResubmitted ? dateTime(first(c.app.submittedAt, stepSaved(c, "USER_APPLICATION_SUBMITTED"), c.app.updatedAt)) : "")],
       ["KYC DATE (STARTED)", (c) => dateTime(c.app.createdAt)],
       ["COMPLETE TIMESTAMP (SUBMITTED)", (c) => dateTime(c.app.submittedAt)],
       ["UPDATED AT", (c) => dateTime(c.app.updatedAt)],
@@ -356,8 +360,9 @@ const GROUPS = [
       ["ARE YOU CITIZEN OF INDIA", (c) => yesNo(c.personal.isIndianCitizen)],
       ["POLITICALLY EXPOSED", (c) => yesNo(c.personal.politicallyExposed)],
       ["POLITICALLY EXPOSED CATEGORY", (c) => first(c.personal.pepType)],
-      ["P E DOCUMENT", (c) => first(c.personal.pepProof)],
+      ["PEP DOCUMENT UPLOAD TIMESTAMP", (c) => (c.personal.pepProof ? dateTime(first(c.personal.pepProofUploadedAt, findDoc(c, (d) => d.type === "PEP" || /pep/i.test(d.label || "")).uploadedAt, stepSaved(c, "USER_SAVED_DETAILS"))) : "")],
       ["PEP COMMENT", (c) => first(c.personal.pepComment)],
+      ["PERSONAL DETAILS TIMESTAMP", (c) => dateTime(first(c.personal.savedAt, stepSaved(c, "USER_SAVED_DETAILS"), c.app.createdAt))],
     ],
   },
   {
@@ -375,6 +380,7 @@ const GROUPS = [
       ["TAX PAYER IDENTIFICATION NUMBER3", (c) => first(c.personal.taxId3)],
       ["TAX EXEMPT", (c) => yesNo(c.personal.taxExempt)],
       ["TAX EXEMPT REASON", (c) => first(c.personal.taxExemptReason)],
+      ["FATCA / TAX RESIDENCY TIMESTAMP", (c) => dateTime(first(c.personal.fatcaSavedAt, stepSaved(c, "USER_SAVED_DETAILS")))],
     ],
   },
   {
@@ -385,6 +391,8 @@ const GROUPS = [
       ["EMAIL", (c) => first(c.user.email, c.personal.email)],
       ["EMAIL BELONGS TO (DEPENDENCY)", (c) => first(c.personal.emailDependency)],
       ["SMS ALERT", (c) => yesNo(c.personal.smsAlert)],
+      ["MOBILE VERIFIED TIMESTAMP", (c) => dateTime(first(c.personal.mobileVerifiedAt, c.extra.mobileOtpFirst, stepSaved(c, "USER_SAVED_PHONE")))],
+      ["EMAIL VERIFIED TIMESTAMP", (c) => dateTime(first(c.personal.emailVerifiedAt, c.extra.emailOtp, stepSaved(c, "USER_SAVED_EMAIL")))],
     ],
   },
   {
@@ -400,9 +408,9 @@ const GROUPS = [
         const s = first(c.panData.aadhaar_seeding_status, c.identity.aadhaarSeedingStatus, c.identity.seedingStatus);
         return s ? String(s).toUpperCase() : "";
       }],
-      ["PAN TIMESTAMP (VERIFIED)", (c) => dateTime(c.panCheck.verifiedAt)],
-      ["PAN UPLOAD", (c) => first(c.panUpload.path, c.panUpload.filePreview)],
-      ["PAN UPLOAD TIMESTAMP", (c) => dateTime(findDoc(c, (d) => d.type === "PAN" && d.source !== "DIGILOCKER").uploadedAt)],
+      ["PAN TIMESTAMP (VERIFIED)", (c) => dateTime(first(c.panCheck.verifiedAt, c.ocr.pan_verification?.verifiedAt, stepSaved(c, "USER_SAVED_PAN")))],
+      ["PAN UPLOAD TIMESTAMP", (c) => dateTime(first(findDoc(c, (d) => d.type === "PAN" && d.source !== "DIGILOCKER").uploadedAt, c.panUpload.timestamp, c.panUpload.uploadedAt, c.panUpload.path || c.panUpload.filePreview ? stepSaved(c, "USER_SAVED_PAN") : ""))],
+      ["AADHAAR SEEDING CHECK TIMESTAMP", (c) => dateTime(first(c.panCheck.aadhaarSeedingCheckedAt, c.panData.aadhaar_seeding_status ? (c.panCheck.verifiedAt || stepSaved(c, "USER_SAVED_PAN")) : ""))],
     ],
   },
   {
@@ -420,13 +428,13 @@ const GROUPS = [
       ["AADHAR DIST", (c) => first(c.aadhaarAddr.district_or_city)],
       ["AADHAR STATE", (c) => first(c.aadhaarAddr.state)],
       ["AADHAR PINCODE", (c) => first(c.aadhaarAddr.pincode)],
-      ["AADHAR IMAGE", (c) => first(findDoc(c, (d) => d.type === "PHOTO" && /aadhaar/i.test(d.label || "")).path)],
-      ["AADHAR FILE", (c) => first(findDoc(c, (d) => d.type === "AADHAAR").path)],
       ["PAN FROM DIGILOCKER", (c) => first(c.identity.digilockerPan, c.digiPan.id_number)],
       ["PANNAME FOR DIGILOCKER", (c) => first(c.digiPan.name)],
-      ["DIGILOCKER PAN FILE", (c) => first(findDoc(c, (d) => d.type === "PAN" && d.source === "DIGILOCKER").path)],
       ["DIGILOCKER STATUS", (c) => first(c.digio.DIGILOCKER?.status)],
-      ["DIGILOCKER TIMESTAMP", (c) => dateTime(first(digilockerDone(c), c.digio.DIGILOCKER?.fetchedAt))],
+      ["DIGILOCKER TIMESTAMP", (c) => dateTime(first(digilockerDone(c), c.digio.DIGILOCKER?.fetchedAt, findDoc(c, (d) => d.type === "AADHAAR").uploadedAt, stepSaved(c, "USER_SAVED_DIGILOCKER")))],
+      ["AADHAAR FETCHED TIMESTAMP", (c) => (c.aadhaar.id_number || c.aadhaar.name ? dateTime(first(c.aadhaar.fetchedAt, digilockerDone(c), c.digio.DIGILOCKER?.fetchedAt, findDoc(c, (d) => d.type === "AADHAAR").uploadedAt, stepSaved(c, "USER_SAVED_DIGILOCKER"))) : "")],
+      ["AADHAAR UPLOAD TIMESTAMP", (c) => (c.documents?.front || findDoc(c, (d) => d.type === "AADHAAR" || d.label?.includes("Aadhaar")).path ? dateTime(first(findDoc(c, (d) => d.type === "AADHAAR" || d.label?.includes("Aadhaar")).uploadedAt, c.documents?.uploadedAt, stepSaved(c, "USER_SAVED_DIGILOCKER"), c.app.createdAt)) : "")],
+      ["DIGILOCKER PAN FETCHED TIMESTAMP", (c) => (c.digiPan.id_number || c.identity.digilockerPan ? dateTime(first(digilockerDone(c), c.digio.DIGILOCKER?.fetchedAt, findDoc(c, (d) => d.type === "PAN" && d.source === "DIGILOCKER").uploadedAt, stepSaved(c, "USER_SAVED_DIGILOCKER"))) : "")],
     ],
   },
   {
@@ -466,6 +474,7 @@ const GROUPS = [
       ["COR COUNTRY", (c) => first(c.address.country)],
       ["SAME AS AADHAAR ADDRESS", (c) => yesNo(c.address.useAadhaar)],
       ["ADDRESS PROOF CODE", (c) => first(c.address.addressProof)],
+      ["ADDRESS SAVED TIMESTAMP", (c) => dateTime(first(c.address.savedAt, stepSaved(c, "USER_SAVED_DETAILS"), stepSaved(c, "USER_SAVED_DIGILOCKER")))],
     ],
   },
   {
@@ -486,7 +495,9 @@ const GROUPS = [
       ["PENNYDROP VERIFIED", (c) => yesNo(c.bank.verified)],
       ["PENNYDROP NAME MATCH", (c) => yesNo(c.bank.name_match)],
       ["FUZZ MATCH SCORE", (c) => round(c.bank.name_match_score)],
-      ["PENNYDROP VERIFY TIME", (c) => dateTime(c.bank.verifiedAt)],
+      ["PENNYDROP VERIFY TIME", (c) => dateTime(first(c.bank.verifiedAt, c.bank.verified ? stepSaved(c, "USER_SAVED_BANKVERIFICATION") : ""))],
+      ["BANK PROOF UPLOAD TIMESTAMP", (c) => (c.bank.proofPath || c.bank.proofPreview || c.bank.proof ? dateTime(first(c.bank.proofUploadedAt, c.bank.proofTimestamp, findDoc(c, (d) => d.type === "BANK" || d.type === "BANK_PROOF").uploadedAt, stepSaved(c, "USER_SAVED_BANKVERIFICATION"), stepSaved(c, "USER_SAVED_DOCUMENTUPLOAD"), c.app.updatedAt)) : "")],
+      ["BANK DETAILS TIMESTAMP", (c) => dateTime(first(c.bank.savedAt, c.bank.verifiedAt, stepSaved(c, "USER_SAVED_BANKVERIFICATION")))],
     ],
   },
   {
@@ -511,13 +522,15 @@ const GROUPS = [
       ["NSDL2 E STATEMENT", (c) => yesNo(c.personal.eStatement)],
       ["NSDL3 PLEDGE INSTRUCTION", (c) => yesNo(c.personal.acceptPledgeInstructions)],
       ["NSDL4 ANNUAL REPORTS (ELECTRONIC)", (c) => yesNo(c.personal.receiveAnnualReports)],
+      ["SEGMENTS SELECTION TIMESTAMP", (c) => dateTime(first(c.segments.savedAt, stepSaved(c, "USER_SAVED_PRICING")))],
+      ["DDPI PREFERENCE TIMESTAMP", (c) => dateTime(first(c.personal.ddpiSavedAt, stepSaved(c, "USER_SAVED_DETAILS")))],
     ],
   },
   {
     name: "INCOME PROOF",
     columns: [
       ["SELECT INCOME PROOFTYPE", (c) => first(c.financial.type)],
-      ["UPLOAD INCOME PROOF", (c) => first(c.financial.path, c.financial.filePreview)],
+      ["INCOME PROOF UPLOAD TIMESTAMP", (c) => (c.financial.type && c.financial.type !== "Skipped" ? dateTime(first(c.financial.timestamp, c.financial.uploadedAt, findDoc(c, (d) => d.type === "INCOME_PROOF" || d.type === "FINANCIAL").uploadedAt, c.financial.path ? stepSaved(c, "USER_SAVED_DOCUMENTUPLOAD") : "")) : "")],
     ],
   },
   {
@@ -535,52 +548,57 @@ const GROUPS = [
       ["NOMINEE OPT OUT STAMP", (c) => (optedIn(c) === false ? stampNo(c) : "")],
       ["NOMINEE OPT OUT DATE", (c) => (optedIn(c) === false ? dateTime(stepSaved(c, "USER_SAVED_NOMINEECHOICE")) : "")],
       ["TOTAL NOMINEES", (c) => first(c.nomineeRaw?.numberOfNominees, c.nominees.length || "")],
+      ["NOMINEE ALLOCATION TIMESTAMP", (c) => (c.nominees.length > 0 ? dateTime(first(c.allocation.savedAt, stepSaved(c, "USER_SAVED_NOMINEEALLOCATION"))) : "")],
     ],
   },
   ...Array.from({ length: MAX_NOMINEES }, (_, i) => nomineeGroup(i)),
   {
     name: "LIVE IMAGE (SELFIE)",
     columns: [
-      ["CLIENTIMAGE", (c) => first(c.selfie.path, c.selfie.preview, c.app.selfie)],
-      ["LIVEIMAGE TIMESTAMP", (c) => dateTime(first(c.selfie.capturedAt, c.selfie.extractedAt, c.selfie.timestamp, c.selfie.uploadedAt))],
+      ["LIVEIMAGE TIMESTAMP", (c) => dateTime(first(c.selfie.capturedAt, c.selfie.extractedAt, c.selfie.timestamp, c.selfie.uploadedAt, findDoc(c, (d) => d.type === "SELFIE" || d.type === "PHOTO").uploadedAt))],
+      ["SELFIE VIDEO TIMESTAMP", (c) => (c.selfie.videoUrl || c.selfie.videoPath || c.selfie.sessionVideoUrl || c.selfie.videoToken ? dateTime(first(c.selfie.videoUploadedAt, c.selfie.videoTimestamp, c.selfie.capturedAt, c.selfie.uploadedAt, c.app.updatedAt)) : "")],
       ["LATITUDE", (c) => first(c.selfie.geo?.latitude, c.selfie.latitude, c.selfie.lat)],
       ["LONGITUDE", (c) => first(c.selfie.geo?.longitude, c.selfie.longitude, c.selfie.lng)],
       ["LOCATION ACCURACY (METRES)", (c) => round(first(c.selfie.geo?.accuracy, c.selfie.accuracy), 0)],
       ["FACE MATCH SCORE", (c) => round(first(c.selfie.faceMatchScore, c.selfie.matchScore, c.app.faceMatchScore))],
       ["LIVENESS SCORE", (c) => round(c.selfie.livenessScore)],
       ["SELFIE SOURCE", (c) => first(c.selfie.source)],
-      ["SELFIE VIDEO", (c) => first(c.selfie.videoPath)],
       ["SELFIE IP", (c) => first(c.selfie.ip)],
     ],
   },
   {
     name: "SIGNATURE, E-SIGN & E-STAMP",
     columns: [
-      ["SIGNATURE UPLOAD", (c) => first(c.signature.path, c.signature.preview, c.signature.filePreview)],
-      ["SIGN UPLOAD TIMESTAMP", (c) => dateTime(first(c.signature.timestamp, c.signature.uploadedAt, c.signature.path || c.signature.filePreview ? stepSaved(c, "USER_SAVED_DOCUMENTUPLOAD") : ""))],
+      ["SIGN UPLOAD TIMESTAMP", (c) => dateTime(first(c.signature.timestamp, c.signature.uploadedAt, findDoc(c, (d) => d.type === "SIGNATURE").uploadedAt, c.signature.path || c.signature.preview || c.signature.filePreview ? stepSaved(c, "USER_SAVED_DOCUMENTUPLOAD") : ""))],
       ["ESIGN STATUS", (c) => first(c.digio.ESIGN?.status, c.esign.status)],
       ["ESIGN TIMESTAMP", (c) => dateTime(first(findDoc(c, (d) => d.type === "ESIGN_DOCUMENT").uploadedAt, c.esign.timestamp, c.esign.signedAt, findDoc(c, (d) => d.type === "ESIGN_DOCUMENT").path ? stepSaved(c, "USER_SAVED_AADHAARESIGN") : ""))],
       ["ESIGN TRANSACTION ID", (c) => first(c.digio.ESIGN?.requestId)],
       // Aadhaar eSign is signed by the Aadhaar holder → their Aadhaar name (only once a signed PDF exists)
       ["ESIGN SIGNER NAME (AADHAAR NAME)", (c) => (findDoc(c, (d) => d.type === "ESIGN_DOCUMENT").path ? c.aadhaarName : "")],
-      ["ESIGNED PDF- EQUITYKRA", (c) => first(findDoc(c, (d) => d.type === "ESIGN_DOCUMENT").path)],
       ["ESIGN IP", (c) => first(c.esign.ip)],
       ["ESIGN LATITUDE", (c) => first(c.esign.lat)],
       ["ESIGN LONGITUDE", (c) => first(c.esign.lng)],
       ["STAMPAPER NUMBER", (c) => first(c.user.eStampAssigned?.certificateNo, c.user.eStamp)],
       ["STAMPPAPER ID (SERIAL)", (c) => first(c.user.eStampAssigned?.serialNo)],
+      ["E-STAMP ALLOCATION TIMESTAMP", (c) => (c.user.eStampAssigned?.certificateNo || c.user.eStamp ? dateTime(first(c.user.eStampAssigned?.assignedAt, c.user.eStampAssigned?.createdAt, c.app.submittedAt, c.app.createdAt)) : "")],
     ],
   },
   {
     name: "REJECTIONS",
     columns: [
       ["ALL REJECTIONS (SUMMARY)", rejectionSummary],
+      ["OVD UPLOAD TIMESTAMP", (c) => {
+        const ovd = findDoc(c, (d) => d.type === "OVD");
+        return ovd ? dateTime(first(ovd.uploadedAt, ovd.timestamp, c.app.updatedAt)) : "";
+      }],
       ...REVIEW_MODULES.flatMap(([key, title]) => {
         const rej = (c) => (c.stepStatuses[key]?.status === "rejected" ? c.stepStatuses[key] : null);
+        const corrected = (c) => c.stepStatuses[key]?.correctedAt;
         return [
           [`REJECT REASON ${title}`, (c) => first(rej(c)?.reason)],
           [`REJECTED BY ${title}`, (c) => (rej(c) ? first(rej(c).rejectedBy, "STK") : "")],
           [`REJECTED TIMESTAMP ${title}`, (c) => dateTime(rej(c)?.reviewedAt)],
+          [`CORRECTED TIMESTAMP ${title}`, (c) => dateTime(corrected(c))],
         ];
       }),
     ],

@@ -3,6 +3,8 @@ import { useState, useRef, useEffect } from "react";
 import { useCorrection } from "@/context/CorrectionContext";
 import { uploadCorrectionDocument as uploadDocument, uploadCorrectionOvd } from "@/utils/correctionUpload";
 import CorrectionSelfieStep from "./CorrectionSelfieStep";
+import { Eye } from "lucide-react";
+import DocumentPreviewModal from "../../DocumentPreviewModal";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -80,6 +82,7 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     return initial;
   });
   const [uploading, setUploading] = useState({});
+  const [uploadTimestamps, setUploadTimestamps] = useState({});
   const [saving, setSaving] = useState(false);
   const fileRefs = useRef({});
   // Uploaded OVD's file name / type (a PDF is shown as a file, an image as a thumbnail)
@@ -87,6 +90,7 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     fileName: drafts[OVD_STEP_ID]?.fileName || null,
     mimeType: drafts[OVD_STEP_ID]?.mimeType || null,
   }));
+  const [previewModalData, setPreviewModalData] = useState(null);
 
   const handleUpload = async (docId, file) => {
     if (!file) return;
@@ -94,14 +98,18 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     try {
       if (docId === OVD_STEP_ID) {
         const result = await uploadCorrectionOvd(file);
+        const upTime = result.uploadedAt || new Date().toISOString();
         setUploads(prev => ({ ...prev, [docId]: result.path }));
+        setUploadTimestamps(prev => ({ ...prev, [docId]: upTime }));
         setOvdMeta({ fileName: result.originalName || file.name, mimeType: result.mimeType || file.type || null });
         addToast("OVD uploaded successfully");
         return;
       }
       const result = await uploadDocument(file);
       if (result.success) {
+        const upTime = result.uploadedAt || new Date().toISOString();
         setUploads(prev => ({ ...prev, [docId]: result.path }));
+        setUploadTimestamps(prev => ({ ...prev, [docId]: upTime }));
         addToast(`${docId} uploaded successfully`);
       }
     } catch (error) {
@@ -134,10 +142,13 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     for (const docId of rejectedDocIds) {
       if (docId === "ipv") continue; // SelfieStep saves its own draft
 
+      const uploadTime = uploadTimestamps[docId] || new Date().toISOString();
       const draftData = {
         filePreview: uploads[docId],
         preview: uploads[docId],
         path: uploads[docId],
+        uploadedAt: uploadTime,
+        timestamp: uploadTime,
         ...(uploadTypes[docId] ? { type: uploadTypes[docId] } : {}),
         ...(docId === OVD_STEP_ID ? { fileName: ovdMeta.fileName, mimeType: ovdMeta.mimeType } : {}),
       };
@@ -165,8 +176,14 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     if (section.field) {
       const fieldData = applicationData?.[section.field];
       if (fieldData && section.previewKey) {
-        existingPreview = getFullUrl(fieldData[section.previewKey] || fieldData.path);
+        existingPreview = getFullUrl(fieldData[section.previewKey] || fieldData.path || fieldData.filePreview);
       }
+    }
+    if (!existingPreview && section.id === "ipv") {
+      existingPreview = getFullUrl(applicationData?.selfie?.preview || applicationData?.selfie?.path || applicationData?.selfieDetails?.preview || applicationData?.selfieDetails?.path);
+    }
+    if (!existingPreview && section.id === "panUpload") {
+      existingPreview = getFullUrl(applicationData?.panDetails?.panProof || applicationData?.panDetails?.path || applicationData?.panUpload?.filePreview || applicationData?.panUpload?.path);
     }
 
     if (isRejected) {
@@ -238,36 +255,61 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
             <div style={{
               padding: 14, borderRadius: 10,
               background: "rgba(159,232,112,0.06)", border: "1px solid rgba(159,232,112,0.2)",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: 8, overflow: "hidden",
-                  border: "1px solid var(--border-color)",
-                }}>
-                  <img
-                    src={getFullUrl(uploads[section.id])}
-                    alt="Preview"
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    onError={(e) => { e.target.style.display = "none"; }}
-                  />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div
+                  onClick={() => setPreviewModalData({ url: getFullUrl(uploads[section.id]) })}
+                  style={{
+                    width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+                    border: "1px solid var(--border-color)", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "var(--bg-elevated)", color: "#ef4444", fontSize: "0.75rem", fontWeight: 800
+                  }}
+                  title="Click to preview"
+                >
+                  {isPdfFile(uploads[section.id]) ? "PDF" : (
+                    <img
+                      src={getFullUrl(uploads[section.id])}
+                      alt="Preview"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => { e.target.style.display = "none"; }}
+                    />
+                  )}
                 </div>
                 <span style={{ color: "var(--wise-green)", fontWeight: 700, fontSize: "0.85rem" }}>
                   ✓ New document uploaded
                 </span>
               </div>
-              <button
-                onClick={() => {
-                  setUploads(prev => ({ ...prev, [section.id]: null }));
-                  if (fileRefs.current[section.id]) fileRefs.current[section.id].value = "";
-                }}
-                style={{
-                  background: "none", border: "none", color: "#ef4444",
-                  fontSize: "0.8rem", fontWeight: 700, cursor: "pointer",
-                }}
-              >
-                Remove
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModalData({ url: getFullUrl(uploads[section.id]) })}
+                  style={{
+                    background: "var(--bg-secondary)", border: "none", padding: "8px 12px",
+                    borderRadius: "8px", color: "var(--text-primary)", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
+                  }}
+                  title="Preview Document"
+                  onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+                  onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+                >
+                  <Eye size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploads(prev => ({ ...prev, [section.id]: null }));
+                    if (fileRefs.current[section.id]) fileRefs.current[section.id].value = "";
+                  }}
+                  style={{
+                    background: "none", border: "none", color: "#ef4444",
+                    fontSize: "0.8rem", fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ) : (
             <label style={{
@@ -301,25 +343,58 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
         padding: 16, borderRadius: 14,
         border: "1px solid var(--border-color)",
         background: "var(--bg-elevated)",
-        marginBottom: 12, opacity: 0.7,
+        marginBottom: 12, opacity: 0.85,
       }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h4 style={{ color: "var(--text-primary)", fontSize: "0.9rem", fontWeight: 700, margin: 0 }}>
-            {section.label}
-          </h4>
-          <span style={{
-            background: "rgba(159,232,112,0.1)", color: "var(--wise-green)",
-            padding: "3px 8px", borderRadius: 6, fontSize: "0.68rem", fontWeight: 700,
-          }}>
-            APPROVED
-          </span>
-        </div>
-        {existingPreview && (
-          <div style={{ marginTop: 8, width: 48, height: 48, borderRadius: 6, overflow: "hidden", border: "1px solid var(--border-color)" }}>
-            <img src={existingPreview} alt={section.label} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              onError={(e) => { e.target.style.display = "none"; }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            {existingPreview && (
+              <div
+                onClick={() => setPreviewModalData({ url: existingPreview })}
+                style={{
+                  width: 44, height: 44, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+                  border: "1px solid var(--border-color)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "var(--bg-secondary)", color: "#ef4444", fontSize: "0.7rem", fontWeight: 800
+                }}
+                title="Click to preview"
+              >
+                {isPdfFile(existingPreview) ? "PDF" : (
+                  <img src={existingPreview} alt={section.label} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => { e.target.style.display = "none"; }} />
+                )}
+              </div>
+            )}
+            <div>
+              <h4 style={{ color: "var(--text-primary)", fontSize: "0.9rem", fontWeight: 700, margin: 0 }}>
+                {section.label}
+              </h4>
+              <span style={{
+                display: "inline-block", marginTop: 4,
+                background: "rgba(159,232,112,0.1)", color: "var(--wise-green)",
+                padding: "2px 8px", borderRadius: 6, fontSize: "0.68rem", fontWeight: 700,
+              }}>
+                APPROVED
+              </span>
+            </div>
           </div>
-        )}
+          {existingPreview && (
+            <button
+              type="button"
+              onClick={() => setPreviewModalData({ url: existingPreview })}
+              style={{
+                background: "var(--bg-secondary)", border: "none", padding: "8px 12px",
+                borderRadius: "8px", color: "var(--text-primary)", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
+                flexShrink: 0
+              }}
+              title="Preview Document"
+              onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+              onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+            >
+              <Eye size={16} />
+            </button>
+          )}
+        </div>
       </div>
     );
   };
@@ -336,8 +411,8 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
     const nominee = nominees[idx];
     const isGuardian = section.id.startsWith("guardian");
     const existingProof = isGuardian
-      ? getFullUrl(nominee?.guardianProofPreview || nominee?.guardianProof)
-      : getFullUrl(nominee?.proofPreview || nominee?.proof);
+      ? getFullUrl(nominee?.guardianProofPreview || nominee?.guardianProofPath || nominee?.guardianProof)
+      : getFullUrl(nominee?.proofPreview || nominee?.proofPath || nominee?.proof);
 
     if (!isRejected) {
       if (!existingProof && !nominee) return null; // Don't show empty non-rejected sections
@@ -346,18 +421,57 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
           padding: 16, borderRadius: 14,
           border: "1px solid var(--border-color)",
           background: "var(--bg-elevated)",
-          marginBottom: 12, opacity: 0.7,
+          marginBottom: 12, opacity: 0.85,
         }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h4 style={{ color: "var(--text-primary)", fontSize: "0.9rem", fontWeight: 700, margin: 0 }}>
-              {section.label}
-            </h4>
-            <span style={{
-              background: "rgba(159,232,112,0.1)", color: "var(--wise-green)",
-              padding: "3px 8px", borderRadius: 6, fontSize: "0.68rem", fontWeight: 700,
-            }}>
-              OK
-            </span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              {existingProof && (
+                <div
+                  onClick={() => setPreviewModalData({ url: existingProof })}
+                  style={{
+                    width: 44, height: 44, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+                    border: "1px solid var(--border-color)", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "var(--bg-secondary)", color: "#ef4444", fontSize: "0.7rem", fontWeight: 800
+                  }}
+                  title="Click to preview"
+                >
+                  {isPdfFile(existingProof) ? "PDF" : (
+                    <img src={existingProof} alt={section.label} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => { e.target.style.display = "none"; }} />
+                  )}
+                </div>
+              )}
+              <div>
+                <h4 style={{ color: "var(--text-primary)", fontSize: "0.9rem", fontWeight: 700, margin: 0 }}>
+                  {section.label} {nominee?.name ? `(${nominee.name})` : ""}
+                </h4>
+                <span style={{
+                  display: "inline-block", marginTop: 4,
+                  background: "rgba(159,232,112,0.1)", color: "var(--wise-green)",
+                  padding: "2px 8px", borderRadius: 6, fontSize: "0.68rem", fontWeight: 700,
+                }}>
+                  OK
+                </span>
+              </div>
+            </div>
+            {existingProof && (
+              <button
+                type="button"
+                onClick={() => setPreviewModalData({ url: existingProof })}
+                style={{
+                  background: "var(--bg-secondary)", border: "none", padding: "8px 12px",
+                  borderRadius: "8px", color: "var(--text-primary)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
+                  flexShrink: 0
+                }}
+                title="Preview Document"
+                onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+                onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+              >
+                <Eye size={16} />
+              </button>
+            )}
           </div>
         </div>
       );
@@ -391,12 +505,45 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
           <div style={{
             padding: 14, borderRadius: 10,
             background: "rgba(159,232,112,0.06)", border: "1px solid rgba(159,232,112,0.2)",
-            display: "flex", alignItems: "center", justifyContent: "space-between",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
           }}>
-            <span style={{ color: "var(--wise-green)", fontWeight: 700, fontSize: "0.85rem" }}>✓ New document uploaded</span>
-            <button onClick={() => setUploads(prev => ({ ...prev, [section.id]: null }))} style={{
-              background: "none", border: "none", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer",
-            }}>Remove</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div 
+                onClick={() => setPreviewModalData({ url: getFullUrl(uploads[section.id]) })}
+                style={{
+                  width: 44, height: 44, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+                  border: "1px solid var(--border-color)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "var(--bg-secondary)", color: "#ef4444", fontSize: "0.7rem", fontWeight: 800
+                }}
+                title="Click to preview"
+              >
+                {isPdfFile(uploads[section.id]) ? "PDF" : (
+                  <img src={getFullUrl(uploads[section.id])} alt="Nominee Proof" style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => { e.target.style.display = "none"; }} />
+                )}
+              </div>
+              <span style={{ color: "var(--wise-green)", fontWeight: 700, fontSize: "0.85rem" }}>✓ New document uploaded</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => setPreviewModalData({ url: getFullUrl(uploads[section.id]) })}
+                style={{
+                  background: "var(--bg-secondary)", border: "none", padding: "8px 12px",
+                  borderRadius: "8px", color: "var(--text-primary)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
+                }}
+                title="Preview Document"
+                onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+                onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+              >
+                <Eye size={16} />
+              </button>
+              <button onClick={() => setUploads(prev => ({ ...prev, [section.id]: null }))} style={{
+                background: "none", border: "none", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer",
+              }}>Remove</button>
+            </div>
           </div>
         ) : (
           <label style={{
@@ -454,11 +601,15 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0,
-                border: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center",
-                background: "var(--bg-elevated)", color: "#ef4444", fontSize: "0.7rem", fontWeight: 800,
-              }}>
+              <div 
+                onClick={() => setPreviewModalData({ url: getFullUrl(uploaded) })}
+                style={{
+                  width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+                  border: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "var(--bg-elevated)", color: "#ef4444", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer"
+                }}
+                title="Click to preview"
+              >
                 {uploadedIsPdf ? "PDF" : (
                   <img src={getFullUrl(uploaded)} alt="OVD" style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     onError={(e) => { e.target.style.display = "none"; }} />
@@ -473,16 +624,32 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
                 )}
               </div>
             </div>
-            <button
-              onClick={() => {
-                setUploads(prev => ({ ...prev, [OVD_STEP_ID]: null }));
-                setOvdMeta({ fileName: null, mimeType: null });
-                if (fileRefs.current[OVD_STEP_ID]) fileRefs.current[OVD_STEP_ID].value = "";
-              }}
-              style={{ background: "none", border: "none", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
-            >
-              Remove
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => setPreviewModalData({ url: getFullUrl(uploaded) })}
+                style={{
+                  background: "var(--bg-secondary)", border: "none", padding: "8px 12px",
+                  borderRadius: "8px", color: "var(--text-primary)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
+                }}
+                title="Preview Document"
+                onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+                onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+              >
+                <Eye size={16} />
+              </button>
+              <button
+                onClick={() => {
+                  setUploads(prev => ({ ...prev, [OVD_STEP_ID]: null }));
+                  setOvdMeta({ fileName: null, mimeType: null });
+                  if (fileRefs.current[OVD_STEP_ID]) fileRefs.current[OVD_STEP_ID].value = "";
+                }}
+                style={{ background: "none", border: "none", color: "#ef4444", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+              >
+                Remove
+              </button>
+            </div>
           </div>
         ) : (
           <label style={{
@@ -569,6 +736,13 @@ export default function CorrectionDocumentStep({ stepId, rejectedStep }) {
           {saving ? "Saving..." : "Save & Continue"}
         </button>
       </div>
+
+      <DocumentPreviewModal
+        isOpen={!!previewModalData}
+        onClose={() => setPreviewModalData(null)}
+        documentUrl={previewModalData?.url}
+        documentType={previewModalData?.type}
+      />
     </div>
   );
 }

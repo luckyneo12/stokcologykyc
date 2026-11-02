@@ -239,11 +239,53 @@ const getApplicationById = async (req, res, next) => {
  */
 async function getFurthestStep(app) {
   let furthest = Number(app.currentStep || 0);
+
+  // Inspect actual populated application fields for completed steps
+  try {
+    const parseObj = (val) => {
+      if (!val) return {};
+      if (typeof val === "object") return val;
+      try { return JSON.parse(val); } catch (e) { return {}; }
+    };
+    const docs = parseObj(app.documents);
+    const hasDocs = Boolean(
+      (docs && (Array.isArray(docs) ? docs.length > 0 : Object.keys(docs).length > 0)) ||
+      app.selfieDetails || app.signature || app.financialProof || app.panUpload
+    );
+    const bank = parseObj(app.bankDetails);
+    const hasBank = Boolean(bank && (bank.accountNumber || bank.bankName || Object.keys(bank).length > 0));
+    const nom = parseObj(app.nomineeDetails);
+    const nomAlloc = parseObj(app.nomineeAllocation);
+    const hasNom = Boolean(
+      (nom && (nom.opted || (nom.nominees && nom.nominees.length > 0) || Object.keys(nom).length > 0)) ||
+      (nomAlloc && Object.keys(nomAlloc).length > 0)
+    );
+    const personal = parseObj(app.personalDetails);
+    const hasPersonal = Boolean(personal && (personal.fatherName || personal.gender || Object.keys(personal).length > 0));
+    const addr = parseObj(app.address);
+    const hasAddress = Boolean(addr && (addr.line1 || addr.pincode || Object.keys(addr).length > 0));
+    const ident = parseObj(app.identityDetails);
+    const hasIdentity = Boolean(ident && (ident.pan || Object.keys(ident).length > 0));
+    const hasPricing = Boolean(app.segments || app.pricing);
+    const hasEsign = Boolean(app.esignDoc || app.esignDetails || app.submittedAt);
+
+    if (hasEsign) furthest = Math.max(furthest, 12);
+    if (hasDocs) furthest = Math.max(furthest, 11);
+    if (hasBank) furthest = Math.max(furthest, 10);
+    if (hasNom) furthest = Math.max(furthest, 8);
+    if (hasPersonal) furthest = Math.max(furthest, 6);
+    if (hasAddress) furthest = Math.max(furthest, 5);
+    if (hasIdentity) furthest = Math.max(furthest, 4);
+    if (hasPricing) furthest = Math.max(furthest, 3);
+  } catch (err) {
+    // ignore
+  }
+
   const id = app.applicationId;
   const logs = await prisma.auditLog.findMany({
     where: {
       AND: [
-        { OR: [{ targetId: id }, { details: { contains: `"applicationId":"${id}"` } }] },
+        { OR: [{ targetId: id }, { targetId: String(app.id) }, { details: { contains: `"applicationId":"${id}"` } }] },
         { OR: [{ action: { startsWith: "USER_SAVED_" } }, { action: "kyc_step_saved" }, { action: { startsWith: "ADMIN_STATUS_" } }] },
       ],
     },
@@ -266,9 +308,15 @@ async function getFurthestStep(app) {
 
 const getApplicationFurthestStep = async (req, res, next) => {
   try {
-    const app = await prisma.kycApplication.findUnique({
-      where: { applicationId: req.params.id },
-      select: { applicationId: true, currentStep: true },
+    const rawId = String(req.params.id || "").trim();
+    const numericId = Number(rawId);
+    let app = await prisma.kycApplication.findFirst({
+      where: {
+        OR: [
+          { applicationId: rawId },
+          ...(Number.isInteger(numericId) && numericId > 0 ? [{ id: numericId }] : []),
+        ],
+      },
     });
     if (!app) return res.status(404).json({ success: false, error: "Application not found" });
     res.json({ success: true, currentStep: Number(app.currentStep || 0), furthestStep: await getFurthestStep(app) });
@@ -307,14 +355,46 @@ const reviewApplication = async (req, res, next) => {
     // Checked on the step the application ends up at too: "Change Status" can also move it back to an
     // earlier step, and an application before eSign can be neither approved nor rejected
     const targetApp = currentStep !== undefined ? { ...app, currentStep } : app;
-    if (status === "rejected" && (!isRejectable(app) || !isRejectable(targetApp))) {
-      return res.status(400).json({ success: false, error: NOT_REJECTABLE_ERROR });
+    if (status === "rejected") {
+      if (!isRejectable(app)) {
+        return res.status(400).json({
+          success: false,
+          error: `This application cannot be rejected as it is still in progress at Step ${app.currentStep || 0}. The applicant has not completed all steps yet.`,
+          scenario: "REJECT_IN_PROGRESS",
+          currentStep: Number(app.currentStep || 0)
+        });
+      }
+      if (!isRejectable(targetApp)) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot retain Rejected status when moving application back to Step ${currentStep}. Applications before Step 14 cannot be in Rejected status.`,
+          scenario: "STEP_MOVE_REJECTED_CONFLICT",
+          currentStep: Number(app.currentStep || 0),
+          targetStep: Number(currentStep)
+        });
+      }
+      if (isLockedByApproval(app, rejectionSide(req.user))) {
+        return res.status(400).json({ success: false, error: APPROVED_LOCK_ERROR });
+      }
     }
-    if (status === "verified" && (!isApprovable(app) || !isApprovable(targetApp))) {
-      return res.status(400).json({ success: false, error: NOT_APPROVABLE_ERROR });
-    }
-    if (status === "rejected" && isLockedByApproval(app, rejectionSide(req.user))) {
-      return res.status(400).json({ success: false, error: APPROVED_LOCK_ERROR });
+    if (status === "verified") {
+      if (!isApprovable(app)) {
+        return res.status(400).json({
+          success: false,
+          error: `This application cannot be approved because eSign (Step 14) is not done yet. The applicant is currently at Step ${app.currentStep || 0} and has not completed all the steps.`,
+          scenario: "ESIGN_NOT_DONE",
+          currentStep: Number(app.currentStep || 0)
+        });
+      }
+      if (!isApprovable(targetApp)) {
+        return res.status(400).json({
+          success: false,
+          error: `Moving this application to Step ${currentStep} will change its status from Approved to Pending.`,
+          scenario: "STEP_MOVE_APPROVED_CONFLICT",
+          currentStep: Number(app.currentStep || 0),
+          targetStep: Number(currentStep)
+        });
+      }
     }
 
     const statuses = parseStepStatuses(app.stepStatuses);
@@ -427,7 +507,12 @@ const reviewApplication = async (req, res, next) => {
     // Notify client via Socket.IO
     const io = req.app.get("io");
     if (io) {
-      io.to(req.params.id).emit("kyc_updated", { status, currentStep });
+      if (app.applicationId) {
+        io.to(app.applicationId).emit("kyc_updated", { status, currentStep, fromStep: Number(app.currentStep || 0) });
+      }
+      if (req.params.id && req.params.id !== app.applicationId) {
+        io.to(req.params.id).emit("kyc_updated", { status, currentStep, fromStep: Number(app.currentStep || 0) });
+      }
       io.to("staff_room").emit("applications_updated");
     }
 
@@ -1812,42 +1897,62 @@ const uploadAdminDocument = async (req, res, next) => {
 
     const filePath = req.file.path || req.file.secure_url || (req.file.filename ? `/uploads/${req.file.filename}` : "");
     const updatePayload = {};
+    const uploadTimestamp = new Date().toISOString();
 
     // Map the documentType (label from UI) to the correct DB JSON field
     if (documentType.includes("Aadhaar Document") || documentType.includes("Aadhaar Image")) {
       const documents = parseJsonField(app.documents, {});
-      documents.front = filePath;
-      documents.frontPreview = filePath;
-      updatePayload.documents = JSON.stringify(documents);
+      if (Array.isArray(documents)) {
+        documents.push({ type: "AADHAAR", label: "Aadhaar Document (Admin)", path: filePath, uploadedAt: uploadTimestamp, timestamp: uploadTimestamp });
+        updatePayload.documents = JSON.stringify(documents);
+      } else {
+        documents.front = filePath;
+        documents.frontPreview = filePath;
+        documents.uploadedAt = uploadTimestamp;
+        documents.timestamp = uploadTimestamp;
+        updatePayload.documents = JSON.stringify(documents);
+      }
     } else if (documentType.includes("PAN")) {
       const panUpload = parseJsonField(app.panUpload, {});
       panUpload.path = filePath;
       panUpload.filePreview = filePath;
+      panUpload.uploadedAt = uploadTimestamp;
+      panUpload.timestamp = uploadTimestamp;
       updatePayload.panUpload = JSON.stringify(panUpload);
     } else if (documentType.includes("Selfie")) {
       const selfieDetails = parseJsonField(app.selfieDetails, {});
       selfieDetails.path = filePath;
       selfieDetails.preview = filePath;
+      selfieDetails.uploadedAt = uploadTimestamp;
+      selfieDetails.timestamp = uploadTimestamp;
       updatePayload.selfieDetails = JSON.stringify(selfieDetails);
     } else if (documentType.includes("Signature")) {
       const signature = parseJsonField(app.signature, {});
       signature.path = filePath;
       signature.filePreview = filePath;
+      signature.uploadedAt = uploadTimestamp;
+      signature.timestamp = uploadTimestamp;
       updatePayload.signature = JSON.stringify(signature);
     } else if (documentType.includes("Bank")) {
       const bankDetails = parseJsonField(app.bankDetails, {});
       bankDetails.proofPath = filePath;
       bankDetails.proofPreview = filePath;
+      bankDetails.proofUploadedAt = uploadTimestamp;
+      bankDetails.proofTimestamp = uploadTimestamp;
       updatePayload.bankDetails = JSON.stringify(bankDetails);
     } else if (documentType.includes("F&O") || documentType.includes("Financial")) {
       const financialProof = parseJsonField(app.financialProof, {});
       financialProof.path = filePath;
       financialProof.filePreview = filePath;
+      financialProof.uploadedAt = uploadTimestamp;
+      financialProof.timestamp = uploadTimestamp;
       updatePayload.financialProof = JSON.stringify(financialProof);
     } else if (documentType.includes("PEP")) {
       const personalDetails = parseJsonField(app.personalDetails, {});
       personalDetails.pepProof = filePath;
       personalDetails.pepProofPreview = filePath;
+      personalDetails.pepProofUploadedAt = uploadTimestamp;
+      personalDetails.pepProofTimestamp = uploadTimestamp;
       updatePayload.personalDetails = JSON.stringify(personalDetails);
     } else if (documentType.includes("Nominee")) {
       const nomineeDetails = parseJsonField(app.nomineeDetails, {});
@@ -1855,8 +1960,12 @@ const uploadAdminDocument = async (req, res, next) => {
         // Just apply to the first nominee for simplicity unless a specific index is parsed
         if (documentType.includes("Guardian")) {
            nomineeDetails.nominees[0].guardianProofPath = filePath;
+           nomineeDetails.nominees[0].guardianUploadedAt = uploadTimestamp;
+           nomineeDetails.nominees[0].guardianTimestamp = uploadTimestamp;
         } else {
            nomineeDetails.nominees[0].proofPath = filePath;
+           nomineeDetails.nominees[0].uploadedAt = uploadTimestamp;
+           nomineeDetails.nominees[0].timestamp = uploadTimestamp;
         }
       }
       updatePayload.nomineeDetails = JSON.stringify(nomineeDetails);

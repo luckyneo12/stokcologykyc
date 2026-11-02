@@ -4,6 +4,7 @@ import { useCorrection } from "@/context/CorrectionContext";
 // Continuous-scroll viewer; falls back to the previous PdfMobileViewer by itself on any failure
 import PdfScrollViewer from "../../PdfScrollViewer";
 import { initializeDigio, fetchDigioRequestResponse, createDigioRequest } from "@/utils/digio";
+import { Download } from "lucide-react";
 
 export default function CorrectionEsignStep() {
   const { applicationData, drafts, token, addToast } = useCorrection();
@@ -16,6 +17,13 @@ export default function CorrectionEsignStep() {
   const [downloadingEsign, setDownloadingEsign] = useState(false);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+  const personal = typeof applicationData?.personalDetails === 'string'
+    ? (() => { try { return JSON.parse(applicationData.personalDetails); } catch(e) { return {}; } })()
+    : (applicationData?.personalDetails || {});
+  const candidateName = personal?.fullName || personal?.name || drafts?.personalDetails?.fullName || "Application";
+  const appId = applicationData?.applicationId || "";
+  const downloadFileName = `KYC_Application_${String(candidateName).replace(/\s+/g, '_')}${appId ? `_${appId}` : ""}.pdf`;
 
   useEffect(() => {
     fetchLatestDataAndGeneratePdf();
@@ -339,6 +347,30 @@ export default function CorrectionEsignStep() {
           </div>
         ) : (
           <>
+            <div style={{ width: "100%", maxWidth: "800px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                Application Document Preview
+              </span>
+              {pdfUrl && (
+                <a
+                  href={pdfUrl}
+                  download={downloadFileName}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "8px 14px", borderRadius: 8,
+                    background: "var(--bg-secondary)", border: "1.5px solid var(--border-color)",
+                    color: "var(--text-primary)", fontSize: "0.85rem", fontWeight: 700,
+                    textDecoration: "none", cursor: "pointer", transition: "all 0.2s"
+                  }}
+                  onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+                  onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+                  title="Download Draft PDF"
+                >
+                  <Download size={15} /> Download PDF
+                </a>
+              )}
+            </div>
+
             <div style={{ width: "100%", maxWidth: "800px", height: "65vh", border: "1px solid var(--border-color)", borderRadius: 12, overflowY: "auto", background: "#f8f9fa", position: "relative" }}>
               <PdfScrollViewer url={pdfUrl} hideActions={true} height="100%" />
             </div>
@@ -352,26 +384,54 @@ export default function CorrectionEsignStep() {
                 <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: 8 }}>Please do not close this window.</p>
               </div>
             ) : (
-              <>
-              {aadhaarMismatch && (
-                <div role="alert" style={{ width: "100%", maxWidth: "600px", padding: "14px 18px", borderRadius: 12, background: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.3)", textAlign: "center" }}>
-                  <p style={{ color: "#ef4444", fontWeight: 800, margin: 0 }}>Aadhaar did not match</p>
-                  <p style={{ color: "var(--text-secondary)", fontWeight: 600, fontSize: "0.9rem", margin: "6px 0 0", lineHeight: 1.5 }}>{aadhaarMismatch}</p>
-                </div>
-              )}
-              <button
-                onClick={startDigioEsign}
-                className="btn-primary"
-                style={{
-                  width: "100%", maxWidth: "400px", padding: "16px", borderRadius: 12,
-                  fontSize: "1.05rem", fontWeight: 700,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                  boxShadow: "0 8px 24px rgba(159,232,112,0.25)"
-                }}
-              >
-                {aadhaarMismatch ? "e-Sign Again with Your Aadhaar" : "Proceed to Aadhaar e-Sign"}
-              </button>
-              </>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "420px", alignItems: "stretch" }}>
+                {aadhaarMismatch && (
+                  <div role="alert" style={{ width: "100%", padding: "14px 18px", borderRadius: 12, background: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.3)", textAlign: "center" }}>
+                    <p style={{ color: "#ef4444", fontWeight: 800, margin: 0 }}>Aadhaar did not match</p>
+                    <p style={{ color: "var(--text-secondary)", fontWeight: 600, fontSize: "0.9rem", margin: "6px 0 0", lineHeight: 1.5 }}>{aadhaarMismatch}</p>
+                  </div>
+                )}
+                {pdfUrl && (
+                  <a
+                    href={pdfUrl}
+                    download={downloadFileName}
+                    className="btn-secondary"
+                    style={{
+                      height: "54px",
+                      borderRadius: "14px",
+                      fontSize: "1rem",
+                      fontWeight: 800,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      background: "var(--bg-elevated)",
+                      border: "1.5px solid var(--border-color)",
+                      color: "var(--text-primary)",
+                      textDecoration: "none",
+                      cursor: "pointer",
+                      transition: "all 0.2s"
+                    }}
+                    onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+                    onMouseOut={e => e.currentTarget.style.background = "var(--bg-elevated)"}
+                  >
+                    <Download size={18} />
+                    Download PDF
+                  </a>
+                )}
+                <button
+                  onClick={startDigioEsign}
+                  className="btn-primary"
+                  style={{
+                    width: "100%", height: "56px", borderRadius: "14px",
+                    fontSize: "1.05rem", fontWeight: 800,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                    boxShadow: "0 8px 24px rgba(159,232,112,0.25)"
+                  }}
+                >
+                  {aadhaarMismatch ? "e-Sign Again with Your Aadhaar" : "Proceed to Aadhaar e-Sign"}
+                </button>
+              </div>
             )}
           </>
         )}

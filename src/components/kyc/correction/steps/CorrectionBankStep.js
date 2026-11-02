@@ -4,6 +4,7 @@ import { useCorrection } from "@/context/CorrectionContext";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import Logo from "../../Logo";
 import { Eye, EyeOff } from "lucide-react";
+import DocumentPreviewModal from "../../DocumentPreviewModal";
 
 const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -167,6 +168,7 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
   // Name mismatch accepted → the user must upload a bank proof for this new account before saving
   const [pendingMismatch, setPendingMismatch] = useState(null); // { accountHolder, pennyDrop }
   const [bankProof, setBankProof] = useState({ type: "", path: "", uploading: false });
+  const [previewModalData, setPreviewModalData] = useState(null);
   const bankProofInputRef = useRef(null);
 
   const isAlreadyProcessed = false;
@@ -317,7 +319,8 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
     setBankProof(prev => ({ ...prev, uploading: true }));
     try {
       const result = await uploadCorrectionDocument(file);
-      setBankProof(prev => ({ ...prev, path: result.path, uploading: false }));
+      const bankUploadTime = result.uploadedAt || new Date().toISOString();
+      setBankProof(prev => ({ ...prev, path: result.path, uploadedAt: bankUploadTime, timestamp: bankUploadTime, uploading: false }));
       addToast("Bank proof uploaded", "success");
     } catch (error) {
       setBankProof(prev => ({ ...prev, uploading: false }));
@@ -341,6 +344,8 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
       accountHolderName: pendingMismatch.accountHolder,
       verified: false,
       proofPreview: bankProof.path,
+      proofUploadedAt: bankProof.uploadedAt || new Date().toISOString(),
+      proofTimestamp: bankProof.uploadedAt || new Date().toISOString(),
       proofType: bankProof.type,
       proofPath: null,
       proof: null,
@@ -422,6 +427,9 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
         }
       } else {
         setVerificationState("idle");
+        if (result.branchMismatch) {
+          alert(result.error);
+        }
         addToast(result.error || "Bank verification failed", "error");
       }
     } catch (error) {
@@ -626,15 +634,33 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
                   />
                 </div>
                 <input type="file" ref={bankProofInputRef} onChange={handleBankProofUpload} style={{ display: "none" }} accept="image/*,application/pdf" />
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled={bankProof.uploading}
-                  onClick={() => bankProofInputRef.current?.click()}
-                  style={{ width: "100%", height: "52px", borderRadius: "14px", fontWeight: 700, fontSize: "0.95rem", cursor: bankProof.uploading ? "wait" : "pointer" }}
-                >
-                  {bankProof.uploading ? "Uploading..." : bankProof.path ? "✓ Uploaded — Replace file" : "Upload Bank Proof"}
-                </button>
+                <div style={{ display: "flex", gap: "8px", width: "100%" }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={bankProof.uploading}
+                    onClick={() => bankProofInputRef.current?.click()}
+                    style={{ flex: 1, height: "52px", borderRadius: "14px", fontWeight: 700, fontSize: "0.95rem", cursor: bankProof.uploading ? "wait" : "pointer" }}
+                  >
+                    {bankProof.uploading ? "Uploading..." : bankProof.path ? "✓ Uploaded — Replace file" : "Upload Bank Proof"}
+                  </button>
+                  {bankProof.path && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewModalData({ url: bankProof.path.startsWith("http") || bankProof.path.startsWith("data:") ? bankProof.path : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}${bankProof.path.startsWith("/") ? "" : "/"}${bankProof.path}` })}
+                      style={{
+                        background: "var(--bg-secondary)", border: "1.5px solid var(--border-color)", padding: "0 16px",
+                        borderRadius: "14px", color: "var(--text-primary)", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
+                      }}
+                      title="Preview Document"
+                      onMouseOver={e => e.currentTarget.style.background = "var(--border-color)"}
+                      onMouseOut={e => e.currentTarget.style.background = "var(--bg-secondary)"}
+                    >
+                      <Eye size={20} />
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -753,6 +779,13 @@ export default function CorrectionBankStep({ stepId, rejectedStep }) {
           </div>
         </div>
       )}
+
+      <DocumentPreviewModal
+        isOpen={!!previewModalData}
+        onClose={() => setPreviewModalData(null)}
+        documentUrl={previewModalData?.url}
+        documentType={previewModalData?.type}
+      />
     </div>
   );
 }

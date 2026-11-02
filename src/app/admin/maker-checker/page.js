@@ -8,7 +8,7 @@ import { io } from "socket.io-client";
 import AdminSidebar from "../components/AdminSidebar";
 import AdminThemeToggle from "../components/AdminThemeToggle";
 import { useDragScroll } from "@/utils/useDragScroll";
-import { ListFilter, ArrowUpDown, ArrowUp, ArrowDown, EyeOff } from "lucide-react";
+import { ListFilter, ArrowUpDown, ArrowUp, ArrowDown, EyeOff, AlertTriangle, AlertCircle, CheckCircle2, X, ExternalLink, ArrowRight } from "lucide-react";
 import "@/app/admin/admin.css";
 import DatePickerField from "@/components/ui/DatePickerField";
 
@@ -85,6 +85,16 @@ export default function MakerCheckerDashboard() {
   const [pendingStep, setPendingStep] = useState(null);
   const [furthestStep, setFurthestStep] = useState(null); // furthest step the open application has reached
   const [copiedKey, setCopiedKey] = useState(null);
+  const [interactiveAlert, setInteractiveAlert] = useState(null);
+
+  useEffect(() => {
+    if (interactiveAlert?.autoDismiss) {
+      const timer = setTimeout(() => {
+        setInteractiveAlert(null);
+      }, interactiveAlert.autoDismiss);
+      return () => clearTimeout(timer);
+    }
+  }, [interactiveAlert]);
   const handleCopy = (e, text, key) => {
     e.stopPropagation();
     if (!text || text === "N/A" || text === "—") return;
@@ -395,14 +405,39 @@ export default function MakerCheckerDashboard() {
   };
 
   const updateStatus = async (applicationId, status, extra = {}) => {
-    if (status === "verified") {
-      const kycApp = kycs.find((k) => k.id === applicationId);
-      if (kycApp && (kycApp.stepNum || 0) < 14) {
-        if (!confirm(`This application is only at Step ${kycApp.stepNum || 0}/14. Are you sure you want to approve it?`)) {
-          return;
-        }
-      }
+    const kycApp = kycs.find((k) => k.id === applicationId);
+    const applicantName = kycApp?.name || "the applicant";
+    const currentStepNum = Number(kycApp?.stepNum || 0);
+
+    if (status === "verified" && currentStepNum < 14 && extra.currentStep === undefined) {
+      setInteractiveAlert({
+        type: "warning",
+        title: "eSign Pending — Cannot Approve",
+        scenario: "ESIGN_NOT_DONE",
+        applicantName,
+        currentStep: currentStepNum,
+        message: `This application for ${applicantName} cannot be approved yet because the applicant is on Step ${currentStepNum} (${STEP_LABELS[currentStepNum] || "In Progress"}) and has not completed Step 14 (Aadhaar eSign).`,
+        prompt: "All 14 onboarding steps must be completed by the applicant before STK or Globe can approve the application.",
+        actions: [
+          {
+            label: "View Application Progress",
+            variant: "primary",
+            icon: "external",
+            onClick: () => {
+              setInteractiveAlert(null);
+              router.push(`/admin/maker-checker/${applicationId}`);
+            }
+          },
+          {
+            label: "Close",
+            variant: "secondary",
+            onClick: () => setInteractiveAlert(null)
+          }
+        ]
+      });
+      return;
     }
+
     try {
       const token = localStorage.getItem("adminToken");
       const response = await fetch(`${API_BASE_URL}/api/admin/review/${applicationId}`, {
@@ -412,13 +447,100 @@ export default function MakerCheckerDashboard() {
       });
       const data = await response.json();
       if (data.success) {
-        alert(`Status updated successfully`);
+        setInteractiveAlert({
+          type: "success",
+          title: "Status Updated",
+          message: `Application for ${applicantName} updated successfully.`,
+          autoDismiss: 2500,
+          onClose: () => setInteractiveAlert(null)
+        });
         fetchApplications(true);
       } else {
-        alert(data.error || "Operation failed");
+        const targetStep = extra.currentStep !== undefined ? extra.currentStep : data.targetStep;
+        const respCurrentStep = data.currentStep !== undefined ? data.currentStep : currentStepNum;
+
+        if (data.scenario === "STEP_MOVE_APPROVED_CONFLICT" || (status === "verified" && targetStep !== undefined && targetStep < 14)) {
+          // Scenario 2: Moving step of an Approved application
+          const targetStepName = (STEP_LABELS[targetStep] || `Step ${targetStep}`).replace(/^Step \d+:\s*/, "");
+          setInteractiveAlert({
+            type: "warning",
+            title: "Application is Already Approved",
+            scenario: "STEP_MOVE_APPROVED_CONFLICT",
+            applicantName,
+            currentStep: respCurrentStep,
+            targetStep,
+            message: `Moving this application to Step ${targetStep} (${targetStepName}) will change its status from Approved → Pending.`,
+            actions: [
+              {
+                label: "Move & Set to Pending",
+                variant: "primary",
+                onClick: () => {
+                  setInteractiveAlert(null);
+                  updateStatus(applicationId, "pending", { currentStep: targetStep });
+                }
+              },
+              {
+                label: "Cancel",
+                variant: "secondary",
+                onClick: () => setInteractiveAlert(null)
+              }
+            ]
+          });
+        } else if (data.scenario === "ESIGN_NOT_DONE" || (data.error && data.error.includes("eSign is not done yet"))) {
+          // Scenario 1: Direct approval when eSign is not done
+          setInteractiveAlert({
+            type: "warning",
+            title: "eSign Pending — Cannot Approve",
+            scenario: "ESIGN_NOT_DONE",
+            applicantName,
+            currentStep: respCurrentStep,
+            message: `This application for ${applicantName} cannot be approved yet because the applicant is on Step ${respCurrentStep} (${STEP_LABELS[respCurrentStep] || "In Progress"}) and has not completed Step 14 (Aadhaar eSign).`,
+            prompt: "All 14 onboarding steps must be completed by the applicant before STK or Globe can approve the application.",
+            actions: [
+              {
+                label: "View Application Progress",
+                variant: "primary",
+                icon: "external",
+                onClick: () => {
+                  setInteractiveAlert(null);
+                  router.push(`/admin/maker-checker/${applicationId}`);
+                }
+              },
+              {
+                label: "Close",
+                variant: "secondary",
+                onClick: () => setInteractiveAlert(null)
+              }
+            ]
+          });
+        } else {
+          setInteractiveAlert({
+            type: "error",
+            title: "Action Not Allowed",
+            message: data.error || "Operation failed",
+            actions: [
+              {
+                label: "Dismiss",
+                variant: "secondary",
+                onClick: () => setInteractiveAlert(null)
+              }
+            ]
+          });
+        }
       }
     } catch (err) {
-      alert("Operation failed");
+      setInteractiveAlert({
+        type: "error",
+        title: "Connection Error",
+        message: "Failed to connect to the server. Please check your network and try again.",
+        actions: [
+          {
+            label: "Dismiss",
+            variant: "secondary",
+            onClick: () => setInteractiveAlert(null)
+          }
+        ]
+      });
     }
   };
 
@@ -518,7 +640,11 @@ export default function MakerCheckerDashboard() {
     let parsedStepStatuses = {};
     try { parsedStepStatuses = typeof app.stepStatuses === "string" ? JSON.parse(app.stepStatuses) : (app.stepStatuses || {}); } catch(e) {}
     
-    // Rejections split by who made them — shown under the STK Status / Globe Status columns.
+    const isResub = !!app.isResubmitted || app.status === "under_review";
+    const effectiveGlobeStatus = (isResub && app.globeStatus === "rejected") ? "pending" : (app.globeStatus || "pending");
+    const rejectionSent = !isResub && !!app.rejectionSent;
+
+    // Active rejections split by who made them — shown under the STK Status / Globe Status columns.
     // A rejection that doesn't say who made it is shown under STK, marked "source unknown".
     const stkRejections = [];
     const globeRejections = [];
@@ -533,14 +659,41 @@ export default function MakerCheckerDashboard() {
     Object.entries(parsedStepStatuses._pendingDocumentRejections || {}).forEach(([src, reason]) => {
       addRejection(pendingDocBy[src], pendingDocLabels[src] || "Document", reason, !pendingDocBy[src]);
     });
-    // Whole-application rejections (no single step) — their reason
-    if (stkRejections.length === 0 && app.status === "rejected" && app.rejectionReason) addRejection("STK", "Application", app.rejectionReason);
-    if (globeRejections.length === 0 && app.globeStatus === "rejected" && app.globeRemarks) addRejection("Globe", "Application", app.globeRemarks);
+    // Whole-application rejections (no single step) — only active if not resubmitted
+    if (!isResub && stkRejections.length === 0 && app.status === "rejected" && app.rejectionReason) addRejection("STK", "Application", app.rejectionReason);
+    if (!isResub && globeRejections.length === 0 && app.globeStatus === "rejected" && app.globeRemarks) addRejection("Globe", "Application", app.globeRemarks);
+
+    // Corrected / Previous rejections history — to visually indicate past rejections cleared by user
+    const correctedRejections = [];
+    const addCorrected = (side, label, reason) => {
+      if (!reason) return;
+      if (!correctedRejections.some(c => c.side === side && c.label === label && c.reason === reason)) {
+        correctedRejections.push({ side: side || "STK", label: label || "Module", reason });
+      }
+    };
+    if (Array.isArray(parsedStepStatuses._previousRejections)) {
+      parsedStepStatuses._previousRejections.forEach(pr => {
+        addCorrected(pr.rejectedBy, pr.title || FRONTEND_STEP_TITLE_MAP[pr.stepId] || pr.stepId, pr.reason);
+      });
+    }
+    Object.entries(parsedStepStatuses).forEach(([step, info]) => {
+      if (step.startsWith("_")) return;
+      if (info?.wasRejected || info?.correctedAt || (isResub && info?.reason && info?.status !== "rejected")) {
+        const label = info.docLabel || FRONTEND_STEP_TITLE_MAP[step] || step;
+        const reason = info.previousReason || info.reason;
+        addCorrected(info.previousRejectedBy || info.rejectedBy, label, reason);
+      }
+    });
+    if (isResub) {
+      if (app.globeRemarks) addCorrected("Globe", "Application", app.globeRemarks);
+      if (app.rejectionReason) addCorrected("STK", "Application", app.rejectionReason);
+    }
 
     // Export text: every rejection with who made it
     const rejectionsText = [
       ...stkRejections.map(r => `STK: ${r.label}: ${r.reason}`),
       ...globeRejections.map(r => `Globe: ${r.label}: ${r.reason}`),
+      ...correctedRejections.map(r => `[CORRECTED] ${r.side}: ${r.label}: ${r.reason}`),
     ].join(" | ") || "None";
 
     const aadhaarRaw = parsedIdentity.aadhaarNumber || parsedIdentity.aadhaar || parsedIdentity.uid || parsedIdentity.maskedAadhaar || parsedPersonal.aadhaar || "";
@@ -557,8 +710,16 @@ export default function MakerCheckerDashboard() {
     const rawState = parsedAddress.state || parsedPersonal.state || "N/A";
     const rawPincode = parsedAddress.pincode || parsedAddress.pinCode || parsedAddress.zip || parsedPersonal.pincode || parsedPersonal.pinCode || "N/A";
 
+    const rawPep = String(parsedPersonal.politicallyExposed || "").trim().toLowerCase();
+    const rawType = String(parsedPersonal.pepType || "").trim();
+    const rawTypeNorm = rawType.toUpperCase();
+    const isPep = rawPep === "yes" || ["PEP", "RPEP", "RELATED TO PEP"].includes(rawTypeNorm) || rawTypeNorm.includes("PEP");
+    const pepType = (rawTypeNorm === "RPEP" || rawTypeNorm.includes("RELATED")) ? "RPEP" : "PEP";
+
     return {
       id: app.applicationId,
+      isPep,
+      pepType,
       boid: formatBoid(app.user?.boid || app.user?.boidAssigned?.boidNumber),
       dbId: app.id,
       clientCode: app.clientCode,
@@ -572,13 +733,13 @@ export default function MakerCheckerDashboard() {
       stepLabel: STEP_LABELS[app.currentStep] || "Onboarding",
       type: "Full KYC",
       status: app.status,
-      rejectionSent: !!app.rejectionSent, // "Send Rejection Mail" clicked — only then is it shown as REJECTED
-      globeStatus: app.globeStatus || "pending",
+      rejectionSent,
+      globeStatus: effectiveGlobeStatus,
       stkApprovedAt: app.stkApprovedAt ? new Date(app.stkApprovedAt).toLocaleString("en-IN") : "N/A",
       stkRejectedAt: app.stkRejectedAt ? new Date(app.stkRejectedAt).toLocaleString("en-IN") : "N/A",
       globeApprovedAt: app.globeApprovedAt ? new Date(app.globeApprovedAt).toLocaleString("en-IN") : "N/A",
       globeRejectedAt: app.globeRejectedAt ? new Date(app.globeRejectedAt).toLocaleString("en-IN") : "N/A",
-      isResubmitted: app.isResubmitted,
+      isResubmitted: isResub,
       riskScore: app.riskScore || 0,
       faceMatch: app.faceMatchScore || 0,
       startDate: app.createdAt ? new Date(app.createdAt).toLocaleString("en-IN") : "N/A",
@@ -603,6 +764,7 @@ export default function MakerCheckerDashboard() {
       rejections: rejectionsText, // export only
       stkRejections,
       globeRejections,
+      correctedRejections,
       pennydropVerify: parsedBank.verified ? "Verified" : (parsedBank.pennyDropStatus || "Pending"),
       aadhaarSeeding: parsedOcr.pan_verification?.data?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.pan_verification?.aadhaar_seeding_status?.toUpperCase() || parsedIdentity.aadhaarSeedingStatus || parsedIdentity.seedingStatus || "N/A",
       liveImageTime: parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt ? new Date(parsedSelfie.extractedAt || parsedSelfie.timestamp || parsedSelfie.uploadedAt).toLocaleString("en-IN") : "N/A",
@@ -1489,7 +1651,17 @@ export default function MakerCheckerDashboard() {
                               )}
                             </div>
                           </td>)),
-                              "Name": () => (<td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Name") }}>{k.name}</td>),
+                              "Name": () => (<td style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Name") }}>
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  <span>{k.name}</span>
+                                  {k.isPep && (
+                                    <span className="neu-pep-table-badge">
+                                      <span className="neu-pep-table-dot" />
+                                      {k.pepType || "PEP"}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>),
                               "Client Code": () => ((
                             <td className="mc-client-code" style={{ fontWeight: 800, fontFamily: "monospace", userSelect: "text", WebkitUserSelect: "text", cursor: "text", ...getStickyStyle("Client Code") }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -1795,6 +1967,173 @@ export default function MakerCheckerDashboard() {
                   </div>
                 ), document.body);
               })()}
+
+              {interactiveAlert && typeof document !== "undefined" && createPortal((
+                <div
+                  className="mc-step-overlay"
+                  style={{
+                    left: Math.round(document.querySelector(".admin-neu aside")?.getBoundingClientRect().width || 0),
+                    zIndex: 1200,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "16px"
+                  }}
+                  onClick={() => setInteractiveAlert(null)}
+                >
+                  <div
+                    className="neu-modal"
+                    role="alertdialog"
+                    aria-modal="true"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      background: "var(--neu-base, #ffffff)",
+                      borderRadius: "24px",
+                      color: "var(--text-primary, #1e293b)",
+                      width: "520px",
+                      maxWidth: "96vw",
+                      padding: "26px",
+                      boxSizing: "border-box",
+                      border: "1px solid var(--neu-line, rgba(0,0,0,0.08))",
+                      boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+                      animation: "mcStepIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "14px", marginBottom: "16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div style={{
+                          width: "42px",
+                          height: "42px",
+                          borderRadius: "14px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                          background: interactiveAlert.type === "warning" ? "rgba(245, 158, 11, 0.14)" : interactiveAlert.type === "error" ? "rgba(239, 68, 68, 0.14)" : "rgba(34, 197, 94, 0.14)",
+                          color: interactiveAlert.type === "warning" ? "#d97706" : interactiveAlert.type === "error" ? "#dc2626" : "#16a34a"
+                        }}>
+                          {interactiveAlert.type === "warning" ? <AlertTriangle size={22} /> : interactiveAlert.type === "error" ? <AlertCircle size={22} /> : <CheckCircle2 size={22} />}
+                        </div>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
+                            {interactiveAlert.title}
+                          </h3>
+                          {interactiveAlert.applicantName && (
+                            <p style={{ margin: "2px 0 0", fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                              Applicant: <strong style={{ color: "var(--text-primary)" }}>{interactiveAlert.applicantName}</strong>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setInteractiveAlert(null)}
+                        className="mc-step-close"
+                        aria-label="Close"
+                        style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: "8px", background: "var(--neu-well, #f1f5f9)", color: "var(--text-muted)", cursor: "pointer" }}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {interactiveAlert.scenario === "STEP_MOVE_APPROVED_CONFLICT" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "14px 0", padding: "8px 12px", borderRadius: "12px", background: "var(--neu-well, #f8fafc)", border: "1px solid var(--neu-line, rgba(0,0,0,0.06))", fontSize: "0.8rem", flexWrap: "wrap" }}>
+                        <span style={{ padding: "3px 8px", borderRadius: "8px", background: "rgba(34, 197, 94, 0.14)", color: "#16a34a", fontWeight: 800 }}>APPROVED</span>
+                        <span style={{ color: "var(--text-muted)" }}>Step {interactiveAlert.currentStep}</span>
+                        <ArrowRight size={14} style={{ color: "var(--text-muted)" }} />
+                        <span style={{ padding: "3px 8px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.14)", color: "#d97706", fontWeight: 800 }}>PENDING</span>
+                        <span style={{ padding: "3px 8px", borderRadius: "8px", background: "rgba(37, 99, 235, 0.12)", color: "#2563eb", fontWeight: 800 }}>Step {interactiveAlert.targetStep} ({STEP_LABELS[interactiveAlert.targetStep]?.replace(/^Step \d+:\s*/, "") || `Step ${interactiveAlert.targetStep}`})</span>
+                      </div>
+                    )}
+
+                    {interactiveAlert.scenario === "ESIGN_NOT_DONE" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "14px 0", padding: "8px 12px", borderRadius: "12px", background: "var(--neu-well, #f8fafc)", border: "1px solid var(--neu-line, rgba(0,0,0,0.06))", fontSize: "0.8rem", flexWrap: "wrap" }}>
+                        <span style={{ padding: "3px 8px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.14)", color: "#d97706", fontWeight: 800 }}>STEP {interactiveAlert.currentStep}/14</span>
+                        <span style={{ color: "var(--text-muted)" }}>{STEP_LABELS[interactiveAlert.currentStep]?.replace(/^Step \d+:\s*/, "") || "In Progress"}</span>
+                        <span style={{ marginLeft: "auto", padding: "3px 8px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.12)", color: "#dc2626", fontWeight: 700 }}>Aadhaar eSign Pending</span>
+                      </div>
+                    )}
+
+                    <p style={{ margin: "12px 0 0", fontSize: "0.88rem", lineHeight: 1.55, color: "var(--text-primary)" }}>
+                      {interactiveAlert.message}
+                    </p>
+
+                    {interactiveAlert.prompt && (
+                      <div style={{
+                        marginTop: "14px",
+                        padding: "12px 14px",
+                        borderRadius: "14px",
+                        background: "var(--neu-well, #f8fafc)",
+                        border: "1px dashed var(--neu-line, rgba(0,0,0,0.14))",
+                        fontSize: "0.84rem",
+                        fontWeight: 600,
+                        color: "var(--text-primary)",
+                        lineHeight: 1.5
+                      }}>
+                        {interactiveAlert.prompt}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "22px", flexWrap: "wrap" }}>
+                      {interactiveAlert.actions ? (
+                        interactiveAlert.actions.map((act, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={act.onClick}
+                            style={act.variant === "primary" ? {
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              background: "var(--neu-accent-fill, #2563eb)",
+                              color: "#ffffff",
+                              border: "none",
+                              padding: "10px 18px",
+                              borderRadius: "12px",
+                              fontWeight: 700,
+                              fontSize: "0.86rem",
+                              cursor: "pointer",
+                              boxShadow: "0 4px 14px rgba(37, 99, 235, 0.25)"
+                            } : {
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              background: "var(--neu-base, #ffffff)",
+                              color: "var(--text-muted, #64748b)",
+                              border: "1px solid var(--neu-line, rgba(0,0,0,0.12))",
+                              padding: "10px 16px",
+                              borderRadius: "12px",
+                              fontWeight: 600,
+                              fontSize: "0.86rem",
+                              cursor: "pointer"
+                            }}
+                          >
+                            {act.label}
+                            {act.icon === "external" && <ExternalLink size={14} />}
+                          </button>
+                        ))
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setInteractiveAlert(null)}
+                          style={{
+                            background: "var(--neu-accent-fill, #2563eb)",
+                            color: "#ffffff",
+                            border: "none",
+                            padding: "10px 20px",
+                            borderRadius: "12px",
+                            fontWeight: 700,
+                            fontSize: "0.86rem",
+                            cursor: "pointer"
+                          }}
+                        >
+                          OK
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ), document.body)}
 
             </div>
           </main>

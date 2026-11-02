@@ -9,6 +9,7 @@ const NOT_REJECTABLE_ERROR = "This application can't be rejected as it is still 
 // Approving needs the same: nobody can approve an application before the applicant has eSigned it.
 const isApprovable = isRejectable;
 const NOT_APPROVABLE_ERROR = "This application can't be approved as eSign is not done yet. The applicant has not completed all the steps.";
+const NOT_APPROVABLE_STEP_ERROR = "This application cannot remain Approved when moved back to an earlier step. Applications before Step 14 (eSign) cannot have Approved status.";
 
 // An approval locks the application against rejection by that side: once STK has verified it, STK can't
 // reject it (Globe still reviews it and can); once Globe has approved it, nobody can reject it.
@@ -20,4 +21,4 @@ const APPROVED_LOCK_ERROR = "This application is already approved and can't be r
 
 const rejectionSide = (user) => (user?.role === "globe" ? "Globe" : "STK");
 
-module.exports = { ESIGN_STEP, isRejectable, NOT_REJECTABLE_ERROR, isApprovable, NOT_APPROVABLE_ERROR, isLockedByApproval, APPROVED_LOCK_ERROR, rejectionSide };
+module.exports = { ESIGN_STEP, isRejectable, NOT_REJECTABLE_ERROR, isApprovable, NOT_APPROVABLE_ERROR, NOT_APPROVABLE_STEP_ERROR, isLockedByApproval, APPROVED_LOCK_ERROR, rejectionSide };

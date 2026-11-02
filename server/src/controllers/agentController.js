@@ -139,7 +139,18 @@ const getAssignedApplications = async (req, res, next) => {
     // Who made each rejection (STK / Globe) is worked out first, so rejectionMail.pendingSides puts the
     // "Mail not sent" tag under the right status column
     const annotated = await annotateRejectedBy(applications);
-    const listed = annotated.map(({ correctionDraft, ...app }) => ({ ...app, rejectionMail: getRejectionMailState({ ...app, correctionDraft }), rejectionSent: !!correctionDraft || (app.globeStatus === "rejected" && !["verified", "rejected"].includes(app.status)) }));
+    const listed = annotated.map(({ correctionDraft, ...app }) => {
+      // For resubmitted applications, if globeStatus was left as "rejected", the rejection has been cleared and is now pending review
+      const isResub = !!app.isResubmitted || app.status === "under_review";
+      const effectiveGlobeStatus = (isResub && app.globeStatus === "rejected") ? "pending" : (app.globeStatus || "pending");
+      const rejectionSent = !isResub && (!!correctionDraft || (app.globeStatus === "rejected" && !["verified", "rejected"].includes(app.status)));
+      return {
+        ...app,
+        globeStatus: effectiveGlobeStatus,
+        rejectionMail: getRejectionMailState({ ...app, correctionDraft }),
+        rejectionSent
+      };
+    });
 
     res.json({
       success: true,

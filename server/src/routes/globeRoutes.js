@@ -45,6 +45,7 @@ router.param("id", async (req, res, next, id) => {
 
 router.get("/kpis", globeController.getDashboardKPIs);
 router.get("/kycs", globeController.getPendingKYCs);
+router.post("/applications/export-full", require("../controllers/agentController").exportApplicationsFull);
 
 // The Globe status is set only by Globe reviewers — never by STK (admin / KYC team)
 const globeOnly = (req, res, next) => {

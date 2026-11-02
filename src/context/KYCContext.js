@@ -853,8 +853,13 @@ export function KYCProvider({ children }) {
 
     socket.on("kyc_updated", (data) => {
       console.log("[Socket.IO] Received kyc_updated event:", data);
-      // Trigger a silent refresh just like polling did
-      refreshProgress(activeAppId, activeToken, true);
+      // If admin explicitly moved step or status, clear the navigation cooldown and force immediate sync
+      if (data && data.currentStep !== undefined) {
+        lastClientStepChange.current = 0;
+        refreshProgress(activeAppId, activeToken, false);
+      } else {
+        refreshProgress(activeAppId, activeToken, true);
+      }
     });
 
     return () => {

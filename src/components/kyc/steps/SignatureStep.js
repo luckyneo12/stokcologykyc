@@ -250,7 +250,8 @@ export default function SignatureStep() {
       return;
     }
     
-    const payloadData = { filePreview };
+    const sigUploadTime = new Date().toISOString();
+    const payloadData = { filePreview, uploadedAt: sigUploadTime, timestamp: sigUploadTime };
     if (isSignatureRejected) {
       updateNested("correctionDraft", { signature: payloadData });
     } else {

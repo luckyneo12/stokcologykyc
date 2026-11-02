@@ -309,7 +309,10 @@ export default function DetailsStep() {
     try {
       const result = await uploadDocument(file);
       if (result.success) {
+        const pepUploadTime = result.uploadedAt || new Date().toISOString();
         update("pepProof", result.path);
+        update("pepProofUploadedAt", pepUploadTime);
+        update("pepProofTimestamp", pepUploadTime);
         addToast("PEP proof uploaded successfully", "success");
       }
     } catch (error) {

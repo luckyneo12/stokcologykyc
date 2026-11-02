@@ -146,7 +146,7 @@ export const fetchDigioRequestResponse = async (requestId, type, explicitApplica
   }
 };
 
-export const verifyPanDirect = async (pan, fullName, dob) => {
+export const verifyPanDirect = async (pan, fullName, dob, passedApplicationId) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/digio/verify-pan`, {
       method: "POST",
@@ -155,7 +155,7 @@ export const verifyPanDirect = async (pan, fullName, dob) => {
         pan,
         fullName,
         dob,
-        applicationId: getApplicationId() || undefined,
+        applicationId: passedApplicationId || getApplicationId() || undefined,
       }),
     });
 

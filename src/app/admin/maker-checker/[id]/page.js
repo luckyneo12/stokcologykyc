@@ -715,6 +715,7 @@ const getApplicantName = (app) => {
 function firstMedia(value, label) {
   if (!value) return null;
   if (typeof value === "string") return mediaFromString(value, label);
+  const timestamp = value.uploadedAt || value.timestamp || value.capturedAt || value.savedAt || value.proofUploadedAt || null;
   const candidates = [
     value.filePreview,
     value.preview,
@@ -730,7 +731,10 @@ function firstMedia(value, label) {
   ];
   for (const candidate of candidates) {
     const media = firstMedia(candidate, label || value.type || value.name);
-    if (media) return media;
+    if (media) {
+      if (timestamp && !media.uploadedAt) media.uploadedAt = timestamp;
+      return media;
+    }
   }
   return null;
 }
@@ -1264,7 +1268,14 @@ function EvidencePanel({ step, app }) {
           {evidence.map((item, index) => (
             <div key={`${item.label}-${index}`} style={{ border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
-                <strong style={{ fontSize: "0.86rem" }}>{item.label || "Evidence"}</strong>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <strong style={{ fontSize: "0.86rem" }}>{item.label || "Evidence"}</strong>
+                  {item.uploadedAt && (
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 500 }}>
+                      Uploaded: {new Date(item.uploadedAt).toLocaleString("en-IN")}
+                    </span>
+                  )}
+                </div>
                 <button onClick={() => openInNewTab(item.src)} title="Open evidence" style={{ border: "none", background: "transparent", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 800, color: "var(--wise-dark-green)" }}>
                   <ExternalLink size={16} /> Open
                 </button>
@@ -1472,7 +1483,14 @@ function StepCard({ step, app, info, submitting, reviewStep, onImageClick }) {
                   <div key={index} style={{ border: "1px solid var(--border-color)", borderRadius: 8, overflow: "hidden", cursor: "pointer", position: "relative" }} onClick={() => onImageClick(item, step)}>
                     {item.label !== "" && (
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid var(--border-color)", background: "var(--bg-secondary)" }}>
-                        <strong style={{ fontSize: "0.8rem" }}>{item.label || "Evidence"}</strong>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <strong style={{ fontSize: "0.8rem" }}>{item.label || "Evidence"}</strong>
+                          {item.uploadedAt && (
+                            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 500 }}>
+                              {new Date(item.uploadedAt).toLocaleString("en-IN")}
+                            </span>
+                          )}
+                        </div>
                         <Maximize2 size={14} color="var(--text-muted)" />
                       </div>
                     )}
@@ -2458,6 +2476,27 @@ export default function AgentReview() {
     } catch(e) { return "Pending"; }
   })() : "Pending";
 
+  // PEP / RPEP Detection
+  const currentPolExp = editValues["personalDetails.politicallyExposed"] !== undefined
+    ? editValues["personalDetails.politicallyExposed"]
+    : app.personalDetails?.politicallyExposed;
+  const currentPepType = editValues["personalDetails.pepType"] !== undefined
+    ? editValues["personalDetails.pepType"]
+    : app.personalDetails?.pepType;
+
+  const polExpStr = String(currentPolExp || "").trim().toLowerCase();
+  const pepTypeStr = String(currentPepType || "").trim();
+  const pepTypeNorm = pepTypeStr.toUpperCase();
+
+  const isPep = polExpStr === "yes" || ["PEP", "RPEP", "RELATED TO PEP"].includes(pepTypeNorm) || pepTypeNorm.includes("PEP");
+
+  const pepBadgeLabel = (() => {
+    if (pepTypeNorm === "RPEP" || pepTypeNorm.includes("RELATED")) return "RPEP";
+    if (pepTypeNorm === "PEP") return "PEP";
+    if (polExpStr === "yes") return "PEP";
+    return "PEP";
+  })();
+
   // ─── Trash (opened from the Trash: view only, with Restore / Delete permanently) ───
   const inTrash = app.status === "trashed";
   const goToTrash = () => {
@@ -2526,6 +2565,12 @@ export default function AgentReview() {
                 <span className="neu-dh-status is-trash"><span className="neu-dh-status-dot" />In Trash</span>
               ) : (
                 <span className="neu-dh-status is-pending"><span className="neu-dh-status-dot" />Pending Review</span>
+              )}
+              {isPep && (
+                <span className="neu-dh-pep-badge" title={`Applicant is Politically Exposed (${pepBadgeLabel})`}>
+                  <span className="neu-dh-pep-dot" />
+                  {pepBadgeLabel}
+                </span>
               )}
             </div>
             <div className="neu-dh-row neu-dh-meta">
@@ -2633,6 +2678,7 @@ export default function AgentReview() {
         </div>
       )}
 
+
       {/* Main 3-Column Layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         
@@ -2650,8 +2696,24 @@ export default function AgentReview() {
               const activeTab = resolvedTabs && resolvedTabs.length > 0 ? resolvedTabs[0].id : null;
               const fields = step.fields(app, activeTab).filter(([, value]) => value !== undefined && value !== null && value !== "");
               const isRejected = statuses[step.id]?.status === "rejected";
-              const displayAsRejected = isRejected && !app.isResubmitted;
+              const stepStatus = statuses[step.id] || {};
+              const prevRejHistory = Array.isArray(statuses._previousRejections)
+                ? statuses._previousRejections.find(pr => pr.stepId === step.id)
+                : null;
+              const wasCorrected = !isRejected && (
+                stepStatus.wasRejected === true ||
+                !!stepStatus.correctedAt ||
+                !!prevRejHistory ||
+                (app.isResubmitted && (!!stepStatus.previousReason || (stepStatus.reason && stepStatus.status !== "rejected")))
+              );
+              const displayAsRejected = isRejected || wasCorrected;
               const isVisited = visitedSteps.has(step.id);
+
+              const prevReason = stepStatus.previousReason || prevRejHistory?.reason || stepStatus.reason;
+              const prevRejectedBy = stepStatus.previousRejectedBy || prevRejHistory?.rejectedBy || stepStatus.rejectedBy || "Reviewer";
+              const effectiveRejectedBy = isRejected ? (stepStatus.rejectedBy || "Reviewer") : prevRejectedBy;
+              const effectiveRejectReason = isRejected ? (stepStatus.reason || "") : (prevReason || "");
+              const correctedTimestamp = stepStatus.correctedAt || prevRejHistory?.correctedAt;
 
               return (
                 <div id={`module-${step.id}`} key={step.id} className={`premium-sidebar-module ${isExpanded ? 'active' : ''}`}>
@@ -2671,7 +2733,7 @@ export default function AgentReview() {
                           whole, starting where the title's text starts */}
                       <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 8, rowGap: 3, minWidth: 0 }}>
                         <span style={{ whiteSpace: "nowrap" }}>{step.title}</span>
-                        {isRejected && <RejectedByTag by={statuses[step.id]?.rejectedBy} />}
+                        {displayAsRejected && <RejectedByTag by={effectiveRejectedBy} />}
                         {step.id === "financialProof" && app.financialProof?.type === "Skipped" && (
                           <span className="neu-mod-tag" style={{ padding: "2px 6px", background: "var(--bg-secondary)", borderRadius: 4, fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>SKIPPED</span>
                         )}
@@ -2708,15 +2770,15 @@ export default function AgentReview() {
                           padding: "4px 7px",
                           borderRadius: 6,
                           cursor: "pointer",
-                          border: isRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
-                          background: isRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
-                          color: isRejected ? "#ffffff" : "#ef4444",
+                          border: displayAsRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: displayAsRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          color: displayAsRejected ? "#ffffff" : "#ef4444",
                           transition: "all 0.2s",
-                          boxShadow: isRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
+                          boxShadow: displayAsRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none"
                         }}
-                        title={isRejected ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Step"}
+                        title={displayAsRejected ? "Rejected (Click to modify reason, right-click to undo)" : "Reject Step"}
                       >
-                        <Ban size={13} color={isRejected ? "#ffffff" : "#ef4444"} />
+                        <Ban size={13} color={displayAsRejected ? "#ffffff" : "#ef4444"} />
                       </button>
                     </div>
                   </div>
@@ -2727,7 +2789,7 @@ export default function AgentReview() {
                       background: "var(--bg-primary)", 
                       boxShadow: "inset 0 8px 16px rgba(0,0,0,0.03)", 
                       borderTop: "1px solid var(--border-color)",
-                      borderLeft: "3px solid var(--text-primary)",
+                      borderLeft: displayAsRejected ? "3px solid #ef4444" : "3px solid var(--text-primary)",
                       display: "flex",
                       flexDirection: "column",
                       gap: "16px"
@@ -2757,11 +2819,11 @@ export default function AgentReview() {
                                 return true;
                               });
 
-                              if (isRejected && statuses[step.id]?.reason && index === sections.length - 1) {
+                              if (displayAsRejected && effectiveRejectReason && index === sections.length - 1) {
                                 tabFields.push(
                                   [`--- REJECTION DETAILS ---`, " "],
-                                  [`Reject Reason ${step.title}`, statuses[step.id].reason],
-                                  [`Rejected Timestamp ${step.title}`, statuses[step.id].reviewedAt ? new Date(statuses[step.id].reviewedAt).toLocaleString() : "N/A"]
+                                  [`Reject Reason ${step.title}`, effectiveRejectReason],
+                                  [`Rejected Timestamp ${step.title}`, (stepStatus.reviewedAt || correctedTimestamp) ? new Date(stepStatus.reviewedAt || correctedTimestamp).toLocaleString() : "N/A"]
                                 );
                               }
 
@@ -2828,18 +2890,27 @@ export default function AgentReview() {
                                       const currentValue = jsonPath && editValues[jsonPath] !== undefined ? editValues[jsonPath] : value;
                                       // This field is among the module's rejected fields → red; right-click undoes just this field
                                       const fieldStatus = statuses[step.id];
-                                      const isFieldRejected = fieldStatus?.status === "rejected" && Array.isArray(fieldStatus?.rejectedFields) && fieldStatus.rejectedFields.includes(label);
+                                      const isFieldRejected = (fieldStatus?.status === "rejected" || wasCorrected) && Array.isArray(fieldStatus?.rejectedFields) && fieldStatus.rejectedFields.includes(label);
+                                      const isPepField = isPep && (label === "Politically exposed" || label === "Politically exposed category");
                                       return (
                                         <div key={label}
                                           onContextMenu={isFieldRejected ? (e) => { e.preventDefault(); e.stopPropagation(); handleUnrejectField(step, label); } : undefined}
                                           title={isFieldRejected ? "Rejected field — right-click to undo" : undefined}
                                           style={{ 
                                           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, 
-                                          padding: "10px 14px", background: isFieldRejected ? "rgba(239, 68, 68, 0.08)" : "var(--bg-secondary)", borderRadius: "10px", 
-                                          border: isFieldRejected ? "1px solid #ef4444" : "1px solid var(--border-color)", boxShadow: isFieldRejected ? "0 0 0 1px rgba(239, 68, 68, 0.15)" : "0 2px 8px rgba(0,0,0,0.02)"
+                                          padding: "10px 14px", background: isFieldRejected ? "rgba(239, 68, 68, 0.08)" : isPepField ? "rgba(239, 68, 68, 0.06)" : "var(--bg-secondary)", borderRadius: "10px", 
+                                          border: isFieldRejected ? "1px solid #ef4444" : isPepField ? "1px solid rgba(239, 68, 68, 0.45)" : "1px solid var(--border-color)", boxShadow: isFieldRejected ? "0 0 0 1px rgba(239, 68, 68, 0.15)" : isPepField ? "0 0 8px rgba(239, 68, 68, 0.15)" : "0 2px 8px rgba(0,0,0,0.02)"
                                         }}>
                                           <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: "0.65rem", color: isFieldRejected ? "#dc2626" : "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                              <span style={{ fontSize: "0.65rem", color: isFieldRejected ? "#dc2626" : isPepField ? "#dc2626" : "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+                                              {isPepField && (
+                                                <span className="neu-pep-table-badge">
+                                                  <span className="neu-pep-table-dot" />
+                                                  {pepBadgeLabel}
+                                                </span>
+                                              )}
+                                            </div>
                                             {editingField === jsonPath && jsonPath ? (
                                               DROPDOWN_OPTIONS[jsonPath] ? (
                                                 <NeuSelect
@@ -3071,16 +3142,25 @@ export default function AgentReview() {
                 const sentRejection = pendingReason ? null : getSentDocRejection(doc);
                 const isDocRejected = !!pendingReason || !!sentRejection;
                 const docRejectedBy = pendingReason ? pendingDocRejectionBy[pendingKey] : sentRejection?.rejectedBy;
+                const docPrevRej = Array.isArray(statuses._previousRejections)
+                  ? statuses._previousRejections.find(pr => pr.title === doc.label || pr.stepId === doc.type)
+                  : null;
+                const isDocCorrected = !isDocRejected && (!!docPrevRej || (app.isResubmitted && doc.source === "CORRECTION"));
+                const isDocDisplayAsRejected = isDocRejected || isDocCorrected;
+                const effectiveDocRejectedBy = docRejectedBy || docPrevRej?.rejectedBy || "Reviewer";
                 return (
                   <div 
                     key={idx}
                     onClick={() => handleDocumentClick(doc)}
                     className={`premium-sidebar-item ${isSelected ? 'active' : ''}`}
-                    style={{ color: isSelected ? "var(--wise-green)" : "var(--text-primary)" }}
+                    style={{ color: isSelected ? "var(--wise-green)" : isDocDisplayAsRejected ? "#dc2626" : "var(--text-primary)" }}
                   >
-                    <span style={{ fontSize: "0.75rem", fontWeight: 500, flex: 1, display: "flex", alignItems: "center", gap: 6 }}>{doc.label || "Document"}{isDocRejected && <RejectedByTag by={docRejectedBy} />}</span>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 500, flex: 1, display: "flex", alignItems: "center", gap: 6, color: isDocDisplayAsRejected ? "#dc2626" : "inherit" }}>
+                      {doc.label || "Document"}
+                      {isDocDisplayAsRejected && <RejectedByTag by={effectiveDocRejectedBy} />}
+                    </span>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <Paperclip size={14} color={isSelected ? "#16a34a" : "var(--text-muted)"} />
+                      <Paperclip size={14} color={isSelected ? "#16a34a" : isDocDisplayAsRejected ? "#dc2626" : "var(--text-muted)"} />
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -3112,23 +3192,25 @@ export default function AgentReview() {
                           cursor: "pointer",
                           display: "flex", 
                           alignItems: "center", 
-                          justifyContent: "center",
+                          justifyContent: "center", 
                           width: 24, 
                           height: 24,
                           borderRadius: 6,
-                          border: isDocRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
-                          background: isDocRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
+                          border: isDocDisplayAsRejected ? "1px solid #ef4444" : "1px solid #fca5a5",
+                          background: isDocDisplayAsRejected ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)" : "#fef2f2",
                           transition: "all 0.2s",
-                          boxShadow: isDocRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none",
+                          boxShadow: isDocDisplayAsRejected ? "0 2px 6px rgba(239, 68, 68, 0.35)" : "none",
                           padding: 0
                         }}
                         title={pendingReason
                           ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${pendingReason} — not sent yet (click to modify, right-click to undo)`
                           : sentRejection
                             ? `Rejected${docRejectedBy ? ` by ${docRejectedBy}` : ""}: ${sentRejection.reason || "No reason"} (right-click to undo)`
-                            : "Reject Document"}
+                            : isDocCorrected
+                              ? `Previously rejected by ${effectiveDocRejectedBy} (corrected by applicant)`
+                              : "Reject Document"}
                       >
-                        <Ban size={13} color={isDocRejected ? "#ffffff" : "#ef4444"} />
+                        <Ban size={13} color={isDocDisplayAsRejected ? "#ffffff" : "#ef4444"} />
                       </button>
                     </div>
                   </div>

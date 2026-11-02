@@ -651,10 +651,14 @@ const uploadDocument = (req, res) => {
       ? req.file.path
       : `/api/kyc/document/${req.file.filename}`;
 
+  const uploadedAt = new Date().toISOString();
+
   res.json({
     success: true,
     path: finalPath,
     filename: req.file.filename,
+    uploadedAt,
+    timestamp: uploadedAt,
   });
 };
 
@@ -679,12 +683,16 @@ const uploadOvdDocument = (req, res) => {
     finalPath = /\.[a-z0-9]{2,5}$/i.test(finalPath) ? finalPath.replace(/\.[a-z0-9]{2,5}$/i, ".jpg") : `${finalPath}.jpg`;
   }
 
+  const uploadedAt = new Date().toISOString();
+
   res.json({
     success: true,
     path: finalPath,
     filename: req.file.filename,
     originalName: req.file.originalname,
     mimeType: mime.startsWith("image/") && !["image/jpeg", "image/png"].includes(mime) ? "image/jpeg" : mime,
+    uploadedAt,
+    timestamp: uploadedAt,
   });
 };
 
@@ -1743,8 +1751,13 @@ const completeCorrectionSession = async (req, res, next) => {
         const existing = parseJsonField(updateData[fieldName] || app[fieldName], fieldName === "documents" ? [] : {});
         
         let processedDraftData = draftData;
+        const nowIso = new Date().toISOString();
         if (stepId === "pepProof") {
-          processedDraftData = { pepProof: draftData.path || draftData.preview };
+          processedDraftData = { 
+            pepProof: draftData.path || draftData.preview,
+            pepProofUploadedAt: draftData.uploadedAt || draftData.timestamp || nowIso,
+            pepProofTimestamp: draftData.timestamp || draftData.uploadedAt || nowIso
+          };
         } else if (stepId.endsWith("Proof") && (stepId.startsWith("nominee") || stepId.startsWith("guardian"))) {
           // The whole nominee section was corrected too → its new list (which already requires fresh
           // documents) wins; a single-document draft must not overwrite it or point at a removed nominee
@@ -1756,13 +1769,25 @@ const completeCorrectionSession = async (req, res, next) => {
           if (stepId.startsWith("nominee")) {
             idx = parseInt(stepId.replace("nominee", "").replace("Proof", "")) - 1;
             if (!existing.nominees[idx]) existing.nominees[idx] = {};
-            existing.nominees[idx].proofPath = draftData.path || draftData.filePreview || draftData.preview;
+            existing.nominees[idx].proofPath = proofPathFromDraft;
+            existing.nominees[idx].uploadedAt = draftData.uploadedAt || draftData.timestamp || nowIso;
+            existing.nominees[idx].timestamp = draftData.timestamp || draftData.uploadedAt || nowIso;
           } else if (stepId.startsWith("guardian")) {
             idx = parseInt(stepId.replace("guardian", "").replace("Proof", "")) - 1;
             if (!existing.nominees[idx]) existing.nominees[idx] = {};
-            existing.nominees[idx].guardianProofPath = draftData.path || draftData.filePreview || draftData.preview;
+            existing.nominees[idx].guardianProofPath = proofPathFromDraft;
+            existing.nominees[idx].guardianUploadedAt = draftData.uploadedAt || draftData.timestamp || nowIso;
+            existing.nominees[idx].guardianTimestamp = draftData.timestamp || draftData.uploadedAt || nowIso;
           }
           processedDraftData = {}; // We directly mutated existing for this
+        } else if (["panUpload", "signature", "financialProof", "ipv"].includes(stepId)) {
+          if (processedDraftData && (processedDraftData.path || processedDraftData.filePreview || processedDraftData.preview)) {
+            processedDraftData = {
+              ...processedDraftData,
+              uploadedAt: processedDraftData.uploadedAt || processedDraftData.timestamp || nowIso,
+              timestamp: processedDraftData.timestamp || processedDraftData.uploadedAt || nowIso,
+            };
+          }
         }
         if (fieldName === "nomineeDetails") {
           if (existing.nomineeDetails) {
@@ -1781,11 +1806,32 @@ const completeCorrectionSession = async (req, res, next) => {
           for (const key of ["proofPreview", "proofPath", "proof", "proofType"]) delete existing[key];
           processedDraftData = Object.fromEntries(Object.entries(draftData).filter(([, v]) => v !== null));
         }
+        if (stepId === "panVerification") {
+          const existingPD = parseJsonField(updateData.personalDetails || app.personalDetails, {});
+          const pdUpdates = {};
+          if (draftData.dob) { pdUpdates.dob = draftData.dob; pdUpdates.manualDob = draftData.dob; }
+          const nameVal = draftData.fullName || draftData.panName;
+          if (nameVal) {
+            pdUpdates.fullName = nameVal;
+            pdUpdates.manualFullName = nameVal;
+            processedDraftData.pan_name = nameVal;
+          }
+          if (draftData.fatherName) { pdUpdates.fatherName = draftData.fatherName; }
+          if (draftData.pan) {
+            pdUpdates.pan = draftData.pan;
+            processedDraftData.manualPan = draftData.pan;
+            processedDraftData.pan = draftData.pan;
+          }
+          if (draftData.dob) {
+            processedDraftData.dob = draftData.dob;
+          }
+          updateData.personalDetails = serializeJsonField(mergeJson(existingPD, pdUpdates));
+        }
         updateData[fieldName] = serializeJsonField(mergeJson(existing, processedDraftData));
       }
     }
 
-    // Clear rejection entries from stepStatuses
+    // Clear rejection entries from stepStatuses and preserve previous rejection history for reviewers
     let stepStatuses = {};
     try {
       stepStatuses = app.stepStatuses
@@ -1795,15 +1841,54 @@ const completeCorrectionSession = async (req, res, next) => {
       stepStatuses = {};
     }
 
+    if (!Array.isArray(stepStatuses._previousRejections)) {
+      stepStatuses._previousRejections = [];
+    }
+
+    const nowIso = new Date().toISOString();
+
     for (const rejStep of correctionDraft.rejectedSteps) {
-      if (stepStatuses[rejStep.stepId]) {
-        // Change status from "rejected" to "pending" (will need re-review)
-        stepStatuses[rejStep.stepId] = {
-          ...stepStatuses[rejStep.stepId],
-          status: "pending",
-          correctedAt: new Date().toISOString(),
-        };
-      }
+      const existingStep = stepStatuses[rejStep.stepId] || {};
+      const reason = rejStep.reason || existingStep.reason || "Rejected in previous review";
+      const rejectedBy = rejStep.rejectedBy || existingStep.rejectedBy || "Reviewer";
+
+      // Track historical rejection
+      stepStatuses._previousRejections.push({
+        stepId: rejStep.stepId,
+        title: rejStep.title,
+        reason,
+        rejectedBy,
+        correctedAt: nowIso,
+      });
+
+      // Change status from "rejected" to "pending" (will need re-review), but retain previous rejection info for UI display
+      stepStatuses[rejStep.stepId] = {
+        ...existingStep,
+        status: "pending",
+        wasRejected: true,
+        previousReason: reason,
+        previousRejectedBy: rejectedBy,
+        correctedAt: nowIso,
+      };
+    }
+
+    if (app.globeRemarks) {
+      stepStatuses._previousRejections.push({
+        stepId: "globeApplication",
+        title: "Application",
+        reason: app.globeRemarks,
+        rejectedBy: "Globe",
+        correctedAt: nowIso,
+      });
+    }
+    if (app.rejectionReason) {
+      stepStatuses._previousRejections.push({
+        stepId: "stkApplication",
+        title: "Application",
+        reason: app.rejectionReason,
+        rejectedBy: "STK",
+        correctedAt: nowIso,
+      });
     }
 
     // A new review round: the next rejection mail is a new one even if a reason repeats
@@ -1814,6 +1899,13 @@ const completeCorrectionSession = async (req, res, next) => {
     updateData.stepStatuses = JSON.stringify(stepStatuses);
     updateData.isResubmitted = true;
     updateData.correctionDraft = null;
+    if (app.globeStatus === "rejected") {
+      updateData.globeStatus = "pending";
+      updateData.globeRemarks = null;
+    }
+    if (app.rejectionReason) {
+      updateData.rejectionReason = null;
+    }
     // Corrections always go back to STK first — also after a Globe rejection. The Globe status stays
     // "rejected" (it remains in Globe's "Rejected" list) until STK verifies it again, which resets it to
     // pending and sends it to Globe's "Verify" list (see reviewApplication).

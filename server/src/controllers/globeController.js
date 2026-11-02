@@ -284,7 +284,17 @@ class GlobeController {
         success: true,
         // Who made each rejection (STK / Globe) is worked out first, so rejectionMail.pendingSides puts
         // the "Mail not sent" tag under the right status column
-        data: await attachDecisionTimestamps((await annotateRejectedBy(applications)).map((app) => ({ ...app, rejectionMail: getRejectionMailState(app), rejectionSent: !!app.correctionDraft || (app.globeStatus === "rejected" && !["verified", "rejected"].includes(app.status)) }))),
+        data: await attachDecisionTimestamps((await annotateRejectedBy(applications)).map((app) => {
+          const isResub = !!app.isResubmitted || app.status === "under_review";
+          const effectiveGlobeStatus = (isResub && app.globeStatus === "rejected") ? "pending" : (app.globeStatus || "pending");
+          const rejectionSent = !isResub && (!!app.correctionDraft || (app.globeStatus === "rejected" && !["verified", "rejected"].includes(app.status)));
+          return {
+            ...app,
+            globeStatus: effectiveGlobeStatus,
+            rejectionMail: getRejectionMailState(app),
+            rejectionSent
+          };
+        })),
         pagination: {
           total,
           pages: Math.ceil(total / limit),

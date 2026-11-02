@@ -1677,6 +1677,98 @@ html:has(.neu-login-shell), html:has(.neu-login-shell) body { background: #eef0f
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent); }
   80%, 100% { box-shadow: 0 0 0 6px transparent; }
 }
+
+/* ---- PEP / RPEP Blinking Badges ---- */
+.admin-neu .neu-dh-pep-badge,
+.neu-dh-pep-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+  animation: neuPepBlink 1.4s ease-in-out infinite;
+}
+
+.admin-neu .neu-dh-pep-dot,
+.neu-dh-pep-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 6px #ef4444;
+  animation: neuPepDotPulse 1.4s ease-in-out infinite;
+}
+
+.admin-neu .neu-pep-table-badge,
+.neu-pep-table-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: none !important;
+  animation: none !important;
+  vertical-align: middle;
+}
+
+.admin-neu .neu-pep-table-dot,
+.neu-pep-table-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
+@keyframes neuPepBlink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.6);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.45), inset 0 0 4px rgba(239, 68, 68, 0.15);
+  }
+  50% {
+    opacity: 0.25;
+    transform: scale(0.96);
+    background: rgba(239, 68, 68, 0.04);
+    border-color: rgba(239, 68, 68, 0.15);
+    box-shadow: 0 0 2px rgba(239, 68, 68, 0.05);
+  }
+}
+
+@keyframes neuPepDotPulse {
+  0%, 100% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.7);
+    opacity: 0.35;
+  }
+}
 .admin-neu .neu-dh-meta { gap: 6px; }
 .admin-neu .neu-dh-chip {
   display: inline-flex;

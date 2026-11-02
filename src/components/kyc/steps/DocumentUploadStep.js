@@ -708,7 +708,8 @@ export default function DocumentUploadStep() {
         const uploadResult = await uploadDocument(file);
         addToast("Financial proof attached and uploaded", "success");
         
-        const payloadData = { type: finType, filePreview: uploadResult.path };
+        const uploadTime = uploadResult.uploadedAt || new Date().toISOString();
+        const payloadData = { type: finType, filePreview: uploadResult.path, uploadedAt: uploadTime, timestamp: uploadTime };
         
         if (isRejection && isDocRejected("financialProof")) {
           updateNested("correctionDraft", { financialProof: payloadData });
@@ -741,7 +742,8 @@ export default function DocumentUploadStep() {
         const uploadResult = await uploadDocument(file);
         addToast("Bank proof attached and uploaded", "success");
         
-        const updatedBankDetails = { ...(bankDetails || {}), proofPreview: uploadResult.path, proofType: bankProofType || "Bank Proof" };
+        const bankUploadTime = uploadResult.uploadedAt || new Date().toISOString();
+        const updatedBankDetails = { ...(bankDetails || {}), proofPreview: uploadResult.path, proofType: bankProofType || "Bank Proof", proofUploadedAt: bankUploadTime, proofTimestamp: bankUploadTime };
         
         if (isRejection && isDocRejected("bankVerification")) {
            updateNested("correctionDraft", { bankDetails: updatedBankDetails });
@@ -972,7 +974,8 @@ export default function DocumentUploadStep() {
                     const file = dataURLtoFile(res, "pan_upload.jpg");
                     const uploadResult = await uploadDocument(file);
                     addToast("PAN cropped and uploaded successfully", "success");
-                    const payloadData = { filePreview: uploadResult.path };
+                    const uploadTime = uploadResult.uploadedAt || new Date().toISOString();
+                    const payloadData = { filePreview: uploadResult.path, uploadedAt: uploadTime, timestamp: uploadTime };
                     if (isRejection && isDocRejected("panUpload")) {
                       updateNested("correctionDraft", { panUpload: payloadData });
                     } else {
@@ -1047,7 +1050,8 @@ export default function DocumentUploadStep() {
                     const file = dataURLtoFile(res, "signature.jpg");
                     const uploadResult = await uploadDocument(file);
                     addToast("Signature cropped and uploaded successfully", "success");
-                    const payloadData = { filePreview: uploadResult.path };
+                    const uploadTime = uploadResult.uploadedAt || new Date().toISOString();
+                    const payloadData = { filePreview: uploadResult.path, uploadedAt: uploadTime, timestamp: uploadTime };
                     if (isRejection && isDocRejected("signature")) {
                       updateNested("correctionDraft", { signature: payloadData });
                     } else {

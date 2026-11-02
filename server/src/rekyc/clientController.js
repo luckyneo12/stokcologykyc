@@ -494,6 +494,18 @@ exports.addBank = wrap(async (req, res) => {
   }
 
   const branch = await bankService.verifyIfsc(ifsc).then((r) => r?.data || r?.result || r?.details || r || {}).catch(() => ({}));
+
+  const enteredIfsc = String(ifsc || "").trim().toUpperCase();
+  const returnedIfsc = String(result.registered_ifsc || result.branch_ifsc || result.actual_ifsc || result.destination_ifsc || result.details?.ifsc || "").trim().toUpperCase();
+  const enteredMicr = String(branch.micr || branch.MICR || branch.micr_code || "").trim();
+  const returnedMicr = String(result.micr || result.data?.micr || result.details?.micr || "").trim();
+
+  if (returnedIfsc && returnedIfsc.length === 11 && returnedIfsc !== enteredIfsc) {
+    throw new ClientError(`IFSC branch mismatch: Your bank account belongs to branch ${returnedIfsc}, but ${enteredIfsc} was entered. Please enter your correct branch IFSC.`, 422, "BRANCH_MISMATCH");
+  }
+  if (returnedMicr && enteredMicr && returnedMicr.length === 9 && enteredMicr.length === 9 && returnedMicr !== enteredMicr) {
+    throw new ClientError(`IFSC branch mismatch: The IFSC entered (${enteredIfsc}) belongs to a different branch than your account's registered branch. Please enter your correct branch IFSC.`, 422, "BRANCH_MISMATCH");
+  }
   const added = {
     accountNumber,
     ifsc,
