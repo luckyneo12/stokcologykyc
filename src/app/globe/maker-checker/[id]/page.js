@@ -18,7 +18,7 @@ import {
   X,
   Mail,
   User, Phone,
-  ChevronDown, ChevronRight, Edit2, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download, Copy, Check
+  ChevronDown, ChevronRight, Ban, Paperclip, ZoomIn, ZoomOut, RotateCw, LayoutTemplate, Download, Copy, Check
 , PenLine, CalendarClock
 } from "lucide-react";
 import { API_BASE_URL, resolveAssetUrl } from "@/utils/apiConfig";
@@ -2802,17 +2802,6 @@ export default function AgentReview() {
                                               </div>
                                             )}
                                           </div>
-                                          {jsonPath && (
-                                            <div style={{ display: "flex", alignItems: "center", alignSelf: "center", marginLeft: 8 }}>
-                                              <Edit2 
-                                                onClick={() => setEditingField(jsonPath)} 
-                                                size={14} 
-                                                color="var(--text-muted)" 
-                                                style={{ cursor: "pointer" }} 
-                                                title={`Edit ${label}`}
-                                              />
-                                            </div>
-                                          )}
                                         </div>
                                       );
                                     
@@ -2842,15 +2831,6 @@ export default function AgentReview() {
                                                     Yes <span style={{ marginLeft: 8, color: "var(--wise-green)", fontSize: "0.7rem" }}>{showTaxResidency ? "▲" : "▼"}</span>
                                                   </div>
                                                 </div>
-                                              </div>
-                                              <div style={{ display: "flex", alignItems: "center", alignSelf: "center", marginLeft: 8 }}>
-                                                <Edit2 
-                                                  onClick={(e) => { e.stopPropagation(); setEditingField("personalDetails.taxResidencyOutside"); }} 
-                                                  size={14} 
-                                                  color="var(--text-muted)" 
-                                                  style={{ cursor: "pointer" }} 
-                                                  title={`Edit ${label}`}
-                                                />
                                               </div>
                                             </div>
                                             {showTaxResidency && (
