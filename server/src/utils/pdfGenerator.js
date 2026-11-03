@@ -146,12 +146,13 @@ function getVariableValue(variableName, appData) {
     case 'alwaysTrueOvd': return true;
     case 'isMobileRelationSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Self'; }
     case 'isMobileRelationSpouse': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Spouse'; }
-    case 'isMobileRelationChildren': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Dependent children'; }
-    case 'isMobileRelationParents': { const p = safeJsonParse(appData.personalDetails) || {}; return p.phoneDependency === 'Dependent parents'; }
+    // "Child Dependent" / "Parents Dependent" = values saved by the Mobile/Email steps; the older texts are kept for older applications
+    case 'isMobileRelationChildren': { const p = safeJsonParse(appData.personalDetails) || {}; return ['Child Dependent', 'Dependent children', 'Child Dependent 2'].includes(p.phoneDependency); }
+    case 'isMobileRelationParents': { const p = safeJsonParse(appData.personalDetails) || {}; return ['Parents Dependent', 'Dependent parents', 'Parent Dependent 2'].includes(p.phoneDependency); }
     case 'isEmailRelationSelf': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Self'; }
     case 'isEmailRelationSpouse': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Spouse'; }
-    case 'isEmailRelationChildren': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Dependent children'; }
-    case 'isEmailRelationParents': { const p = safeJsonParse(appData.personalDetails) || {}; return p.emailDependency === 'Dependent parents'; }
+    case 'isEmailRelationChildren': { const p = safeJsonParse(appData.personalDetails) || {}; return ['Child Dependent', 'Dependent children', 'Child Dependent 2'].includes(p.emailDependency); }
+    case 'isEmailRelationParents': { const p = safeJsonParse(appData.personalDetails) || {}; return ['Parents Dependent', 'Dependent parents', 'Parent Dependent 2'].includes(p.emailDependency); }
     case 'isSmsFacilityYes': return true;
     case 'isSmsFacilityNo': return false;
     
