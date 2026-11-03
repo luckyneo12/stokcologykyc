@@ -289,7 +289,8 @@ export default function PanStep() {
             type="button" 
             className="btn btn-primary" 
             disabled={loading || digioLoading || (!isAlreadyVerified && (
-              !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(String(pan || "").toUpperCase()) || !fullName || fullName.length < 3 || !dob
+              !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(String(pan || "").toUpperCase()) || !fullName || fullName.length < 3 || !dob ||
+              Object.values(fieldErrors).some(Boolean) // a field marked red (e.g. rejected by verification) must be corrected first
             ))}
             onClick={isAlreadyVerified ? () => nextStep() : handleVerify}
             style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
