@@ -20,7 +20,7 @@ export default function PhoneStep() {
   );
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
-  const [timer, setTimer] = useState(30);
+  const [timer, setTimer] = useState(60);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(true);
@@ -82,7 +82,7 @@ export default function PhoneStep() {
       setOtp(["", "", "", "", "", ""]); // new OTP sent (incl. resend) — clear the old digits
       setOtpError("");
       setIsOtpMode(true);
-      setTimer(30);
+      setTimer(60);
       setTimeout(() => document.getElementById("otp-0")?.focus(), 0);
       addToast("OTP sent!", "success");
     } catch (error) {
@@ -457,7 +457,7 @@ export default function PhoneStep() {
             {timer > 0 ? (
               <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
             ) : (
-              <button className="btn btn-ghost btn-sm" onClick={handleSendOtp} disabled={loading} style={{ color: "var(--wise-green)", fontWeight: 800 }}>Resend Verification SMS</button>
+              <button className="btn btn-ghost btn-sm" onClick={handleSendOtp} disabled={loading} style={{ background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 800, fontSize: "0.95rem", padding: "10px 24px", borderRadius: "100px", border: "none" }}>Resend OTP</button>
             )}
           </div>
 
