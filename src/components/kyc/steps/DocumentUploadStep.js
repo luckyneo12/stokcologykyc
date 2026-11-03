@@ -42,7 +42,9 @@ const UploadIcon = () => (
   </svg>
 );
 
-const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }) => {
+// inline: the option list opens in the page flow (pushes what is below it down) instead of floating
+// over it — used where a floating list would cover the buttons underneath
+const CustomSelect = ({ value, onChange, options, placeholder, error, disabled, inline = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -84,9 +86,9 @@ const CustomSelect = ({ value, onChange, options, placeholder, error, disabled }
       </div>
       
       {isOpen && (
-        <div style={{ 
-          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1000, 
-          background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)", 
+        <div style={{
+          ...(inline ? { position: "relative" } : { position: "absolute", top: "100%", left: 0, right: 0, zIndex: 1000 }),
+          background: "var(--bg-elevated)", border: "1.5px solid var(--border-color)",
           borderRadius: "12px", marginTop: "4px", 
           boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.1)",
           maxHeight: "220px", overflowY: "auto", padding: "6px"
@@ -1316,6 +1318,7 @@ export default function DocumentUploadStep() {
                 options={finOptions}
                 placeholder="-- Select Income Proof --"
                 disabled={!isFinProofRequired}
+                inline
               />
               <input type="file" disabled={!isFinProofRequired} ref={finInputRef} onChange={handleFinChange} style={{ display: "none" }} accept="image/*,application/pdf" />
               

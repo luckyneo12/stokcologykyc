@@ -132,6 +132,8 @@ export default function BankVerificationStep() {
   // Boxes marked red after the bank verification rejected the details ({ ifsc, accountNumber })
   const [bankFieldErrors, setBankFieldErrors] = useState({});
   const [isFetchingIfsc, setIsFetchingIfsc] = useState(false);
+  // true once the MICR was filled from the IFSC lookup — the MICR box is then not editable
+  const [micrFromIfsc, setMicrFromIfsc] = useState(false);
 
   const isAlreadyProcessed = !!bankDetails?.accountHolderName && form.accountNumber === bankDetails.accountNumber && form.ifsc === bankDetails.ifsc;
   
@@ -212,6 +214,7 @@ export default function BankVerificationStep() {
       
       // Clear details if IFSC is not complete
       if (!ifsc || ifsc.length < 11) {
+        setMicrFromIfsc(false);
         if (form.micr || form.bankName) {
           setForm(prev => ({ ...prev, micr: "", bankName: "" }));
         }
@@ -220,6 +223,7 @@ export default function BankVerificationStep() {
 
       if (ifsc.length === 11) {
         setIsFetchingIfsc(true);
+        setMicrFromIfsc(false);
         try {
           const result = await verifyIfsc(ifsc);
           if (result.success && result.data) {
@@ -244,6 +248,7 @@ export default function BankVerificationStep() {
               ...(district ? { district } : {}),
               ...(state ? { state } : {})
             }));
+            setMicrFromIfsc(Boolean(micr));
           }
         } catch (error) {
           console.error("IFSC fetch error:", error);
@@ -485,18 +490,26 @@ export default function BankVerificationStep() {
                 <label style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 700, marginBottom: "8px", display: "block" }}>
                   MICR
                 </label>
-                <input 
-                  placeholder={isFetchingIfsc ? "Loading..." : "MICR"} 
-                  value={isFetchingIfsc ? "Fetching..." : form.micr} 
-                  readOnly={isFetchingIfsc}
-                  onChange={e => update("micr", e.target.value)} 
-                  className="input-field"
-                  style={{ 
-                    opacity: isFetchingIfsc ? 0.7 : 1,
-                    fontStyle: isFetchingIfsc ? "italic" : "normal",
-                    background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px"
-                  }} 
-                />
+                {/* Editable only when a complete IFSC could not fetch a MICR; a fetched MICR is locked */}
+                {(() => {
+                  const micrEditable = !isFetchingIfsc && !micrFromIfsc && String(form.ifsc || "").trim().length === 11;
+                  return (
+                    <input
+                      placeholder={isFetchingIfsc ? "Loading..." : "MICR"}
+                      value={isFetchingIfsc ? "Fetching..." : form.micr}
+                      readOnly={!micrEditable}
+                      onChange={e => { if (micrEditable) update("micr", e.target.value); }}
+                      className="input-field"
+                      style={{
+                        opacity: isFetchingIfsc ? 0.7 : 1,
+                        fontStyle: isFetchingIfsc ? "italic" : "normal",
+                        background: micrEditable ? "var(--input-bg)" : "var(--bg-secondary)",
+                        cursor: micrEditable ? "text" : "not-allowed",
+                        color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px"
+                      }}
+                    />
+                  );
+                })()}
               </div>
             </div>
 

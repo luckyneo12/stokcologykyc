@@ -6,6 +6,26 @@ import PdfScrollViewer from "../../PdfScrollViewer";
 import { initializeDigio, fetchDigioRequestResponse, createDigioRequest } from "@/utils/digio";
 import { Download } from "lucide-react";
 
+// Self-contained spinner (the "loading-spinner" / "spinner-border" classes used here before are not
+// defined anywhere, so nothing was spinning)
+const Spinner = ({ size = 40, stroke = 3, style }) => (
+  <>
+    <style>{`@keyframes cesSpin { to { transform: rotate(360deg); } }`}</style>
+    <span
+      aria-hidden="true"
+      style={{
+        width: size, height: size, display: "inline-block", borderRadius: "50%",
+        border: `${stroke}px solid var(--border-color)`, borderTopColor: "var(--wise-green)",
+        animation: "cesSpin 0.8s linear infinite", flexShrink: 0, ...style,
+      }}
+    />
+  </>
+);
+
+// The signed PDF is created in the background after the eSign; the download waits for it this long
+const SIGNED_PDF_RETRY_MS = 3000;
+const SIGNED_PDF_MAX_WAIT_MS = 90000;
+
 export default function CorrectionEsignStep() {
   const { applicationData, drafts, token, addToast } = useCorrection();
   
@@ -276,35 +296,50 @@ export default function CorrectionEsignStep() {
           Your application with all the updated details has been successfully signed and submitted. 
           Our team will review your application shortly.
         </p>
-        <button 
-          className="btn btn-primary" 
-          style={{ marginTop: 24 }}
+        <button
+          className="btn btn-primary"
           onClick={async () => {
             try {
               setDownloadingEsign(true);
-              const res = await fetch(`${API_URL}/api/kyc/download-pdf/${applicationData.applicationId}`, {
-                headers: { "Authorization": `Bearer ${token}` }
-              });
-              
-              if (res.ok) {
-                let filename = `KYC_Application_${applicationData.applicationId}_Signed.pdf`;
-                const disposition = res.headers.get("Content-Disposition");
-                if (disposition && disposition.includes("filename=")) {
-                  filename = disposition.split("filename=")[1].replace(/["']/g, "");
+              // The signed PDF may still be generating: keep the spinner and try again until it is ready
+              const startedAt = Date.now();
+              while (true) {
+                const res = await fetch(`${API_URL}/api/kyc/download-pdf/${applicationData.applicationId}`, {
+                  headers: { "Authorization": `Bearer ${token}` }
+                });
+
+                if (res.ok) {
+                  let filename = `KYC_Application_${applicationData.applicationId}_Signed.pdf`;
+                  const disposition = res.headers.get("Content-Disposition");
+                  if (disposition && disposition.includes("filename=")) {
+                    filename = disposition.split("filename=")[1].replace(/["']/g, "");
+                  }
+
+                  const blob = await res.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = filename;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  window.URL.revokeObjectURL(url);
+                  return;
                 }
-                
-                const blob = await res.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-                return;
+
+                // Only "PDF not available yet" means it is still being generated; anything else stops here
+                const errData = await res.json().catch(() => ({}));
+                const stillGenerating = res.status === 404 && /not available yet/i.test(errData?.error || "");
+                if (!stillGenerating) {
+                  addToast(errData?.error || "Failed to fetch e-Signed document", "error");
+                  return;
+                }
+                if (Date.now() - startedAt >= SIGNED_PDF_MAX_WAIT_MS) {
+                  addToast("e-Signed PDF is still being generated in the background. Please try again in a few seconds.", "info");
+                  return;
+                }
+                await new Promise((r) => setTimeout(r, SIGNED_PDF_RETRY_MS));
               }
-              addToast("e-Signed PDF is still being generated in the background. Please try again in a few seconds.", "info");
             } catch (err) {
               addToast("Failed to fetch e-Signed document", "error");
             } finally {
@@ -312,9 +347,10 @@ export default function CorrectionEsignStep() {
             }
           }}
           disabled={downloadingEsign}
+          style={{ marginTop: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}
         >
           {downloadingEsign ? (
-             <><span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Fetching...</>
+             <><Spinner size={18} stroke={2.5} /> Generating e-Signed PDF...</>
           ) : (
              "Download e-Signed PDF"
           )}
@@ -337,7 +373,7 @@ export default function CorrectionEsignStep() {
       <div className="step-card" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px", alignItems: "center" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: "64px 0" }}>
-            <div className="loading-spinner" style={{ margin: "0 auto 16px" }}></div>
+            <Spinner style={{ display: "block", margin: "0 auto 16px" }} />
             <p style={{ color: "var(--text-muted)", fontWeight: 600 }}>Generating your updated PDF...</p>
           </div>
         ) : error && !pdfUrl ? (
@@ -377,7 +413,7 @@ export default function CorrectionEsignStep() {
 
             {(phase === "digio" || phase === "processing") ? (
               <div style={{ textAlign: "center", width: "100%", padding: 24, background: "rgba(159, 232, 112, 0.1)", borderRadius: 12 }}>
-                <div className="loading-spinner" style={{ margin: "0 auto 16px" }}></div>
+                <Spinner style={{ display: "block", margin: "0 auto 16px" }} />
                 <p style={{ color: "var(--text-primary)", fontWeight: 700 }}>
                   {phase === "digio" ? "Waiting for Digio e-Sign completion..." : "Verifying your e-Sign and submitting..."}
                 </p>
