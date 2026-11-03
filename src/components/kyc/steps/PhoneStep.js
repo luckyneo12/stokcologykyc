@@ -29,7 +29,7 @@ export default function PhoneStep() {
   const [phoneError, setPhoneError] = useState("");
   const [otpError, setOtpError] = useState("");
   const [verifying, setVerifying] = useState(false);
-  const [showEditTip, setShowEditTip] = useState(false);
+  const [dependencyError, setDependencyError] = useState(false); // Send OTP pressed without a dependency
   const phoneErrorTimer = useRef(null);
   useEffect(() => () => clearTimeout(phoneErrorTimer.current), []);
 
@@ -68,6 +68,7 @@ export default function PhoneStep() {
       return;
     }
     if (!phoneDependency) {
+      setDependencyError(true);
       addToast("Please select dependency", "error");
       return;
     }
@@ -271,7 +272,7 @@ export default function PhoneStep() {
         {/* Phone Input Section */}
         <div style={{ marginBottom: isOtpMode ? 20 : 28, transition: "all 0.3s ease" }}>
           <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.9rem", opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}>Mobile Number</label>
-          <div className="input-field" style={{ position: "relative", display: "flex", alignItems: "baseline", paddingLeft: "16px", paddingRight: isOtpMode ? "60px" : "24px", cursor: isOtpMode ? "default" : "text", borderColor: phoneError ? "var(--wise-danger)" : "var(--border-color)" }}>
+          <div className="input-field" style={{ position: "relative", display: "flex", alignItems: "baseline", paddingLeft: "16px", paddingRight: "24px", cursor: isOtpMode ? "default" : "text", borderColor: phoneError ? "var(--wise-danger)" : "var(--border-color)" }}>
             <span style={{ fontWeight: 700, color: "var(--text-muted)", fontSize: "1.1rem", marginRight: "8px", pointerEvents: "none", opacity: isOtpMode ? 0.6 : 1 }}>+91</span>
             <input
               type="tel" inputMode="numeric" placeholder="00000 00000"
@@ -280,35 +281,6 @@ export default function PhoneStep() {
               onKeyDown={(e) => e.key === "Enter" && phoneNumber.length === 10 && !isOtpMode && handleSendOtp()}
               readOnly={isOtpMode}
             />
-            {isOtpMode && (
-              <button
-                onClick={() => { setShowEditTip(false); setIsOtpMode(false); }}
-                onMouseEnter={() => setShowEditTip(true)}
-                onMouseLeave={() => setShowEditTip(false)}
-                aria-label="Edit mobile number"
-                style={{
-                  position: "absolute", right: 15, top: "50%", transform: "translateY(-50%)",
-                  background: "var(--wise-green)", border: "none", borderRadius: "10px",
-                  padding: "8px", cursor: "pointer", color: "var(--wise-dark-green)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "all 0.2s ease"
-                }}
-                className="hover-scale"
-              >
-                <EditIcon size={18} />
-                {showEditTip && (
-                  <span style={{
-                    position: "absolute", bottom: "calc(100% + 8px)", right: 0,
-                    background: "var(--text-primary)", color: "var(--bg-primary)",
-                    fontSize: "0.75rem", fontWeight: 700, whiteSpace: "nowrap",
-                    padding: "6px 10px", borderRadius: "8px", pointerEvents: "none",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 10
-                  }}>
-                    Edit mobile number
-                  </span>
-                )}
-              </button>
-            )}
           </div>
           {phoneError && (
             <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>{phoneError}</p>
@@ -321,11 +293,12 @@ export default function PhoneStep() {
           <select 
             className="input-field" 
             value={phoneDependency} 
-            onChange={e => setPhoneDependency(e.target.value)}
+            onChange={e => { setPhoneDependency(e.target.value); setDependencyError(false); }}
             disabled={isOtpMode}
             style={{ 
               fontWeight: 700, 
               color: phoneDependency ? "var(--text-primary)" : "var(--text-muted)",
+              borderColor: dependencyError && !phoneDependency ? "var(--wise-danger)" : undefined,
               cursor: isOtpMode ? "not-allowed" : "pointer" 
             }}
           >
@@ -335,6 +308,9 @@ export default function PhoneStep() {
             <option value="Child Dependent">Child Dependent</option>
             <option value="Parents Dependent">Parents Dependent</option>
           </select>
+          {dependencyError && !phoneDependency && (
+            <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>Please select dependency</p>
+          )}
         </div>
 
         {/* Terms and Conditions */}
@@ -461,8 +437,15 @@ export default function PhoneStep() {
             )}
           </div>
 
+          {/* Cancel while the resend timer runs; once it has finished, Edit Number takes its place */}
           <div className="flex gap-md">
-            <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
+            {timer > 0 ? (
+              <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
+            ) : (
+              <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <EditIcon size={18} /> Edit Number
+              </button>
+            )}
           </div>
         </div>
         {/* PDF Modal */}

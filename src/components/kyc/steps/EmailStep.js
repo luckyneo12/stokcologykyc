@@ -25,7 +25,7 @@ export default function EmailStep() {
   const [emailError, setEmailError] = useState("");
   const [otpError, setOtpError] = useState("");
   const [verifying, setVerifying] = useState(false);
-  const [showEditTip, setShowEditTip] = useState(false);
+  const [dependencyError, setDependencyError] = useState(false); // Send OTP pressed without a dependency
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [timer, setTimer] = useState(60);
@@ -63,6 +63,7 @@ export default function EmailStep() {
       return;
     }
     if (!emailDependency) {
+      setDependencyError(true);
       addToast("Please select email dependency", "error");
       return;
     }
@@ -201,7 +202,7 @@ export default function EmailStep() {
           <div style={{ position: "relative" }}>
             <input
               type="email" className="input-field" placeholder="name@example.com"
-              style={{ fontWeight: 700, paddingRight: isOtpMode ? "60px" : "24px", borderColor: emailError ? "var(--wise-danger)" : undefined, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}
+              style={{ fontWeight: 700, paddingRight: "24px", borderColor: emailError ? "var(--wise-danger)" : undefined, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}
               inputMode="email" autoComplete="email"
               value={email} onChange={handleEmailChange}
               onKeyDown={(e) => {
@@ -212,36 +213,6 @@ export default function EmailStep() {
               }}
               readOnly={isOtpMode}
             />
-            {isOtpMode && (
-              <button 
-                type="button"
-                onClick={() => { setShowEditTip(false); setIsOtpMode(false); }}
-                onMouseEnter={() => setShowEditTip(true)}
-                onMouseLeave={() => setShowEditTip(false)}
-                aria-label="Edit email address"
-                style={{
-                  position: "absolute", right: 15, top: "50%", transform: "translateY(-50%)",
-                  background: "var(--wise-green)", border: "none", borderRadius: "10px",
-                  padding: "8px", cursor: "pointer", color: "var(--wise-dark-green)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "all 0.2s ease"
-                }}
-                className="hover-scale"
-              >
-                <EditIcon size={18} />
-                {showEditTip && (
-                  <span style={{
-                    position: "absolute", bottom: "calc(100% + 8px)", right: 0,
-                    background: "var(--text-primary)", color: "var(--bg-primary)",
-                    fontSize: "0.75rem", fontWeight: 700, whiteSpace: "nowrap",
-                    padding: "6px 10px", borderRadius: "8px", pointerEvents: "none",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 10
-                  }}>
-                    Edit email address
-                  </span>
-                )}
-              </button>
-            )}
           </div>
           {emailError && (
             <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>{emailError}</p>
@@ -254,11 +225,12 @@ export default function EmailStep() {
           <select 
             className="input-field" 
             value={emailDependency} 
-            onChange={e => setEmailDependency(e.target.value)}
+            onChange={e => { setEmailDependency(e.target.value); setDependencyError(false); }}
             disabled={isOtpMode}
             style={{ 
               fontWeight: 700, 
               color: emailDependency ? "var(--text-primary)" : "var(--text-muted)",
+              borderColor: dependencyError && !emailDependency ? "var(--wise-danger)" : undefined,
               cursor: isOtpMode ? "not-allowed" : "pointer" 
             }}
           >
@@ -268,6 +240,9 @@ export default function EmailStep() {
             <option value="Child Dependent">Child Dependent</option>
             <option value="Parents Dependent">Parents Dependent</option>
           </select>
+          {dependencyError && !emailDependency && (
+            <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>Please select dependency</p>
+          )}
         </div>
 
         {/* Terms and Conditions */}
@@ -389,8 +364,15 @@ export default function EmailStep() {
             )}
           </div>
 
+          {/* Cancel while the resend timer runs; once it has finished, Edit Email takes its place */}
           <div className="flex gap-md">
-            <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
+            {timer > 0 ? (
+              <button type="button" className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
+            ) : (
+              <button type="button" className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <EditIcon size={18} /> Edit Email
+              </button>
+            )}
           </div>
         </div>
       </div>
