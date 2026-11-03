@@ -361,7 +361,8 @@ export default function DetailsStep() {
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: "" }));
   };
 
-  const validate = () => {
+  // Same rules as validate(), without marking fields — used to keep Continue disabled until all are filled
+  const getErrors = () => {
     const errs = {};
     if (!form.fatherName?.trim()) errs.fatherName = "Req";
     if (!form.motherName?.trim()) errs.motherName = "Req";
@@ -390,9 +391,15 @@ export default function DetailsStep() {
       if (form.taxExempt === "Yes" && !form.taxExemptReason?.trim()) errs.taxExemptReason = "Req";
     }
 
+    return errs;
+  };
+
+  const validate = () => {
+    const errs = getErrors();
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
+  const canContinue = Object.keys(getErrors()).length === 0;
 
   const handleNext = () => {
     if (!validate()) {
@@ -894,7 +901,7 @@ export default function DetailsStep() {
           )}
 
           <div style={{ gridColumn: "1 / -1", marginTop: 32, display: "flex", flexDirection: "column", gap: 12, maxWidth: "400px", marginLeft: "auto", marginRight: "auto", width: "100%" }}>
-            <button className="btn btn-primary" onClick={handleNext}>
+            <button className="btn btn-primary" onClick={handleNext} disabled={!canContinue}>
               Continue
             </button>
             <button className="btn btn-secondary" onClick={prevStep}>

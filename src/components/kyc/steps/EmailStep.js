@@ -6,6 +6,9 @@ import { sendEmailOtp, verifyEmailOtp } from "@/utils/kycApi";
 import { getEmailTypoSuggestion } from "@/utils/emailTypo";
 import Logo from "../Logo";
 
+// The OTP is valid for 5 minutes on the server (authController); resend opens when it expires
+const OTP_VALIDITY_SECONDS = 300;
+
 const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const EMAIL_DOMAIN_ERROR = "Please check and enter your correct email address.";
 
@@ -28,7 +31,7 @@ export default function EmailStep() {
   const [dependencyError, setDependencyError] = useState(false); // Send OTP pressed without a dependency
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
-  const [timer, setTimer] = useState(60);
+  const [timer, setTimer] = useState(OTP_VALIDITY_SECONDS);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(true);
@@ -78,7 +81,7 @@ export default function EmailStep() {
       setOtp(["", "", "", "", "", ""]); // new OTP sent (incl. resend) — clear the old digits
       setOtpError("");
       setIsOtpMode(true);
-      setTimer(60);
+      setTimer(OTP_VALIDITY_SECONDS);
       setTimeout(() => document.getElementById("otp-0")?.focus(), 0);
       addToast("OTP sent to your email!", "success");
     } catch (error) {
@@ -95,7 +98,7 @@ export default function EmailStep() {
     if (hadBadChars) {
       setEmailError("Only letters, numbers and . _ % + - @ are allowed in an email address");
     } else if (val && !isValidFormat) {
-      setEmailError("Enter a valid email address (e.g. name@example.com)");
+      setEmailError("Enter a valid email address (e.g. name@gmail.com, name@yahoo.com or name@zoho.com)");
     } else if (isValidFormat && getEmailTypoSuggestion(val)) {
       setEmailError(EMAIL_DOMAIN_ERROR);
     } else {
@@ -230,7 +233,7 @@ export default function EmailStep() {
             style={{ 
               fontWeight: 700, 
               color: emailDependency ? "var(--text-primary)" : "var(--text-muted)",
-              borderColor: dependencyError && !emailDependency ? "var(--wise-danger)" : undefined,
+              borderColor: (dependencyError || EMAIL_REGEX.test(email)) && !emailDependency ? "var(--wise-danger)" : undefined,
               cursor: isOtpMode ? "not-allowed" : "pointer" 
             }}
           >
@@ -240,7 +243,7 @@ export default function EmailStep() {
             <option value="Child Dependent">Child Dependent</option>
             <option value="Parents Dependent">Parents Dependent</option>
           </select>
-          {dependencyError && !emailDependency && (
+          {(dependencyError || EMAIL_REGEX.test(email)) && !emailDependency && (
             <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>Please select dependency</p>
           )}
         </div>
@@ -294,11 +297,9 @@ export default function EmailStep() {
         </div>
 
         <div style={{ display: isOtpMode ? "none" : "flex", gap: "16px" }}>
-          <button type="button" className="btn btn-secondary" onClick={prevStep} style={{ flex: 1 }}>
-            Back
-          </button>
-          <button type="button" className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ flex: 1.5 }}>
-            {loading ? "Sending..." : "Send OTP"}
+          {/* Enabled only once a valid email, the dependency and the terms are all filled */}
+          <button type="button" className="btn btn-primary" onClick={handleSendOtp} disabled={loading || !EMAIL_REGEX.test(email) || !!emailError || !emailDependency || !acceptedTerms} style={{ width: "100%" }}>
+            {loading ? "Sending..." : "Verify Email"}
           </button>
         </div>
 
@@ -358,7 +359,7 @@ export default function EmailStep() {
 
           <div className="text-center" style={{ marginBottom: 20 }}>
             {timer > 0 ? (
-              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
+              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{String(Math.floor(timer / 60)).padStart(2, "0")}:{String(timer % 60).padStart(2, "0")}</span></p>
             ) : (
               <button className="btn btn-ghost btn-sm" onClick={handleSendOtp} style={{ background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 800, fontSize: "0.95rem", padding: "10px 24px", borderRadius: "100px", border: "none" }}>Resend OTP</button>
             )}

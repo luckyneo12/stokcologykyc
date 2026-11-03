@@ -16,7 +16,7 @@ const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const EMAIL_DOMAIN_ERROR = "Please check and enter your correct email address.";
 const getEmailError = (val, hadBadChars = false) => {
   if (hadBadChars) return "Only letters, numbers and . _ % + - @ are allowed in an email address";
-  if (val && !EMAIL_REGEX.test(val)) return "Enter a valid email address (e.g. name@example.com)";
+  if (val && !EMAIL_REGEX.test(val)) return "Enter a valid email address (e.g. name@gmail.com, name@yahoo.com or name@zoho.com)";
   if (val && getEmailTypoSuggestion(val)) return EMAIL_DOMAIN_ERROR;
   return "";
 };
@@ -673,10 +673,11 @@ export default function NomineeStep() {
     }
   };
 
-  const validate = () => {
+  // Same rules as validate(), without marking fields — used to keep Submit disabled until all are valid
+  const getValidation = () => {
     const newErrors = {};
     let isValid = true;
-    
+
     const userPAN = typeof identityDetails?.pan === "string" ? identityDetails.pan.toUpperCase().trim() : "";
     const userAadhaar = identityDetails?.aadhaar?.trim();
 
@@ -803,9 +804,15 @@ export default function NomineeStep() {
       }
     });
 
+    return { newErrors, isValid };
+  };
+
+  const validate = () => {
+    const { newErrors, isValid } = getValidation();
     setErrors(newErrors);
     return isValid;
   };
+  const canSubmit = getValidation().isValid;
 
   const handleNext = () => {
     if (!validate()) {
@@ -1444,11 +1451,12 @@ export default function NomineeStep() {
 
       {/* Action buttons at the very bottom */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 48, maxWidth: "480px", marginLeft: "auto", marginRight: "auto", width: "100%" }}>
-        <button 
-          onClick={handleNext} 
-          className="btn btn-primary" 
-          style={{ 
-            background: "var(--wise-green)", color: "var(--wise-dark-green)", 
+        <button
+          onClick={handleNext}
+          className="btn btn-primary"
+          disabled={!canSubmit}
+          style={{
+            background: "var(--wise-green)", color: "var(--wise-dark-green)",
             borderRadius: "20px", height: "64px", fontSize: "1.2rem", fontWeight: 900,
             boxShadow: "0 10px 30px rgba(159, 232, 112, 0.2)"
           }}

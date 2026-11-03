@@ -5,6 +5,9 @@ import { SmartphoneIcon, ArrowRightIcon, ArrowLeftIcon, CheckCircleIcon, EditIco
 import Logo from "../Logo";
 import { sendOtp, verifyOtp, startKycApplication, getStorage } from "@/utils/kycApi";
 
+// The OTP is valid for 5 minutes on the server (authController); resend opens when it expires
+const OTP_VALIDITY_SECONDS = 300;
+
 const CheckIcon = ({ size = 12 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--bg-primary)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
@@ -20,7 +23,7 @@ export default function PhoneStep() {
   );
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
-  const [timer, setTimer] = useState(60);
+  const [timer, setTimer] = useState(OTP_VALIDITY_SECONDS);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(true);
@@ -83,7 +86,7 @@ export default function PhoneStep() {
       setOtp(["", "", "", "", "", ""]); // new OTP sent (incl. resend) — clear the old digits
       setOtpError("");
       setIsOtpMode(true);
-      setTimer(60);
+      setTimer(OTP_VALIDITY_SECONDS);
       setTimeout(() => document.getElementById("otp-0")?.focus(), 0);
       addToast("OTP sent!", "success");
     } catch (error) {
@@ -197,7 +200,9 @@ export default function PhoneStep() {
       // Fetch the full application state to decide where to go
       let fullApp = null;
       try {
-        fullApp = await refreshProgress(startResult.applicationId, authResult.token, false);
+        // keepScreen: same full load, but without the full-page loader — otherwise this step is
+        // removed and comes back on the number screen for a moment before the next step shows
+        fullApp = await refreshProgress(startResult.applicationId, authResult.token, false, { keepScreen: true });
       } catch (e) {
         console.warn("[PhoneStep] Progress refresh failed:", e.message);
       }
@@ -249,8 +254,14 @@ export default function PhoneStep() {
       setOtp(["", "", "", "", "", ""]);
     } finally {
       setLoading(false);
-      setVerifying(false);
-      if (failed) setTimeout(() => document.getElementById("otp-0")?.focus(), 50);
+      if (failed) {
+        setVerifying(false);
+        setTimeout(() => document.getElementById("otp-0")?.focus(), 50);
+      } else {
+        // Verified: keep the spinner + locked boxes until the next step replaces this screen.
+        // Safety release in case the move to the next step does not happen.
+        setTimeout(() => setVerifying(false), 8000);
+      }
     }
   };
 
@@ -298,7 +309,7 @@ export default function PhoneStep() {
             style={{ 
               fontWeight: 700, 
               color: phoneDependency ? "var(--text-primary)" : "var(--text-muted)",
-              borderColor: dependencyError && !phoneDependency ? "var(--wise-danger)" : undefined,
+              borderColor: (dependencyError || phoneNumber.length === 10) && !phoneDependency ? "var(--wise-danger)" : undefined,
               cursor: isOtpMode ? "not-allowed" : "pointer" 
             }}
           >
@@ -308,7 +319,7 @@ export default function PhoneStep() {
             <option value="Child Dependent">Child Dependent</option>
             <option value="Parents Dependent">Parents Dependent</option>
           </select>
-          {dependencyError && !phoneDependency && (
+          {(dependencyError || phoneNumber.length === 10) && !phoneDependency && (
             <p style={{ fontSize: "0.7rem", color: "var(--wise-danger)", marginTop: "4px", fontWeight: 700 }}>Please select dependency</p>
           )}
         </div>
@@ -370,8 +381,9 @@ export default function PhoneStep() {
         </div>
 
         <div style={{ display: isOtpMode ? "none" : "flex" }}>
-          <button className="btn btn-primary" onClick={handleSendOtp} disabled={loading} style={{ width: "100%" }}>
-            {loading ? "Sending..." : "Send OTP"}
+          {/* Enabled only once a full 10-digit number, the dependency and the terms are all filled */}
+          <button className="btn btn-primary" onClick={handleSendOtp} disabled={loading || phoneNumber.length !== 10 || !phoneDependency || !acceptedTerms} style={{ width: "100%" }}>
+            {loading ? "Sending..." : "Verify Number"}
           </button>
         </div>
 
@@ -431,7 +443,7 @@ export default function PhoneStep() {
 
           <div className="text-center" style={{ marginBottom: 20 }}>
             {timer > 0 ? (
-              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
+              <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{String(Math.floor(timer / 60)).padStart(2, "0")}:{String(timer % 60).padStart(2, "0")}</span></p>
             ) : (
               <button className="btn btn-ghost btn-sm" onClick={handleSendOtp} disabled={loading} style={{ background: "var(--wise-green)", color: "var(--wise-dark-green)", fontWeight: 800, fontSize: "0.95rem", padding: "10px 24px", borderRadius: "100px", border: "none" }}>Resend OTP</button>
             )}

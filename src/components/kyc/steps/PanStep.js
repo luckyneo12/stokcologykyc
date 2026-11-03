@@ -288,7 +288,9 @@ export default function PanStep() {
           <button 
             type="button" 
             className="btn btn-primary" 
-            disabled={loading || digioLoading} 
+            disabled={loading || digioLoading || (!isAlreadyVerified && (
+              !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(String(pan || "").toUpperCase()) || !fullName || fullName.length < 3 || !dob
+            ))}
             onClick={isAlreadyVerified ? () => nextStep() : handleVerify}
             style={{ height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
           >

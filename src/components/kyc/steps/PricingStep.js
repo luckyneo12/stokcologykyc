@@ -97,8 +97,12 @@ export default function PricingStep() {
     }
     clearSegmentsDraft();
     clearBsdaDraft();
-    clearBrokerageDraft();
-    clearTariffDraft();
+    // The two acceptances are kept (saved per application), so they stay ticked when the user comes
+    // back to this step. A rejected pricing step must be accepted again, so it still clears them.
+    if (isPricingRejected) {
+      clearBrokerageDraft();
+      clearTariffDraft();
+    }
     nextStep({ segments: selectedSegments, bsda: bsdaPreference });
   };
 
@@ -241,23 +245,11 @@ export default function PricingStep() {
         </div>
 
         <div className="flex gap-md">
-          <button 
-            className="btn btn-secondary" 
-            onClick={() => {
-              if (emailVerified) {
-                addToast("Email verified. You cannot go back to the verification step.", "info");
-              } else {
-                prevStep();
-              }
-            }} 
-            style={{ flex: 1, opacity: emailVerified ? 0.6 : 1 }}
-          >
-            Back
-          </button>
-          <button 
-            className="btn btn-primary" 
-            onClick={handleContinue} 
-            style={{ flex: 1.5, opacity: (!brokerageAccepted || !tariffAccepted) ? 0.6 : 1 }}
+          <button
+            className="btn btn-primary"
+            onClick={handleContinue}
+            disabled={!brokerageAccepted || !tariffAccepted}
+            style={{ flex: 1, opacity: (!brokerageAccepted || !tariffAccepted) ? 0.6 : 1 }}
           >
             Submit <ArrowRightIcon size={18} />
           </button>

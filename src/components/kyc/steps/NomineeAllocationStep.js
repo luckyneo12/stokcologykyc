@@ -181,10 +181,11 @@ export default function NomineeAllocationStep() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <button 
-            className="btn btn-primary" 
-            onClick={handleNext} 
-            style={{ 
+          <button
+            className="btn btn-primary"
+            onClick={handleNext}
+            disabled={!isValid}
+            style={{
               width: "100%", height: "56px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 900
             }}
           >

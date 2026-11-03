@@ -321,6 +321,12 @@ export default function BankVerificationStep() {
     return true;
   };
 
+  // Every bank field filled (11-character IFSC) and both account numbers match
+  const bankFormComplete = Boolean(
+    form.accountNumber && form.ifsc && String(form.ifsc).length === 11 && form.accountType &&
+    form.accountNumber === form.confirmAccountNumber
+  );
+
   const handleSubmit = () => {
     if (!validateBankDetails()) return;
     if (isAlreadyProcessed) {
@@ -570,10 +576,11 @@ export default function BankVerificationStep() {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-              <button 
-                className="btn-primary" 
-                onClick={handleSubmit} 
-                style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800 }}
+              <button
+                className="btn-primary"
+                onClick={handleSubmit}
+                disabled={!bankFormComplete}
+                style={{ width: "100%", height: "60px", borderRadius: "16px", fontSize: "1.1rem", fontWeight: 800, opacity: bankFormComplete ? 1 : 0.6, cursor: bankFormComplete ? "pointer" : "not-allowed" }}
               >
                {verificationState === "verifying" ? "Verifying..." : isAlreadyProcessed ? (bankDetails?.verified ? "Verified - Continue" : "Mismatched - Continue") : "Submit"}
               </button>

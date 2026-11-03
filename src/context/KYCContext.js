@@ -401,7 +401,9 @@ export function KYCProvider({ children }) {
   }, []);
 
   const refreshProgress = useCallback(
-    async (appId, authToken, isPolling = false) => {
+    // options.keepScreen: load exactly like an initial load, but without the full-page "Loading..."
+    // screen (used right after the mobile OTP so the current screen stays until the next step shows)
+    async (appId, authToken, isPolling = false, options = {}) => {
       // Ensure we have an applicationId and token (check both storage types)
       const activeAppId =
         appId ||
@@ -430,7 +432,7 @@ export function KYCProvider({ children }) {
         return null;
       }
 
-      if (!isPolling) {
+      if (!isPolling && !options?.keepScreen) {
         setState((prev) => ({ ...prev, isRestoring: true }));
       }
 

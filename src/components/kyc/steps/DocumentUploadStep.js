@@ -802,6 +802,14 @@ export default function DocumentUploadStep() {
     reader.readAsDataURL(file);
   };
 
+  // Same checks as handleSubmit — Continue stays disabled until every required document is done
+  const documentsComplete = Boolean(
+    panPreview && sigPreview && selfiePhase === "done" &&
+    (!needsBankProof || bankProofPreview) &&
+    (!isFinProofRequired || (finType && finPreview)) &&
+    (!finPreview || finType)
+  );
+
   const handleSubmit = async () => {
     if (!panPreview) {
       addToast("Please upload your PAN card", "error");
@@ -1345,7 +1353,7 @@ export default function DocumentUploadStep() {
         <button 
           className="btn btn-premium" 
           onClick={handleSubmit} 
-          disabled={submitting || isCroppingPan || isCroppingSig}
+          disabled={submitting || isCroppingPan || isCroppingSig || !documentsComplete}
           style={{ width: "100%", height: "64px", padding: "0 16px", borderRadius: "16px", fontWeight: 800, fontSize: "1.15rem", color: "#000" }}
         >
           {submitting ? "Saving..." : "Continue"}
