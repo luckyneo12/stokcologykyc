@@ -3902,7 +3902,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
         return reject(400, {
           success: false,
           code: "FACE_MATCH_FAILED",
-          error: "Couldn't match your face with your document photo. Face the light, look straight and retake.",
+          error: "Your face did not match the photo on your document.",
         });
       }
       return reject(502, {
@@ -3919,7 +3919,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
         return reject(400, {
           success: false,
           code: "FACE_MATCH_FAILED",
-          error: "Couldn't match your face with your document photo. Face the light, look straight and retake.",
+          error: "Your face did not match the photo on your document.",
         });
       }
       // Digio's "not_matched" verdict always rejects, whatever the score field says
@@ -3927,7 +3927,7 @@ router.post("/selfie-capture", auth, async (req, res) => {
         return reject(400, {
           success: false,
           code: "FACE_MATCH_LOW",
-          error: "Your face doesn't match the photo on your document clearly enough. Face the light, look straight and retake.",
+          error: "Your face did not match the photo on your document.",
         });
       }
     }

@@ -191,6 +191,7 @@ export default function DocumentUploadStep() {
   const [resumeUrl, setResumeUrl] = useState("");
   const [timeLeft, setTimeLeft] = useState(0);
   const [qrExpired, setQrExpired] = useState(false);
+  const [mobileSelfieOpened, setMobileSelfieOpened] = useState(false); // QR link opened on the phone
 
   // ─── Speed: build the eSign preview PDF in the background ─────────────────────────────────────
   // Once everything on this step is done, the same request the eSign preview will make is sent now, so
@@ -422,6 +423,10 @@ export default function DocumentUploadStep() {
       console.log("[DocUpload Socket.IO] kyc_updated — checking selfie...");
       if (checkSelfieStatusRef.current) checkSelfieStatusRef.current();
     });
+    // The QR link was opened on the phone → tell the user (real time) not to leave this page
+    socket.on("mobile_selfie_opened", () => {
+      setMobileSelfieOpened(true);
+    });
 
     // Fallback poll every 4 seconds using the ref so it always calls the latest version
     selfiePollRef.current = setInterval(() => {
@@ -447,6 +452,7 @@ export default function DocumentUploadStep() {
       startSelfieCrossDevicePolling();
     } else {
       stopSelfieCrossDevicePolling();
+      setMobileSelfieOpened(false);
     }
     return () => stopSelfieCrossDevicePolling();
   }, [showQR, startSelfieCrossDevicePolling, stopSelfieCrossDevicePolling]);
@@ -478,6 +484,7 @@ export default function DocumentUploadStep() {
          
          setTimeLeft(seconds);
          setQrExpired(false);
+         setMobileSelfieOpened(false); // new QR → wait for it to be opened again
          setShowQR(true);
          
          if (timerRef.current) clearInterval(timerRef.current);
@@ -1124,13 +1131,30 @@ export default function DocumentUploadStep() {
                     </>
                   ) : (
                     <div style={{ padding: "20px", background: "var(--bg-elevated)", borderRadius: "16px", textAlign: "center", border: "1px solid var(--border-color)" }}>
-                      <p style={{ fontSize: "0.85rem", marginBottom: "16px", fontWeight: 600, color: "var(--text-primary)" }}>Scan with your mobile camera</p>
-                      
+                      {!mobileSelfieOpened && !qrExpired && (
+                        <p style={{ fontSize: "0.85rem", marginBottom: "16px", fontWeight: 600, color: "var(--text-primary)" }}>Scan with your mobile camera</p>
+                      )}
+
                       {qrExpired ? (
                         <div style={{ padding: "24px", background: "rgba(247, 85, 85, 0.05)", borderRadius: "12px", marginBottom: "16px", border: "1px solid var(--wise-danger)" }}>
                            <p style={{ color: "var(--wise-danger)", fontWeight: 600, marginBottom: "6px" }}>QR Code Expired</p>
-                           <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "12px" }}>Already scanned it? You can still finish the selfie on your phone. Otherwise generate a new QR code.</p>
+                           <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "12px" }}>
+                             {mobileSelfieOpened
+                               ? "The selfie session on your other device has ended. Please generate a new QR code and scan it again."
+                               : "Please generate a new QR code and scan it with your mobile."}
+                           </p>
                            <button onClick={generateMobileQR} style={{ background: "var(--wise-danger)", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "8px", fontWeight: 600, cursor: "pointer" }}>Generate New QR</button>
+                        </div>
+                      ) : mobileSelfieOpened ? (
+                        <div style={{ padding: "20px 16px", background: "rgba(159, 232, 112, 0.12)", borderRadius: "12px", marginBottom: "16px", border: "1.5px solid var(--wise-green)" }}>
+                          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--wise-green)", color: "var(--wise-dark-green)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                              <line x1="12" y1="18" x2="12.01" y2="18" />
+                            </svg>
+                          </div>
+                          <p style={{ color: "var(--text-primary)", fontWeight: 800, fontSize: "0.95rem", marginBottom: "6px" }}>Selfie opened on another device</p>
+                          <p style={{ color: "var(--wise-danger)", fontWeight: 700, fontSize: "0.8rem", margin: 0, lineHeight: 1.5 }}>Please do not refresh this page or click back.</p>
                         </div>
                       ) : resumeUrl ? (
                         <div style={{ background: "white", padding: "10px", borderRadius: "12px", display: "inline-block", marginBottom: "16px", border: "1px solid #e1e1e1", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
@@ -1148,9 +1172,12 @@ export default function DocumentUploadStep() {
                         </div>
                       )}
                       
-                      <button onClick={() => setShowQR(false)} style={{ width: "100%", background: "var(--bg-secondary)", border: "none", color: "var(--text-primary)", height: "44px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="var(--bg-secondary)"}>
-                        Hide QR Code
-                      </button>
+                      {/* Hidden while the selfie is open on the phone (the user must stay on this page) */}
+                      {!(mobileSelfieOpened && !qrExpired) && (
+                        <button onClick={() => setShowQR(false)} style={{ width: "100%", background: "var(--bg-secondary)", border: "none", color: "var(--text-primary)", height: "44px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: "700", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => e.currentTarget.style.background="var(--border-color)"} onMouseOut={e => e.currentTarget.style.background="var(--bg-secondary)"}>
+                          Hide QR Code
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

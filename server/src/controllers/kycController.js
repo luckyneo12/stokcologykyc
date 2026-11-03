@@ -1366,6 +1366,8 @@ const claimMobileSession = async (req, res) => {
     return res.status(400).json({ success: false, error: "Not a QR selfie link" });
   }
   const { token, expiresAt } = mobileSelfieSession.issueSessionToken(claims);
+  // Tell the computer showing the QR (real time) that the selfie was opened on another device
+  req.app.get("io")?.to(String(claims.applicationId)).emit("mobile_selfie_opened", { applicationId: claims.applicationId });
   res.json({ success: true, token, expiresAt, applicationId: claims.applicationId });
 };
 

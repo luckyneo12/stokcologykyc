@@ -28,8 +28,8 @@ function tokenExpiresAtMs(token) {
 
 /**
  * Turns the token from the QR link into a capture session:
- *   QR token (5 min)  → exchanged once at /mobile-session/claim for a 15-minute session token.
- *                       A reload of the same link reuses that session (even after the QR's 5 minutes).
+ *   QR token (5 min)  → exchanged once at /mobile-session/claim for a session token that ends
+ *                       together with the QR. A reload of the same link reuses that session.
  *   session token     → (Digio redirect return / older links) used as is while it is valid.
  * Returns { token, expiresAtMs } | { expired: message } | { error: message }.
  */

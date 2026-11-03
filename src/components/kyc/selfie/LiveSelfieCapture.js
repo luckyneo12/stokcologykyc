@@ -78,7 +78,7 @@ const LOW_END_SCAN_SIDE = 384;
 const LOW_END_EXTRA_FACE_HOLD_MS = 6000; // scans are further apart → keep a seen person flagged longer
 const PIXEL_FLAGS = ["tooDark", "backlit", "tooBright", "uneven"]; // results that need the picture copy
 // Stages where the pixel checks (lighting, eyewear) are not used — only face position / pose
-const NO_PIXEL_STAGES = ["challenge", "review", "submitting"];
+const NO_PIXEL_STAGES = ["challenge", "review", "submitting", "matchFailed"];
 const STABLE_MS = 600; // blocking checks must pass continuously this long before the liveness actions start
 const STEP_TIMEOUT_MS = 12000;
 const LOST_ABORT_MS = 1500;
@@ -154,6 +154,8 @@ const SERVER_BANNER_MS = 12000;
 const CHALLENGE_PREFETCH_MAX_AGE_MS = 60000;
 // Server rejections where the user only needs to click the selfie again (liveness stays valid)
 const RETAKE_CODES = ["FACE_MATCH_FAILED", "FACE_MATCH_LOW", "FACE_MATCH_UNAVAILABLE", "LIVENESS_FAILED", "LIVENESS_UNAVAILABLE", "NO_FACE", "MULTIPLE_FACES"];
+// Face did not match the document photo: the capture stops on a "did not match" screen with a Retake button
+const FACE_MISMATCH_CODES = ["FACE_MATCH_FAILED", "FACE_MATCH_LOW"];
 
 // ── Anti-swap (someone doing the actions live, then holding up a photo) ──
 // The selfie must be taken within this time after the actions. Each failed try (photo check + error
@@ -165,7 +167,7 @@ const CONTINUITY_LOST_MS = 700; // face may vanish only this long between the ac
 const CONTINUITY_MAX_JUMP = 0.35; // max face-centre move per analysis, as a fraction of face width
 const CONTINUITY_MAX_SCALE = 1.35; // max face-size change per analysis
 // The loop keeps watching the face during review / upload so a swap before a retake is caught
-const RUN_STAGES = [...LOOP_STAGES, "verifying", "review", "submitting"];
+const RUN_STAGES = [...LOOP_STAGES, "verifying", "review", "submitting", "matchFailed"];
 const KEYFRAME_SIDE = 480; // frame grabbed at the end of the actions (compared with the photo on the server)
 const MAX_VIDEO_BYTES = 15 * 1024 * 1024;
 // A person further back seen by the tile scan keeps "multiple faces" on this long (one tile is
@@ -313,6 +315,7 @@ export default function LiveSelfieCapture({
   const errorHoldUntilRef = useRef(0); // no blink counts before this time (after an error)
   const blinkHintRef = useRef({ poseOk: true, since: 0 }); // "look straight and blink" hint (debounced)
   const [errorHold, setErrorHold] = useState(null); // { text } shown on the camera while held
+  const [matchError, setMatchError] = useState(null); // face-mismatch message shown with the Retake button
   const finishedRef = useRef(false);
   const sessionEndedRef = useRef(false);
   const finishRef = useRef(null);
@@ -542,11 +545,12 @@ export default function LiveSelfieCapture({
   // Location revoked mid-capture → abort anything in progress; button stays disabled
   useEffect(() => {
     if (location.granted) return;
-    if (["challengeLoading", "challenge", "ready", "verifying", "review"].includes(stageRef.current)) {
+    if (["challengeLoading", "challenge", "ready", "verifying", "review", "matchFailed"].includes(stageRef.current)) {
       captureReqRef.current = null;
       challengeRef.current = null;
       setChallengeView(null);
       setCaptured(null);
+      setMatchError(null);
       setBanner({ type: "error", text: "Location access was turned off. The selfie can't be taken without your location." });
       goto("live");
     }
@@ -869,7 +873,7 @@ export default function LiveSelfieCapture({
     }
 
     // While reviewing / uploading only keep watching the face: a swap marks the actions as broken
-    if (st === "review" || st === "submitting") {
+    if (st === "review" || st === "submitting" || st === "matchFailed") {
       const c = challengeRef.current;
       if (c && !trackContinuity(c, analysis, now, slowRef.current)) c.broken = true;
       return;
@@ -1251,6 +1255,8 @@ export default function LiveSelfieCapture({
   const retake = () => {
     setCaptured(null);
     setBanner(null);
+    setMatchError(null);
+    setErrorHold(null);
     if (!SELFIE_LIVENESS_ACTIONS || actionsStillValid(challengeRef.current)) {
       backToReady();
     } else {
@@ -1315,6 +1321,14 @@ export default function LiveSelfieCapture({
       goto("done"); // shows "Selfie saved successfully", then hands the result to the parent
     } catch (err) {
       if (!mountedRef.current) return;
+      // Face did not match: only that message + a Retake button (no camera tips / extra text)
+      if (FACE_MISMATCH_CODES.includes(err?.code)) {
+        setBanner(null);
+        setErrorHold(null);
+        setMatchError(err.message || "Your face did not match the photo on your document.");
+        goto("matchFailed");
+        return;
+      }
       setCaptured(null);
       if (err?.code === "SESSION_EXPIRED") {
         endSession(err);
@@ -1449,7 +1463,7 @@ export default function LiveSelfieCapture({
   const guideVoice = useGuideVoice(SELFIE_GUIDE ? guideCue : null, guidePrefs.lang, SELFIE_GUIDE ? guidePrefs.muted : true);
   const statusCardTone = ["warn", "ok", "action"].includes(statusTone) ? statusTone : "info";
   // Wide layout (camera | guide) while the camera or the captured photo is shown
-  const twoColumn = showCamera || stage === "review" || stage === "submitting";
+  const twoColumn = showCamera || stage === "review" || stage === "submitting" || stage === "matchFailed";
 
   const content = (
     <div
@@ -1591,7 +1605,7 @@ export default function LiveSelfieCapture({
         )}
 
         {/* ── Review / submitting ── */}
-        {(stage === "review" || stage === "submitting") && captured && (
+        {(stage === "review" || stage === "submitting" || stage === "matchFailed") && captured && (
           <div className="lsc-camera-wrap" style={{ display: "flex" }}>
             <div className="lsc-camera" style={cameraBoxStyle}>
               <img src={captured} alt="Captured selfie" className="lsc-video lsc-review-img" />
@@ -1643,6 +1657,12 @@ export default function LiveSelfieCapture({
           <div className="lsc-review-note">
             <h3 className="lsc-h3">Submitting…</h3>
             <p className="lsc-text">Verifying liveness and face match. This takes a few seconds.</p>
+          </div>
+        )}
+        {stage === "matchFailed" && (
+          <div className="lsc-review-note">
+            <h3 className="lsc-h3" style={{ color: "#e5484d" }}>Face did not match</h3>
+            <p className="lsc-text" role="alert">{matchError}</p>
           </div>
         )}
 
@@ -1703,6 +1723,11 @@ export default function LiveSelfieCapture({
           <div className="lsc-actions">
             <button type="button" className="lsc-btn lsc-btn-ghost" onClick={retake}>Retake</button>
             <button type="button" className="lsc-btn lsc-btn-primary" onClick={submit}>Submit Selfie</button>
+          </div>
+        )}
+        {stage === "matchFailed" && (
+          <div className="lsc-actions">
+            <button type="button" className="lsc-btn lsc-btn-primary lsc-btn-wide" onClick={retake}>Retake Selfie</button>
           </div>
         )}
         {stage === "live" && SELFIE_LIVENESS_ACTIONS && (

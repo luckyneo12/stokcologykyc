@@ -3,8 +3,8 @@
  *
  *   QR token       purpose "mobile_selfie_qr", lives QR_SCAN_SECONDS (the desktop countdown).
  *                  Only good for opening the link: the phone exchanges it at /mobile-session/claim.
- *   Session token  purpose "mobile_selfie", lives SESSION_SECONDS from the claim, so a user who
- *                  scans near the end of the QR window still has time to finish the selfie.
+ *   Session token  purpose "mobile_selfie", ends together with the QR it was claimed from
+ *                  (never longer than SESSION_SECONDS).
  *
  * Generating a new QR replaces the older ones: tokens of an older QR (and sessions claimed from it)
  * are rejected. The newest issue time per application is kept in memory. A token is rejected only
@@ -46,8 +46,14 @@ function issueQrToken(userId, applicationId) {
   return { token, expiresAt: new Date(issuedAtMs + QR_SCAN_SECONDS * 1000).toISOString(), expiresInSeconds: QR_SCAN_SECONDS };
 }
 
-/** Capture session for a phone that opened a still-valid QR (decoded = the verified QR token). */
+/**
+ * Capture session for a phone that opened a still-valid QR (decoded = the verified QR token).
+ * The session ends together with the QR: when the computer's countdown reaches 0 the phone shows
+ * "expired" and the computer offers "Generate New QR".
+ */
 function issueSessionToken(decoded) {
+  const qrSecondsLeft = decoded.exp ? decoded.exp - Math.floor(Date.now() / 1000) : SESSION_SECONDS;
+  const sessionSeconds = Math.max(1, Math.min(SESSION_SECONDS, qrSecondsLeft));
   const token = jwt.sign(
     {
       id: decoded.id,
@@ -57,9 +63,9 @@ function issueSessionToken(decoded) {
       issuedAtMs: decoded.issuedAtMs, // same QR → replaced together with it
     },
     JWT_SECRET,
-    { expiresIn: SESSION_SECONDS },
+    { expiresIn: sessionSeconds },
   );
-  return { token, expiresAt: new Date(Date.now() + SESSION_SECONDS * 1000).toISOString() };
+  return { token, expiresAt: new Date(Date.now() + sessionSeconds * 1000).toISOString() };
 }
 
 module.exports = {
