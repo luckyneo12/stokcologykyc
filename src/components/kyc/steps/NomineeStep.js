@@ -9,6 +9,17 @@ import ImageCropper from "@/components/ui/ImageCropper";
 import { Eye } from "lucide-react";
 import DocumentPreviewModal from "../DocumentPreviewModal";
 import Tesseract from "tesseract.js";
+import { getEmailTypoSuggestion } from "@/utils/emailTypo";
+
+// Same email rules as the Email step
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+const EMAIL_DOMAIN_ERROR = "Please check and enter your correct email address.";
+const getEmailError = (val, hadBadChars = false) => {
+  if (hadBadChars) return "Only letters, numbers and . _ % + - @ are allowed in an email address";
+  if (val && !EMAIL_REGEX.test(val)) return "Enter a valid email address (e.g. name@example.com)";
+  if (val && getEmailTypoSuggestion(val)) return EMAIL_DOMAIN_ERROR;
+  return "";
+};
 
 const extractLast4FromDetails = (details) => {
   if (!details) return null;
@@ -346,36 +357,6 @@ export default function NomineeStep() {
         });
       }
 
-      if (field === "mobile" || field === "guardianMobile") {
-        const errKey = `${idx}-${field}`;
-        setErrors(prevErr => {
-          const newErrors = { ...prevErr };
-          if (finalValue && !/^[0-9]*$/.test(finalValue)) {
-            newErrors[errKey] = "Numbers only allowed";
-          } else if (finalValue && finalValue.length > 10) {
-            newErrors[errKey] = "Mobile number should not be more than 10 digits";
-          } else if (finalValue && finalValue.length > 0 && !/^[6-9]/.test(finalValue)) {
-            newErrors[errKey] = "Mobile number must start with 6, 7, 8 or 9";
-          } else {
-            delete newErrors[errKey];
-          }
-          return newErrors;
-        });
-      }
-
-      if (field === "email" || field === "guardianEmail") {
-        const errKey = `${idx}-${field}`;
-        setErrors(prevErr => {
-          const newErrors = { ...prevErr };
-          if (newErrors[errKey] && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalValue)) {
-            delete newErrors[errKey];
-          } else if (!finalValue) {
-            delete newErrors[errKey];
-          }
-          return newErrors;
-        });
-      }
-
       if (field === "name" || field === "dob") {
         const errKey = `${idx}-nameDob`;
         const updatedName = field === "name" ? finalValue : updated[idx].name;
@@ -443,20 +424,72 @@ export default function NomineeStep() {
     }
   };
 
+  // ---- Mobile / email input checks (same as the Mobile and Email steps) ----
+  const mobileErrorTimers = useRef({});
+  useEffect(() => () => Object.values(mobileErrorTimers.current).forEach(clearTimeout), []);
+
+  const setFieldError = (errKey, msg) => {
+    setErrors(prevErr => {
+      const newErrors = { ...prevErr };
+      if (msg) newErrors[errKey] = msg; else delete newErrors[errKey];
+      return newErrors;
+    });
+  };
+
+  // Rejected input is not accepted (field keeps its valid value), so the alert is temporary and clears itself
+  const showTempMobileError = (errKey, msg) => {
+    setFieldError(errKey, msg);
+    clearTimeout(mobileErrorTimers.current[errKey]);
+    mobileErrorTimers.current[errKey] = setTimeout(() => {
+      setErrors(prevErr => {
+        if (prevErr[errKey] !== msg) return prevErr;
+        const newErrors = { ...prevErr };
+        delete newErrors[errKey];
+        return newErrors;
+      });
+    }, 3000);
+  };
+
+  const handleMobileChange = (idx, field, raw) => {
+    const errKey = `${idx}-${field}`;
+    if (raw !== "" && /\D/.test(raw)) {
+      addToast("Enter digit only", "error");
+    }
+    const numericVal = raw.replace(/\D/g, "");
+    if (numericVal && !/^[6-9]/.test(numericVal)) {
+      showTempMobileError(errKey, "Mobile number must start with 6, 7, 8 or 9");
+      return;
+    }
+    if (numericVal.length > 10) {
+      showTempMobileError(errKey, "Mobile number cannot be more than 10 digits");
+      return;
+    }
+    clearTimeout(mobileErrorTimers.current[errKey]);
+    setFieldError(errKey, "");
+    updateNominee(idx, field, numericVal);
+  };
+
+  // Email field accepts only email characters, a single "@", and flags mistyped domains ("gmail.co")
+  const handleEmailChange = (idx, field, raw) => {
+    let val = raw.replace(/[^A-Za-z0-9._%+\-@]/g, "");
+    const at = val.indexOf("@");
+    if (at !== -1) val = val.slice(0, at + 1) + val.slice(at + 1).replace(/@/g, "");
+    updateNominee(idx, field, val);
+    setFieldError(`${idx}-${field}`, getEmailError(val, val !== raw));
+  };
+
   const handleBlur = (idx, field, value) => {
     if (field === "mobile" || field === "guardianMobile") {
-      const newErrors = { ...errors };
       const errKey = `${idx}-${field}`;
-      
-      if (value && value.length !== 10 && !newErrors[errKey]) {
-        newErrors[errKey] = "Mobile number must be exactly 10 digits";
-        setErrors(newErrors);
+      clearTimeout(mobileErrorTimers.current[errKey]);
+      if (value && value.length < 10) {
+        setFieldError(errKey, "Enter 10 digits");
+      } else {
+        setFieldError(errKey, "");
       }
     }
     if (field === "email" || field === "guardianEmail") {
-      if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-        setErrors(prevErr => ({ ...prevErr, [`${idx}-${field}`]: "Please enter a valid email address" }));
-      }
+      setFieldError(`${idx}-${field}`, getEmailError(value));
     }
   };
 
@@ -652,7 +685,11 @@ export default function NomineeStep() {
       if (!nom.relation) { newErrors[`${idx}-relation`] = true; isValid = false; }
       if (!nom.dob) { newErrors[`${idx}-dob`] = true; isValid = false; }
       if (!nom.mobile?.trim() || !/^[6-9][0-9]{9}$/.test(nom.mobile.trim())) { 
-        newErrors[`${idx}-mobile`] = "Must be 10 digits starting with 6-9"; isValid = false; 
+        newErrors[`${idx}-mobile`] = "Must be 10 digits starting with 6-9"; isValid = false;
+      }
+      if (nom.email?.trim()) {
+        const emailErr = getEmailError(nom.email.trim());
+        if (emailErr) { newErrors[`${idx}-email`] = emailErr; isValid = false; }
       }
       if (!nom.address?.trim() && !nom.sameAddress) { newErrors[`${idx}-address`] = true; isValid = false; }
       if (!nom.proofNumber?.trim()) { 
@@ -720,7 +757,12 @@ export default function NomineeStep() {
         if (!nom.guardianMobile?.trim() || !/^[6-9][0-9]{9}$/.test(nom.guardianMobile.trim())) { 
           newErrors[`${idx}-guardianMobile`] = "Must be 10 digits starting with 6-9"; isValid = false; 
         }
-        if (!nom.guardianEmail?.trim() || !/^\S+@\S+\.\S+$/.test(nom.guardianEmail.trim())) { newErrors[`${idx}-guardianEmail`] = true; isValid = false; }
+        if (!nom.guardianEmail?.trim()) {
+          newErrors[`${idx}-guardianEmail`] = true; isValid = false;
+        } else {
+          const guardianEmailErr = getEmailError(nom.guardianEmail.trim());
+          if (guardianEmailErr) { newErrors[`${idx}-guardianEmail`] = guardianEmailErr; isValid = false; }
+        }
         if (!nom.guardianAddress?.trim() && !nom.guardianSameAddress) { newErrors[`${idx}-guardianAddress`] = true; isValid = false; }
         if (!nom.guardianCity?.trim()) { newErrors[`${idx}-guardianCity`] = true; isValid = false; }
         if (!nom.guardianState?.trim()) { newErrors[`${idx}-guardianState`] = true; isValid = false; }
@@ -867,7 +909,7 @@ export default function NomineeStep() {
                     className="input-field" 
                     placeholder="Enter nominee email" 
                     value={nom.email || ""} 
-                    onChange={e => updateNominee(idx, "email", e.target.value)}
+                    onChange={e => handleEmailChange(idx, "email", e.target.value)}
                     onBlur={e => handleBlur(idx, "email", e.target.value)}
                     style={{ borderColor: errors[`${idx}-email`] ? "var(--wise-danger)" : "var(--border-color)" }}
                   />
@@ -885,7 +927,7 @@ export default function NomineeStep() {
                     className="input-field" 
                     placeholder="Enter nominee mobile number" 
                     value={nom.mobile || ""} 
-                    onChange={e => updateNominee(idx, "mobile", e.target.value)}
+                    onChange={e => handleMobileChange(idx, "mobile", e.target.value)}
                     onBlur={e => handleBlur(idx, "mobile", e.target.value)}
                     style={{ borderColor: errors[`${idx}-mobile`] ? "var(--wise-danger)" : "var(--border-color)" }}
                   />
@@ -1167,7 +1209,7 @@ export default function NomineeStep() {
                       className="input-field" 
                       placeholder="Mobile" 
                       value={nom.guardianMobile || ""} 
-                      onChange={e => updateNominee(idx, "guardianMobile", e.target.value)} 
+                      onChange={e => handleMobileChange(idx, "guardianMobile", e.target.value)}
                       onBlur={e => handleBlur(idx, "guardianMobile", e.target.value)}
                       style={{ borderColor: errors[`${idx}-guardianMobile`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
@@ -1183,7 +1225,7 @@ export default function NomineeStep() {
                       className="input-field" 
                       placeholder="Email" 
                       value={nom.guardianEmail || ""} 
-                      onChange={e => updateNominee(idx, "guardianEmail", e.target.value)} 
+                      onChange={e => handleEmailChange(idx, "guardianEmail", e.target.value)}
                       onBlur={e => handleBlur(idx, "guardianEmail", e.target.value)}
                       style={{ borderColor: errors[`${idx}-guardianEmail`] ? "var(--wise-danger)" : "var(--border-color)" }}
                     />
