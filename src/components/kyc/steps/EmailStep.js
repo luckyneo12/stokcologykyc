@@ -23,6 +23,9 @@ export default function EmailStep() {
     ["Child Dependent 2", "Parent Dependent 2"].includes(personalDetails.emailDependency) ? "" : (personalDetails.emailDependency || "")
   );
   const [emailError, setEmailError] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [showEditTip, setShowEditTip] = useState(false);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isOtpMode, setIsOtpMode] = useState(false);
   const [timer, setTimer] = useState(30);
@@ -72,6 +75,7 @@ export default function EmailStep() {
     try {
       await sendEmailOtp(email);
       setOtp(["", "", "", "", "", ""]); // new OTP sent (incl. resend) — clear the old digits
+      setOtpError("");
       setIsOtpMode(true);
       setTimer(30);
       setTimeout(() => document.getElementById("otp-0")?.focus(), 0);
@@ -111,15 +115,21 @@ export default function EmailStep() {
   };
 
   const handleOtpChange = (index, value) => {
+    if (verifying) return;
     const val = value.replace(/\D/g, "").slice(-1);
     const newOtp = [...otp];
     newOtp[index] = val;
     setOtp(newOtp);
-    
+    if (otpError) setOtpError("");
+
     if (val && index < 5) {
       const next = document.getElementById(`otp-${index + 1}`);
       if (next) next.focus();
     }
+
+    // Auto-verify as soon as all 6 digits are entered
+    const code = newOtp.join("");
+    if (code.length === 6) verifyOtp(code);
   };
 
   const handleKeyDown = (index, e) => {
@@ -135,31 +145,41 @@ export default function EmailStep() {
         }
       }
     } else if (e.key === "Enter") {
-      if (otp.join("").length === 6) {
+      if (otp.join("").length === 6 && !verifying) {
         verifyOtp();
       }
     }
   };
 
-  const verifyOtp = async () => {
-    const otpValue = otp.join("");
+  const verifyOtp = async (code) => {
+    const otpValue = typeof code === "string" ? code : otp.join("");
     if (otpValue.length < 6) {
       addToast("Enter 6-digit OTP", "error");
       return;
     }
-    
+    if (verifying) return;
+
+    let failed = false;
     setLoading(true);
+    setVerifying(true);
+    setOtpError("");
     try {
       await verifyEmailOtp(email, otpValue);
       addToast("Email verified successfully!", "success");
-      await nextStep({ 
-        personalDetails: { ...personalDetails, email: email, emailDependency: emailDependency }, 
-        emailVerified: true 
+      await nextStep({
+        personalDetails: { ...personalDetails, email: email, emailDependency: emailDependency },
+        emailVerified: true
       });
     } catch (error) {
+      failed = true;
       addToast(error.message || "Invalid OTP", "error");
+      setOtpError(error.message || "Invalid OTP. Please try again.");
+      // Wrong OTP — clear the boxes so a fresh code can be typed
+      setOtp(["", "", "", "", "", ""]);
     } finally {
       setLoading(false);
+      setVerifying(false);
+      if (failed) setTimeout(() => document.getElementById("otp-0")?.focus(), 50);
     }
   };
 
@@ -176,12 +196,12 @@ export default function EmailStep() {
       <div className="card animate-slide-up">
         
         {/* Email Input Section */}
-        <div style={{ marginBottom: isOtpMode ? 20 : 28, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}>
-          <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.9rem" }}>Email Address</label>
+        <div style={{ marginBottom: isOtpMode ? 20 : 28, transition: "all 0.3s ease" }}>
+          <label className="text-body-bold" style={{ display: "block", marginBottom: 8, fontSize: "0.9rem", opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}>Email Address</label>
           <div style={{ position: "relative" }}>
-            <input 
-              type="email" className="input-field" placeholder="name@example.com" 
-              style={{ fontWeight: 700, paddingRight: isOtpMode ? "60px" : "24px", borderColor: emailError ? "var(--wise-danger)" : undefined }}
+            <input
+              type="email" className="input-field" placeholder="name@example.com"
+              style={{ fontWeight: 700, paddingRight: isOtpMode ? "60px" : "24px", borderColor: emailError ? "var(--wise-danger)" : undefined, opacity: isOtpMode ? 0.6 : 1, transition: "all 0.3s ease" }}
               inputMode="email" autoComplete="email"
               value={email} onChange={handleEmailChange}
               onKeyDown={(e) => {
@@ -195,18 +215,31 @@ export default function EmailStep() {
             {isOtpMode && (
               <button 
                 type="button"
-                onClick={() => setIsOtpMode(false)}
-                style={{ 
+                onClick={() => { setShowEditTip(false); setIsOtpMode(false); }}
+                onMouseEnter={() => setShowEditTip(true)}
+                onMouseLeave={() => setShowEditTip(false)}
+                aria-label="Edit email address"
+                style={{
                   position: "absolute", right: 15, top: "50%", transform: "translateY(-50%)",
-                  background: "var(--wise-green-light)", border: "none", borderRadius: "8px",
-                  padding: "8px", cursor: "pointer", color: "var(--wise-green)",
+                  background: "var(--wise-green)", border: "none", borderRadius: "10px",
+                  padding: "8px", cursor: "pointer", color: "var(--wise-dark-green)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   transition: "all 0.2s ease"
                 }}
                 className="hover-scale"
-                title="Edit Email"
               >
                 <EditIcon size={18} />
+                {showEditTip && (
+                  <span style={{
+                    position: "absolute", bottom: "calc(100% + 8px)", right: 0,
+                    background: "var(--text-primary)", color: "var(--bg-primary)",
+                    fontSize: "0.75rem", fontWeight: 700, whiteSpace: "nowrap",
+                    padding: "6px 10px", borderRadius: "8px", pointerEvents: "none",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 10
+                  }}>
+                    Edit email address
+                  </span>
+                )}
               </button>
             )}
           </div>
@@ -311,36 +344,45 @@ export default function EmailStep() {
               <CheckCircleIcon size={18} /> 
               <span>OTP SENT TO {email}</span>
             </div>
-            <div>
-              <button type="button" className="btn-pill" onClick={() => setIsOtpMode(false)}>Edit Email</button>
-            </div>
           </div>
 
-          <div className="flex justify-center" style={{ marginBottom: 32, gap: "6px" }}>
+          <div className="flex justify-center" style={{ marginBottom: (verifying || otpError) ? 12 : 32, gap: "6px" }}>
             {otp.map((digit, i) => (
-              <input 
-                key={`otp-input-${i}`} 
-                id={`otp-${i}`} 
-                type="tel" 
-                className="otp-input" 
-                style={{ 
-                  borderColor: digit ? "var(--wise-green)" : "rgba(0,0,0,0.1)",
-                  background: digit ? "#fff" : "var(--bg-card)"
+              <input
+                key={`otp-input-${i}`}
+                id={`otp-${i}`}
+                type="tel"
+                className="otp-input"
+                style={{
+                  borderColor: otpError ? "var(--wise-danger)" : digit ? "var(--wise-green)" : "rgba(0,0,0,0.1)",
+                  background: digit ? "#fff" : "var(--bg-card)",
+                  opacity: verifying ? 0.6 : 1,
+                  cursor: verifying ? "not-allowed" : "text"
                 }}
-                value={digit} 
-                onChange={e => handleOtpChange(i, e.target.value)} 
+                value={digit}
+                onChange={e => handleOtpChange(i, e.target.value)}
                 onKeyDown={e => handleKeyDown(i, e)}
                 maxLength={1}
+                readOnly={verifying}
+                disabled={verifying}
                 autoFocus={isOtpMode && i === 0}
               />
             ))}
           </div>
 
+          {verifying && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 24, color: "var(--text-secondary)", fontWeight: 700, fontSize: "0.9rem" }}>
+              <style>{`@keyframes otpSpin { to { transform: rotate(360deg); } }`}</style>
+              <span style={{ width: 18, height: 18, border: "2.5px solid var(--border-color)", borderTopColor: "var(--wise-green)", borderRadius: "50%", display: "inline-block", animation: "otpSpin 0.8s linear infinite" }} />
+              Verifying OTP...
+            </div>
+          )}
+          {!verifying && otpError && (
+            <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--wise-danger)", fontWeight: 700, margin: "0 0 24px" }}>{otpError}</p>
+          )}
+
           <div className="flex gap-md">
-            <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
-            <button className="btn btn-primary" onClick={verifyOtp} disabled={loading} style={{ flex: 2, padding: "14px", fontSize: "1rem" }}>
-              {loading ? "Verifying..." : "Verify & Continue"}
-            </button>
+            <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
           </div>
           
           <div className="text-center" style={{ marginTop: 28 }}>
