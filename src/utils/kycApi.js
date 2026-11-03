@@ -118,7 +118,10 @@ export const saveKycStep = async ({ applicationId, step, stepIndex, data }) => {
   if (contentType && contentType.includes("application/json")) {
     const result = await response.json();
     if (!response.ok || !result.success) {
-      throw new Error(result.error || "Failed to save KYC progress");
+      const err = new Error(result.error || "Failed to save KYC progress");
+      err.code = result.code;
+      err.currentStep = result.currentStep;
+      throw err;
     }
     return result;
   } else {

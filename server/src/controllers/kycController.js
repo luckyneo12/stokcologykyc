@@ -371,6 +371,26 @@ const saveStep = async (req, res, next) => {
         .json({ success: false, error: "Application not found for this user" });
     }
 
+    // STALE CLIENT GUARD: the step whose data is being saved can never be ahead of the step the
+    // server has. That only happens when a reviewer moved the application back (e.g. Step 9 → 3)
+    // while the user's browser was still showing the old step — accepting the save would push the
+    // user straight back to where they were and silently undo the reviewer's change. Reject it so
+    // the client re-syncs to the server's step. (Applications still at Step 0 were created by a
+    // fallback path and are not tracked yet, so they are left alone.)
+    const savedStepIndex = step ? STEP_INDEX[step] : undefined;
+    const serverStep = Number(app.currentStep || 0);
+    if (serverStep > 0 && savedStepIndex !== undefined && savedStepIndex > serverStep) {
+      console.log(
+        `[KYC SaveStep] Rejecting stale save of "${step}" (Step ${savedStepIndex}) — application ${applicationId} is at Step ${serverStep}`,
+      );
+      return res.status(409).json({
+        success: false,
+        code: "STEP_OUT_OF_SYNC",
+        error: "Step out of sync with server",
+        currentStep: serverStep,
+      });
+    }
+
     const updateData = {};
 
     for (const [key, value] of Object.entries(data || {})) {

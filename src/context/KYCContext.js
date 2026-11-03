@@ -1199,7 +1199,15 @@ export function KYCProvider({ children }) {
       } catch (error) {
         const errorMsg = error?.message || error;
         console.error("[KYC Sync] save-step failed EXACT REASON:", errorMsg);
-        
+
+        // A reviewer moved the application to an earlier step while this screen still showed the
+        // old one — follow the server instead of retrying, so the reviewer's change sticks
+        if (error?.code === "STEP_OUT_OF_SYNC") {
+          lastClientStepChange.current = 0;
+          refreshProgress(applicationId, token, false, { keepScreen: true });
+          return false;
+        }
+
         // If the application was deleted from the backend, wipe local storage and force a hard reset
         if (typeof errorMsg === 'string' && errorMsg.includes("Application not found")) {
           console.warn("[KYC Sync] Ghost application detected. Wiping local storage and redirecting to start.");
@@ -1219,7 +1227,7 @@ export function KYCProvider({ children }) {
         return false;
       }
     },
-    [getBackendPayload, addToast, steps],
+    [getBackendPayload, addToast, steps, refreshProgress],
   );
 
   /**
