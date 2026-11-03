@@ -381,16 +381,16 @@ export default function EmailStep() {
             <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--wise-danger)", fontWeight: 700, margin: "0 0 24px" }}>{otpError}</p>
           )}
 
-          <div className="flex gap-md">
-            <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
-          </div>
-          
-          <div className="text-center" style={{ marginTop: 28 }}>
+          <div className="text-center" style={{ marginBottom: 20 }}>
             {timer > 0 ? (
               <p className="text-caption" style={{ fontSize: "1rem" }}>Resend OTP in <span style={{ fontWeight: 800, color: "var(--text-primary)" }}>{timer}s</span></p>
             ) : (
               <button className="btn btn-ghost btn-sm" onClick={handleSendOtp} style={{ color: "var(--wise-green)", fontWeight: 800 }}>Resend Verification Email</button>
             )}
+          </div>
+
+          <div className="flex gap-md">
+            <button className="btn btn-secondary" onClick={() => setIsOtpMode(false)} disabled={verifying} style={{ flex: 1, padding: "14px", fontSize: "1rem" }}>Cancel</button>
           </div>
         </div>
       </div>
