@@ -129,6 +129,8 @@ export default function BankVerificationStep() {
   const [verificationState, setVerificationState] = useState("idle");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showMismatchModal, setShowMismatchModal] = useState(null);
+  // Boxes marked red after the bank verification rejected the details ({ ifsc, accountNumber })
+  const [bankFieldErrors, setBankFieldErrors] = useState({});
   const [isFetchingIfsc, setIsFetchingIfsc] = useState(false);
 
   const isAlreadyProcessed = !!bankDetails?.accountHolderName && form.accountNumber === bankDetails.accountNumber && form.ifsc === bankDetails.ifsc;
@@ -307,6 +309,11 @@ export default function BankVerificationStep() {
 
   const update = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
+    // Editing IFSC or Account Number after a failed verification clears the red marks (the bank does
+    // not say which of the two was wrong, so correcting either one allows a new try)
+    if (field === "ifsc" || field === "accountNumber") {
+      setBankFieldErrors(prev => (prev.ifsc || prev.accountNumber ? {} : prev));
+    }
   };
 
   const validateBankDetails = () => {
@@ -322,9 +329,11 @@ export default function BankVerificationStep() {
   };
 
   // Every bank field filled (11-character IFSC) and both account numbers match
+  // …and no box is still marked red by a failed verification
   const bankFormComplete = Boolean(
     form.accountNumber && form.ifsc && String(form.ifsc).length === 11 && form.accountType &&
-    form.accountNumber === form.confirmAccountNumber
+    form.accountNumber === form.confirmAccountNumber &&
+    !bankFieldErrors.ifsc && !bankFieldErrors.accountNumber
   );
 
   const handleSubmit = () => {
@@ -392,6 +401,8 @@ export default function BankVerificationStep() {
           alert(result.error);
         }
         addToast(result.error || "Bank verification failed", "error");
+        // The bank rejected these details: mark IFSC + Account Number red until they are corrected
+        setBankFieldErrors({ ifsc: true, accountNumber: true });
       }
     } catch (error) {
       addToast(error.message || "Error connecting to bank verification service", "error");
@@ -467,7 +478,7 @@ export default function BankVerificationStep() {
                   value={form.ifsc} 
                   onChange={e => update("ifsc", e.target.value.toUpperCase())} 
                   className="input-field"
-                  style={{ textTransform: "uppercase", background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }} 
+                  style={{ textTransform: "uppercase", background: "var(--input-bg)", color: "var(--text-primary)", border: `1.5px solid ${bankFieldErrors.ifsc ? "var(--wise-danger)" : "var(--border-color)"}`, height: "56px", borderRadius: "16px" }}
                 />
               </div>
               <div>
@@ -517,7 +528,7 @@ export default function BankVerificationStep() {
                 {...NO_AUTOFILL}
                 name="bank_account_number"
                 className="input-field" 
-                style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1.5px solid var(--border-color)", height: "56px", borderRadius: "16px" }}
+                style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: `1.5px solid ${bankFieldErrors.accountNumber ? "var(--wise-danger)" : "var(--border-color)"}`, height: "56px", borderRadius: "16px" }}
               />
             </div>
 
@@ -656,7 +667,7 @@ export default function BankVerificationStep() {
           }}>
             <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginBottom: "8px" }}>Penny Drop</p>
             <h3 style={{ color: "var(--text-primary)", fontSize: "1.1rem", fontWeight: 700, marginBottom: "32px", lineHeight: 1.5 }}>
-              Your name ({showMismatchModal.kycName}) does not match with your Bank Account Name ({showMismatchModal.bankName})
+              Your name (<span style={{ color: "var(--wise-danger)", fontWeight: 800 }}>{showMismatchModal.kycName}</span>) does not match with your Bank Account Name (<span style={{ color: "var(--wise-danger)", fontWeight: 800 }}>{showMismatchModal.bankName}</span>)
             </h3>
             
             <button 
