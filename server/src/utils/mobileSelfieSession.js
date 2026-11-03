@@ -11,6 +11,7 @@
  * when a NEWER one is known, so a restart or a second server process can never block the newest
  * QR — at worst an older QR keeps working until its own (short) expiry.
  */
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 
 // Same secret / fallback as middlewares/auth.js, which verifies these tokens
@@ -34,6 +35,24 @@ function isReplaced(decoded) {
   return Boolean(latest && decoded.issuedAtMs < latest);
 }
 
+// ── Short QR code ──
+// The QR image carries "<issue time base36>.<signature>" (~25 chars) instead of the long JWT, so the
+// QR has far fewer squares and scans fast. Stateless: the signature ties the code to the application
+// and its owner, so it works across restarts / server processes like the JWT did.
+const CODE_SIG_LENGTH = 16; // base64url chars (96 bits)
+
+function codeSignature(applicationId, userId, issuedAtMs) {
+  return crypto
+    .createHmac("sha256", JWT_SECRET)
+    .update(`mobile_selfie_qr|${applicationId}|${userId}|${issuedAtMs}`)
+    .digest("base64url")
+    .slice(0, CODE_SIG_LENGTH);
+}
+
+function makeQrCode(applicationId, userId, issuedAtMs) {
+  return `${issuedAtMs.toString(36)}.${codeSignature(applicationId, userId, issuedAtMs)}`;
+}
+
 /** New QR token for the desktop; replaces every earlier QR of this application. */
 function issueQrToken(userId, applicationId) {
   const issuedAtMs = Date.now();
@@ -43,7 +62,41 @@ function issueQrToken(userId, applicationId) {
     JWT_SECRET,
     { expiresIn: QR_SCAN_SECONDS },
   );
-  return { token, expiresAt: new Date(issuedAtMs + QR_SCAN_SECONDS * 1000).toISOString(), expiresInSeconds: QR_SCAN_SECONDS };
+  return {
+    token,
+    code: makeQrCode(applicationId, userId, issuedAtMs),
+    expiresAt: new Date(issuedAtMs + QR_SCAN_SECONDS * 1000).toISOString(),
+    expiresInSeconds: QR_SCAN_SECONDS,
+  };
+}
+
+/**
+ * Checks a short QR code (see makeQrCode) for an application owned by userId.
+ * Returns { claims } — the same claims a verified QR token has — or { error: "invalid" | "expired" | "replaced" }.
+ */
+function verifyQrCode(applicationId, userId, code) {
+  const match = /^([0-9a-z]{1,12})\.([A-Za-z0-9_-]+)$/.exec(String(code || ""));
+  if (!match || !applicationId || userId === undefined || userId === null) return { error: "invalid" };
+  const issuedAtMs = parseInt(match[1], 36);
+  if (!Number.isSafeInteger(issuedAtMs) || issuedAtMs <= 0) return { error: "invalid" };
+
+  const expected = Buffer.from(codeSignature(applicationId, userId, issuedAtMs));
+  const given = Buffer.from(match[2]);
+  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return { error: "invalid" };
+
+  const expiresAtMs = issuedAtMs + QR_SCAN_SECONDS * 1000;
+  if (Date.now() >= expiresAtMs) return { error: "expired" };
+
+  const claims = {
+    id: userId,
+    applicationId,
+    purpose: QR_PURPOSE,
+    role: "user",
+    issuedAtMs,
+    exp: Math.floor(expiresAtMs / 1000),
+  };
+  if (isReplaced(claims)) return { error: "replaced" };
+  return { claims };
 }
 
 /**
@@ -74,5 +127,6 @@ module.exports = {
   isMobileSelfieToken,
   isReplaced,
   issueQrToken,
+  verifyQrCode,
   issueSessionToken,
 };

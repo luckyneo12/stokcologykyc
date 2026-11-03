@@ -97,7 +97,10 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
         const data = await response.json();
         if (cancelled) return;
         if (data.success && data.token) {
-          setResumeUrl(`${window.location.origin}/mobile-selfie?token=${data.token}&appId=${applicationId}`);
+          // Short link (fewer QR squares → scans fast); the long-token link stays as the fallback
+          setResumeUrl(data.code
+            ? `${window.location.origin}/mobile-selfie?a=${encodeURIComponent(applicationId)}&c=${encodeURIComponent(data.code)}`
+            : `${window.location.origin}/mobile-selfie?token=${data.token}&appId=${applicationId}`);
           // Server-given lifetime first: a wrong PC clock must not shorten / stretch the countdown
           let seconds = Number(data.expiresInSeconds) || Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000);
           if (!(seconds > 0)) seconds = 0;
@@ -544,12 +547,12 @@ export default function SelfieStep({ stepId, rejectedStep, inline = false }) {
               {qrExpired ? (
                 <div style={{ padding: 20, background: "rgba(247, 85, 85, 0.05)", borderRadius: 12, marginBottom: 16, border: "1px solid var(--wise-danger)" }}>
                   <p style={{ color: "var(--wise-danger)", fontWeight: 600, marginBottom: 6 }}>QR Code Expired</p>
-                  <p className="text-caption" style={{ color: "var(--text-secondary)", marginBottom: 12 }}>Already scanned it? You can still finish the selfie on your phone. Otherwise generate a new QR code.</p>
+                  <p className="text-caption" style={{ color: "var(--text-secondary)", marginBottom: 12 }}>The selfie session on your mobile has also ended. Please generate a new QR code and scan it again.</p>
                   <button type="button" onClick={() => setQrRound((n) => n + 1)} style={{ background: "var(--wise-danger)", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Generate New QR</button>
                 </div>
               ) : resumeUrl && (
                 <div style={{ background: "white", padding: 16, borderRadius: 8, display: "inline-block", marginBottom: 16 }}>
-                  <QRCode value={resumeUrl} size={256} ecLevel="L" />
+                  <QRCode value={resumeUrl} size={256} ecLevel="M" />
                   <p style={{ fontSize: "1.2rem", fontWeight: 800, color: "#1a1a1a", margin: "12px 0 0", letterSpacing: "1px", textAlign: "center" }}>
                     {Math.floor(qrTimeLeft / 60).toString().padStart(2, '0')}:{(qrTimeLeft % 60).toString().padStart(2, '0')}
                   </p>

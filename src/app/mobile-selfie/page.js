@@ -33,7 +33,37 @@ function tokenExpiresAtMs(token) {
  *   session token     → (Digio redirect return / older links) used as is while it is valid.
  * Returns { token, expiresAtMs } | { expired: message } | { error: message }.
  */
-async function resolveSession(urlToken, appId) {
+async function resolveSession(urlToken, appId, urlCode) {
+  // Short QR link (?a=<appId>&c=<code>): the code is exchanged at /mobile-session/claim-code
+  if (urlCode) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+      if (saved && saved.qrCode === urlCode && saved.appId === appId && saved.expiresAtMs > Date.now()) {
+        return { token: saved.token, expiresAtMs: saved.expiresAtMs };
+      }
+    } catch (e) {}
+
+    let res, data;
+    try {
+      res = await fetch(`${API_BASE_URL}/api/kyc/mobile-session/claim-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: appId, code: urlCode }),
+      });
+      data = await res.json().catch(() => ({}));
+    } catch (e) {
+      return { error: "Network error. Check your internet connection and reload this page." };
+    }
+    if (res.status === 401) return { expired: data?.code === "MOBILE_SESSION_REPLACED" ? REPLACED_MSG : EXPIRED_MSG };
+    if (!res.ok || !data?.success || !data.token) return { error: data?.error || "Could not open the selfie session. Please scan the QR code again." };
+
+    const expiresAtMs = tokenExpiresAtMs(data.token) || Date.now() + 5 * 60 * 1000;
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ qrCode: urlCode, appId, token: data.token, expiresAtMs }));
+    } catch (e) {}
+    return { token: data.token, expiresAtMs };
+  }
+
   const claims = urlToken ? readJwt(urlToken) : null;
 
   if (claims?.purpose === "mobile_selfie_qr") {
@@ -86,19 +116,20 @@ function MobileSelfieContent() {
   useEffect(() => {
     let cancelled = false;
     const urlToken = searchParams.get("token");
-    const urlAppId = searchParams.get("appId");
+    const urlAppId = searchParams.get("appId") || searchParams.get("a"); // "a" / "c" = short QR link
+    const urlCode = searchParams.get("c");
 
     (async () => {
       // Digio redirect may strip URL query parameters, so fallback to sessionStorage
       const appId = urlAppId || sessionStorage.getItem("kycApplicationId");
-      if (!appId || (!urlToken && !sessionStorage.getItem("kycToken"))) {
+      if (!appId || (!urlToken && !urlCode && !sessionStorage.getItem("kycToken"))) {
         setStatus("error");
         setErrorMessage("Invalid link. Please scan the QR code again.");
         return;
       }
 
       // The QR's validity is checked BEFORE anything starts (camera, location, Digio)
-      const resolved = await resolveSession(urlToken, appId);
+      const resolved = await resolveSession(urlToken, appId, urlCode);
       if (cancelled) return;
       if (resolved.expired) {
         setErrorMessage(resolved.expired);

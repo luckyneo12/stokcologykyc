@@ -17,6 +17,7 @@ const {
   sendWelcome,
   generateMobileSession,
   claimMobileSession,
+  claimMobileSessionCode,
   getSecureDocument,
   getCorrectionSession,
   saveCorrectionStep,
@@ -32,6 +33,8 @@ router.post("/start", auth, startKyc);
 router.get("/me", auth, getMyApplication);
 router.get("/mobile-session", auth, generateMobileSession);
 router.post("/mobile-session/claim", auth, claimMobileSession);
+// Short QR link: no login token, the signed code is checked by the handler
+router.post("/mobile-session/claim-code", claimMobileSessionCode);
 
 // Structured Step Endpoints for Clarity
 router.put("/save/personal-details", auth, saveStep);

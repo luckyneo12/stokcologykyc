@@ -476,7 +476,10 @@ export default function DocumentUploadStep() {
       
       if (data.success && data.token) {
          const baseUrl = window.location.origin;
-         setResumeUrl(`${baseUrl}/mobile-selfie?token=${data.token}&appId=${activeAppId}`);
+         // Short link (fewer QR squares → scans fast); the long-token link stays as the fallback
+         setResumeUrl(data.code
+           ? `${baseUrl}/mobile-selfie?a=${encodeURIComponent(activeAppId)}&c=${encodeURIComponent(data.code)}`
+           : `${baseUrl}/mobile-selfie?token=${data.token}&appId=${activeAppId}`);
          
          // Server-given lifetime first: a wrong PC clock must not shorten / stretch the countdown
          let seconds = Number(data.expiresInSeconds) || Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000);
@@ -1158,7 +1161,7 @@ export default function DocumentUploadStep() {
                         </div>
                       ) : resumeUrl ? (
                         <div style={{ background: "white", padding: "10px", borderRadius: "12px", display: "inline-block", marginBottom: "16px", border: "1px solid #e1e1e1", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
-                          <QRCode value={resumeUrl} size={256} ecLevel="L" />
+                          <QRCode value={resumeUrl} size={256} ecLevel="M" />
                           <p style={{ fontSize: "1.2rem", fontWeight: 800, color: "#1a1a1a", marginTop: "12px", letterSpacing: "1px" }}>
                             {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
                           </p>

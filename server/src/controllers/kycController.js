@@ -1371,6 +1371,47 @@ const claimMobileSession = async (req, res) => {
   res.json({ success: true, token, expiresAt, applicationId: claims.applicationId });
 };
 
+/**
+ * Same as claimMobileSession, for the short QR link (/mobile-selfie?a=<applicationId>&c=<code>).
+ * No login token here: the signed code itself proves the QR came from this application's owner.
+ */
+const claimMobileSessionCode = async (req, res) => {
+  try {
+    const applicationId = typeof req.body?.applicationId === "string" ? req.body.applicationId.trim() : "";
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    if (!applicationId || !code) {
+      return res.status(400).json({ success: false, error: "Invalid link. Please scan the QR code again." });
+    }
+
+    const app = await prisma.kycApplication.findUnique({
+      where: { applicationId },
+      select: { applicationId: true, userId: true },
+    });
+    const result = app
+      ? mobileSelfieSession.verifyQrCode(app.applicationId, app.userId, code)
+      : { error: "invalid" };
+
+    if (result.error === "replaced") {
+      return res.status(401).json({ success: false, error: "This QR code was replaced by a newer one.", code: "MOBILE_SESSION_REPLACED" });
+    }
+    if (result.error === "expired") {
+      return res.status(401).json({ success: false, error: "This QR code has expired.", code: "TOKEN_EXPIRED" });
+    }
+    if (result.error) {
+      return res.status(400).json({ success: false, error: "Invalid link. Please scan the QR code again." });
+    }
+
+    const claims = result.claims;
+    const { token, expiresAt } = mobileSelfieSession.issueSessionToken(claims);
+    // Tell the computer showing the QR (real time) that the selfie was opened on another device
+    req.app.get("io")?.to(String(claims.applicationId)).emit("mobile_selfie_opened", { applicationId: claims.applicationId });
+    res.json({ success: true, token, expiresAt, applicationId: claims.applicationId });
+  } catch (error) {
+    console.error("[Mobile Session Code Claim Error]:", error);
+    res.status(500).json({ success: false, error: "Could not open the selfie session. Please scan the QR code again." });
+  }
+};
+
 const generateMobileSession = async (req, res, next) => {
   try {
     if (mobileSelfieSession.isMobileSelfieToken(req.tokenClaims)) {
@@ -1391,11 +1432,12 @@ const generateMobileSession = async (req, res, next) => {
 
     // QR token valid for the 5-minute scan window shown on the desktop; the phone exchanges it for
     // a 15-minute capture session at /mobile-session/claim. A new QR replaces the older ones.
-    const { token, expiresAt, expiresInSeconds } = mobileSelfieSession.issueQrToken(req.user.id, applicationId);
+    const { token, code, expiresAt, expiresInSeconds } = mobileSelfieSession.issueQrToken(req.user.id, applicationId);
 
     res.json({
       success: true,
       token,
+      code, // short code for the QR image (the phone claims it at /mobile-session/claim-code)
       expiresAt,
       expiresInSeconds,
       applicationId
@@ -1977,6 +2019,7 @@ module.exports = {
   sendWelcome,
   generateMobileSession,
   claimMobileSession,
+  claimMobileSessionCode,
   getSecureDocument,
   getCorrectionSession,
   saveCorrectionStep,
