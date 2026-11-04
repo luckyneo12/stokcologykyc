@@ -100,7 +100,7 @@ export const startKycApplication = async () => {
   return result;
 };
 
-export const saveKycStep = async ({ applicationId, step, stepIndex, data }) => {
+export const saveKycStep = async ({ applicationId, step, stepIndex, data, knownReviewedAt }) => {
   if (!applicationId) return null;
 
   const response = await fetch(`${API_BASE_URL}/api/kyc/save-step`, {
@@ -111,6 +111,8 @@ export const saveKycStep = async ({ applicationId, step, stepIndex, data }) => {
       step,
       stepIndex,
       data,
+      // Last reviewer change this tab has synced (omitted when unknown — JSON drops undefined)
+      knownReviewedAt,
     }),
   });
 

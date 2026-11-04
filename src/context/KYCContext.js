@@ -337,6 +337,8 @@ export function KYCProvider({ children }) {
 
   const lastClientStepChange = useRef(0);
   const lastSyncedReviewedAt = useRef(null);
+  // True once lastSyncedReviewedAt holds a value read from the server (null then means "never reviewed")
+  const reviewedAtSynced = useRef(false);
   const [steps, setSteps] = useState([]);
   const [stepsLoaded, setStepsLoaded] = useState(false);
   const [hasSynced, setHasSynced] = useState(false);
@@ -548,6 +550,7 @@ export function KYCProvider({ children }) {
                   `[KYC Sync] Admin Override Detected! Moving to Step: ${app.currentStep} and syncing all data.`,
                 );
                 lastSyncedReviewedAt.current = app.reviewedAt;
+                reviewedAtSynced.current = true;
                 return updateSessionStorage({
                   ...prev,
                   applicationId: app.applicationId,
@@ -599,6 +602,7 @@ export function KYCProvider({ children }) {
               // 2. INITIAL LOAD / REFRESH: Always trust server on first load (isPolling is false)
               if (!isPolling) {
                 lastSyncedReviewedAt.current = app.reviewedAt; // Initialize the marker
+                reviewedAtSynced.current = true;
                 setPreGeneratedPdf(null);
 
                 const isRejectionMode =
@@ -755,6 +759,7 @@ export function KYCProvider({ children }) {
 
                 if (serverIsNewerAdminChange) {
                   lastSyncedReviewedAt.current = app.reviewedAt;
+                  reviewedAtSynced.current = true;
                   setPreGeneratedPdf(null);
                 }
 
@@ -1189,6 +1194,8 @@ export function KYCProvider({ children }) {
           applicationId,
           step: stepId,
           stepIndex: snapshot.currentStep,
+          // Lets the server keep a reviewer's step/status change this tab has not loaded yet
+          knownReviewedAt: reviewedAtSynced.current ? (lastSyncedReviewedAt.current ?? null) : undefined,
           data: getBackendPayload(
             snapshot,
             forceStepId ||

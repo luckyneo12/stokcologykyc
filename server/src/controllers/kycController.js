@@ -472,6 +472,24 @@ const saveStep = async (req, res, next) => {
       updateData.generatedPdfBase64 = null;
     }
 
+    // ADMIN CHANGE NOT YET SEEN BY THIS TAB: a reviewer changed the step/status (reviewedAt is newer
+    // than the one this tab last synced) — e.g. moved the application forward while the user's tab was
+    // still on an earlier page. The data is still saved, but this tab's step/status must not undo the
+    // reviewer's change; the client is told to re-sync afterwards. Older clients that do not send
+    // knownReviewedAt are left exactly as before.
+    let adminChangeNotSeen = false;
+    if (req.body && req.body.knownReviewedAt !== undefined && app.reviewedAt) {
+      const knownTime = req.body.knownReviewedAt ? new Date(req.body.knownReviewedAt).getTime() : -Infinity;
+      if (!Number.isNaN(knownTime) && new Date(app.reviewedAt).getTime() > knownTime) {
+        adminChangeNotSeen = true;
+        console.log(
+          `[KYC SaveStep] Reviewer change not yet seen by this tab — keeping Step ${app.currentStep} / status ${app.status} for App: ${applicationId}`,
+        );
+        delete updateData.currentStep;
+        delete updateData.status;
+      }
+    }
+
     // CRITICAL FIX: Prevent race condition where a lagging saveStep with "pending" overwrites "under_review"
     if (updateData.status === "pending" && (app.status === "under_review" || app.status === "verified")) {
       console.log(`[KYC SaveStep] Preventing status downgrade from ${app.status} to pending for App: ${applicationId}`);
@@ -649,6 +667,16 @@ const saveStep = async (req, res, next) => {
     // Notify staff room and specific application room
     req.app.get("io")?.to("staff_room").emit("applications_updated");
     req.app.get("io")?.to(applicationId).emit("kyc_updated");
+
+    // Data was saved, but the tab is behind a reviewer's change: make it follow the server
+    if (adminChangeNotSeen) {
+      return res.status(409).json({
+        success: false,
+        code: "STEP_OUT_OF_SYNC",
+        error: "Step out of sync with server",
+        currentStep: Number(app.currentStep || 0),
+      });
+    }
 
     res.json({
       success: true,
